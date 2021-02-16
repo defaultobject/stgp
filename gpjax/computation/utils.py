@@ -1,6 +1,5 @@
 from ..likelihoods import *
 from ..approximate_posteriors import *
-from ..distributions import *
 
 from .general import log_chol_matrix_det, cholesky_solve
 from ..settings import Settings
@@ -13,7 +12,7 @@ from jax import jit, partial
 import typing
 from typing import List
 
-def get_reparameterised_lmc_prior(X1_arr:List[np.ndarray], X2_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List[Distribution]) -> List[np.ndarray]:
+def get_reparameterised_lmc_prior(X1_arr:List[np.ndarray], X2_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List['Distribution']) -> List[np.ndarray]:
     """
         Returns reparametrised kernels of shapes X1xX2
     """
@@ -22,7 +21,6 @@ def get_reparameterised_lmc_prior(X1_arr:List[np.ndarray], X2_arr:List[np.ndarra
 
     #collect mixing weights
     mixing_weights = likelihood.coregion_weights
-
 
     #collect kernel blocks
     k_blocks = []
@@ -39,7 +37,7 @@ def get_reparameterised_lmc_prior(X1_arr:List[np.ndarray], X2_arr:List[np.ndarra
 
     return k_blocks
 
-def get_blocks_from_lmc_proir(X1_arr:List[np.ndarray], X2_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List[Distribution]) -> List[np.ndarray]:
+def get_blocks_from_lmc_proir(X1_arr:List[np.ndarray], X2_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List['Distribution']) -> List[np.ndarray]:
     """
         Returns reparametrised kernels of shapes X1xX2
     """
@@ -59,7 +57,7 @@ def get_blocks_from_lmc_proir(X1_arr:List[np.ndarray], X2_arr:List[np.ndarray], 
 
     return jax.scipy.linalg.block_diag(*k_blocks)
 
-def get_blocks_from_lmc_proir_diagional(X1_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List[Distribution]) -> List[np.ndarray]:
+def get_blocks_from_lmc_proir_diagional(X1_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List['Distribution']) -> List[np.ndarray]:
     """
         Returns reparametrised kernels of shapes X1xX2
     """
@@ -78,7 +76,7 @@ def get_blocks_from_lmc_proir_diagional(X1_arr:List[np.ndarray], likelihood: Lik
 
     return np.hstack(k_blocks)[:, None]
 
-def get_reparameterised_lmc_prior_diagional(X1_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List[Distribution]) -> List[np.ndarray]:
+def get_reparameterised_lmc_prior_diagional(X1_arr:List[np.ndarray], likelihood: Likelihood, prior_arr: List['Distribution']) -> List[np.ndarray]:
     """
         Returns reparametrised kernels of shapes X1xX2
     """
