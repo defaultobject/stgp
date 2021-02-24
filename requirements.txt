@@ -2,3 +2,4 @@ jax==0.2.9
 jaxlib==0.1.61
 objax==1.2.0
 chex==0.0.4
+black
