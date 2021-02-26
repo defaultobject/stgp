@@ -1,4 +1,8 @@
 """Global settings and setters/getters for gpjax."""
+
+import bibtexparser
+import pathlib
+
 in_strict_mode = False
 
 
@@ -34,3 +38,21 @@ def add_citation(arg):
     """Append citation to global to_cite list."""
     global to_cite
     to_cite.append(arg)
+
+
+def print_citations():
+    """Print bibtex citations."""
+    global to_cite
+
+    # this files path
+    root = pathlib.Path(__file__).parent.absolute()
+
+    with open(f"{root}/references/references.bib") as bibtex_file:
+        bib_database = bibtexparser.load(bibtex_file)
+
+    bib_entries = bib_database.entries
+
+    for _id in to_cite:
+        for entry in bib_entries:
+            if _id == entry["ID"]:
+                print(entry)
