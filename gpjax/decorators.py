@@ -23,3 +23,19 @@ def strict_mode_check(func):
         return func(*args, **kwargs)
 
     return inner
+
+def cite(argument):
+    """Add citation if the wrapped function is called."""
+
+    def decorator(function):
+        def inner(*args, **kwargs):
+            inner.count += 1
+
+            if inner.count == 1:
+                settings.add_citation(argument)
+
+            return function(*args, **kwargs)
+
+        inner.count = 0
+        return inner
+    return decorator

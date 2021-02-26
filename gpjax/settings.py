@@ -2,6 +2,7 @@
 in_strict_mode = False
 
 
+
 class strict_mode:
     """Enable strict_mode.
 
@@ -24,3 +25,11 @@ class strict_mode:
         """Restore strict_mode state."""
         global in_strict_mode
         in_strict_mode = self.orig_value
+
+
+#global list of who to cite for the current model created
+to_cite = []
+
+def add_citation(arg):
+    global to_cite
+    to_cite.append(arg)
