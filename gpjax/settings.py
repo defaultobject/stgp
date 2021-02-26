@@ -47,11 +47,13 @@ def print_citations():
     # this files path
     root = pathlib.Path(__file__).parent.absolute()
 
+    # references are stored within gpjax, so use the root to this file to load
     with open(f"{root}/references/references.bib") as bibtex_file:
         bib_database = bibtexparser.load(bibtex_file)
 
     bib_entries = bib_database.entries
 
+    # TODO: print print these somehow
     for _id in to_cite:
         for entry in bib_entries:
             if _id == entry["ID"]:
