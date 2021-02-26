@@ -5,7 +5,7 @@ from . import settings
 
 
 def strict_mode_check(func):
-    """Enforce strict model if required.
+    """Enforce strict model when settings.in_strict_mode is True.
 
     When in strict mode, if funchas optional params that are not passed then
         this decorator will raise a RunTimeError
