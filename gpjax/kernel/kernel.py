@@ -1,0 +1,178 @@
+import objax
+import chex
+import jax
+import jax.numpy as np
+
+from jax import jit, partial
+from abc import ABC
+from abc import abstractmethod
+from jax.numpy import vectorize
+import typing
+from typing import List, Optional, Union
+from ..computation.general import inv_positive_transform, positive_transform
+from ..utils import ensure_array, ensure_float
+
+
+class Kernel(objax.Module):
+    def __init__(
+        self,
+        input_dim: Optional[int] = 1,
+        active_dims: Optional[np.ndarray] = None,
+    ):
+        chex.assert_type(input_dim, int)
+
+        if active_dims is not None:
+            active_dims = ensure_array(active_dims)
+            chex.assert_rank(active_dims, 1)  # ensure array
+            chex.assert_equal(input_dim, active_dims.shape[0])
+
+        self.input_dim = input_dim
+        self.active_dims = active_dims
+
+    # kernel combinations
+    def __add__(self, kern_2):
+        return SumKernel(self, kern_2)
+
+    def __mul__(self, kern_2):
+        return ProductKernel(self, kern_2)
+
+    @abstractmethod
+    def K(self, X1: np.array, X2: np.array):
+        chex.assert_rank([X1, X2], [2, 2])
+        chex.assert_equal(X1.shape[1], X2.shape[1])
+
+        if self.active_dims is None:
+            _X1, _X2 = X1, X2
+        else:
+            _X1 = X1[:, self.active_dims]
+            _X2 = X2[:, self.active_dims]
+
+        return self._K(_X1, _X2)
+
+    @abstractmethod
+    def K_diag(self, X: np.array):
+        raise NotImplementedError()
+
+
+class CombinationKernel(Kernel):
+    def __init__(self, k1: "Kernel", k2: "Kernel"):
+        self.k1 = k1
+        self.k2 = k2
+
+    def __list__(self):
+        if isinstance(self.k1, CombinationKernel):
+            k1_arr = list(self.k1)
+        else:
+            k1_arr = [self.k1]
+
+        if isinstance(self.k2, CombinationKernel):
+            k2_arr = list(self.k2)
+        else:
+            k2_arr = [self.k2]
+
+        return k1_arr + k2_arr
+
+    def __getitem__(self, index):
+        """
+        When a kernel is defined like:
+            k = k1*k2*k3
+        The equivalent kernel is:
+            ProductKernel(k1, ProductKernel(k2, k3))
+        """
+
+        all_kernels = self.__list__()
+        return all_kernels[index]
+
+
+class SumKernel(CombinationKernel):
+    def K(self, X1: np.array, X2: np.array):
+        return self.k1.K(X1, X2) + self.k2.K(X1, X2)
+
+    def K_diag(self, X1: np.array):
+        return self.k1.K_diag(X1) + self.k2.K_diag(X1)
+
+
+class ProductKernel(CombinationKernel):
+    def K(self, X1: np.array, X2: np.array):
+        return self.k1.K(X1, X2) * self.k2.K(X1, X2)
+
+    def K_diag(self, X1: np.array):
+        return self.k1.K_diag(X1) * self.k2.K_diag(X1)
+
+
+class MarkovKernel(Kernel):
+    def cf_to_ss_spatial(self, sparsity):
+        raise NotImplementedError()
+
+        X_space = sparsity.Z
+
+        num_spatial = X_space.shape[0]
+
+        eye = np.eye(num_spatial)
+
+        K_spatial = self.K(X_space, X_space, active_dims=list(range(1, self.input_dim)))
+        (
+            F_temporal,
+            L_temporal,
+            Qc_temporal,
+            H_temporal,
+            P_inf_temporal,
+        ) = self.cf_to_ss_temporal()
+        F = np.kron(eye, F_temporal)
+        L = np.kron(eye, L_temporal)
+
+        # TODO generalise? #not needed atm
+        H = np.kron(eye, H_temporal)
+
+        Qc = np.kron(K_spatial, Qc_temporal)
+        Pinf = np.kron(K_spatial, P_inf_temporal)
+
+        return F, L, Qc, H, Pinf
+
+
+class StationaryKernel(Kernel):
+    def __init__(
+        self,
+        lengthscales: Optional[np.ndarray] = None,
+        variance: Optional[float] = None,
+        input_dim: Optional[int] = 1,
+        active_dims: Optional[np.ndarray] = None,
+    ) -> None:
+
+        super(StationaryKernel, self).__init__(input_dim, active_dims)
+
+        # input admin
+        if lengthscales is None:
+            lengthscales = np.array([1.0] * input_dim)
+        else:
+            lengthscales = ensure_array(lengthscales)
+
+        if variance is None:
+            variance = 1.0
+        else:
+            ensure_float(variance)
+
+        chex.assert_shape(lengthscales, [input_dim])
+        chex.assert_rank(variance, 0)  # scalar
+
+        # register lengthscales and variances
+        self.raw_lengthscale = objax.StateVar(inv_positive_transform(lengthscales))
+        self.raw_variance = objax.StateVar(inv_positive_transform(variance))
+
+    @property
+    def lengthscales(self) -> np.ndarray:
+        return positive_transform(self.raw_lengthscale.value)
+
+    @property
+    def variance(self) -> np.ndarray:
+        return positive_transform(self.raw_variance.value)
+
+    def K_diag(self, X1):
+        return self.variance * np.ones(X1.shape[0])
+
+
+class NonStationaryKernel(Kernel):
+    def __init__(self) -> None:
+        super(Kernel, self).__init__()
+
+        pass

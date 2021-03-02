@@ -1,17 +1,8 @@
-from .. import Parameter
-from .. import Module
-
-import jax.numpy as np
-from jax import jit, partial
-
-from abc import ABC
-from abc import abstractmethod
+"""Inference base class."""
+import objax
 
 
-class Inference(Module):
-    def __init__(self, name):
-        super(Inference, self).__init__(name)
+class Inference(objax.Module):
+    """Inference base class."""
 
-    def get_objective(self):
-        pass
-
+    pass

@@ -11,7 +11,13 @@ def strict_mode_check(func):
         this decorator will raise a RunTimeError
     """
     # Retrieve the original argspec
-    num_args = len(getattr(func, "__argspec", inspect.getargspec(func).args))
+    args = inspect.getfullargspec(func).args
+
+    #ignore 'self' when func is part of a class
+    if inspect.ismethod(func):
+        args = args[1:]
+
+    num_args = len(args)
 
     def inner(*args, **kwargs):
 
@@ -23,6 +29,7 @@ def strict_mode_check(func):
         return func(*args, **kwargs)
 
     return inner
+
 
 def cite(argument):
     """Add citation if the wrapped function is called."""
@@ -38,4 +45,31 @@ def cite(argument):
 
         inner.count = 0
         return inner
+
     return decorator
+
+def set_defaults_from_self(func):
+    """Replace any unpassed variables with their value in self."""
+    argspec = inspect.getfullargspec(func)
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        #get arguments that have not been passed a value
+        unpassed_positional_args = argspec.args[len(args):]
+
+        #args[0] is the object (`self`), so get the unpassed value from self
+        new_args = []
+        for a in unpassed_positional_args:
+            if a not in kwargs:
+                if hasattr(args[0], a):
+                    new_args.append((a, getattr(args[0], a)))
+                else:
+                    #use the default
+                    pass
+
+        kwargs.update(new_args)
+
+        #call function with defaults from self
+        return func(*args, **kwargs)
+
+    return wrapper
