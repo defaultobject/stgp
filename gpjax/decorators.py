@@ -3,7 +3,6 @@ import inspect
 from .errors import StrictModeError
 from . import settings
 
-
 def strict_mode_check(func):
     """Enforce strict model when settings.in_strict_mode is True.
 

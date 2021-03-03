@@ -9,7 +9,7 @@ from abc import abstractmethod
 from jax.numpy import vectorize
 import typing
 from typing import List, Optional, Union
-from ..computation.general import inv_positive_transform, positive_transform
+from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..utils import ensure_array, ensure_float
 
 

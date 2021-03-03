@@ -1,6 +1,20 @@
 import numpy as np
+from pydoc import locate
+from .inference import Inference
 
 _REGISTERED = {}
+
+def _ensure_str(k):
+    if type(k) is not str:
+        #the passed k is either a class or an class instance / object
+
+        if not isinstance(k, type):
+            #the passed k in an object
+            k = type(k)
+
+        return k.__name__
+    return k
+
 
 class _REGISTERED_KEY:
     def __init__(self, args, kwargs):
@@ -11,14 +25,14 @@ class _DISPATCHER:
     @staticmethod
     def match(key:_REGISTERED_KEY, *args, **kwargs):
         for x, y in zip(key.args, args):
-            if x != y:
+            if _ensure_str(x) != _ensure_str(y):
                 return False
 
         for k, i in key.kwargs.items():
-            if k not in kwargs.keys():
+            if _ensure_str(k) not in kwargs.keys():
                 return False
 
-            if kwargs[k] != key.kwargs[k]:
+            if _ensure_str(kwargs[k]) != _ensure_str(key.kwargs[k]):
                 return False
 
         return True
