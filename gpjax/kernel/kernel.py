@@ -11,6 +11,7 @@ import typing
 from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..utils import ensure_array, ensure_float
+from ..batching import batch
 
 
 class Kernel(objax.Module):
@@ -135,7 +136,7 @@ class StationaryKernel(Kernel):
         self,
         lengthscales: Optional[np.ndarray] = None,
         variance: Optional[float] = None,
-        input_dim: Optional[int] = 1,
+        input_dim: Optional[int] = 2,
         active_dims: Optional[np.ndarray] = None,
     ) -> None:
 
@@ -156,19 +157,52 @@ class StationaryKernel(Kernel):
         chex.assert_rank(variance, 0)  # scalar
 
         # register lengthscales and variances
-        self.raw_lengthscale = objax.StateVar(inv_positive_transform(lengthscales))
-        self.raw_variance = objax.StateVar(inv_positive_transform(variance))
+        self.raw_lengthscales = objax.TrainVar(inv_positive_transform(lengthscales))
+        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
-    @property
-    def lengthscales(self) -> np.ndarray:
-        return positive_transform(self.raw_lengthscale.value)
+    @batch
+    def lengthscales(self, raw_getter) -> np.ndarray:
+        return positive_transform(raw_getter())
 
-    @property
-    def variance(self) -> np.ndarray:
-        return positive_transform(self.raw_variance.value)
+    @batch
+    def variance(self, raw_getter) -> np.ndarray:
+        return positive_transform(raw_getter())
 
     def K_diag(self, X1):
         return self.variance * np.ones(X1.shape[0])
+
+    def _K(self, X1, X2):
+        D = X1.shape[1]
+
+        def _K_d2(x1, x2):
+            #vectorised over 2nd input
+            chex.assert_rank(x1, 1)
+            chex.assert_rank(x2, 1)
+
+            chex.assert_equal(x1.shape[0], D)
+            chex.assert_equal(x2.shape[0], D)
+
+            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, None, 0])(x1, x2, self.variance, self.lengthscales)
+
+            chex.assert_equal(k_d1_d2.shape[0], D)
+
+            k_xx =  np.product(k_d1_d2)
+
+            chex.assert_rank(k_xx, 0)
+
+            return k_xx
+
+        def _K_d1(x1, X2):
+            #vectorised over first input
+            return jax.vmap(_K_d2, in_axes=[None, 0], out_axes=0)(x1, X2)
+
+        K = jax.vmap(_K_d1, in_axes=[0, None], out_axes=0)(X1, X2)
+
+        chex.assert_equal(K.shape[0], X1.shape[0])
+        chex.assert_equal(K.shape[1], X2.shape[0])
+
+        return K
+
 
 
 class NonStationaryKernel(Kernel):

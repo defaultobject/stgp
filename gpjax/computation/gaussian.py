@@ -1,7 +1,9 @@
 """Standard Gaussian methods."""
 
+import jax
 import jax.numpy as np
 from jax import jit
+import chex
 
 from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det
 
@@ -16,7 +18,9 @@ def log_gaussian(Y, mu, sigma):
     # ensure square matrix
     chex.assert_equal(sigma.shape[0], sigma.shape[1])
 
-    sigma_chol = cholesky(sigma + Settings.jitter * np.eye(sigma.shape[0]))
+    jit = 1e-5
+
+    sigma_chol = cholesky(sigma + jit * np.eye(sigma.shape[0]))
 
     N = Y.shape[0]
 

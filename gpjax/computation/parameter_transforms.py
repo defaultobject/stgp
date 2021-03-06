@@ -26,7 +26,7 @@ def negative_transform(val):
 
 @jit
 def inv_positive_transform(val):
-    return inv_softplus
+    return inv_softplus(val)
 
 
 @jit

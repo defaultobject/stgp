@@ -1,9 +1,10 @@
 """Base transform class."""
 
 import objax
+from .. import Node
 
 
-class Transform(objax.Module):
+class Transform(objax.Module, Node):
     """All transforms must be define a forward or inverse method."""
 
     def forward(self):

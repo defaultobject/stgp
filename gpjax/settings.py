@@ -5,6 +5,8 @@ import pathlib
 
 in_strict_mode = False
 
+use_loop_mode = False
+
 
 class strict_mode:
     """Enable strict_mode.
@@ -28,6 +30,29 @@ class strict_mode:
         """Restore strict_mode state."""
         global in_strict_mode
         in_strict_mode = self.orig_value
+
+class use_loops:
+    """Use loops instead of batching.
+
+    Use case:
+        with settings.use_loops():
+            ...
+    """
+
+    def __init__(self, state=True, num_probe_vectors=1):
+        """Store strict_mode state before with statement."""
+        global use_loop_mode
+        self.orig_value = use_loop_mode
+
+    def __enter__(self):
+        """Set strict_mode state to true."""
+        global use_loop_mode
+        use_loop_mode = True
+
+    def __exit__(self, *args):
+        """Restore strict_mode state."""
+        global use_loop_mode
+        use_loop_mode = self.orig_value
 
 
 # global list of who to cite for the current model created

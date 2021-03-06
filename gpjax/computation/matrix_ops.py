@@ -1,5 +1,6 @@
 """Standard operations on matrices."""
 
+import jax
 import jax.numpy as np
 from jax import jit
 import chex

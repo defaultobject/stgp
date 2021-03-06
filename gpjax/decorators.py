@@ -72,3 +72,6 @@ def set_defaults_from_self(func):
         return func(*args, **kwargs)
 
     return wrapper
+
+def ensure_data(func):
+    pass

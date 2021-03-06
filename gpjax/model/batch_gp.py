@@ -1,0 +1,73 @@
+import objax
+import jax
+import jax.numpy as np
+import numpy as onp
+from typing import Optional, Tuple
+import chex
+
+from .. import settings
+from ..decorators import strict_mode_check, ensure_data
+from ..obj_dispatch import obj_dispatch, obj_find
+from ..dispatch import evoke
+
+from . import Model
+from ..kernel import Kernel
+from ..inference import Batch
+from ..transform import Transform
+from ..computation.log_marginal_likelihoods import *
+from ..likelihood import Gaussian
+from ..kernel import RBF
+
+from jax.tree_util import tree_structure
+from jax.tree_util import tree_flatten, tree_unflatten, register_pytree_node
+
+from jax.experimental import loops
+
+
+
+@obj_dispatch(Model, 'Batch')
+class BatchGP(Model):
+    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None):
+        super(BatchGP, self).__init__()
+        self.X = X
+        self.Y = Y
+        self.inference = inference
+        self.likelihood = likelihood
+        self.kernel = kernel
+        self.num_latents = 1
+
+        self.set_defaults()
+
+    def set_defaults(self):
+        self.num_latents = self.Y.shape[1]
+
+        self.X = np.array(self.X)
+        self.Y = np.array(self.Y)
+
+
+        if self.inference == None:
+            self.inference = Batch()
+
+        if self.kernel == None:
+            self.kernel = objax.ModuleList([RBF() for j in range(self.num_latents)])
+
+        if self.likelihood == None:
+            self.likelihood = objax.ModuleList([Gaussian() for j in range(self.num_latents)])
+
+    def get_objective(self):
+        lml_fn = evoke('log_marginal_likelihood')
+
+        if settings.use_loop_mode:
+            lml = 0
+            for q in range(self.num_latents):
+                lml_q = lml_fn(self.X, self.Y[:, q][:, None], self.likelihood[q], self.kernel[q])
+                lml += lml_q
+
+            nlml = -lml
+        else:
+            lml = lml_fn(self.X, self.Y, self.likelihood[0], self.likelihood, self.kernel)
+            nlml = -np.sum(lml)
+
+        chex.assert_rank(nlml, 0)
+        return nlml
+
