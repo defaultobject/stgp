@@ -1,3 +1,3 @@
-from .batcher import Batcher, batch
+from .batcher import Batched, Batcher, batch
 
-__all__=['Batcher', 'batch']
+__all__=['Batched', 'Batcher', 'batch']

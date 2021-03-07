@@ -2,7 +2,8 @@ from ..kernel import Kernel, RBF
 from ..likelihood import Gaussian
 from ..dispatch import dispatch
 from .gaussian import log_gaussian
-from ..batching import Batcher
+from ..batching import Batched
+from .. import utils
 
 import jax
 import jax.numpy as np
@@ -48,31 +49,23 @@ def log_marginal_likelihood(
 
     """
 
-    batched_likelihood = Batcher(likelihood)
-    likelihood_batched_vars = batched_likelihood.get_batched_vars()
+    with Batched(likelihood) as likelihood, Batched(kernel) as kernel:
 
-    batched_kernel = Batcher(kernel)
-    kernel_batched_vars = batched_kernel.get_batched_vars()
+        def lml(X, Y, lik, lik_vars, kernel, kernel_vars):
+            N = X.shape[0]
+            Y = Y[:, None]
 
-    def lml(X, Y, lik, lik_vars, kernel, kernel_vars):
-        N = X.shape[0]
-        Y = Y[:, None]
+            lik.set_vars(lik_vars)
+            kernel.set_vars(kernel_vars)
 
-        lik.variance = list(lik_vars.values())[0]
-        kernel.variance = list(kernel_vars.values())[1]
-        kernel.lengthscales = list(kernel_vars.values())[0]
+            lik_noise = lik.get_obj().variance
+            K_xx = kernel.get_obj().K(X, X)
 
-        lik_noise = lik.variance
-        K_xx = kernel.K(X, X)
+            k = K_xx + lik_noise * np.eye(N)
 
-        k = K_xx + lik_noise * np.eye(N)
+            return log_gaussian(Y, np.zeros_like(Y), k)
 
-        return log_gaussian(Y, np.zeros_like(Y), k)
+        lml = jax.vmap(lml, (None, 1, None, 0, None, 0))(X, Y, likelihood, likelihood.get_vars(), kernel, kernel.get_vars())
 
-    lml = jax.vmap(lml, (None, 1, None, 0, None, 0))(X, Y, likelihood[0], likelihood_batched_vars, kernel[0], kernel_batched_vars)
-
-    likelihood[0].variance = None
-    kernel[0].variance = None
-    kernel[0].lengthscalea = None
 
     return lml

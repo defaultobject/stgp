@@ -23,7 +23,43 @@ class batch():
             self.getter = lambda obj: val
 
 
+class Batched():
+    def __init__(self, obj, num_probe_vectors=1):
+        self.obj = obj
+        self.batched_obj = Batcher(obj)
+        self.batched_vars = None
 
+    def get(self, name):
+        """Get jax variable"""
+        key = utils.key_that_ends_with(self.batched_vars, name)
+        return self.batched_vars[key] 
+
+    def get_vars(self):
+        return self.batched_obj.get_batched_vars()
+
+    def get_obj(self):
+        return self.obj[0]
+
+    def set_vars(self, var):
+        obj = self.obj[0]
+        for key in var.keys():
+            name = key.split('raw_')[-1]
+            setattr(obj, name, var[key])
+
+
+    def __enter__(self):
+        self.batched_vars = self.batched_obj.get_batched_vars()
+        return self
+
+    def __exit__(self, *args):
+        #Only need to apply to the first obj
+        obj = self.obj[0]
+        for key in obj.vars().keys():
+            #assume that key ends in raw_
+            name = key.split('raw_')[-1]
+
+            #disable batching
+            setattr(obj, name, None)
 
 
 class Batcher():

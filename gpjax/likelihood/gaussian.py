@@ -16,4 +16,7 @@ class Gaussian(Likelihood):
     def variance(self, raw_getter) -> np.ndarray:
         return positive_transform(raw_getter())
 
+    def batched(self):
+        pass
+
 

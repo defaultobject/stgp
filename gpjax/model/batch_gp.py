@@ -69,5 +69,6 @@ class BatchGP(Model):
             nlml = -np.sum(lml)
 
         chex.assert_rank(nlml, 0)
+
         return nlml
 
