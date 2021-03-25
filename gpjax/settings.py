@@ -7,6 +7,8 @@ in_strict_mode = False
 
 use_loop_mode = False
 
+jitter = 1e-5
+
 
 class strict_mode:
     """Enable strict_mode.

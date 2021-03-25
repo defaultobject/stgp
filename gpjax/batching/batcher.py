@@ -12,7 +12,7 @@ class batch():
         return getattr(obj, f'raw_{self.variable}').value
 
     def __get__(self, obj, objtype=None):
-        return self.func(self, lambda: self.getter(obj))
+        return self.func(obj, lambda: self.getter(obj))
 
     def __set__(self, obj, val):
         if val is None:
@@ -21,6 +21,7 @@ class batch():
         else:
             self.original_getter = self.getter
             self.getter = lambda obj: val
+
 
 
 class Batched():

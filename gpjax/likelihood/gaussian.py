@@ -9,8 +9,12 @@ from ..batching import batch
 class Gaussian(Likelihood):
     """Gaussian likelihood."""
 
-    def __init__(self):
-        self.raw_variance = objax.TrainVar(inv_positive_transform(1.0))
+    def __init__(self, variance=None):
+
+        if variance is None:
+            variance = 1.0
+
+        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
     @batch
     def variance(self, raw_getter) -> np.ndarray:

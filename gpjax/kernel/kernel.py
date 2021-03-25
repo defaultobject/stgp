@@ -136,7 +136,7 @@ class StationaryKernel(Kernel):
         self,
         lengthscales: Optional[np.ndarray] = None,
         variance: Optional[float] = None,
-        input_dim: Optional[int] = 2,
+        input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
     ) -> None:
 

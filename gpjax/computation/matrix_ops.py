@@ -2,8 +2,11 @@
 
 import jax
 import jax.numpy as np
-from jax import jit
+from jax import jit, partial
 import chex
+
+def add_jitter(A, jit):
+    return A + jit*np.eye(A.shape[0])
 
 
 @jit
@@ -37,3 +40,27 @@ def cholesky(A):
 
     # return lower triangular cholesky factor
     return jax.scipy.linalg.cholesky(A, lower=True)
+
+@partial(jit, static_argnums=(2))
+def _triangular_solve(chol, X, lower):
+    return jax.scipy.linalg.solve_triangular(chol, X, lower=lower) 
+
+def triangular_solve(chol, X, lower):
+    #wrapper around _triangular_solve so that lower can be a keyword arg
+    return _triangular_solve(chol, X, lower)
+
+
+@jit
+def vectorized_lower_triangular_cholesky(A:np.ndarray) -> np.ndarray:
+    """
+        Takes the cholesky decomposition of A vectorized the output
+    """
+    N = A.shape[0]
+    init = cholesky(A)+1e-7*np.eye(N) #add jitter for numerical stability
+    init = init[np.tril_indices(N)].flatten()
+    return init
+
+@partial(jit, static_argnums=(1,))
+def lower_triangle(val, N):
+    tri = np.zeros((N, N))
+    return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
