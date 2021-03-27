@@ -1,24 +1,44 @@
 import jax.numpy as np
 import objax
 from ..dispatch import evoke
+from ..integral_approximators.factory import get_approximator
+from .. import settings
 import chex
 
 class ApproximatePosterior(objax.Module):
     def __init__(self, whiten=False):
         self.whiten = whiten
 
+        self.approximator = get_approximator()
+
     def ELL(self, X: np.ndarray, Y: np.ndarray, likelihood: 'Likelihood', kernel: 'Kernel', sparsity: 'Sparsity'):
 
         ell_fn = evoke('expected_log_likelihood')
 
-        ell = ell_fn(
-            X,
-            Y,
-            self, 
-            likelihood,
-            kernel,
-            sparsity
-        )
+        try:
+            if settings.force_black_box:
+                raise NotImplementedError()
+
+            ell = ell_fn(
+                X,
+                Y,
+                self, 
+                likelihood,
+                kernel,
+                sparsity
+            )
+        except NotImplementedError as e:
+            #use black box inference
+            ell = self.approximator.run(
+                X,
+                Y,
+                self, 
+                likelihood,
+                kernel,
+                sparsity
+            )
+
+            ell = np.sum(ell)
 
         chex.assert_rank(ell, 0)
 
@@ -58,14 +78,29 @@ class ApproximatePosterior(objax.Module):
     def predict(self, XS: np.ndarray, X: np.ndarray, likelihood: 'Likelihood', kernel: 'Kernel', sparsity):
         predict_fn = evoke('predict_diagonal')
 
-        mean, var = predict_fn(
-            XS,
-            X,
-            self, 
-            likelihood,
-            kernel,
-            sparsity
-        )
+        try:
+            if settings.force_black_box:
+                raise NotImplementedError()
+
+            mean, var = predict_fn(
+                XS,
+                X,
+                self, 
+                likelihood,
+                kernel,
+                sparsity
+            )
+
+        except NotImplementedError as e:
+            #use black box inference
+            mean, var = self.approximator.predict_run(
+                XS,
+                X,
+                self, 
+                likelihood,
+                kernel,
+                sparsity
+            )
 
         return mean, var
 

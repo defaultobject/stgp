@@ -7,7 +7,11 @@ in_strict_mode = False
 
 use_loop_mode = False
 
+force_black_box = False
+
 jitter = 1e-5
+
+integral_approximator='quadrature'
 
 
 class strict_mode:

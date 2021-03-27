@@ -5,6 +5,9 @@ from . import Likelihood
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..batching import batch
 
+from ..computation.gaussian import log_gaussian_scalar
+
+
 
 class Gaussian(Likelihood):
     """Gaussian likelihood."""
@@ -20,7 +23,15 @@ class Gaussian(Likelihood):
     def variance(self, raw_getter) -> np.ndarray:
         return positive_transform(raw_getter())
 
-    def batched(self):
-        pass
+    def log_likelihood(self, y, f):
+        var = np.array([self.variance])
+        ll = log_gaussian_scalar(y, f, var)
+        return ll
+
+    def conditional_var(self, f):
+        return self.variance
+
+    def conditional_mean(self, f):
+        return f
 
 

@@ -22,8 +22,6 @@ FullyConnected(
 
 Somehow need to support all combinations and topologies
 
-
-
 ## Moment Matching
 
 ```

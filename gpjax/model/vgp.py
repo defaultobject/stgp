@@ -91,6 +91,11 @@ class VGP(Model):
 
         if self.likelihood == None:
             self.likelihood = objax.ModuleList([Gaussian() for j in range(self.num_latents)])
+        else:
+            if type(self.likelihood) is not list:
+                self.likelihood = [self.likelihood]
+
+            self.likelihood = objax.ModuleList(self.likelihood)
 
     def get_objective(self):
         elbo = self.inference.ELBO(

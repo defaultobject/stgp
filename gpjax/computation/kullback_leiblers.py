@@ -6,7 +6,7 @@ from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..batching import Batched
 from .. import utils
-from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter
+from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, diagonal_from_cholesky
 
 import jax
 from jax import jit
@@ -48,11 +48,11 @@ def whitened_gaussian_kl(mu_1, covar_chol_1) -> np.ndarray:
     """
 
     #TODO: is this necessary?
-    covar_1 = covar_chol_1 @ covar_chol_1.T
+    covar_1_diag = diagonal_from_cholesky(covar_chol_1)
 
     log_det_term = -log_chol_matrix_det(covar_chol_1)
 
-    trace_term = np.trace(covar_1)
+    trace_term = np.sum(covar_1_diag)
 
     maha_term = np.sum(np.square(mu_1))
 
