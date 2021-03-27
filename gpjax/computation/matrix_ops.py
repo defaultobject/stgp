@@ -8,6 +8,16 @@ import chex
 def add_jitter(A, jit):
     return A + jit*np.eye(A.shape[0])
 
+def diagonal_from_cholesky(L):
+    """ Compute diag(LL^T). """
+    # ensure square matrix
+    chex.assert_rank(L, 2)
+    chex.assert_equal(L.shape[0], L.shape[1])
+
+    diag = np.sum(np.square(L), axis=1)
+    diag = np.reshape(diag, [L.shape[0], 1])
+
+    return diag
 
 @jit
 def log_chol_matrix_det(chol):

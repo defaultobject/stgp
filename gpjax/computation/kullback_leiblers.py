@@ -46,8 +46,6 @@ def whitened_gaussian_kl(mu_1, covar_chol_1) -> np.ndarray:
     """
     Assumes that g2 is a standard Gaussian - N(0, I)
     """
-    mu_1 = g1.mean(X)
-    covar_chol_1 = g1.covar_chol(X, X)
 
     #TODO: is this necessary?
     covar_1 = covar_chol_1 @ covar_chol_1.T
@@ -74,6 +72,10 @@ def KL(X, approximate_posterior, kernel, sparsity):
 
     return gaussian_kl(mu_1, mu_2, covar_chol_1, covar_chol_2)
 
-#@dispatch(object, GaussianApproximatePosterior, object, object)
-#def KL(X, approximate_posterior, kernel, sparsity):
-#    pass
+@dispatch(object, GaussianApproximatePosterior, object, object)
+def whitened_KL(X, approximate_posterior, kernel, sparsity):
+    mu_1 = approximate_posterior.m
+    covar_chol_1 = approximate_posterior.S_chol
+
+    return whitened_gaussian_kl(mu_1, covar_chol_1)
+

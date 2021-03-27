@@ -14,7 +14,7 @@ def evoke(fn_name):
     if fn_name in gpjax_namespace:
         return gpjax_namespace[fn_name]
     else:
-        return None
+        raise RuntimeError()
 
 
 

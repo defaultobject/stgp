@@ -7,7 +7,7 @@ from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower
 import chex
 
 class GaussianApproximatePosterior(ApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S=None):
+    def __init__(self, dim: int=None, m=None, S=None, whiten=False):
 
         if m is None:
             m = np.zeros([dim, 1])
@@ -22,6 +22,8 @@ class GaussianApproximatePosterior(ApproximatePosterior):
         self.raw_S_chol = objax.TrainVar(vectorized_lower_triangular_cholesky(S))
 
         self.dim = dim
+
+        super(GaussianApproximatePosterior, self).__init__(whiten)
 
     @batch
     def m(self, raw_fn):
