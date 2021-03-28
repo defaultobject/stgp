@@ -28,7 +28,7 @@ def GP(*args, inference=Batch(), **kwargs):
     return obj_find('Model', inference)(*args, **kwargs)
 
 class NodeGP(Model):
-    def __init__(self, parent: Model, X:Optional[np.ndarray]=None, Y:Optional[np.ndarray]=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None):
+    def __init__(self, parent: Model, X:Optional[np.ndarray]=None, Y:Optional[np.ndarray]=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, whiten=False):
         self.parent = parent
 
 

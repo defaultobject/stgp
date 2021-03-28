@@ -3,6 +3,7 @@ from . import Inference
 from .. import settings
 from .. batching import Batched
 
+import jax
 import jax.numpy as np
 
 
@@ -69,7 +70,10 @@ class Variational(Inference):
                 elbo += elbo_q
         else:
 
-            with Batched(self.likelihood) as likelihood, Batched(self.kernel) as kernel, Batched(approximate_posterior) as approximate_posterior:
+            with Batched(likelihood) as likelihood, \
+                Batched(kernel) as kernel, \
+                Batched(approximate_posterior) as approximate_posterior, \
+                Batched(sparsity) as sparsity:
 
                 def batched_elbo(X, Y, lik, lik_vars, kernel, kernel_vars, sparsity, sparsity_vars, approximate_posterior, approximate_posterior_vars):
 
@@ -95,7 +99,9 @@ class Variational(Inference):
                     return elbo_q
 
 
-                elbo = jax.vmap(batched_elbo, (None, 1, None, 0, None, 0, None, 0))(self.X, self.Y, likelihood, likelihood.get_vars(), kernel, kernel.get_vars(), sparsity, sparsity.get_vars(), approximate_posterior, approximate_posterior.get_vars() )
+                elbo = jax.vmap(batched_elbo, (None, 1, None, 0, None, 0, None, 0, None, 0), 0)(X, Y, likelihood, likelihood.get_vars(), kernel, kernel.get_vars(), sparsity, sparsity.get_vars(), approximate_posterior, approximate_posterior.get_vars() )
+
+                elbo = np.sum(elbo)
 
 
         return elbo

@@ -41,20 +41,22 @@ class BatchGP(Model):
         self.set_defaults()
 
     def set_defaults(self):
-        self.num_latents = self.Y.shape[1]
+        if self.Y is not None:
+            self.num_latents = self.Y.shape[1]
+            self.Y = np.array(self.Y)
 
         self.X = np.array(self.X)
-        self.Y = np.array(self.Y)
+        self.D = self.X.shape[1]
 
 
         if self.inference == None:
             self.inference = Batch()
 
         if self.kernel == None:
-            self.kernel = objax.ModuleList([RBF(lengthscales=[j+0.1,j+0.1]) for j in range(self.num_latents)])
+            self.kernel = objax.ModuleList([RBF(lengthscales=[1.0 for d in range(self.D)]) for j in range(self.num_latents)])
 
         if self.likelihood == None:
-            self.likelihood = objax.ModuleList([Gaussian(variance=j+0.1) for j in range(self.num_latents)])
+            self.likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.num_latents)])
 
     def get_objective(self):
         lml_fn = evoke('log_marginal_likelihood')

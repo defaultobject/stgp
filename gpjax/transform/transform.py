@@ -14,3 +14,7 @@ class Transform(objax.Module, Node):
     def inverse(self):
         """Compute x=T^{-1}(f)."""
         pass
+
+
+class ElementWiseTransform(Transform):
+    pass

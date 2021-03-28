@@ -1,10 +1,13 @@
 """Single input and outputs transforms."""
-from .transform import Transform
+from .transform import Transform, ElementWiseTransform
 
 import jax.numpy as np
 
 
-class Exp(Transform):
+class Identity(ElementWiseTransform):
+    pass
+
+class Exp(ElementWiseTransform):
     """Expontial Function."""
 
     def forward(self, x):
@@ -28,17 +31,17 @@ class Log(Exp):
         return super(Log, self).forward(f)
 
 
-class Affine(Transform):
+class Affine(ElementWiseTransform):
     """Affine Function."""
 
 
-class Boxcox(Transform):
+class Boxcox(ElementWiseTransform):
     """Boxcox Function."""
 
 
-class Sinh_Arcsinh(Transform):
+class Sinh_Arcsinh(ElementWiseTransform):
     """Sinh_Arcsinh Function."""
 
 
-class Tanh(Transform):
+class Tanh(ElementWiseTransform):
     """Sinh_Arcsinh Function."""
