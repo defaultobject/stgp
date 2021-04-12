@@ -55,8 +55,13 @@ class BatchGP(Model):
         if self.kernel == None:
             self.kernel = objax.ModuleList([RBF(lengthscales=[1.0 for d in range(self.D)]) for j in range(self.num_latents)])
 
+        elif type(self.kernel) is not list:
+            self.kernel = objax.ModuleList([self.kernel])
+
         if self.likelihood == None:
             self.likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.num_latents)])
+        elif type(self.likelihood) is not list:
+            self.likelihood = objax.ModuleList([self.likelihood])
 
     def get_objective(self):
         lml_fn = evoke('log_marginal_likelihood')
@@ -91,3 +96,23 @@ class BatchGP(Model):
 
         return nlml
 
+
+    def predict(self, XS, diagonal=True, squeeze=True):
+
+        if diagonal:
+            pred_fn = evoke('predict_diagonal')
+        else:
+            pred_fn = evoke('predict')
+
+        mean, var =pred_fn(
+            XS, 
+            self.X, 
+            self.Y,
+            self.likelihood[0], 
+            self.kernel[0],
+        )
+
+        if squeeze:
+            return np.squeeze(mean), np.squeeze(var)
+
+        return mean, var

@@ -3,19 +3,46 @@ from .transform import Transform
 import typing
 from typing import List, Optional
 import jax.numpy as np
+import objax
+from ..batching import batch
 
 
+#TODO: need to somehow get a list from this
+# -> each obj in list needs a forward method:
 class LMC(Transform):
     r"""
     Linear model of coregionilisation.
 
     Generative model:
         f_p = \sum w_{p,q} g_q
+
     """
+    class LMC_p(Transform):
+        def __init__(self, latents_p, W_p):
+            self.latents_p = latents_p
+            self.raw_W_p = objax.TrainVar(W_p)
+
+        @batch
+        def W_p(self, raw_getter):
+            return raw_getter()
+
+        def forward():
+            pass
+
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
+
+        if input_dim is None:
+            input_dim = len(latents)
+
         self.latents = latents
         self.output_dim = output_dim
+
         self.input_dim = input_dim
+
+        self.raw_W = np.ones([self.output_dim, self.input_dim])
+
+    def get_batches(self):
+        return [LMC.LMC_p(self.latents, self.raw_W[p]) for p in range(self.output_dim)]
 
 
 class GPRN(Transform):

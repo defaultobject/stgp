@@ -5,6 +5,10 @@ import jax.numpy as np
 from jax import jit, partial
 import chex
 
+@jit
+def cartesian_product(X, Y):
+    return np.vstack([np.tile(X, Y.shape[0]), np.repeat(Y, X.shape[0])])
+
 def add_jitter(A, jit):
     return A + jit*np.eye(A.shape[0])
 

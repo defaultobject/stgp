@@ -29,13 +29,13 @@ from jax.experimental import loops
 
 @obj_dispatch(Model, 'Variational', 'NoSparsity')
 class VGP(Model):
-    def __init__(self, X=None, Y=None, inference: 'Variational'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, whiten=False):
+    def __init__(self, X=None, Y=None, inference: 'Variational'=None, likelihood: 'Likelihood'=None, prior: 'Transform'=None, whiten=False):
         super(VGP, self).__init__()
         self.X = X
         self.Y = Y
         self.inference = inference
         self.likelihood = likelihood
-        self.kernel = kernel
+        self.prior = prior
         self.approximate_posterior = None
         self.sparsity = None
         self.whiten = whiten
@@ -50,7 +50,7 @@ class VGP(Model):
             XS, 
             self.X, 
             self.likelihood, 
-            self.kernel,
+            self.prior,
             self.sparsity,
             self.approximate_posterior
         )
@@ -86,8 +86,8 @@ class VGP(Model):
 
         self.approximate_posterior.whiten = self.whiten
 
-        if self.kernel == None:
-            self.kernel = objax.ModuleList([RBF(input_dim=self.D) for j in range(self.num_latents)])
+        if self.prior == None:
+            raise RuntimeError()
 
         if self.likelihood == None:
             self.likelihood = objax.ModuleList([Gaussian() for j in range(self.num_latents)])
@@ -102,7 +102,7 @@ class VGP(Model):
             self.X,
             self.Y,
             self.likelihood,
-            self.kernel,
+            self.prior,
             self.sparsity,
             self.approximate_posterior,
         )

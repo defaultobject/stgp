@@ -100,6 +100,16 @@ class ProductKernel(CombinationKernel):
     def K_diag(self, X1: np.array):
         return self.k1.K_diag(X1) * self.k2.K_diag(X1)
 
+class ConcatationKernel(CombinationKernel):
+    def K(self, X1: np.array, X2: np.array):
+        return np.array([self.k1.K(X1, X2), self.k2.K(X1, X2)])
+
+    def K_diag(self, X1: np.array):
+
+        return np.array([self.k1.K_diag(X1), self.k2.K_diag(X1)])
+
+
+
 
 class MarkovKernel(Kernel):
     def cf_to_ss_spatial(self, sparsity):
@@ -135,7 +145,7 @@ class StationaryKernel(Kernel):
     def __init__(
         self,
         lengthscales: Optional[np.ndarray] = None,
-        variance: Optional[float] = None,
+        variance: Optional[np.ndarray] = None,
         input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
     ) -> None:

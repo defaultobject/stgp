@@ -31,40 +31,45 @@ class Variational(Inference):
 
 
 
-    def ELBO(self, X, Y, likelihood, kernel, sparsity, approximate_posterior):
+    def ELBO(self, X, Y, likelihood, prior, sparsity, approximate_posterior):
 
-        def _elbo_q(X, Y, likelihood, kernel, sparsity, approximate_posterior):
+        def _elbo_q(X, Y, likelihood, prior_p, sparsity, approximate_posterior):
             ell_q = approximate_posterior.ELL(
                 X, 
                 Y, 
                 likelihood,
-                kernel,
+                prior_p,
                 sparsity
             )
 
-            kl_q = approximate_posterior.KL(
-                X, 
-                kernel,
-                sparsity
-            )
-            elbo_q = ell_q - kl_q
+            if False:
+                kl_q = approximate_posterior.KL(
+                    X, 
+                    prior_p,
+                    sparsity
+                )
+                elbo_q = ell_q - kl_q
 
             return elbo_q
 
 
 
-        num_latents = len(kernel)
+        #num_latents = len(kernel)
+        num_outputs = Y.shape[1]
         if settings.use_loop_mode:
-            elbo = 0.0
+            transforms = prior.get_batches()
 
-            for q in range(num_latents):
-                elbo_q = _elbo_q(
+            #TODO: decouple elbo and ell
+            #TODO: what do we do about approximate posterior and sparsity as they dependend on the Transform...
+
+            for p in range(num_outputs):
+                elbo_p = _elbo_q(
                     X, 
-                    Y[:, q][:, None], 
-                    likelihood[q],
-                    kernel[q],
-                    sparsity[q],
-                    approximate_posterior[q]
+                    Y[:, p][:, None], 
+                    likelihood[p],
+                    transforms[p],
+                    sparsity[p],
+                    approximate_posterior[p]
                 )
 
                 elbo += elbo_q

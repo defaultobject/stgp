@@ -25,6 +25,7 @@ def GP(*args, inference=Batch(), **kwargs):
         if isinstance(kwargs['parent'], Model):
             return NodeGP(*args, **kwargs)
 
+
     return obj_find('Model', inference)(*args, **kwargs)
 
 class NodeGP(Model):
