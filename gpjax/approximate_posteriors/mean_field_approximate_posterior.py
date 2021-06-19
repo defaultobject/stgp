@@ -15,10 +15,9 @@ from ..computation.predictor_callers import linear_predictor
 
 class MeanFieldApproximatePosterior(ApproximatePosterior):
     def __init__(self, prior: 'Node', whiten=False):
-        self.prior = prior
         self.whiten = whiten
 
-        self.number_latents = self.prior.number_of_latents()
+        self.number_latents = prior.number_of_latents()
 
         #TODO: dim
         self.approx_posteriors = objax.ModuleList([
@@ -51,7 +50,6 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
 
                 return mean_q,  var_q 
 
-
             mean_arr, var_arr = jax.vmap(batched_marginals, (None,  None, 0, None, 0), (0, 0))(X, latents, latents.get_vars(), approx_posteriors, approx_posteriors.get_vars())
 
 
@@ -72,7 +70,7 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
         latents = transform.latents
         num_latents = len(latents)
 
-        if settings.use_loop_mode:
+        if False and settings.use_loop_mode:
             raise NotImplementedError()
         else:
 

@@ -5,8 +5,12 @@ from gpjax.sparsity import NoSparsity
 from gpjax.kernel import RBF
 import numpy as np
 import jax.numpy as jnp
+import jax
 import objax
 import matplotlib.pyplot as plt
+import json
+import os
+#os.environ['XLA_FLAGS']='--xla_force_host_platform_device_count=4'
 
 from jax.config import config
 
@@ -30,14 +34,15 @@ def run():
 
     if multi_task:
         latents = [GP(X, kernel=RBF(lengthscales=[0.1])) for q in range(Q)]
-        p = LMC(latents, output_dim=P)
+        prior = LMC(latents, output_dim=P)
 
         #m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], prior=p, inference='Variational', whiten=True)
-        m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=p, inference='Variational', whiten=True)
+        m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=prior, inference='Variational', whiten=True)
 
         #m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], inference='Variational', whiten=True)
 
     train_vars = m.vars()
+    print(json.dumps({str(a): ''  for a in m.vars().keys()}, indent=3))
 
     lr_adam = 0.01
     opt = objax.optimizer.Adam(train_vars)
@@ -47,7 +52,7 @@ def run():
 
     start = timer()
 
-    for i in range(1000):
+    for i in range(200):
         grad, val = grad_fn()
         if i % 10 == 0:
             print(val)
@@ -60,16 +65,19 @@ def run():
     pred_fn = objax.Jit(m.predict, m.vars())
     mean, var = pred_fn(X)
 
-    for p in range(P):
-        plt.fill_between(np.squeeze(X), mean[p]-2*np.sqrt(var[p]), mean[p]+2*np.sqrt(var[p]), alpha=0.3)
-        plt.scatter(X, Y[:, p], label=p)
-        plt.plot(X, mean[p], label=p)
+    if False:
+        for p in range(P):
+            plt.fill_between(np.squeeze(X), mean[p]-2*np.sqrt(var[p]), mean[p]+2*np.sqrt(var[p]), alpha=0.3)
+            plt.scatter(X, Y[:, p], label=p)
+            plt.plot(X, mean[p], label=p)
 
     plt.show()
 
 
 gpjax.settings.force_black_box = False
 gpjax.settings.jitter = 1e-6
+
+#jax.profiler.start_trace("/tmp/tensorboard")
 
 if True:
     print('No loops')
@@ -80,4 +88,5 @@ else:
     with gpjax.settings.use_loops():
         run()
 
+#jax.profiler.stop_trace()
 

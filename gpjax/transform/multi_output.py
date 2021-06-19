@@ -31,19 +31,27 @@ class LMC(LinearTransform):
             pass
 
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
+        print('CREATING')
 
         if input_dim is None:
             input_dim = len(latents)
 
-        self.latents = latents
+        self.latents = objax.ModuleList(latents)
         self.output_dim = output_dim
 
         self.input_dim = input_dim
 
-        self.raw_W = np.ones([self.output_dim, self.input_dim])
+        #self.raw_W = objax.TrainVar(np.ones([self.output_dim, self.input_dim]))
+        #self.raw_W = objax.TrainVar(np.eye(self.output_dim))
+        self.raw_W = np.eye(self.output_dim)
+
+        self.batches = objax.ModuleList([LMC.LMC_p(self.latents, self.raw_W[p]) for p in range(self.output_dim)])
+
+        super(LMC, self).__init__()
+
 
     def get_batches(self):
-        return [LMC.LMC_p(self.latents, self.raw_W[p]) for p in range(self.output_dim)]
+        return self.batches
 
     def number_of_latents(self):
         return len(self.latents)

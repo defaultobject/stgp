@@ -11,6 +11,9 @@ def linear_predictor(XS, X, likelihood, transform, approx_posterior):
 
     weights =  weights[:, None, None]
 
+    print('weights: ', weights)
+
+
     mean_p = latent_mean_arr * weights
     var_p = latent_var_arr * (weights **2)
 
