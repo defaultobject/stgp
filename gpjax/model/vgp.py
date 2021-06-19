@@ -50,7 +50,6 @@ class VGP(Model):
             self.X, 
             self.likelihood, 
             self.prior,
-            self.sparsity,
             self.approximate_posterior,
             diagonal=diagonal
         )

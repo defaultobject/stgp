@@ -10,24 +10,28 @@ import chex
 class Variational(Inference):
     """Variational inference class."""
 
-    def predict(self, XS, X, likelihood, kernel, sparsity, approximate_posterior, diagonal):
-        num_latents = len(kernel)
+    def predict(self, XS, X, likelihood, prior, approximate_posterior, diagonal):
+        num_outputs = prior.output_dim
+        transforms = prior.get_batches()
+
         if True or settings.use_loop_mode:
             mean_arr, var_arr = [], []
 
-            for q in range(num_latents):
-                mean_q, var_q = approximate_posterior[q].predict(
+            #TODO: is it okay to overwrite this? this wont work with jit with is a problem??
+            approximate_posterior.precompute_marginals(XS, prior)
+
+            for p in range(num_outputs):
+                mean_p, var_p = approximate_posterior.predict(
                     XS,
                     X,
-                    likelihood[q],
-                    kernel[q],
-                    sparsity[q],
+                    likelihood[p],
+                    transforms[p],
                     diagonal
                 )
 
 
-                mean_arr.append(mean_q)
-                var_arr.append(var_q)
+                mean_arr.append(mean_p)
+                var_arr.append(var_p)
 
             return np.array(mean_arr), np.array(var_arr)
 

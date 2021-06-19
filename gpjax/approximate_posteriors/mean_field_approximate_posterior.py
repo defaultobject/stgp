@@ -11,6 +11,7 @@ from .. batching import Batched
 from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower_triangle
 import chex
 from ..computation.ell_callers import linear_transform_ell
+from ..computation.predictor_callers import linear_predictor
 
 class MeanFieldApproximatePosterior(ApproximatePosterior):
     def __init__(self, prior: 'Node', whiten=False):
@@ -24,6 +25,9 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             GaussianApproximatePosterior(dim=100, whiten=self.whiten)
             for q in range(self.number_latents)
         ])
+
+    def predict(self, XS, X, likelihood, prior, diagonal):
+        return linear_predictor(XS, X, likelihood, prior, self)
 
     def precompute_marginals(self, X, prior):
         latents = prior.latents
@@ -63,7 +67,6 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             return linear_transform_ell(X, Y, likelihood, transform, self)
 
         return 0.0
-
 
     def KL(self, X: np.ndarray, transform: 'Transform'):
         latents = transform.latents
