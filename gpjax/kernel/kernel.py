@@ -48,6 +48,7 @@ class Kernel(objax.Module):
             _X1 = X1[:, self.active_dims]
             _X2 = X2[:, self.active_dims]
 
+
         return self._K(_X1, _X2)
 
     @abstractmethod

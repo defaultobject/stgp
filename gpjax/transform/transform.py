@@ -15,6 +15,15 @@ class Transform(objax.Module, Node):
         """Compute x=T^{-1}(f)."""
         pass
 
+    def number_of_latents(self):
+        raise NotImplementedError()
+
+class LinearTransform(Transform):
+    pass
+
+class NonLinearTransform(Transform):
+    pass
+
 
 class ElementWiseTransform(Transform):
     pass

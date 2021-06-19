@@ -24,6 +24,7 @@ from jax.tree_util import tree_flatten, tree_unflatten, register_pytree_node
 from jax.experimental import loops
 
 from ..batching import Batched
+from ..sparsity import NoSparsity
 
 
 
@@ -37,6 +38,7 @@ class BatchGP(Model):
         self.likelihood = likelihood
         self.kernel = kernel
         self.num_latents = 1
+        self.sparsity = NoSparsity(self.X)
 
         self.set_defaults()
 

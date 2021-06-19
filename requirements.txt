@@ -1,5 +1,5 @@
-jax==0.2.9
-jaxlib==0.1.61
+jax==0.2.13
+jaxlib==0.1.65
 objax==1.2.0
 chex==0.0.4
 multipledispatch==0.6.0
@@ -7,3 +7,12 @@ bibtexparser==1.2.0
 black
 flake8
 flake8-docstrings
+typer==0.3.2
+loguru==0.5.3
+slurmjobs==0.0.15
+sacred==0.8.1
+seml==0.2.4
+scikit-learn
+tabulate==0.8.6
+jupyter
+black

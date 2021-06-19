@@ -1,5 +1,5 @@
 """Multi-output/task specific transforms."""
-from .transform import Transform
+from .transform import Transform, LinearTransform, NonLinearTransform
 import typing
 from typing import List, Optional
 import jax.numpy as np
@@ -7,9 +7,7 @@ import objax
 from ..batching import batch
 
 
-#TODO: need to somehow get a list from this
-# -> each obj in list needs a forward method:
-class LMC(Transform):
+class LMC(LinearTransform):
     r"""
     Linear model of coregionilisation.
 
@@ -17,7 +15,10 @@ class LMC(Transform):
         f_p = \sum w_{p,q} g_q
 
     """
-    class LMC_p(Transform):
+    class LMC_p(LinearTransform):
+        """
+            Individual transofrm for task p
+        """
         def __init__(self, latents_p, W_p):
             self.latents_p = latents_p
             self.raw_W_p = objax.TrainVar(W_p)
@@ -44,8 +45,11 @@ class LMC(Transform):
     def get_batches(self):
         return [LMC.LMC_p(self.latents, self.raw_W[p]) for p in range(self.output_dim)]
 
+    def number_of_latents(self):
+        return len(self.latents)
 
-class GPRN(Transform):
+
+class GPRN(NonLinearTransform):
     r"""
     Gaussian Process Regression Network.
 

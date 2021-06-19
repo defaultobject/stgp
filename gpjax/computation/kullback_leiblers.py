@@ -47,12 +47,13 @@ def whitened_gaussian_kl(mu_1, covar_chol_1) -> np.ndarray:
     Assumes that g2 is a standard Gaussian - N(0, I)
     """
 
-    #TODO: is this necessary?
     covar_1_diag = diagonal_from_cholesky(covar_chol_1)
 
     log_det_term = -log_chol_matrix_det(covar_chol_1)
 
     trace_term = np.sum(covar_1_diag)
+
+    #trace_term = np.trace(np.square(covar_chol_1))
 
     maha_term = np.sum(np.square(mu_1))
 
@@ -74,6 +75,8 @@ def KL(X, approximate_posterior, kernel, sparsity):
 
 @dispatch(object, GaussianApproximatePosterior, object, object)
 def whitened_KL(X, approximate_posterior, kernel, sparsity):
+    print('here')
+
     mu_1 = approximate_posterior.m
     covar_chol_1 = approximate_posterior.S_chol
 

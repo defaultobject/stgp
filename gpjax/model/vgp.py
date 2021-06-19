@@ -17,7 +17,7 @@ from ..transform import Transform
 from ..computation.log_marginal_likelihoods import *
 from ..likelihood import Gaussian
 from ..kernel import RBF
-from ..approximate_posteriors import GaussianApproximatePosterior
+from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
 
 from jax.tree_util import tree_structure
@@ -29,7 +29,7 @@ from jax.experimental import loops
 
 @obj_dispatch(Model, 'Variational', 'NoSparsity')
 class VGP(Model):
-    def __init__(self, X=None, Y=None, inference: 'Variational'=None, likelihood: 'Likelihood'=None, prior: 'Transform'=None, whiten=False):
+    def __init__(self, X=None, Y=None, inference: 'Variational'=None, likelihood: 'Likelihood'=None, kernel=None, prior: 'Transform'=None, sparsity=None, whiten=False, minibatch=None):
         super(VGP, self).__init__()
         self.X = X
         self.Y = Y
@@ -37,14 +37,13 @@ class VGP(Model):
         self.likelihood = likelihood
         self.prior = prior
         self.approximate_posterior = None
-        self.sparsity = None
+        self.sparsity = sparsity
         self.whiten = whiten
+        self.minibatch = minibatch
 
         self.set_defaults()
 
     def predict(self, XS, diagonal=True, squeeze=True):
-        if diagonal is False:
-            raise NotImplementedError()
 
         mean, var = self.inference.predict(
             XS, 
@@ -52,7 +51,8 @@ class VGP(Model):
             self.likelihood, 
             self.prior,
             self.sparsity,
-            self.approximate_posterior
+            self.approximate_posterior,
+            diagonal=diagonal
         )
 
         if squeeze:
@@ -66,25 +66,30 @@ class VGP(Model):
         self.X = np.array(self.X)
         self.Y = np.array(self.Y)
 
-        self.Nq = self.X.shape[0]
+        if self.sparsity == None:
+            self.Nq = self.X.shape[0]
+        else:
+            self.Nq = self.sparsity[0].Z.shape[0]
+
         self.D = self.X.shape[1]
 
         self.dim  = self.num_latents*self.Nq    
 
         if self.sparsity == None:
             #X is treated as Z
-            self.sparsity = [NoSparsity(self.X) for j in range(self.num_latents)]
+            self.sparsity = objax.ModuleList([NoSparsity(self.X) for j in range(self.num_latents)])
 
         if self.inference == None:
             self.inference = Variational()
 
 
         if self.approximate_posterior is None:
-            self.approximate_posterior = objax.ModuleList([
-                GaussianApproximatePosterior(self.Nq, whiten=self.whiten) for j in range(self.num_latents)
-            ])
+            #self.approximate_posterior = objax.ModuleList([
+            #    GaussianApproximatePosterior(self.Nq, whiten=self.whiten) for j in range(self.num_latents)
+            #])
 
-        self.approximate_posterior.whiten = self.whiten
+            self.approximate_posterior = MeanFieldApproximatePosterior(self.prior, whiten=True)
+
 
         if self.prior == None:
             raise RuntimeError()
@@ -97,14 +102,19 @@ class VGP(Model):
 
             self.likelihood = objax.ModuleList(self.likelihood)
 
+
+        #self.X = objax.StateVar(self.X)
+        #self.Y = objax.StateVar(self.Y)
+
     def get_objective(self):
+
         elbo = self.inference.ELBO(
             self.X,
             self.Y,
             self.likelihood,
             self.prior,
-            self.sparsity,
             self.approximate_posterior,
+            self.minibatch
         )
 
         return -elbo

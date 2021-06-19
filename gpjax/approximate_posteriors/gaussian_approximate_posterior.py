@@ -10,10 +10,11 @@ class GaussianApproximatePosterior(ApproximatePosterior):
     def __init__(self, dim: int=None, m=None, S=None, whiten=False):
 
         if m is None:
-            m = np.zeros([dim, 1])
+            #m = np.zeros([dim, 1])
+            m = np.ones([dim, 1])
 
         if S is None:
-            S = np.eye(dim)
+            S = 4*np.eye(dim)
 
         if dim is None:
             dim = m.shape[0]

@@ -88,6 +88,11 @@ def predict_diagonal(XS, X, Y, likelihood, kernel):
 
 @dispatch(object, object, GaussianApproximatePosterior, Gaussian, object, object)
 def predict_diagonal(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
-    m, S_diag = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity)
+    m, S_diag = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=True)
     return m, S_diag + likelihood.variance
+
+@dispatch(object, object, GaussianApproximatePosterior, Gaussian, object, object)
+def predict_full(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
+    m, S = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=False)
+    return m, S + np.eye(XS.shape[0])*likelihood.variance
 

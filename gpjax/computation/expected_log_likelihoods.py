@@ -9,6 +9,7 @@ from .. import utils
 import jax
 from jax import jit
 import jax.numpy as np
+import objax
 import chex
 from typing import List
 from objax import ModuleList
@@ -121,6 +122,7 @@ def scalar_poisson_expected_log_likelihood(X:np.ndarray, Y:np.ndarray,  binsize:
 def expected_log_likelihood(X, Y, approximate_likelihood, likelihood, kernel, sparsity):
     q_f_m, q_f_s = approximate_likelihood.marginal(X, kernel, sparsity)
 
+
     return gaussian_expected_log_likelihood(
         X, 
         Y, 
@@ -128,3 +130,5 @@ def expected_log_likelihood(X, Y, approximate_likelihood, likelihood, kernel, sp
         q_f_m,
         q_f_s
     )
+
+

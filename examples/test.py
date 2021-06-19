@@ -1,6 +1,7 @@
 import gpjax
 from gpjax.model import GP
 from gpjax.transform.multi_output import LMC, GPRN
+from gpjax.sparsity import NoSparsity
 import numpy as np
 import jax.numpy as jnp
 import objax
@@ -16,7 +17,7 @@ config.update("jax_enable_x64", True)
 
 def run():
     Q = 5
-    P = 5
+    P = 3
     X = np.linspace(0, 1, 100)[:, None]
     #X = np.concatenate([X, X], axis=1)
     _Y = np.sin(X[:, 0]*10)[:, None]
@@ -31,7 +32,9 @@ def run():
         p = LMC(latents, output_dim=P)
 
         #m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], prior=p, inference='Variational', whiten=True)
-        m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], inference='Variational', whiten=True)
+        m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=p, inference='Variational', whiten=True)
+
+        #m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], inference='Variational', whiten=True)
 
     train_vars = m.vars()
 
@@ -69,7 +72,7 @@ def run():
 gpjax.settings.force_black_box = False
 gpjax.settings.jitter = 1e-6
 
-if False:
+if True:
     print('No loops')
     run()
 else:

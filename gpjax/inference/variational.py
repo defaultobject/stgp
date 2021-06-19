@@ -5,12 +5,12 @@ from .. batching import Batched
 
 import jax
 import jax.numpy as np
-
+import chex
 
 class Variational(Inference):
     """Variational inference class."""
 
-    def predict(self, XS, X, likelihood, kernel, sparsity, approximate_posterior):
+    def predict(self, XS, X, likelihood, kernel, sparsity, approximate_posterior, diagonal):
         num_latents = len(kernel)
         if True or settings.use_loop_mode:
             mean_arr, var_arr = [], []
@@ -21,8 +21,10 @@ class Variational(Inference):
                     X,
                     likelihood[q],
                     kernel[q],
-                    sparsity[q]
+                    sparsity[q],
+                    diagonal
                 )
+
 
                 mean_arr.append(mean_q)
                 var_arr.append(var_q)
@@ -31,82 +33,82 @@ class Variational(Inference):
 
 
 
-    def ELBO(self, X, Y, likelihood, prior, sparsity, approximate_posterior):
-
-        def _elbo_q(X, Y, likelihood, prior_p, sparsity, approximate_posterior):
-            ell_q = approximate_posterior.ELL(
-                X, 
-                Y, 
-                likelihood,
-                prior_p,
-                sparsity
-            )
-
-            if False:
-                kl_q = approximate_posterior.KL(
-                    X, 
-                    prior_p,
-                    sparsity
-                )
-                elbo_q = ell_q - kl_q
-
-            return elbo_q
-
-
+    def ELBO(self, X, Y, likelihood, prior, approximate_posterior, minibatch):
+        """
+        Args:
+            X: NxD input
+            Y: NXP outputs
+            likelihood: Array of P likelihoods
+            prior: 
+            approximate_posterior: Q approximate posteriors
+        """
 
         #num_latents = len(kernel)
         num_outputs = Y.shape[1]
+
+        #get the p transforms, one for each output
+        transforms = prior.get_batches()
+
         if settings.use_loop_mode:
-            transforms = prior.get_batches()
 
-            #TODO: decouple elbo and ell
-            #TODO: what do we do about approximate posterior and sparsity as they dependend on the Transform...
-
+            ell = 0.0
             for p in range(num_outputs):
-                elbo_p = _elbo_q(
+                _ell_p = ell_p_callable(
                     X, 
                     Y[:, p][:, None], 
                     likelihood[p],
                     transforms[p],
-                    sparsity[p],
-                    approximate_posterior[p]
+                    approximate_posterior,
                 )
 
-                elbo += elbo_q
+                ell += _ell_p
         else:
 
-            with Batched(likelihood) as likelihood, \
-                Batched(kernel) as kernel, \
-                Batched(approximate_posterior) as approximate_posterior, \
-                Batched(sparsity) as sparsity:
+            with Batched(likelihood) as likelihood, Batched(transforms) as transforms:
 
-                def batched_elbo(X, Y, lik, lik_vars, kernel, kernel_vars, sparsity, sparsity_vars, approximate_posterior, approximate_posterior_vars):
+                def batched_elbo(X, Y, lik, lik_vars, transform, transform_vars, approximate_posterior):
 
                     N = X.shape[0]
                     Y = Y[:, None]
 
                     lik.set_vars(lik_vars)
-                    kernel.set_vars(kernel_vars)
-                    sparsity.set_vars(sparsity_vars)
+                    transform.set_vars(transform_vars)
 
-                    approximate_posterior.set_vars(approximate_posterior_vars)
-
-                    elbo_q = _elbo_q(
+                    elbo_q = ell_p_callable(
                         X, 
                         Y, 
                         lik.get_obj(),
-                        kernel.get_obj(),
-                        sparsity.get_obj(),
-                        approximate_posterior.get_obj()
-
+                        transform.get_obj(),
+                        approximate_posterior
                     )
 
                     return elbo_q
 
+                ell = jax.vmap(batched_elbo, (None, 1, None, 0, None, 0,  None), 0)(X, Y, likelihood, likelihood.get_vars(), transforms, transforms.get_vars(), approximate_posterior)
 
-                elbo = jax.vmap(batched_elbo, (None, 1, None, 0, None, 0, None, 0, None, 0), 0)(X, Y, likelihood, likelihood.get_vars(), kernel, kernel.get_vars(), sparsity, sparsity.get_vars(), approximate_posterior, approximate_posterior.get_vars() )
-
-                elbo = np.sum(elbo)
+                ell = np.sum(ell) 
 
 
+        KL = approximate_posterior.KL(X, prior)
+
+        elbo = ell - KL
+
+        chex.assert_rank(elbo, 0)
         return elbo
+
+
+def ell_p_callable(X, Y, likelihood_p, transform_p, approximate_posterior):
+    """ Compute the expected log likelihood for output p """
+
+    ell_q = approximate_posterior.ELL(
+        X, 
+        Y, 
+        likelihood_p,
+        transform_p
+    )
+
+    #assert scalar
+    chex.assert_rank(ell_q, 0)
+
+    return ell_q
+

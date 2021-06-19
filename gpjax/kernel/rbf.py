@@ -11,6 +11,8 @@ class RBF(StationaryKernel):
         chex.assert_rank(variance, 0)
         chex.assert_rank(lengthscale, 0)
 
-        return variance * np.exp(-((x1-x2)**2)/lengthscale)
+        return variance * np.exp(-0.5*((x1-x2)**2)/(lengthscale**2))
+
+
 
     

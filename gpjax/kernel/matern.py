@@ -46,3 +46,20 @@ class Matern32(StationaryKernel, MarkovKernel):
         sqrt3 = np.sqrt(3.0)
 
         return self.variance * (1.0 + sqrt3 * r) * np.exp(-sqrt3 * r)
+
+class Matern12(StationaryKernel, MarkovKernel):
+    def cf_to_ss_temporal(self):
+        chex.assert_equal(self.input_dim, 1)
+        raise NotImplementedError()
+
+    def _K(self, X1, X2):
+        """
+        K(X1, X2) = σ²  exp{-|X1-X2|/l}
+        """
+
+        diff = X1 - X2.T
+        r2 = np.square(diff / self.lengthscales)
+        r = np.sqrt(np.clip(r2, 1e-36))
+
+
+        return self.variance * np.exp(-  r)
