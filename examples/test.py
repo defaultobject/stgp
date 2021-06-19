@@ -16,7 +16,7 @@ config.update("jax_enable_x64", True)
 
 
 def run():
-    Q = 5
+    Q = 10
     P = 3
     X = np.linspace(0, 1, 100)[:, None]
     #X = np.concatenate([X, X], axis=1)

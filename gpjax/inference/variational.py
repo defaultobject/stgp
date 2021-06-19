@@ -46,6 +46,8 @@ class Variational(Inference):
         #num_latents = len(kernel)
         num_outputs = Y.shape[1]
 
+        approximate_posterior.precompute_marginals(X, prior)
+
         #get the p transforms, one for each output
         transforms = prior.get_batches()
 
