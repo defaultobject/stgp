@@ -21,18 +21,19 @@ config.update("jax_enable_x64", True)
 
 
 def run():
-    Q = 3
-    P = 3
+    Q = 2
+    P = 2
     X = np.linspace(0, 1, 100)[:, None]
     #X = np.concatenate([X, X], axis=1)
     _Y = np.sin(X[:, 0]*10)[:, None]
     Y = np.concatenate([_Y for i in range(P)], axis=1)
 
-    multi_task = True
+    model = 'gprn'
     #m = GP(X, Y, inference='Variational', likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(Q)], whiten=True)
     #m = GP(X, Y, inference='Variational', whiten=True)
 
-    if multi_task:
+    if model == 'lmc':
+        print('running LMC')
         latents = [GP(X, kernel=RBF(lengthscales=[0.1])) for q in range(Q)]
         prior = LMC(latents, output_dim=P)
 
@@ -40,6 +41,15 @@ def run():
         m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=prior, inference='Variational', whiten=True)
 
         #m = GP(X, Y, likelihood=[gpjax.likelihood.Poisson(binsize=0.1) for q in range(P)], inference='Variational', whiten=True)
+    elif model == 'gprn':
+        print('running GPRN')
+        latents_f = [GP(X, kernel=RBF(lengthscales=[0.1])) for q in range(Q)]
+        latents_W = [[GP(X, kernel=RBF(lengthscales=[0.1])) for q in range(Q)] for p in range(P)]
+
+        prior = GPRN(latents_f, latents_W)
+
+        m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=prior, inference='Variational', whiten=True)
+
 
     train_vars = m.vars()
     print(json.dumps({str(a): ''  for a in m.vars().keys()}, indent=3))
@@ -52,7 +62,7 @@ def run():
 
     start = timer()
 
-    for i in range(200):
+    for i in range(500):
         grad, val = grad_fn()
         if i % 10 == 0:
             print(val)
@@ -65,7 +75,7 @@ def run():
     pred_fn = objax.Jit(m.predict, m.vars())
     mean, var = pred_fn(X)
 
-    if False:
+    if True:
         for p in range(P):
             plt.fill_between(np.squeeze(X), mean[p]-2*np.sqrt(var[p]), mean[p]+2*np.sqrt(var[p]), alpha=0.3)
             plt.scatter(X, Y[:, p], label=p)

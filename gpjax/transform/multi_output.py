@@ -17,7 +17,7 @@ class LMC(LinearTransform):
     """
     class LMC_p(LinearTransform):
         """
-            Individual transofrm for task p
+            Individual transform for task p
         """
         def __init__(self, latents_p, W_p):
             self.latents_p = latents_p
@@ -50,8 +50,7 @@ class LMC(LinearTransform):
         super(LMC, self).__init__()
 
 
-    def get_batches(self):
-        return self.batches
+
 
     def number_of_latents(self):
         return len(self.latents)
@@ -64,12 +63,33 @@ class GPRN(NonLinearTransform):
     Generative model:
         f_p = \sum w_{p,q}(x) g_q(x)
     """
-    def __init__(self, latent_f: Optional[List['Model']]=None, latent_w: Optional[List[List['Model']]]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None):
-        self.latent_f = latent_f
-        self.latent_w = latent_w
-        self.output_dim = output_dim
-        self.input_dim = input_dim
+    class GPRN_p(NonLinearTransform):
+        """
+            Individual transform for task p
+        """
+        def __init__(self, latents_f, latents_w_p):
+            self.latents_f = latents_f
+            self.latents_w_p = latents_w_p
 
+        def forward(self, latent_means):
+            return np.sum(latent_means, axis=0)
+
+    def __init__(self, latent_f: Optional[List['Model']]=None, latent_w: Optional[List[List['Model']]]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None):
+        self.latent_f = objax.ModuleList(latent_f)
+        self.latent_w = objax.ModuleList(latent_w)
+        self.output_dim = len(self.latent_w)
+        self.input_dim = len(self.latent_f)
+
+        self.batches = objax.ModuleList([GPRN.GPRN_p(self.latent_f, self.latent_w[p]) for p in range(self.output_dim)])
+
+    def number_of_latents(self):
+        return self.input_dim + self.input_dim * self.output_dim
+
+    @property
+    def latents(self):
+        latent_W = [self.latent_w[p][q] for p in range(self.output_dim) for q in range(self.input_dim)]
+        latent_f = [self.latent_f[q]  for q in range(self.input_dim)]
+        return latent_f + latent_W
 
 class ConstrainedLMC(Transform):
     r"""

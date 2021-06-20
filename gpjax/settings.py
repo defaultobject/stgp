@@ -11,6 +11,9 @@ force_black_box = False
 
 jitter = 1e-5
 
+monte_carlo_training_samples = 10
+monte_carlo_prediction_samples = 100
+
 integral_approximator='quadrature'
 
 

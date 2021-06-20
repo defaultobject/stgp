@@ -10,12 +10,12 @@ from ..batching import batch
 from .. batching import Batched
 from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower_triangle
 import chex
-from ..computation.ell_callers import linear_transform_ell
-from ..computation.predictor_callers import linear_predictor
+from ..computation.ell_callers import linear_transform_ell, non_linear_transform_ell
+from ..computation.predictor_callers import linear_predictor, non_linear_predictor
 
 class MeanFieldApproximatePosterior(ApproximatePosterior):
     def __init__(self, prior: 'Node', whiten=False):
-        self.whiten = whiten
+        super(MeanFieldApproximatePosterior, self).__init__(whiten)
 
         self.number_latents = prior.number_of_latents()
 
@@ -25,8 +25,27 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             for q in range(self.number_latents)
         ])
 
+
     def predict(self, XS, X, likelihood, prior, diagonal):
-        return linear_predictor(XS, X, likelihood, prior, self)
+        if isinstance(prior, LinearTransform):
+            return linear_predictor(XS, X, likelihood, prior, self)
+        
+        if isinstance(prior, NonLinearTransform):
+            return non_linear_predictor(XS, X, likelihood, prior, self)
+
+
+    def sample_from_precomputed(self, n_samples):
+        N = self.precomputed_marginal_mean_arr[0].shape[0]
+        num_latents = len(self.precomputed_marginal_mean_arr)
+
+        samples = objax.random.normal(
+            (n_samples,num_latents, N, 1), 
+            mean=self.precomputed_marginal_mean_arr[None, ...], 
+            stddev = np.sqrt(self.precomputed_marginal_var_arr)[None, ...],
+            generator=self.generator
+        )
+
+        return samples
 
     def precompute_marginals(self, X, prior):
         latents = prior.latents
@@ -63,6 +82,10 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
     def ELL(self, X: np.ndarray, Y: np.ndarray, likelihood: 'Likelihood', transform: 'Transform'):
         if isinstance(transform, LinearTransform):
             return linear_transform_ell(X, Y, likelihood, transform, self)
+
+
+        if isinstance(transform, NonLinearTransform):
+            return non_linear_transform_ell(X, Y, likelihood, transform, self)
 
         return 0.0
 

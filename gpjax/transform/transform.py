@@ -18,6 +18,9 @@ class Transform(objax.Module, Node):
     def number_of_latents(self):
         raise NotImplementedError()
 
+    def get_batches(self):
+        return self.batches
+
 class LinearTransform(Transform):
     pass
 

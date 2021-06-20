@@ -1,6 +1,7 @@
 from .expected_log_likelihoods import *
 from .. import settings
 from .. batching import Batched
+from .. import settings
 
 def linear_transform_ell(X, Y, likelihood: 'Likelihood', transform, approx_posteriors):
     """
@@ -35,3 +36,31 @@ def linear_transform_ell(X, Y, likelihood: 'Likelihood', transform, approx_poste
     chex.assert_equal(var_p.shape, (X.shape[0], 1))
 
     return gaussian_expected_log_likelihood(X, Y, likelihood.variance, mean_p, var_p)
+
+
+def non_linear_transform_ell(X, Y, likelihood: 'Likelihood', transform, approx_posteriors):
+    latent_mean_arr = approx_posteriors.precomputed_marginal_mean_arr
+    latent_var_arr = approx_posteriors.precomputed_marginal_var_arr
+
+    sample_arr = approx_posteriors.sample_from_precomputed(settings.monte_carlo_training_samples)
+
+
+    def vmap_over_samples(Y, mean_arr, likelihood, transform):
+        T_f = transform.forward(mean_arr)
+
+        chex.assert_equal(Y.shape, T_f.shape)
+
+
+        return likelihood.batched_log_likelihood(
+            Y,
+            T_f
+            
+        )
+
+    total_ell = jax.vmap(vmap_over_samples, (None, 0, None, None), 0)(Y, sample_arr, likelihood, transform)
+
+    ell = np.mean(total_ell)
+
+
+    return ell
+
