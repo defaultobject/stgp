@@ -3,6 +3,8 @@ from gpjax.model import GP
 from gpjax.transform.multi_output import LMC, GPRN
 from gpjax.sparsity import NoSparsity
 from gpjax.kernel import RBF
+from gpjax.trainer import SimpleTrainer
+from gpjax.trainer.callbacks import progress_bar_callback
 import numpy as np
 import jax.numpy as jnp
 import jax
@@ -24,6 +26,7 @@ def run():
     Q = 2
     P = 2
     X = np.linspace(0, 1, 100)[:, None]
+    num_epochs = 100
     #X = np.concatenate([X, X], axis=1)
     _Y = np.sin(X[:, 0]*10)[:, None]
     Y = np.concatenate([_Y for i in range(P)], axis=1)
@@ -54,22 +57,15 @@ def run():
     train_vars = m.vars()
     print(json.dumps({str(a): ''  for a in m.vars().keys()}, indent=3))
 
-    lr_adam = 0.01
-    opt = objax.optimizer.Adam(train_vars)
+    learning_curve, training_time = SimpleTrainer().train(
+        m, 
+        objax.optimizer.Adam,
+        0.01,
+        num_epochs,
+        callback = progress_bar_callback(num_epochs)
+    )
 
-    objective_fn = objax.Jit(m.get_objective, train_vars)
-    grad_fn = objax.Jit(objax.GradValues(objective_fn, m.vars()), train_vars)
 
-    start = timer()
-
-    for i in range(500):
-        grad, val = grad_fn()
-        if i % 10 == 0:
-            print(val)
-        opt(lr_adam, grad)
-
-    end = timer()
-    training_time = end - start
     print('training_time: ', training_time)
 
     pred_fn = objax.Jit(m.predict, m.vars())
