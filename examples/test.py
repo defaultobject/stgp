@@ -23,6 +23,7 @@ config.update("jax_enable_x64", True)
 
 
 def run():
+    train_model = False
     Q = 2
     P = 2
     X = np.linspace(0, 1, 100)[:, None]
@@ -54,24 +55,43 @@ def run():
         m = GP(X, Y, likelihood=[gpjax.likelihood.Gaussian() for q in range(P)], prior=prior, inference='Variational', whiten=True)
 
 
-    train_vars = m.vars()
-    print(json.dumps({str(a): ''  for a in m.vars().keys()}, indent=3))
+    if train_model:
+        train_vars = m.vars()
+        print(json.dumps({str(a): ''  for a in m.vars().keys()}, indent=3))
 
-    learning_curve, training_time = SimpleTrainer().train(
-        m, 
-        objax.optimizer.Adam,
-        0.01,
-        num_epochs,
-        callback = progress_bar_callback(num_epochs)
-    )
+        learning_curve_1, training_time = SimpleTrainer().train(
+            m, 
+            objax.optimizer.Adam,
+            0.01,
+            num_epochs,
+            callback = progress_bar_callback(num_epochs)
+        )
+
+        learning_curve_2, training_time = SimpleTrainer().train(
+            m, 
+            objax.optimizer.Adam,
+            0.01,
+            num_epochs,
+            callback = progress_bar_callback(num_epochs)
+        )
+        print('training_time: ', training_time)
+
+        learning_curve = learning_curve_1 + learning_curve_2
+
+        m.checkpoint()
+    else:
+        learning_curve = []
+        m.load_from_checkpoint()
 
 
-    print('training_time: ', training_time)
 
     pred_fn = objax.Jit(m.predict, m.vars())
     mean, var = pred_fn(X)
 
     if True:
+        plt.plot(learning_curve)
+        plt.show()
+
         for p in range(P):
             plt.fill_between(np.squeeze(X), mean[p]-2*np.sqrt(var[p]), mean[p]+2*np.sqrt(var[p]), alpha=0.3)
             plt.scatter(X, Y[:, p], label=p)

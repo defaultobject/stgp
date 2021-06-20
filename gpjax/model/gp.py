@@ -16,6 +16,12 @@ class Model(objax.Module):
     def __init__(self):
         super(Model, self).__init__()
 
+    def checkpoint(self, name=None):
+        objax.io.save_var_collection('test.npz', self.vars())
+
+    def load_from_checkpoint(self, name=None):
+        objax.io.load_var_collection('test.npz', self.vars())
+
 def GP(*args, inference=Batch(), **kwargs):
     if len(args) > 0:
         if isinstance(args[0], Model) or isinstance(args[0], Transform):
