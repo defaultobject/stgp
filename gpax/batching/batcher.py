@@ -44,7 +44,7 @@ def get_obj_at_idx(obj_arr: list, axis_arr: list, i: int) -> list:
     return indexed_objects
 
 
-def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int) -> Callable:
+def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, num_outputs:int = 1) -> Callable:
     """
     Automatically batch call fn.
     The syntax follows that of jax.vmap:
@@ -55,7 +55,11 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int) ->
         loop_len: the number of elements to batch over
     """
     if False :
-        res_arr =[]
+        if num_outputs == 1:
+            res_arr = []
+        else:
+            res_arr =[[] for k in range(num_outputs)]
+
         for i in range(loop_len):
             obj_at_i = get_obj_at_idx(
                 obj_arr,
@@ -63,7 +67,19 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int) ->
                 i
             )
             res_i = fn(*obj_at_i)
-            res_arr.append(res_i)
+
+            if num_outputs == 1:
+                res_arr.append(res_i)
+            else:
+                for k in range(num_outputs):
+                    res_arr[k].append(res_i[k])
+
+
+        if num_outputs == 1:
+            res_arr = np.array(res_arr)
+        else:
+            for k in range(num_outputs):
+                res_arr[k] = np.array(res_arr[k])
     else:
         
         num_objects = len(obj_arr)
