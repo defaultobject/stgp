@@ -44,7 +44,7 @@ def get_obj_at_idx(obj_arr: list, axis_arr: list, i: int) -> list:
     return indexed_objects
 
 
-def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, num_outputs:int = 1) -> Callable:
+def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, num_returned_arguments:int = 1) -> Callable:
     """
     Automatically batch call fn.
     The syntax follows that of jax.vmap:
@@ -53,12 +53,13 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, nu
         obj_arr: list = A list of objects, where each object is to be distributed (as described by axis_arr)
         axis_arr: list = a list of indexes of which axis to bach over
         loop_len: the number of elements to batch over
+        num_returned_arguments
     """
     if False :
-        if num_outputs == 1:
+        if num_returned_arguments == 1:
             res_arr = []
         else:
-            res_arr =[[] for k in range(num_outputs)]
+            res_arr =[[] for k in range(num_returned_arguments)]
 
         for i in range(loop_len):
             obj_at_i = get_obj_at_idx(
@@ -68,17 +69,17 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, nu
             )
             res_i = fn(*obj_at_i)
 
-            if num_outputs == 1:
+            if num_returned_arguments == 1:
                 res_arr.append(res_i)
             else:
-                for k in range(num_outputs):
+                for k in range(num_returned_arguments):
                     res_arr[k].append(res_i[k])
 
 
-        if num_outputs == 1:
+        if num_returned_arguments == 1:
             res_arr = np.array(res_arr)
         else:
-            for k in range(num_outputs):
+            for k in range(num_returned_arguments):
                 res_arr[k] = np.array(res_arr[k])
     else:
         
