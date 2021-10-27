@@ -38,21 +38,23 @@ class LMC(LinearTransform):
 
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
         print('CREATING')
+        super(LMC, self).__init__()
 
         if input_dim is None:
             input_dim = len(latents)
 
-        self.latents = objax.ModuleList(latents)
+        self._latents = objax.ModuleList(latents)
         self.output_dim = output_dim
+
+        self._num_outputs = output_dim
 
         self.input_dim = input_dim
 
         self.raw_W = objax.TrainVar(np.eye(self.output_dim, self.input_dim))
 
         #self.batches = objax.ModuleList([LMC.LMC_p(self.latents, self, p) for p in range(self.output_dim)])
-        self.batches = [LMC.LMC_p(self.latents, objax.TrainRef(self.raw_W), p) for p in range(self.output_dim)]
+        self.batches = [LMC.LMC_p(self._latents, objax.TrainRef(self.raw_W), p) for p in range(self.output_dim)]
 
-        super(LMC, self).__init__()
 
     @batch
     def W(self, raw_getter):
@@ -68,9 +70,6 @@ class LMC(LinearTransform):
         chex.assert_equal(W.shape, (self.output_dim, self.input_dim))
 
         return W
-
-    def number_of_latents(self):
-        return len(self.latents)
 
 
 class GPRN(NonLinearTransform):

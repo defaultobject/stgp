@@ -3,7 +3,8 @@ from ..likelihood import Gaussian
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
 from ..batching import loop_or_batch
-from ..transforms import Independent
+from ..transforms import Independent, LinearTransform, LMC
+from .model_ops import get_linear_multi_task_model_covariance
 from .. import utils
 
 import jax
@@ -13,6 +14,7 @@ import chex
 from typing import List
 import objax
 from objax import ModuleList
+from typing import List
 
 @dispatch(object, object, Gaussian, Kernel)
 def log_marginal_likelihood(
@@ -75,3 +77,23 @@ def multi_latent_log_marginal_likelihood(
     lml =  np.sum(lml_arr)
 
     return lml
+
+@dispatch(object, object, object, LinearTransform)
+def multi_latent_log_marginal_likelihood(
+    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform
+) -> np.ndarray:
+    """
+    The marginal likelihood is:
+        p(Y)  = N(Y | 0, (W \kron I) K (W \kron I)^T + diag(eps_p))
+    """
+
+    assert all([type(lik) == Gaussian for lik in likelihood])
+
+    N = Y.shape[0]
+
+    sigma = get_linear_multi_task_model_covariance(X, Y, likelihood, prior)
+
+    Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
+
+    return log_gaussian(Y_vec, np.zeros_like(Y_vec), sigma)
+

@@ -1,7 +1,7 @@
-jax==0.2.13
-jaxlib==0.1.65
-objax==1.2.0
-chex==0.0.4
+jax==0.2.20
+jaxlib==0.1.71
+objax==1.4.0
+chex==0.0.8
 multipledispatch==0.6.0
 bibtexparser==1.2.0
 black
@@ -16,3 +16,4 @@ scikit-learn
 tabulate==0.8.6
 jupyter
 black
+pytest

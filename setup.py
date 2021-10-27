@@ -3,7 +3,7 @@ import setuptools
 
 
 setuptools.setup(
-    name="gpjax", 
+    name="gpax", 
     version="0.0.1",
     author="O Hamelijnck, W Wilkinson",
     author_email="ohamelijnck@turing.ac.uk,william.wilkinson@aalto.fi",

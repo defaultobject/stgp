@@ -126,9 +126,6 @@ class BatchGP(Model):
         # We do not need to make kernel a module list because this is done within the prior object
         self.likelihood = ensure_module_list(self.likelihood)
 
-        # Make sure there is the correct number of kernels
-        assert len(self.kernel) == self.num_latents
-
     def get_objective(self, X=None, Y = None):
         if X is None:
             X, Y = self.X, self.Y

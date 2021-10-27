@@ -9,6 +9,8 @@ class Transform(objax.Module, Node):
     def __init__(self):
         self._num_latents = None
         self._num_outputs = None
+        self_latents = None
+        self.batches = None
 
     def forward(self):
         """Compute f=T(x)."""
@@ -24,12 +26,22 @@ class Transform(objax.Module, Node):
 
     @property
     def num_outputs(self):
-        return self._num_latents
+        return self._num_outputs
+
+    def get_kernels(self):
+        return objax.ModuleList([g.kernel for g in self.latents])
+
+    @property
+    def latents(self):
+        return self._latents
 
     def get_batches(self):
         return self.batches
 
 class LinearTransform(Transform):
+    """
+    All linear transforms support .W returns the mixing matrix
+    """
     pass
 
 class NonLinearTransform(Transform):

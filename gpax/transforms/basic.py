@@ -12,13 +12,6 @@ class Independent(LinearTransform):
 
         self._latents = ensure_module_list(latents)
 
-    def get_kernels(self):
-        return objax.ModuleList([g.kernel for g in self.latents])
-
-    @property
-    def latents(self):
-        return self._latents
-
 class Identity(ElementWiseTransform):
     pass
 
