@@ -86,9 +86,10 @@ def get_linear_multi_task_prior_covariance(X1, X2, prior):
 
     K_bdiag = get_block_diag_gram_matrix(X1, X2, kernels)
 
-    W = np.kron(mixing_matrix, np.eye(N1, N2))
+    W1 = np.kron(mixing_matrix, np.eye(N1))
+    W2 = np.kron(mixing_matrix, np.eye(N2))
 
-    covar = W @ K_bdiag @ W.T
+    covar = W1 @ K_bdiag @ W2.T
 
     return covar
 

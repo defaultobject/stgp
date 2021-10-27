@@ -21,10 +21,12 @@ np.random.seed(0)
 N = 100
 
 X = np.linspace(0, 1, N)[:, None]
+XS = np.linspace(-0.5, 1.5, 1000)[:, None]
+
 Y = np.sin(10*X) + 0.1*np.random.randn(X.shape[0])[:, None]
 
 P = 2
-Y = np.hstack([Y for i in range(P)])
+Y = np.hstack([Y*(i+1) for i in range(P)])
 
 print(X.shape, Y.shape)
 
@@ -58,20 +60,20 @@ if False:
     plt.plot(learning_curve)
     plt.show()
 
-mu, var = m.predict(X)
+mu, var = m.predict(XS)
 
 colors = cm.rainbow(np.linspace(0, 1, P))
 
 for p in range(P):
     plt.fill_between(
-        np.squeeze(X), 
+        np.squeeze(XS), 
         np.squeeze(mu[p]) - 1.96*np.sqrt(np.squeeze(var[p])), 
         np.squeeze(mu[p]) + 1.96*np.sqrt(np.squeeze(var[p])), 
         alpha=0.4,
         facecolor = colors[p],
         label=f'Output {p}'
     )
-    plt.plot(X, mu[p], c=colors[p])
+    plt.plot(XS, mu[p], c=colors[p])
     plt.scatter(X, Y[:, p], c='black')
 
 plt.legend()
