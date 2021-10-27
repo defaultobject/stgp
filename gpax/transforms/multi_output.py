@@ -2,10 +2,38 @@
 from .transform import Transform, LinearTransform, NonLinearTransform
 import typing
 from typing import List, Optional
+import jax
 import jax.numpy as np
+import numpy as onp
 import objax
 import chex
 from ..batching import batch
+
+class LMC_Unit_Tri(LinearTransform):
+    def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
+        super(LMC_Unit_Tri, self).__init__()
+
+        if input_dim is None:
+            input_dim = len(latents)
+
+        self._latents = objax.ModuleList(latents)
+        self.output_dim = output_dim
+
+        self._num_outputs = output_dim
+        self.input_dim = input_dim
+
+        num_vars = int(self.output_dim*(self.output_dim-1)/2)
+        self.z_arr = objax.TrainVar(onp.zeros(num_vars))
+
+    @property
+    def W(self):
+        P = self.output_dim
+        Q = self.input_dim
+
+        tri = np.eye(P, Q)
+        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(self.z_arr.value)
+
+        return mixing_matrix
 
 
 class LMC(LinearTransform):

@@ -38,7 +38,7 @@ else:
         GP(X=X, kernel=RBF(input_dim=1), latent=True)
         for q in range(Q)
     ]
-    prior = gpax.transforms.multi_output.LMC(latents, output_dim = P)
+    prior = gpax.transforms.multi_output.LMC_Unit_Tri(latents, output_dim = P)
     m = GP(X=X, Y = Y, prior=prior, inference='Batch')
 
 epochs = 200

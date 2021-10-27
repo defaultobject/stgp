@@ -140,14 +140,6 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
 
     kernels = prior.get_kernels()
 
-    #sigma_x = get_linear_multi_task_model_covariance(X, Y, likelihood, prior)
-
-    #XXS = np.vstack([X, XS])
-
-
-    #sigma_xs = get_linear_multi_task_model_covariance(XXS, Y, likelihood, prior)
-    #breakpoint()
-
     K_xs = get_linear_multi_task_prior_diag_covariance(XS, prior)
     K_xx = get_linear_multi_task_prior_covariance(X, X, prior)
     K_xs_x = get_linear_multi_task_prior_covariance(XS, X, prior)
