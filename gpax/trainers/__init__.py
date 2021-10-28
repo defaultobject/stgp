@@ -1,6 +1,7 @@
-from . trainer import Trainer, SimpleTrainer
+from . trainer import Trainer, SimpleTrainer, ScipyTrainer
 
 __all__ = [
     'Trainer', 
-    'SimpleTrainer'
+    'SimpleTrainer',
+    'ScipyTrainer'
 ]

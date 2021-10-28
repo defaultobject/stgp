@@ -82,13 +82,12 @@ def predict_diagonal(XS, X, Y, likelihood, kernel, mask):
     Ns = XS.shape[0]
     N = X.shape[0]
 
-    breakpoint()
     K_xs = kernel.K_diag(XS)
     K_xs_x = kernel.K(XS, X)
     K_xx = kernel.K(X, X)
 
 
-    if False and (mask is not None):
+    if (mask is not None):
         Y = np.nan_to_num(Y, nan=0.0)
 
         mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 

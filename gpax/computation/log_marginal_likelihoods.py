@@ -39,7 +39,7 @@ def log_marginal_likelihood(
 
     k = k_xx + lik_noise * np.eye(N)
 
-    if False and (mask is not None):
+    if (mask is not None):
         Y = np.nan_to_num(Y, nan=0.0)
 
         mask = np.tile(mask, [mask.shape[0], 1]) 
