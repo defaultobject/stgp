@@ -79,3 +79,5 @@ def vectorized_lower_triangular_cholesky(A:np.ndarray) -> np.ndarray:
 def lower_triangle(val, N):
     tri = np.zeros((N, N))
     return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
+
+

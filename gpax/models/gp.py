@@ -31,11 +31,11 @@ class Model(objax.Module, ABC):
     def get_objective(self):
         pass
 
-    def checkpoint(self, name=None):
-        objax.io.save_var_collection('test.npz', self.vars())
+    def checkpoint(self, name='model_checkpoint'):
+        objax.io.save_var_collection(f'{name}.npz', self.vars())
 
-    def load_from_checkpoint(self, name=None):
-        objax.io.load_var_collection('test.npz', self.vars())
+    def load_from_checkpoint(self, name='model_checkpoint'):
+        objax.io.load_var_collection(f'{name}.npz', self.vars())
 
 def GP(*args, inference=Batch(), **kwargs):
     return obj_find('Model', inference)(*args, **kwargs)

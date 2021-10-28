@@ -16,9 +16,9 @@ import objax
 from objax import ModuleList
 from typing import List
 
-@dispatch(object, object, Gaussian, Kernel)
+@dispatch(object, object, Gaussian, Kernel, object)
 def log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, kernel: Kernel
+    X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, kernel: Kernel, mask: np.ndarray
 ):
     """
     Log marginal likelihood of GP prior with Gaussian likelihood.
@@ -39,12 +39,25 @@ def log_marginal_likelihood(
 
     k = k_xx + lik_noise * np.eye(N)
 
+    if False and (mask is not None):
+        Y = np.nan_to_num(Y, nan=0.0)
+
+        mask = np.tile(mask, [mask.shape[0], 1]) 
+
+        k = k-np.eye(N)
+        k = np.multiply(k, mask)
+        k = np.multiply(k, mask.T)
+        k = k+np.eye(N)
+
+        return log_gaussian(Y, np.zeros_like(Y), k) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
+        #return log_gaussian(Y, np.zeros_like(Y), k)
+
     return log_gaussian(Y, np.zeros_like(Y), k)
 
 
-@dispatch(object, object, object, Independent)
+@dispatch(object, object, object, Independent, object)
 def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent
+    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent, mask
 ):
     """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
@@ -60,16 +73,18 @@ def multi_latent_log_marginal_likelihood(
 
     lml_fn = evoke('log_marginal_likelihood')
 
-    def _lml(lml_fn, X, Y, lik,  kernel):
+    mask = mask.astype(float)
+
+    def _lml(lml_fn, X, Y, lik,  kernel, mask):
         N = X.shape[0]
         Y = Y[:, None]
 
-        return lml_fn(X, Y, lik, kernel)
+        return lml_fn(X, Y, lik, kernel, mask) 
 
     lml_arr = loop_or_batch(
         _lml,
-        [ lml_fn, X, Y, likelihood, kernels ],
-        [ None, None, 1, 0, 0 ],
+        [ lml_fn, X, Y, likelihood, kernels, mask ],
+        [ None, None, 1, 0, 0, 1],
         num_latents,
         num_returned_arguments=1
     )
@@ -78,9 +93,9 @@ def multi_latent_log_marginal_likelihood(
 
     return lml
 
-@dispatch(object, object, object, LinearTransform)
+@dispatch(object, object, object, LinearTransform, object)
 def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform
+    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform, mask=None
 ) -> np.ndarray:
     """
     The marginal likelihood is:
@@ -94,6 +109,13 @@ def multi_latent_log_marginal_likelihood(
     sigma = get_linear_multi_task_model_covariance(X, Y, likelihood, prior)
 
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
+
+
+    if mask is not None:
+        mask = mask.reshape(Y.shape[0]*Y.shape[1], order='F')
+        Y_vec = Y_vec[mask]
+        sigma = sigma[mask, ...]
+        sigma = sigma[..., mask]
 
     return log_gaussian(Y_vec, np.zeros_like(Y_vec), sigma)
 

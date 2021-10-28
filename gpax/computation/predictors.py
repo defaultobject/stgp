@@ -54,7 +54,7 @@ def full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, lik_xx):
 
 @jit
 def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, lik_var):
-    N = Y.shape
+    N = Y.shape[0]
     lik_xx = np.eye(N)*lik_var
 
     return full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, lik_xx)
@@ -76,15 +76,30 @@ def predict(XS, X, Y, likelihood, kernel):
 
     return gaussian_prediction(Y, K_xs, K_xs_x, K_xx, likelihood.variance)
 
-@dispatch(object, object, object, Gaussian, object)
-def predict_diagonal(XS, X, Y, likelihood, kernel):
+@dispatch(object, object, object, Gaussian, object, object)
+def predict_diagonal(XS, X, Y, likelihood, kernel, mask):
 
     Ns = XS.shape[0]
     N = X.shape[0]
 
+    breakpoint()
     K_xs = kernel.K_diag(XS)
     K_xs_x = kernel.K(XS, X)
     K_xx = kernel.K(X, X)
+
+
+    if False and (mask is not None):
+        Y = np.nan_to_num(Y, nan=0.0)
+
+        mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
+        K_xs_x = np.multiply(K_xs_x, mask_xs_x)
+
+        mask_xx = np.tile(mask, [mask.shape[0], 1]) 
+
+        K_xx = K_xx-np.eye(N)
+        K_xx = np.multiply(K_xx, mask_xx)
+        K_xx = np.multiply(K_xx, mask_xx.T)
+        K_xx = K_xx+np.eye(N)
 
     return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, likelihood.variance)
 
@@ -100,8 +115,8 @@ def predict_full(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
     m, S = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=False)
     return m, S + np.eye(XS.shape[0])*likelihood.variance
 
-@dispatch(object, object, object, object, Independent, object)
-def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
+@dispatch(object, object, object, object, Independent, object, object)
+def multi_latent_predict(XS, X, Y, likelihood, prior, mask, diagonal):
     """ Independent Latent functions. Each predictions is computed separately"""
 
     # Assume that are likelihoods are the same such that they can be batched over
@@ -115,25 +130,28 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     else:
         pred_fn = evoke('predict_diagonal')
 
+    mask = mask.astype(float)
+
     # Extract kernels
     kernels = prior.get_kernels()
 
-    def _predict(pred_fn, XS, X, Y, lik,  kernel):
+    def _predict(pred_fn, XS, X, Y, lik,  kernel, mask):
         Y = Y[:, None]
-        return pred_fn(XS, X, Y, lik, kernel)
+        return pred_fn(XS, X, Y, lik, kernel, mask)
 
     mu_arr, var_arr = loop_or_batch(
         _predict,
-        [pred_fn, XS, X, Y, likelihood, kernels],
-        [None, None, None, 1, 0, 0],
+        [pred_fn, XS, X, Y, likelihood, kernels, mask],
+        [None, None, None, 1, 0, 0, 1],
         num_latents,
         num_returned_arguments=2
     )
 
+
     return mu_arr, var_arr
 
-@dispatch(object, object, object, object, LinearTransform, object)
-def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
+@dispatch(object, object, object, object, LinearTransform, object, object)
+def multi_latent_predict(XS, X, Y, likelihood, prior, mask, diagonal):
     Ns = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
@@ -146,6 +164,15 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
 
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
+
+    if mask is not None:
+        mask = mask.reshape(Y.shape[0]*Y.shape[1], order='F')
+        Y_vec = Y_vec[mask]
+        K_xs_x = K_xs_x[..., mask]
+        K_xx = K_xx[mask, ...]
+        K_xx = K_xx[..., mask]
+        lik_var = lik_var[mask, ...]
+        lik_var = lik_var[..., mask]
 
     mu, var = full_gaussian_prediction_diagonal(
         Y_vec,

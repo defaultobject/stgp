@@ -12,6 +12,10 @@ class Independent(LinearTransform):
 
         self._latents = ensure_module_list(latents)
 
+    @property
+    def W(self):
+        return np.eye(self.num_latents)
+
 class Identity(ElementWiseTransform):
     pass
 

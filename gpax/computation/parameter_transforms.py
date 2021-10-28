@@ -1,5 +1,6 @@
 """Transformations for parameters."""
 
+import jax
 import jax.numpy as np
 from jax import jit
 

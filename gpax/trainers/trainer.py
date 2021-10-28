@@ -1,4 +1,5 @@
 import objax
+import numpy as np
 
 from timeit import default_timer as timer
 
@@ -18,7 +19,6 @@ class SimpleTrainer(Trainer):
 
         objective_fn = objax.Jit(m.get_objective, train_vars)
         grad_fn = objax.Jit(objax.GradValues(objective_fn, train_vars), train_vars)
-        #grad_fn = objax.GradValues(m.get_objective, train_vars)
 
         def train_op():
             grad, val = grad_fn()
@@ -33,6 +33,9 @@ class SimpleTrainer(Trainer):
 
         for i in range(epochs):
             grad, val = train_op()
+
+            if np.isnan(val):
+                raise RuntimeError('NaN encountered whilst training!')
 
             if callback is not None:
                 callback(i, grad, val)

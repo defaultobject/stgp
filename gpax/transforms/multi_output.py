@@ -8,6 +8,63 @@ import numpy as onp
 import objax
 import chex
 from ..batching import batch
+from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
+from ..computation.parameter_transforms import inv_positive_transform, positive_transform
+
+class LMC_Corr_var(LinearTransform):
+    def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
+        super(LMC_Corr_var, self).__init__()
+
+        if input_dim is None:
+            input_dim = len(latents)
+
+        self._latents = objax.ModuleList(latents)
+        self.output_dim = output_dim
+
+        self._num_outputs = output_dim
+        self.input_dim = input_dim
+
+        num_vars = int(self.output_dim*(self.output_dim-1)/2)
+        self.delta_arr = objax.TrainVar(onp.zeros(num_vars))
+        self.var = objax.TrainVar(inv_positive_transform(onp.ones(output_dim)))
+
+    @property
+    def W(self):
+        P = self.output_dim
+        Q = self.input_dim
+
+        z_arr = correlation_transform(self.delta_arr.value, 1.0)
+        mixing_matrix = get_correlation_cholesky(z_arr, P, Q)
+
+        mixing_matrix = np.diag(positive_transform(self.var.value)) @ mixing_matrix
+
+        return mixing_matrix
+
+class LMC_Corr(LinearTransform):
+    def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
+        super(LMC_Corr, self).__init__()
+
+        if input_dim is None:
+            input_dim = len(latents)
+
+        self._latents = objax.ModuleList(latents)
+        self.output_dim = output_dim
+
+        self._num_outputs = output_dim
+        self.input_dim = input_dim
+
+        num_vars = int(self.output_dim*(self.output_dim-1)/2)
+        self.delta_arr = objax.TrainVar(onp.zeros(num_vars))
+
+    @property
+    def W(self):
+        P = self.output_dim
+        Q = self.input_dim
+
+        z_arr = correlation_transform(self.delta_arr.value, 1.0)
+        mixing_matrix = get_correlation_cholesky(z_arr, P, Q)
+
+        return mixing_matrix
 
 class LMC_Unit_Tri(LinearTransform):
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):

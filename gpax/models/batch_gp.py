@@ -37,6 +37,12 @@ class BatchGP(Model):
 
         self.X = X
         self.Y = Y
+
+        if self.Y is not None:
+            self.nan_mask = ~onp.isnan(self.Y)
+        else:
+            self.nan_mask = None
+
         self.inference = inference
         self.likelihood = likelihood
         self.kernel = kernel
@@ -135,6 +141,7 @@ class BatchGP(Model):
             Y,
             self.likelihood,
             self.prior,
+            self.nan_mask
         )
 
         chex.assert_rank(nlml, 0)
@@ -145,7 +152,7 @@ class BatchGP(Model):
     def predict(self, XS, diagonal=True, squeeze=True):
 
         mu_arr, var_arr =  self.inference.predict(
-            XS, self.X, self.Y, self.likelihood, self.prior, diagonal=diagonal
+            XS, self.X, self.Y, self.likelihood, self.prior, self.nan_mask, diagonal=diagonal
         )
 
         if squeeze:
