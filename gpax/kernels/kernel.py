@@ -109,38 +109,41 @@ class ConcatationKernel(CombinationKernel):
 
         return np.array([self.k1.K_diag(X1), self.k2.K_diag(X1)])
 
-
-
-
 class MarkovKernel(Kernel):
     def cf_to_ss_spatial(self, sparsity):
         raise NotImplementedError()
 
-        X_space = sparsity.Z
+class WhiteNoiseKernel(Kernel):
+    def __init__(self, variance: Optional[np.ndarray] = None):
+        if variance is None:
+            variance = 1.0
+        else:
+            ensure_float(variance)
 
-        num_spatial = X_space.shape[0]
+        chex.assert_rank(variance, 0)  # scalar
+        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
-        eye = np.eye(num_spatial)
+    @batch
+    def variance(self, raw_getter) -> np.ndarray:
+        return positive_transform(raw_getter())
 
-        K_spatial = self.K(X_space, X_space, active_dims=list(range(1, self.input_dim)))
-        (
-            F_temporal,
-            L_temporal,
-            Qc_temporal,
-            H_temporal,
-            P_inf_temporal,
-        ) = self.cf_to_ss_temporal()
-        F = np.kron(eye, F_temporal)
-        L = np.kron(eye, L_temporal)
+    def K_diag(self, X1):
+        return self.variance * np.ones(X1.shape[0])
 
-        # TODO generalise? #not needed atm
-        H = np.kron(eye, H_temporal)
+    def K(self, X1, X2):
+        # X1 in N1 x D
+        # X2 in N2 x D
+        #TODO this is not allowed :( 
 
-        Qc = np.kron(K_spatial, Qc_temporal)
-        Pinf = np.kron(K_spatial, P_inf_temporal)
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
 
-        return F, L, Qc, H, Pinf
+        are_equal = np.equal(N1, N2).astype(float)
 
+        k = np.eye(X1.shape[0], X2.shape[0])*self.variance
+        k = k * are_equal
+
+        return k
 
 class StationaryKernel(Kernel):
     def __init__(

@@ -106,10 +106,7 @@ class BatchGP(Model):
                 latents = [
                     GP(
                         X = self.X,
-                        kernel = RBF(
-                            lengthscales=[1.0 for d in range(self.D)],
-                            input_dim=self.D
-                        ),
+                        kernel = self.kernel[q],
                         latent=True
                     )
                     for q in range(self.num_latents)
