@@ -10,7 +10,7 @@ from jax.numpy import vectorize
 import typing
 from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
-from ..utils import ensure_array, ensure_float
+from ..utils.utils import ensure_array, ensure_float
 from ..batching import batch
 
 
@@ -133,15 +133,8 @@ class WhiteNoiseKernel(Kernel):
     def K(self, X1, X2):
         # X1 in N1 x D
         # X2 in N2 x D
-        #TODO this is not allowed :( 
 
-        N1 = X1.shape[0]
-        N2 = X2.shape[0]
-
-        are_equal = np.equal(N1, N2).astype(float)
-
-        k = np.eye(X1.shape[0], X2.shape[0])*self.variance
-        k = k * are_equal
+        k = ((X1-X2.T)==0).astype(float) * self.variance
 
         return k
 
@@ -150,7 +143,7 @@ class StationaryKernel(Kernel):
         self,
         lengthscales: Optional[np.ndarray] = None,
         variance: Optional[np.ndarray] = None,
-        input_dim: Optional[int] = None,
+        input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
     ) -> None:
 

@@ -1,11 +1,13 @@
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian
+from ..likelihood import Gaussian, GaussianParameterised
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
 from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform, LMC
 from .model_ops import get_linear_multi_task_model_covariance
-from .. import utils
+from ..utils import utils
+
+from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 import jax
 import jax.numpy as np
@@ -16,9 +18,9 @@ import objax
 from objax import ModuleList
 from typing import List
 
-@dispatch(object, object, Gaussian, Kernel, object)
+@dispatch(object, object, Gaussian, object, object)
 def log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, kernel: Kernel, mask: np.ndarray
+        X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray
 ):
     """
     Log marginal likelihood of GP prior with Gaussian likelihood.
@@ -34,59 +36,63 @@ def log_marginal_likelihood(
 
     N = X.shape[0]
 
-    k_xx = kernel.K(X, X)
     lik_noise = likelihood.variance
 
-    k = k_xx + lik_noise * np.eye(N)
+    k = K + lik_noise * np.eye(N)
+
+    mask = get_mask(Y)
+    Y = np.nan_to_num(Y, nan=0.0)
+    k = mask_to_identity(k, mask)
+    mean = mask_vector(mean, mask)
+
+    return log_gaussian(Y, mean, k) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
+
+
+@dispatch(object, object, GaussianParameterised, Kernel, object)
+def log_marginal_likelihood(
+    X: np.ndarray, Y: np.ndarray, likelihood: GaussianParameterised, kernel: Kernel, mask: np.ndarray
+):
+
+    N = X.shape[0]
+
+    k_xx = kernel.K(X, X)
+    k = k_xx + likelihood.variance(X)
 
     if (mask is not None):
         Y = np.nan_to_num(Y, nan=0.0)
-
-        mask = np.tile(mask, [mask.shape[0], 1]) 
-
-        k = k-np.eye(N)
-        k = np.multiply(k, mask)
-        k = np.multiply(k, mask.T)
-        k = k+np.eye(N)
+        k = mask_to_identity(k, mask)
 
         return log_gaussian(Y, np.zeros_like(Y), k) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
-        #return log_gaussian(Y, np.zeros_like(Y), k)
 
     return log_gaussian(Y, np.zeros_like(Y), k)
 
 
-@dispatch(object, object, object, Independent, object)
+@dispatch(object, object, object, Independent)
 def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent, mask
+    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent
 ):
     """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
     # Assume that are likelihoods are the same such that they can be batched over
 
-    lik = likelihood[0]
-
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs
 
-    # Extract kernels
-    kernels = prior.get_kernels()
+    # precompute prior covariance
+    k_xx_arr = prior.covar(X, X)
+    mean_arr = prior.mean(X)
 
+    # get correct marginal likelihood from dispatch
     lml_fn = evoke('log_marginal_likelihood')
 
-    mask = mask.astype(float)
-
-    def _lml(lml_fn, X, Y, lik,  kernel, mask):
-        N = X.shape[0]
-        Y = Y[:, None]
-
-        return lml_fn(X, Y, lik, kernel, mask) 
+    Y = Y[..., None]
 
     lml_arr = loop_or_batch(
-        _lml,
-        [ lml_fn, X, Y, likelihood, kernels, mask ],
-        [ None, None, 1, 0, 0, 1],
+        lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean[:, None]),
+        [ lml_fn, X, Y, likelihood, k_xx_arr, mean_arr],
+        [ None, None, 1, 0, 0, 0],
         num_latents,
-        num_returned_arguments=1
+        num_returned_args=1
     )
 
     lml =  np.sum(lml_arr)
@@ -95,7 +101,7 @@ def multi_latent_log_marginal_likelihood(
 
 @dispatch(object, object, object, LinearTransform, object)
 def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform, mask=None
+    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform
 ) -> np.ndarray:
     """
     The marginal likelihood is:

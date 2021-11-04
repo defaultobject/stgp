@@ -17,6 +17,7 @@ class Gaussian(Likelihood):
         if variance is None:
             variance = 1.0
 
+        #self.raw_variance = objax.StateVar(inv_positive_transform(variance))
         self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
     @batch
@@ -34,4 +35,11 @@ class Gaussian(Likelihood):
     def conditional_mean(self, f):
         return f
 
+class GaussianParameterised(Likelihood):
+    """Gaussian likelihood."""
 
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def variance(self, X) -> np.ndarray:
+        return self.kernel.K(X, X)

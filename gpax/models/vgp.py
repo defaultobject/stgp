@@ -19,7 +19,7 @@ from ..likelihood import Gaussian
 from ..kernels import RBF
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
-from ..utils import ensure_module_list
+from ..utils.utils import ensure_module_list
 
 
 @obj_dispatch(Model, 'Variational', 'NoSparsity')

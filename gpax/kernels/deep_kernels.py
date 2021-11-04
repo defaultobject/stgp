@@ -23,6 +23,66 @@ class DeepIndependentKernel(ConcatationKernel):
         K_arr = super(DeepIndependentKernel, self).K_diag(X1)
         return np.sum(K_arr, axis=0)
 
+class DeepNN(Kernel):
+    def __init__(self, kernel, nn):
+        self.kernel = kernel
+        self.nn = nn
+
+    def K_diag(self, X):
+        X_nn = self.nn(X)
+        return self.kernel.K_diag(X_nn)
+
+    def K(self, X1, X2):
+        X1_nn = self.nn(X1)
+        X2_nn = self.nn(X2)
+        return self.kernel.K(X1_nn, X2_nn)
+
+class DeepHetreo(Kernel):
+    def __init__(
+        self,
+        parent_model: Optional['Model'] = None,
+        ignore_var = False
+    ):
+        self.parent_model = parent_model
+        self.ignore_var = ignore_var
+
+    def propogate_parent(self, X):
+        parent_mean, parent_k = self.parent_model.predict(X, diagonal=True)
+
+        return parent_mean, parent_k
+
+    def K_diag(self, X):
+        pm, pk = self.propogate_parent(X)
+
+        if self.ignore_var:
+            k =  np.exp(pm)
+        else:
+            k =  np.exp(pm+pk/2)
+
+        return k
+
+    def K(self, X1, X2):
+        pm, pk = self.propogate_parent(X1)
+
+        pm = np.tile(pm[:, None], [1, X2.shape[0]])
+        pk = np.tile(pk[:, None], [1, X2.shape[0]])
+
+        wn_kern = ((X1-X2.T)==0).astype(float)
+
+        pm = pm *wn_kern
+        pk = pk *wn_kern
+
+        if self.ignore_var:
+            k = np.exp(pm)*wn_kern
+        else:
+            k = np.exp(pm + pk/2)*wn_kern
+
+        chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
+
+        return k
+
+
+
 class DeepStationary(StationaryKernel):
     def __init__(
         self, 
@@ -35,11 +95,17 @@ class DeepStationary(StationaryKernel):
         use_X=True
     ):
 
-        super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
 
         self.parent_kernel = kernel
         self.parent_model = parent_model
         self.use_X = use_X
+
+        input_dim = 1
+        if self.parent_model is not None:
+            input_dim = self.parent_model.num_outputs
+
+        super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
+
 
     def propogate_parent(self, x1, x2):
         #_x1 = np.reshape( x1, [1, -1])
@@ -67,17 +133,16 @@ class DeepStationary(StationaryKernel):
 
         parent_mean, parent_k = self.propogate_parent(X1, X2)
 
+        breakpoint()
+
         if not self.use_X:
             X1 = X1[:, 0][:, None]
             X2 = X2[:, 0][:, None]
 
         D = X1.shape[1]
-        print(X1.shape)
-        print(X2.shape)
 
         chex.assert_rank(parent_mean, 1)
         chex.assert_rank(parent_k, 2)
-
 
         # Get predictions for X1 and X2
         pm_x1 = parent_mean[:X1.shape[0]]
@@ -118,36 +183,6 @@ class DeepStationary(StationaryKernel):
 
         return K
 
-#    def _K(self, X1, X2):
-#        D = X1.shape[1]
-#
-#        def _K_d2(x1, x2):
-#            #vectorised over 2nd input
-#            chex.assert_rank(x1, 1)
-#            chex.assert_rank(x2, 1)
-#
-#            chex.assert_equal(x1.shape[0], D)
-#            chex.assert_equal(x2.shape[0], D)
-#
-#        
-#            #a deep kernel is 1d only
-#            k_xx = self._K_scaler(x1, x2, self.variance, self.lengthscales[0])
-#
-#            chex.assert_rank(k_xx, 0)
-#
-#            return k_xx
-#
-#        def _K_d1(x1, X2):
-#            #vectorised over first input
-#            return jax.vmap(_K_d2, in_axes=[None, 0], out_axes=0)(x1, X2)
-#
-#        K = jax.vmap(_K_d1, in_axes=[0, None], out_axes=0)(X1, X2)
-#
-#        chex.assert_equal(K.shape[0], X1.shape[0])
-#        chex.assert_equal(K.shape[1], X2.shape[0])
-#
-#        return K
-#
 class DeepRBF(DeepStationary):
     def _K_scaler(self, x1, x2, variance, lengthscale, m1, m2, k_11, k_22, k_12):
         #TODO: generalise to multi dimensions
@@ -158,30 +193,15 @@ class DeepRBF(DeepStationary):
 
         chex.assert_equal(x_stacked.shape[0], 2)
 
-        if False:
-            if self.parent_model is not None:
-                parent_mean, parent_k = self.parent_model.predict(x_stacked, diagonal=False)
-            else:
-                parent_mean = None
-                parent_k = self.parent_kernel.K(x_stacked, x_stacked)
-
-            chex.assert_rank(parent_k, 2)
-
-            k_11 = parent_k[0, 0]
-            k_12 = parent_k[0, 1]
-            k_22 = parent_k[1, 1]
-
         if m1 is None:
             L = lengthscale + k_11 + k_22 - 2*k_12
-            Kij =  np.sqrt(lengthscale)*variance / np.sqrt(L)
+            k_ij =  np.sqrt(lengthscale)*variance / np.sqrt(L)
         else:
             L = lengthscale + k_11 + k_22 - 2*k_12
-            Kij =  np.exp(-(1/(2*L))*(m1-m2)**2)*np.sqrt(lengthscale)*variance / np.sqrt(L)
+            k_ij =  np.exp(-(1/(2*L))*(m1-m2)**2)*np.sqrt(lengthscale)*variance / np.sqrt(L)
 
 
-        return Kij
-
-        #return variance * (1/np.sqrt(1 + (k_11 + k_22 - 2*k_12)/(lengthscale)))
+        return k_ij
 
         
 class DeepMatern12(DeepStationary):

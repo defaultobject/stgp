@@ -65,6 +65,7 @@ class SimpleTrainer(Trainer):
             grad, val = train_op()
 
             if np.isnan(val):
+                print(grad)
                 raise RuntimeError('NaN encountered whilst training!')
 
             if callback is not None:

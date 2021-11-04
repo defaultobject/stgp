@@ -24,12 +24,12 @@ def get_obj_at_idx(obj_arr: list, axis_arr: list, i: int) -> list:
             # Index the first axis
             # special case so that we can support passing both lists and numpy arrays
             indexed_objects.append(
-                obj_arr[j][i]
+                obj_arr[j][0]
             )
 
         elif axis_j == 1:
             indexed_objects.append(
-                obj_arr[j][:, j]
+                obj_arr[j][:, 0]
             )
         else:
             raise NotImplementedError()
@@ -37,14 +37,13 @@ def get_obj_at_idx(obj_arr: list, axis_arr: list, i: int) -> list:
             # Must be an array
             A = np.hstack([obj_arr[j]*(k+1) for k in range(5)])
             # Implements indexing like a[:, :, 0, :, :] for an arbitrary number of axes
-            breakpoint()
             indexed_objects.append(
                 obj_arr[j][[slice(None)] * (obj_arr[j].ndim - 1) + [i]]
             )
     return indexed_objects
 
 
-def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, num_returned_arguments:int = 1) -> Callable:
+def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, num_returned_args:int = 1) -> Callable:
     """
     Automatically batch call fn.
     The syntax follows that of jax.vmap:
@@ -53,13 +52,14 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, nu
         obj_arr: list = A list of objects, where each object is to be distributed (as described by axis_arr)
         axis_arr: list = a list of indexes of which axis to bach over
         loop_len: the number of elements to batch over
-        num_returned_arguments
+        num_returned_args
     """
-    if False :
-        if num_returned_arguments == 1:
+
+    if True :
+        if num_returned_args == 1:
             res_arr = []
         else:
-            res_arr =[[] for k in range(num_returned_arguments)]
+            res_arr =[[] for k in range(num_returned_args)]
 
         for i in range(loop_len):
             obj_at_i = get_obj_at_idx(
@@ -69,17 +69,17 @@ def loop_or_batch(fn: Callable, obj_arr: list, axis_arr: list, loop_len: int, nu
             )
             res_i = fn(*obj_at_i)
 
-            if num_returned_arguments == 1:
+            if num_returned_args == 1:
                 res_arr.append(res_i)
             else:
-                for k in range(num_returned_arguments):
+                for k in range(num_returned_args):
                     res_arr[k].append(res_i[k])
 
 
-        if num_returned_arguments == 1:
+        if num_returned_args == 1:
             res_arr = np.array(res_arr)
         else:
-            for k in range(num_returned_arguments):
+            for k in range(num_returned_args):
                 res_arr[k] = np.array(res_arr[k])
     else:
         
@@ -181,6 +181,7 @@ class Batched():
 
     def set_vars(self, var):
         obj = self.obj[0]
+        breakpoint()
         for key in var.keys():
             name = key.split('raw_')[-1]
             setattr(obj, name, var[key])

@@ -22,7 +22,7 @@ def get_block_diag_diagional_gram_matrix(X: np.ndarray, kernels: List['Kernel'])
         [ X,  kernels ],
         [ None,  0 ],
         num_latents,
-        num_returned_arguments=1
+        num_returned_args=1
     )
 
     chex.assert_equal(gram_arr.shape[0], num_latents)
@@ -44,7 +44,7 @@ def get_block_diag_gram_matrix(X1: np.ndarray, X2: np.ndarray, kernels: List['Ke
         [ X1, X2, kernels ],
         [ None, None, 0 ],
         num_latents,
-        num_returned_arguments=1
+        num_returned_args=1
     )
 
     gram_matrix = jax.scipy.linalg.block_diag(*gram_arr)
@@ -68,7 +68,7 @@ def get_diagonal_gaussian_likelihood_variances(Y: np.ndarray, likelihood) -> np.
         [ N, likelihood ],
         [ None, 0 ],
         num_latents,
-        num_returned_arguments=1
+        num_returned_args=1
     )
 
     var_arr = jax.scipy.linalg.block_diag(*var_arr)

@@ -3,7 +3,7 @@ from .transform import Transform, LinearTransform, ElementWiseTransform
 
 import jax.numpy as np
 import objax
-from ..utils import ensure_module_list
+from ..utils.utils import ensure_module_list
 
 class Independent(LinearTransform):
     def __init__(self, latents: list):

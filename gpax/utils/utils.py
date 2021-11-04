@@ -2,7 +2,7 @@ import jax
 import jax.numpy as np
 import objax
 
-
+""" General Utils. """
 def ensure_module_list(arr: list) -> objax.ModuleList:
     if arr is None: return arr
 
@@ -26,3 +26,5 @@ def key_that_ends_with(d: dict, k: str):
         if key.endswith(k):
             return key
     return None
+
+
