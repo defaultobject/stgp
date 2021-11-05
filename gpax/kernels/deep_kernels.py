@@ -107,6 +107,14 @@ class DeepStationary(StationaryKernel):
         super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
 
 
+    def forward(self, X1, X2, mu_1, mu_2, K):
+        # TODO: implement
+        return K
+
+    def forward_diag(self, X1, mu_1, K_diag):
+        # TODO: implement
+        return K_diag
+
     def propogate_parent(self, x1, x2):
         #_x1 = np.reshape( x1, [1, -1])
         #_x2 = np.reshape( x2, [1, -1])

@@ -56,25 +56,44 @@ class LinearTransform(Transform):
         """ Output shape [P, N1]. """
         raise NotImplementedError()
 
-    def vec_mean(self, X1):
-        """ Output shape [PxN1, 1]. """
-        raise NotImplementedError()
+    def vec_mean(self, X1: np.ndarray) -> np.ndarray:
+        N1 = X1.shape[0]
+        P = self.num_outputs
+
+        mean = self.mean(X1)
+        mean = np.hstack(mean)[:, None]
+
+        chex.assert_shape(mean, [N1*P, 1])
+        return mean
 
     def covar(self, X1, X2):
         """ Output shape [P, N1, N2]. """
         raise NotImplementedError()
 
-    def full_covar(self, X1, X2):
-        """ Output shape [PxN1, PxN2]. """
-        raise NotImplementedError()
+    def full_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
+        k_arr = self.covar(X1, X2)
+        k =  jax.scipy.linalg.block_diag(*k_arr)
+
+        chex.assert_shape(
+            k,
+            [self.num_latents*X1.shape[0], self.num_latents*X2.shape[0]]
+        )
+
+        return k
 
     def var(self, X1):
         """ Output shape [P, N1]. """
         raise NotImplementedError()
 
-    def vec_var(self, X1):
-        """ Output shape [PxN1, 1]. """
-        raise NotImplementedError()
+    def vec_var(self, X1: np.ndarray) -> np.ndarray:
+        N1 = X1.shape[0]
+        P = self.num_outputs
+        var = self.var(X1)
+
+        var = np.hstack(var)[:, None]
+
+        chex.assert_shape(var, [N1*P, 1])
+        return var
 
     def full_var(self, X1):
         """ Output shape [PxN1, PxN1]. """
@@ -125,15 +144,6 @@ class Independent(LinearTransform):
         )
         return mean
 
-    def vec_mean(self, X1: np.ndarray) -> np.ndarray:
-        N1 = X1.shape[0]
-        P = self.num_outputs
-
-        mean = self.mean(X1)
-        mean = np.hstack(mean)[:, None]
-
-        chex.assert_shape(mean, [N1*P, 1])
-        return mean
 
     def covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
         if self.prior:
@@ -157,16 +167,6 @@ class Independent(LinearTransform):
 
         return k_arr
 
-    def full_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
-        k_arr = self.covar(X1, X2)
-        k =  jax.scipy.linalg.block_diag(*k_arr)
-
-        chex.assert_shape(
-            k,
-            [self.num_latents*X1.shape[0], self.num_latents*X2.shape[0]]
-        )
-
-        return k
 
     def var(self, X1: np.ndarray) -> np.ndarray:
         if self.prior:
@@ -190,15 +190,7 @@ class Independent(LinearTransform):
 
         return var
 
-    def vec_var(self, X1: np.ndarray) -> np.ndarray:
-        N1 = X1.shape[0]
-        P = self.num_outputs
-        var = self.var(X1)
 
-        var = np.hstack(var)[:, None]
-
-        chex.assert_shape(var, [N1*P, 1])
-        return var
 
     def full_var(self, X1: np.ndarray) -> np.ndarray:
         N1 = X1.shape[0]
@@ -247,6 +239,62 @@ class SumTransform(LinearTransform):
 
     def full_var(self, X1): 
         return self.t1.full_var(X1) + self.t2.full_var(X1)
+
+class DeepKernel_One2One(LinearTransform):
+    def __init__(self, prior: Transform, kernels: List['DeepKernel']):
+        self.prior = prior
+        self.kernels = ensure_module_list(kernels)
+        self._num_outputs = prior.num_outputs
+        self._num_latents = self.num_outputs
+
+    def mean(self, X1): 
+        P = self.num_outputs
+        N1 = X1.shape[0]
+        return np.zeros([P, N1])
+
+    def covar(self, X1, X2): 
+        P = self.num_outputs
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
+        prior_covar = self.prior.covar(X1, X2)
+        prior_mean_1 = self.prior.mean(X1)
+        prior_mean_2 = self.prior.mean(X2)
+
+        # push each outputs covar through a kernel
+
+        covar = loop_or_batch(
+            lambda X1, X2, kernel_p, mean_p_1, mean_p_2, covar_p:  kernel_p.forward(X1, X2, mean_p_1, mean_p_2, covar_p),
+            [X1, X2, self.kernels, prior_mean_1, prior_mean_2, prior_covar],
+            [None, None, 0, 0, 0, 0],
+            self.num_outputs,
+            num_returned_args=1
+        )
+
+        chex.assert_shape(covar, [P, N1, N2])
+        return covar
+
+
+
+    def var(self, X1): 
+        P = self.num_outputs
+        N1 = X1.shape[0]
+        prior_var = self.prior.var(X1)
+        prior_mean_1 = self.prior.mean(X1)
+
+        # push each outputs covar through a kernel
+
+        var = loop_or_batch(
+            lambda X1, kernel_p, mean_p_1, prior_var_p:  kernel_p.forward_diag(X1, mean_p_1, prior_var_p),
+            [X1, self.kernels, prior_mean_1, prior_var],
+            [None, 0, 0, 0, 0],
+            self.num_outputs,
+            num_returned_args=1
+        )
+
+        chex.assert_shape(var, [P, N1])
+        return var
+
+
 
 class NonLinearTransform(Transform):
     pass
