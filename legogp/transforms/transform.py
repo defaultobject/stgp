@@ -110,6 +110,8 @@ class Independent(LinearTransform):
         Args:
             prior: bool -- Indicates whether latents are priors or posteriors
         """ 
+        super().__init__()
+
         self.prior = prior
 
         if (latents is None) and (latent is None):
@@ -130,6 +132,7 @@ class Independent(LinearTransform):
         self._num_outputs = self.num_latents
 
         self._latents = ensure_module_list(latents)
+
 
     def mean(self, X1: np.ndarray) -> np.ndarray:
         if self.prior:

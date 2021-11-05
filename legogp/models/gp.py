@@ -9,6 +9,8 @@ from ..obj_dispatch import obj_dispatch, obj_find
 
 from ..inference import Batch
 
+import json
+
 class Model(objax.Module, ABC):
     def __init__(self, **kwargs):
         super(Model, self).__init__()
@@ -30,6 +32,11 @@ class Model(objax.Module, ABC):
     @abstractmethod
     def get_objective(self):
         pass
+
+    def print(self):
+        var_dict = self.vars()
+        for k, v in var_dict.items():
+            print(f'{k}: {v.shape}')
 
     def checkpoint(self, name='model_checkpoint'):
         objax.io.save_var_collection(f'{name}.npz', self.vars())

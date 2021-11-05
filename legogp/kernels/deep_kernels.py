@@ -143,8 +143,6 @@ class DeepStationary(StationaryKernel):
 
         parent_mean, parent_k = self.propogate_parent(X1, X2)
 
-        breakpoint()
-
         if not self.use_X:
             X1 = X1[:, 0][:, None]
             X2 = X2[:, 0][:, None]

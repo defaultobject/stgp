@@ -35,18 +35,21 @@ class BatchGP(Model):
 
         super(BatchGP, self).__init__(**kwargs)
 
+        #TODO: split into a latentGP and a normal GP
+
         self.X = X
 
         self.latent_y = latent_y
         if latent_y:
-            #self.Y = objax.StateVar(np.array(Y))
             self.Y = objax.TrainVar(np.array(Y))
         else:
             self.Y = Y
 
         if kernel is not None:
-            if type(kernel) is not list:
+            if (type(kernel) is not list) and not latent:
                 kernel = [kernel]
+            else:
+                kernel = ensure_module_list([kernel])
 
         self.inference = inference
         self.likelihood = likelihood
