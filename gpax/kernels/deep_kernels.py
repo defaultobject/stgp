@@ -107,13 +107,15 @@ class DeepStationary(StationaryKernel):
         super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
 
 
-    def forward(self, X1, X2, mu_1, mu_2, K):
+    def forward(self, X1, X2, mu_1, mu_2, k_x1, k_x2, K_x1x2):
         # TODO: implement
+        return self._K_with_pm(
+            X1, X2, mu_1, mu_2, k_x1, K_x1x2, k_x2
+        )
         return K
 
     def forward_diag(self, X1, mu_1, K_diag):
-        # TODO: implement
-        return K_diag
+        return self.K_diag(X1)
 
     def propogate_parent(self, x1, x2):
         #_x1 = np.reshape( x1, [1, -1])
@@ -160,6 +162,11 @@ class DeepStationary(StationaryKernel):
         pk_x1x1 = np.diag(parent_k[:X1.shape[0], :X1.shape[0]])
         pk_x2x2 = np.diag(parent_k[X1.shape[0]:, X1.shape[0]:])
         pk_x1x2 = parent_k[:X1.shape[0], X1.shape[0]:]
+
+        return self._K_with_pm(X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2)
+
+    def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2):
+        D = X1.shape[1]
 
         def _K_d2(x1, x2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
             #vectorised over 2nd input

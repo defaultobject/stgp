@@ -240,7 +240,7 @@ class SumTransform(LinearTransform):
     def full_var(self, X1): 
         return self.t1.full_var(X1) + self.t2.full_var(X1)
 
-class DeepKernel_One2One(LinearTransform):
+class DeepKernel_One2One(Independent):
     def __init__(self, prior: Transform, kernels: List['DeepKernel']):
         self.prior = prior
         self.kernels = ensure_module_list(kernels)
@@ -257,15 +257,17 @@ class DeepKernel_One2One(LinearTransform):
         N1 = X1.shape[0]
         N2 = X2.shape[0]
         prior_covar = self.prior.covar(X1, X2)
+        prior_var_1 = self.prior.var(X1)
+        prior_var_2 = self.prior.var(X2)
         prior_mean_1 = self.prior.mean(X1)
         prior_mean_2 = self.prior.mean(X2)
 
         # push each outputs covar through a kernel
 
         covar = loop_or_batch(
-            lambda X1, X2, kernel_p, mean_p_1, mean_p_2, covar_p:  kernel_p.forward(X1, X2, mean_p_1, mean_p_2, covar_p),
-            [X1, X2, self.kernels, prior_mean_1, prior_mean_2, prior_covar],
-            [None, None, 0, 0, 0, 0],
+            lambda X1, X2, kernel_p, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p:  kernel_p.forward(X1, X2, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p),
+            [X1, X2, self.kernels, prior_mean_1, prior_mean_2, prior_var_1, prior_var_2, prior_covar],
+            [None, None, 0, 0, 0, 0, 0, 0],
             self.num_outputs,
             num_returned_args=1
         )
