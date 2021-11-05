@@ -3,10 +3,10 @@ import setuptools
 
 
 setuptools.setup(
-    name="gpax", 
+    name="legogp", 
     version="0.0.1",
-    author="O Hamelijnck, W Wilkinson",
-    author_email="ohamelijnck@turing.ac.uk,william.wilkinson@aalto.fi",
+    author="O Hamelijnck",
+    author_email="ohamelijnck@turing.ac.uk",
     description="GP library in jax",
     long_description="",
     long_description_content_type="text/markdown",
