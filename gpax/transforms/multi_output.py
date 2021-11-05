@@ -1,5 +1,5 @@
 """Multi-output/task specific transforms."""
-from .transform import Transform, LinearTransform, NonLinearTransform
+from .transform import Transform, LinearTransform, NonLinearTransform, Independent
 import typing
 from typing import List, Optional
 import jax
@@ -10,6 +10,72 @@ import chex
 from ..batching import batch
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
+
+class LMC(LinearTransform):
+    """
+    Inherits
+        num_outputs
+        num_latents
+    """
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def W(self):
+        raise NotImplementedError()
+
+    def vec_mean(self, X1: np.ndarray) -> np.ndarray:
+        N1 = X1.shape[0]
+        P = self.num_outputs
+
+        mean = np.zeros([P, N1])
+
+        mean = np.hstack(mean)[:, None]
+        chex.assert_shape(mean, [P*N1, 1])
+
+        return mean
+
+    def full_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
+
+        mixing_matrix = self.W
+
+        Q = self.num_latents
+        P = self.num_outputs
+
+        W1 = np.kron(mixing_matrix, np.eye(N1))
+        W2 = np.kron(mixing_matrix, np.eye(N2))
+
+        K_bdiag = self.latents.full_covar(X1, X2)
+        chex.assert_shape(K_bdiag, [Q*N1, Q*N2])
+
+        covar = W1 @ K_bdiag @ W2.T
+        chex.assert_shape(covar, [P*N1, P*N2])
+
+        return covar
+
+    def vec_var(self, X1: np.ndarray) -> np.ndarray:
+        N1 = X1.shape[0]
+        Q = self.num_latents
+        P = self.num_outputs
+
+        mixing_matrix = self.W
+
+        K_diag = self.latents.var(X1)
+        chex.assert_shape(K_diag, [Q, N1])
+
+        W = mixing_matrix**2
+
+        #P x N
+        covar = W @ K_diag
+        chex.assert_shape(covar, [P, N1])
+
+        # PN
+        covar = np.hstack(covar)[:, None]
+        chex.assert_shape(covar, [P*N1, 1])
+
+        return covar
 
 class LMC_Corr_var(LinearTransform):
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
@@ -66,14 +132,14 @@ class LMC_Corr(LinearTransform):
 
         return mixing_matrix
 
-class LMC_Unit_Tri(LinearTransform):
+class LMC_Unit_Tri(LMC):
     def __init__(self, latents: Optional[List['Model']]=None, output_dim: Optional[int]=None, input_dim: Optional[int]=None, W: Optional[np.ndarray] = None):
-        super(LMC_Unit_Tri, self).__init__()
+        super().__init__()
 
-        if input_dim is None:
-            input_dim = len(latents)
+        self._latents = Independent(latents=latents, prior=True)
+        input_dim = self.latents.num_latents
+        self._num_latents = input_dim
 
-        self._latents = objax.ModuleList(latents)
         self.output_dim = output_dim
 
         self._num_outputs = output_dim
@@ -93,7 +159,7 @@ class LMC_Unit_Tri(LinearTransform):
         return mixing_matrix
 
 
-class LMC(LinearTransform):
+class _LMC(LinearTransform):
     r"""
     Linear model of coregionilisation.
 

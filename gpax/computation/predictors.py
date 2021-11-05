@@ -217,38 +217,32 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
         num_returned_args=2
     )
 
-
     return mu_arr, var_arr
 
-@dispatch(object, object, object, object, LinearTransform, object, object)
-def multi_latent_predict(XS, X, Y, likelihood, prior, mask, diagonal):
+@dispatch(object, object, object, object, LinearTransform, object)
+def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     Ns = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
 
-    kernels = prior.get_kernels()
-
-    K_xs = get_linear_multi_task_prior_diag_covariance(XS, prior)
-    K_xx = get_linear_multi_task_prior_covariance(X, X, prior)
-    K_xs_x = get_linear_multi_task_prior_covariance(XS, X, prior)
+    K_xs = prior.vec_var(XS)[:, 0]
+    K_xx = prior.full_covar(X, X)
+    K_xs_x = prior.full_covar(XS, X)
     lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
+    mean_x = prior.vec_mean(X)
+    mean_xs = prior.vec_mean(XS)
 
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
 
-    if mask is not None:
-        mask = mask.reshape(Y.shape[0]*Y.shape[1], order='F')
-        Y_vec = Y_vec[mask]
-        K_xs_x = K_xs_x[..., mask]
-        K_xx = K_xx[mask, ...]
-        K_xx = K_xx[..., mask]
-        lik_var = lik_var[mask, ...]
-        lik_var = lik_var[..., mask]
+    #TODO: implement masking
 
     mu, var = full_gaussian_prediction_diagonal(
         Y_vec,
         K_xs,
         K_xs_x,
         K_xx,
+        mean_x,
+        mean_xs,
         lik_var
     )   
 

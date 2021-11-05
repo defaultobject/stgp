@@ -4,7 +4,7 @@ from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
 from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform, LMC
-from .model_ops import get_linear_multi_task_model_covariance
+from .model_ops import get_diagonal_gaussian_likelihood_variances
 from ..utils import utils
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -99,7 +99,7 @@ def multi_latent_log_marginal_likelihood(
 
     return lml
 
-@dispatch(object, object, object, LinearTransform, object)
+@dispatch(object, object, object, LinearTransform)
 def multi_latent_log_marginal_likelihood(
     X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform
 ) -> np.ndarray:
@@ -112,16 +112,15 @@ def multi_latent_log_marginal_likelihood(
 
     N = Y.shape[0]
 
-    sigma = get_linear_multi_task_model_covariance(X, Y, likelihood, prior)
-
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
 
+    mean = prior.vec_mean(X)
+    K_xx = prior.full_covar(X, X)
+    lik_xx = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
 
-    if mask is not None:
-        mask = mask.reshape(Y.shape[0]*Y.shape[1], order='F')
-        Y_vec = Y_vec[mask]
-        sigma = sigma[mask, ...]
-        sigma = sigma[..., mask]
+    sigma = K_xx + lik_xx
 
-    return log_gaussian(Y_vec, np.zeros_like(Y_vec), sigma)
+    #TODO: implement masking
+
+    return log_gaussian(Y_vec, mean, sigma)
 
