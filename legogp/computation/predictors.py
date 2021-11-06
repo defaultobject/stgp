@@ -97,10 +97,11 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
     Ns = XS.shape[0]
     N = X.shape[0]
 
+    mask = get_mask(Y)
+
     # TODO: document and test this
     Y = np.nan_to_num(Y, nan=0.0)
 
-    mask = get_mask(Y)
 
     mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
     K_xs_x = np.multiply(K_xs_x, mask_xs_x)
@@ -235,6 +236,13 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
 
     #TODO: implement masking
+
+    mask = get_mask(Y_vec)
+    Y_vec = np.nan_to_num(Y_vec,  nan=0.0)
+    mask_xs_x = np.tile(mask, [K_xs_x.shape[0], 1]) 
+    K_xs_x = np.multiply(K_xs_x, mask_xs_x)
+    K_xx = mask_to_identity(K_xx, mask)
+    mean_x =  mask_vector(mean_x, mask)
 
     mu, var = full_gaussian_prediction_diagonal(
         Y_vec,

@@ -120,7 +120,13 @@ def multi_latent_log_marginal_likelihood(
 
     sigma = K_xx + lik_xx
 
-    #TODO: implement masking
+    mask = get_mask(Y_vec)
+    Y_vec = np.nan_to_num(Y_vec, nan=0.0)
+    sigma = mask_to_identity(sigma, mask)
+    mean = mask_vector(mean, mask)
 
-    return log_gaussian(Y_vec, mean, sigma)
+
+    return log_gaussian(Y_vec, mean, sigma) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
+
+    #return log_gaussian(Y_vec, mean, sigma)
 

@@ -81,11 +81,10 @@ def gp(X, Y, XS, train_fn, name, restore=False):
     )
 
     if restore:
-        train_fn(epochs)
-        m.load_from_checkpoint(f'{checkpoint_id}_{name}')
+        m.load_from_checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
     else:
-
-        m.checkpoint(f'{checkpoint_id}_{name}')
+        train_fn(m, epochs)
+        m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
     mu, var = m.predict(XS, diagonal=True)
 
@@ -124,10 +123,10 @@ def hetro_gp(X, Y, XS, train_fn, name, model_type, restore=False):
     train_fn(m, epochs)
 
     if restore:
-        m.load_from_checkpoint(f'{checkpoint_id}_{name}')
+        m.load_from_checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
     else:
 
-        m.checkpoint(f'{checkpoint_id}_{name}')
+        m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
 
     mu, var = m.predict(XS, diagonal=True)
