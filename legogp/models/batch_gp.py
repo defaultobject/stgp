@@ -31,7 +31,7 @@ from ..sparsity import NoSparsity
 
 @obj_dispatch(Model, 'Batch')
 class BatchGP(Model):
-    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, latent=False, latent_y=False, **kwargs):
+    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, latent=False, latent_y=False, latent_x=False, **kwargs):
 
         super(BatchGP, self).__init__(**kwargs)
 
@@ -45,17 +45,23 @@ class BatchGP(Model):
         else:
             self.Y = Y
 
+        if latent_x: 
+            self.X = objax.TrainVar(np.array(X))
+        else:
+            self.X = objax.StateVar(X)
+
+
         if kernel is not None:
             if (type(kernel) is not list) and not latent:
                 kernel = [kernel]
             else:
-                kernel = ensure_module_list([kernel])
+                kernel = ensure_module_list(kernel)
 
         self.inference = inference
         self.likelihood = likelihood
         self.kernel = kernel
         self.prior = prior
-        self.sparsity = NoSparsity(self.X) # Sparsity for batch GPs is not supported
+        self.sparsity = NoSparsity(self.X.value) # Sparsity for batch GPs is not supported
         self.latent = latent
 
         self.num_latents = None
@@ -73,13 +79,18 @@ class BatchGP(Model):
         if self.X is None:
             raise RuntimeError('X must be passed')
 
-        self.X = np.array(self.X)
 
         # Input dimension / number of covariates or features
         self.D = self.X.shape[1]
 
         if (self.Y is not None) and (not self.latent_y):
-            self.Y = np.array(self.Y)
+            self.Y = objax.StateVar(np.array(self.Y))
+
+    def input_dim(self):
+        raise NotImplementedError()
+
+    def output_dim(self):
+        raise NotImplementedError()
 
     def set_defaults(self):
         """ Replace missing options with defaults """
@@ -116,7 +127,7 @@ class BatchGP(Model):
             self.prior = Independent(
                 latents = [
                     GP(
-                        X = self.X,
+                        X = self.X.value,
                         kernel = self.kernel[q],
                         latent=True
                     )
@@ -143,7 +154,7 @@ class BatchGP(Model):
 
     def get_objective(self, X=None, Y = None):
         if X is None:
-            X, Y = self.X, self.Y
+            X, Y = self.X.value, self.Y.value
 
         nlml = self.inference.neg_log_marginal_likelihood(
             X,
@@ -161,12 +172,8 @@ class BatchGP(Model):
         return mu
 
     def predictive_covar(self, XS_1, XS_2):
-        X = self.X
-
-        if self.latent_y:
-            Y = self.Y.value
-        else:
-            Y = self.Y
+        X = self.X.value    
+        Y = self.Y.value
 
         var_arr =  self.inference.predictive_covar(
             XS_1, XS_2, X, Y, self.likelihood, self.prior
@@ -174,13 +181,8 @@ class BatchGP(Model):
         return var_arr
 
     def predict(self, XS, diagonal=True, squeeze=True):
-
-        X = self.X
-
-        if self.latent_y:
-            Y = self.Y.value
-        else:
-            Y = self.Y
+        X = self.X.value    
+        Y = self.Y.value
 
         mu_arr, var_arr =  self.inference.predict(
             XS, X, Y, self.likelihood, self.prior, diagonal=diagonal

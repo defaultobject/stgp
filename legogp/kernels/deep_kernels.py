@@ -95,7 +95,6 @@ class DeepStationary(StationaryKernel):
         use_X=True
     ):
 
-
         self.parent_kernel = kernel
         self.parent_model = parent_model
         self.use_X = use_X
@@ -106,6 +105,8 @@ class DeepStationary(StationaryKernel):
 
         super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
 
+    def set_parent_model(self, parent_model):
+        self.parent_model = parent_model
 
     def forward(self, X1, X2, mu_1, mu_2, k_x1, k_x2, K_x1x2):
         # TODO: implement
@@ -168,17 +169,19 @@ class DeepStationary(StationaryKernel):
 
         def _K_d2(x1, x2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
             #vectorised over 2nd input
-            chex.assert_rank(x1, 1)
-            chex.assert_rank(x2, 1)
+            #chex.assert_rank(x1, 1)
+            #chex.assert_rank(x2, 1)
 
-            chex.assert_equal(x1.shape[0], D)
-            chex.assert_equal(x2.shape[0], D)
+            #chex.assert_equal(x1.shape[0], D)
+            #chex.assert_equal(x2.shape[0], D)
 
             #vectorise over input dim
-            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, None, 0, None, None, None, None, None])(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
+            #k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, None, 0, None, None, None, None, None])(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
+            k_d1_d2 = self._K_scaler(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
 
-            chex.assert_equal(k_d1_d2.shape[0], D)
+            #k_xx = k_d1_d2
 
+            #chex.assert_equal(k_d1_d2.shape[0], D)
             k_xx =  np.product(k_d1_d2)
 
             chex.assert_rank(k_xx, 0)
@@ -198,14 +201,6 @@ class DeepStationary(StationaryKernel):
 
 class DeepRBF(DeepStationary):
     def _K_scaler(self, x1, x2, variance, lengthscale, m1, m2, k_11, k_22, k_12):
-        #TODO: generalise to multi dimensions
-        _x1 = np.reshape( x1, [1, -1])
-        _x2 = np.reshape( x2, [1, -1])
-
-        x_stacked = np.vstack([_x1, _x2])
-
-        chex.assert_equal(x_stacked.shape[0], 2)
-
         if m1 is None:
             L = lengthscale + k_11 + k_22 - 2*k_12
             k_ij =  np.sqrt(lengthscale)*variance / np.sqrt(L)

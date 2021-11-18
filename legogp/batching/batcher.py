@@ -24,12 +24,12 @@ def get_obj_at_idx(obj_arr: list, axis_arr: list, i: int) -> list:
             # Index the first axis
             # special case so that we can support passing both lists and numpy arrays
             indexed_objects.append(
-                obj_arr[j][0]
+                obj_arr[j][i]
             )
 
         elif axis_j == 1:
             indexed_objects.append(
-                obj_arr[j][:, 0]
+                obj_arr[j][:, i]
             )
         else:
             raise NotImplementedError()
@@ -229,4 +229,28 @@ class Batcher():
             #only need to do for the first object as all object should have the same var_collection
 
         return all_vars
+
+def get_batched_vars(obj_list):
+    all_vars = {}
+
+    #collect vars
+    for obj in obj_list:
+        var_collection = obj.vars()
+        for key in var_collection.keys():
+            if key not in all_vars:
+                all_vars[key] = []
+
+            all_vars[key].append(var_collection[key].value)
+
+    #convert to jax array
+    for obj in obj_list:
+        var_collection = obj.vars()
+        for key in var_collection.keys():
+            all_vars[key] = np.array(all_vars[key])
+
+        #only need to do for the first object as all object should have the same var_collection
+
+    return all_vars
+
+
 

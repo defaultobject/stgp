@@ -11,6 +11,8 @@ import numpy as np
 from timeit import default_timer as timer
 
 import json
+import typing
+from typing import List, Union
 
 class Trainer:
     pass
@@ -42,12 +44,31 @@ class SimpleTrainer(Trainer):
     def summary(self, train_vars):
         print(train_vars)
 
-    def train(self, m, optimizer, learning_rate, epochs, callback=None):
-        train_vars = m.vars()
+    def train(
+        self, 
+        models: Union['Model', List['Model']], 
+        optimizer, 
+        learning_rate, 
+        epochs, 
+        callback=None
+    ):
+        if type(models) is not list:
+            models = [models]
+
+        #models = objax.ModuleList(models)
+
+        # Assume that models[0] is the 'global' model
+        train_vars = models[0].vars()
 
         self.summary(train_vars)
 
-        objective_fn = objax.Jit(m.get_objective, train_vars)
+        def objective():
+            obj = 0.0
+            for m in models:
+                obj += m.get_objective()
+            return obj
+
+        objective_fn = objax.Jit(objective, train_vars)
         grad_fn = objax.Jit(objax.GradValues(objective_fn, train_vars), train_vars)
 
         opt = optimizer(train_vars)
