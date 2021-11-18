@@ -20,12 +20,6 @@ from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
 
-from jax.tree_util import tree_structure
-from jax.tree_util import tree_flatten, tree_unflatten, register_pytree_node
-
-from jax.experimental import loops
-
-from ..batching import Batched
 from ..sparsity import NoSparsity
 
 
