@@ -1,4 +1,3 @@
-from .node import Node
 from .inference import Inference
 from .dispatch import dispatch
 from .kernels import Kernel
