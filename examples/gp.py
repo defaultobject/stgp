@@ -11,6 +11,9 @@ y = np.sin(x*10)
 X = x[:, None]
 Y = y[:, None]
 
-m = lego.models.GP(X, Y)
+m_prior = lego.models.GP(X)
 
-print(m.get_objective())
+m_posterior = lego.models.GP(X, Y)
+
+breakpoint()
+print(m_posterior.get_objective())

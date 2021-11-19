@@ -1,6 +1,6 @@
 """Base transform class."""
-from ..utils.utils import ensure_module_list
-from ..batching import loop_or_batch
+from ..utils.utils import ensure_module_list, can_batch
+from batchjax import batch_or_loop
 
 import jax
 import jax.numpy as np
@@ -135,33 +135,31 @@ class Independent(LinearTransform):
 
 
     def mean(self, X1: np.ndarray) -> np.ndarray:
-        if self.prior:
-            # Assume that latents are zero mean
-            mean = np.zeros([self.num_latents, X1.shape[0]])
-        else:
-            mean, _ = self.latents[0].predict(X1, diagonal=True)
+        mean = batch_or_loop(
+            lambda X1, latent:  latent.mean(X1),
+            [X1, self.latents],
+            [None, 0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_flag = can_batch(self.latents)
+        )
 
         chex.assert_shape(
             mean, 
-            [self.num_outputs, X1.shape[0]]
+            [self.num_outputs, X1.shape[0], 1]
         )
         return mean
 
 
     def covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
-        if self.prior:
-            k_arr = loop_or_batch(
-                lambda X1, X2, latent:  latent.kernel[0].K(X1, X2),
-                [X1, X2, self.latents],
-                [None, None, 0],
-                self.num_latents,
-                num_returned_args = 1
-            )
-
-            return k_arr
-
-        else:
-            k_arr = self.latents[0].predictive_covar(X1, X2)
+        k_arr = batch_or_loop(
+            lambda X1, X2, latent:  latent.covar(X1, X2),
+            [X1, X2, self.latents],
+            [None, None, 0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_flag = can_batch(self.latents)
+        )
 
         chex.assert_shape(
             k_arr, 
@@ -172,19 +170,14 @@ class Independent(LinearTransform):
 
 
     def var(self, X1: np.ndarray) -> np.ndarray:
-        if self.prior:
-            var = loop_or_batch(
-                lambda X1, latent:  latent.kernel[0].K_diag(X1),
-                [X1, self.latents],
-                [None, 0],
-                self.num_latents,
-                num_returned_args = 1
-            )
-
-
-        else:
-            # for posterior we only support one latent
-            _, var =  self.latents[0].predict(X1, diagonal=True)
+        var = batch_or_loop(
+            lambda X1, latent:  latent.var(X1),
+            [X1, self.latents],
+            [None, 0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_flag = can_batch(self.latents)
+        )
 
         chex.assert_shape(
             var, 
@@ -196,17 +189,7 @@ class Independent(LinearTransform):
 
 
     def full_var(self, X1: np.ndarray) -> np.ndarray:
-        N1 = X1.shape[0]
-        P = self.num_outputs
-
-        if self.prior:
-            var = self.full_covar(X1, X1)
-        else:
-            # for posterior we only support one 
-            _, var =  self.latents[0].predict(X1, diagonal=False)
-
-        chex.assert_shape(var, [P*N1, P*N1])
-        return var
+        return self.covar(X1, X1)
 
 class SumTransform(LinearTransform):
     def __init__(self, t1: Transform, t2: Transform):

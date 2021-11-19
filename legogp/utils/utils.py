@@ -28,3 +28,5 @@ def key_that_ends_with(d: dict, k: str):
     return None
 
 
+def can_batch(module_list):
+    return False

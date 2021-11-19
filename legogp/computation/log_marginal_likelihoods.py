@@ -2,12 +2,13 @@ from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
-from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform, LMC
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from ..utils import utils
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
+from ..utils.utils import can_batch
+
 
 import jax
 import jax.numpy as np
@@ -17,6 +18,7 @@ from typing import List
 import objax
 from objax import ModuleList
 from typing import List
+from batchjax import batch_or_loop
 
 @dispatch(object, object, Gaussian, object, object)
 def log_marginal_likelihood(
@@ -31,10 +33,12 @@ def log_marginal_likelihood(
     """
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
-    chex.assert_equal(Y.shape[1], 1)
-    chex.assert_equal(Y.shape[0], X.shape[0])
 
     N = X.shape[0]
+
+    chex.assert_shape(Y, [N, 1])
+    chex.assert_shape(mean, [N, 1])
+    chex.assert_shape(K, [N, N])
 
     lik_noise = likelihood.variance
 
@@ -80,19 +84,20 @@ def multi_latent_log_marginal_likelihood(
 
     # precompute prior covariance
     k_xx_arr = prior.covar(X, X)
-    mean_arr = prior.mean(X)
+    mean_arr = prior.mean(X) 
 
     # get correct marginal likelihood from dispatch
     lml_fn = evoke('log_marginal_likelihood')
 
     Y = Y[..., None]
 
-    lml_arr = loop_or_batch(
-        lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean[:, None]),
+    lml_arr = batch_or_loop(
+        lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean),
         [ lml_fn, X, Y, likelihood, k_xx_arr, mean_arr],
         [ None, None, 1, 0, 0, 0],
-        num_latents,
-        num_returned_args=1
+        dim = num_latents,
+        out_dim = 1,
+        batch_flag = can_batch(likelihood)
     )
 
     lml =  np.sum(lml_arr)

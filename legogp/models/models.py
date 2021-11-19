@@ -77,6 +77,25 @@ class Prior(Model):
         pass
 
 class Posterior(Model):
+    def __init__(self, X, Y, latent_y=False, latent_x=False, **kwargs):
+        if latent_y:
+            self._Y = objax.TrainVar(np.array(Y))
+        else:
+            self._Y = objax.StateVar(np.array(Y))
+
+        if latent_x:
+            self._X = objax.TrainVar(np.array(X))
+        else:
+            self._X = objax.StateVar(np.array(X))
+
+    @property
+    def X(self):
+        return self._X.value
+
+    @property
+    def Y(self):
+        return self._Y.value
+
     @abstractmethod
     def log_marginal_likelihood(self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         pass

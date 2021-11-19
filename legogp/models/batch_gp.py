@@ -11,7 +11,7 @@ from ..obj_dispatch import obj_dispatch, obj_find
 from ..dispatch import evoke
 from ..batching import loop_or_batch
 
-from . import Model, GP
+from . import Model, Posterior, GP
 from ..kernels import Kernel
 from ..inference import Batch
 from ..computation.log_marginal_likelihoods import * 
@@ -22,69 +22,49 @@ from ..transforms import Independent
 
 from ..sparsity import NoSparsity
 
+import warnings
 
 @obj_dispatch(Model, 'Batch')
-class BatchGP(Model):
-    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, latent=False, latent_y=False, latent_x=False, **kwargs):
+class BatchGP(Posterior):
+    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, **kwargs):
 
-        super(BatchGP, self).__init__(**kwargs)
-
-        #TODO: split into a latentGP and a normal GP
-
-        self.X = X
-
-        self.latent_y = latent_y
-        if latent_y:
-            self.Y = objax.TrainVar(np.array(Y))
-        else:
-            self.Y = Y
-
-        if latent_x: 
-            self.X = objax.TrainVar(np.array(X))
-        else:
-            self.X = objax.StateVar(X)
-
-
-        if kernel is not None:
-            if (type(kernel) is not list) and not latent:
-                kernel = [kernel]
-            else:
-                kernel = ensure_module_list(kernel)
-
-        self.inference = inference
-        self.likelihood = likelihood
-        self.kernel = kernel
-        self.prior = prior
-        self.sparsity = NoSparsity(self.X.value) # Sparsity for batch GPs is not supported
-        self.latent = latent
-
-        self.num_latents = None
-        self.num_outputs = None
-
-        if not latent:
-            # latent GPs are constructed internally to they will already have been setup properly
-            self.setup_data()
-            self.set_defaults()
-            self.fix_inputs()
-
-    def setup_data(self):
-        """ Ensure input data is valid """
-
-        if self.X is None:
+        if X is None:
             raise RuntimeError('X must be passed')
 
+        if Y is None:
+            raise RuntimeError('Y must be passed')
 
-        # Input dimension / number of covariates or features
-        self.D = self.X.shape[1]
+        super(BatchGP, self).__init__(X, Y, **kwargs)
 
-        if (self.Y is not None) and (not self.latent_y):
-            self.Y = objax.StateVar(np.array(self.Y))
+        self.inference = inference
+        self._likelihood = likelihood
+        self.kernel = kernel
+        self._prior = prior
+        self.sparsity = NoSparsity(self.X) # Sparsity for batch GPs is not supported
 
-    def input_dim(self):
-        raise NotImplementedError()
+        self.set_defaults()
+        self.fix_inputs()
 
-    def output_dim(self):
-        raise NotImplementedError()
+    @property
+    def likelihood(self): return self._likelihood
+
+    @property
+    def prior(self): return self._prior
+
+    @property
+    def input_space_dim(self): return self.X.shape[1]
+
+    @property
+    def output_dim(self): return self.Y.shape[1]
+
+    @property
+    def input_dim(self): return self.output_dim
+
+    def fix_inputs(self):
+        """ Convert all inputs into a consistent format """
+
+        # We do not need to make kernel a module list because this is done within the prior object
+        self._likelihood = ensure_module_list(self._likelihood)
 
     def set_defaults(self):
         """ Replace missing options with defaults """
@@ -97,58 +77,40 @@ class BatchGP(Model):
         if self.prior is None:
             # construct an independent prior for each latent function
 
-            if self.Y is not None:
-                if self.latent_y:
-                    self.num_outputs = self.Y.value.shape[1]
-                else:
-                    self.num_outputs = self.Y.shape[1]
-            else:
-                self.num_outputs = 1
-
-            self.num_latents = self.num_outputs
-
             # Only set a default kernel if we are in kernel mode and one has not been passed
             if self.kernel is None:
+                warnings.warn('Using default ARD RBF kernel')
                 self.kernel = [
                     RBF(
-                        lengthscales=[1.0 for d in range(self.D)],
-                        input_dim=self.D
+                        lengthscales=[1.0 for d in range(self.input_space_dim)],
+                        input_dim=self.input_space_dim
                     )
-                    for j in range(self.num_latents)
+                    for j in range(self.output_dim)
                 ]
 
             # Construct independent prior
-            self.prior = Independent(
+            self._prior = Independent(
                 latents = [
                     GP(
-                        X = self.X.value,
+                        X = self.X,
                         kernel = self.kernel[q],
-                        latent=True
                     )
-                    for q in range(self.num_latents)
+                    for q in range(self.output_dim)
                 ],
                 prior=True
             )
-
-        # Figure out how many latent functions are being used
-        self.num_latents = self.prior.num_latents
-        self.num_outputs = self.prior.num_outputs
 
         if self.inference == None:
             self.inference = Batch()
 
         if self.likelihood == None:
-            self.likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.num_outputs)])
+            warnings.warn('Using default Gaussian likelihood')
+            self._likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.output_dim)])
 
-    def fix_inputs(self):
-        """ Convert all inputs into a consistent format """
+    def log_marginal_likelihood(self, X=None, Y=None):
 
-        # We do not need to make kernel a module list because this is done within the prior object
-        self.likelihood = ensure_module_list(self.likelihood)
-
-    def get_objective(self, X=None, Y = None):
         if X is None:
-            X, Y = self.X.value, self.Y.value
+            X, Y = self.X, self.Y
 
         nlml = self.inference.neg_log_marginal_likelihood(
             X,
@@ -161,22 +123,29 @@ class BatchGP(Model):
 
         return nlml
 
-    def predictive_mu(self, XS):
-        mu, _ = self.predict(XS, diagonal=True)
+    def get_objective(self, X=None, Y=None):
+        return self.log_marginal_likelihood(X, Y)
+
+    def mean(self, XS):
+        mu, _ = self.predict_f(XS, diagonal=True)
         return mu
 
-    def predictive_covar(self, XS_1, XS_2):
-        X = self.X.value    
-        Y = self.Y.value
+    def var(self, XS):
+        _, var = self.predict_f(XS, diagonal=True)
+        return var
+
+    def covar(self, XS_1, XS_2, X=None, Y=None):
+        if X is None:
+            X, Y = self.X, self.Y
 
         var_arr =  self.inference.predictive_covar(
             XS_1, XS_2, X, Y, self.likelihood, self.prior
         )
         return var_arr
 
-    def predict(self, XS, diagonal=True, squeeze=True):
-        X = self.X.value    
-        Y = self.Y.value
+    def predict_f(self, XS,  X=None, Y=None, diagonal=True, squeeze=True):
+        if X is None:
+            X, Y = self.X, self.Y
 
         mu_arr, var_arr =  self.inference.predict(
             XS, X, Y, self.likelihood, self.prior, diagonal=diagonal
@@ -186,3 +155,6 @@ class BatchGP(Model):
             mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr)
 
         return mu_arr, var_arr
+
+    def predict_y(self, XS):
+        raise NotImplementedError()

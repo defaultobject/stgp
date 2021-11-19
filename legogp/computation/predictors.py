@@ -6,8 +6,11 @@ from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
 from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform
+
 from ..utils import utils
+from ..utils.utils import can_batch
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
+
 from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve
 from .model_ops import get_block_diag_gram_matrix, get_diagonal_gaussian_likelihood_variances, get_linear_multi_task_model_covariance, get_linear_multi_task_prior_covariance, get_linear_multi_task_prior_diag_covariance
 
@@ -17,6 +20,7 @@ import jax.numpy as np
 import chex
 from typing import List
 from objax import ModuleList
+from batchjax import batch_or_loop
 
 @jit
 def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
@@ -170,12 +174,13 @@ def multi_latent_predictive_covar(XS_1, XS_2, X, Y, likelihood, prior):
 
     pred_fn = evoke('full_predictive_covar')
 
-    var_arr = loop_or_batch(
+    var_arr = batch_or_loop(
         pred_fn,
         [Y, K_xs, K_xs_x, K_x_xs, K_xx, likelihood],
         [1, 0, 0, 0, 0, 0, 0],
-        num_latents,
-        num_returned_args=1
+        dim=num_latents,
+        out_dim=1,
+        batch_flag = can_batch(likelihood)
     )
 
     chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
@@ -210,12 +215,13 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
 
     Y = Y[..., None]
 
-    mu_arr, var_arr = loop_or_batch(
-            lambda XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs: pred_fn(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x[:, None], mean_xs[:, None]),
+    mu_arr, var_arr = batch_or_loop(
+        pred_fn,
         [XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs],
         [None, None, 1, 0, 0, 0, 0, 0, 0],
-        num_latents,
-        num_returned_args=2
+        dim=num_latents,
+        out_dim=2,
+        batch_flag = can_batch(likelihood)
     )
 
     return mu_arr, var_arr
