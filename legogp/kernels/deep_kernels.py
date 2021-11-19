@@ -12,6 +12,7 @@ from typing import List, Optional, Union
 
 import chex 
 from ..batching import batch
+import warnings
 
 class DeepIndependentKernel(ConcatationKernel):
     def K(self, X1: np.array, X2: np.array):
@@ -84,29 +85,31 @@ class DeepHetreo(Kernel):
 
 
 class DeepStationary(StationaryKernel):
+    """
+    Parent class of all Deep stationary kernels.
+    All these kernels assume a single input dimension 
+        - i.e these do not construct ARD kernels, this must be done explictly in the model construction
+    """
     def __init__(
         self, 
-        kernel: Optional['Kernel'] = None,
-        parent_model: Optional['Model'] = None,
+        parent: Optional['Model'] = None,
         lengthscale: Optional[np.ndarray] = None, 
         variance: Optional[np.ndarray] = None, 
         input_dim: Optional[int] = 1, 
-        active_dims: Optional[np.ndarray] = None,
-        use_X=True
+        active_dims: Optional[np.ndarray] = None
     ):
-
-        self.parent_kernel = kernel
-        self.parent_model = parent_model
-        self.use_X = use_X
-
-        input_dim = 1
-        if self.parent_model is not None:
-            input_dim = self.parent_model.num_outputs
+        if variance is None:
+            warnings.warn('Using default DeepStationary variance')
+            variance = np.ones(input_dim)
 
         super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
+        
+        # If parent is not passed in the kernel constructed it MUST be added before the kernel is used
+        self.parent = parent
 
-    def set_parent_model(self, parent_model):
-        self.parent_model = parent_model
+
+    def set_parent(self, parent):
+        self.parent = parent
 
     def forward(self, X1, X2, mu_1, mu_2, k_x1, k_x2, K_x1x2):
         # TODO: implement
@@ -126,14 +129,15 @@ class DeepStationary(StationaryKernel):
         _x2 = x2
 
         x_stacked = np.vstack([_x1, _x2])
+        N = x_stacked.shape[0]
 
         chex.assert_rank(x_stacked, 2)
 
-        if self.parent_model is not None:
-            parent_mean, parent_k = self.parent_model.predict(x_stacked, diagonal=False)
-        else:
-            parent_mean = np.zeros(x_stacked.shape[0])
-            parent_k = self.parent_kernel.K(x_stacked, x_stacked)
+        parent_mean = self.parent.mean(x_stacked)
+        parent_k = self.parent.covar(x_stacked, x_stacked)
+
+        chex.assert_shape(parent_mean, [self.input_dim, N, 1])
+        chex.assert_shape(parent_k, [self.input_dim, N, N])
 
         return parent_mean, parent_k
 
@@ -141,58 +145,56 @@ class DeepStationary(StationaryKernel):
         return self.variance * np.ones(X1.shape[0])
 
     def _K(self, X1, X2):
-
+        # Precompute parent mean and variances
         parent_mean, parent_k = self.propogate_parent(X1, X2)
 
-        if not self.use_X:
-            X1 = X1[:, 0][:, None]
-            X2 = X2[:, 0][:, None]
-
-        D = X1.shape[1]
-
-        chex.assert_rank(parent_mean, 1)
-        chex.assert_rank(parent_k, 2)
-
         # Get predictions for X1 and X2
-        pm_x1 = parent_mean[:X1.shape[0]]
-        pm_x2 = parent_mean[X1.shape[0]:]
+        pm_x1 = parent_mean[:, :X1.shape[0], :]
+        pm_x2 = parent_mean[:, X1.shape[0]:, :]
 
         # Get joint_covariances
-        pk_x1x1 = np.diag(parent_k[:X1.shape[0], :X1.shape[0]])
-        pk_x2x2 = np.diag(parent_k[X1.shape[0]:, X1.shape[0]:])
-        pk_x1x2 = parent_k[:X1.shape[0], X1.shape[0]:]
+        pk_x1x1 = np.diagonal(parent_k[:, :X1.shape[0], :X1.shape[0]], axis1=1, axis2=2)
+        pk_x2x2 = np.diagonal(parent_k[:, X1.shape[0]:, X1.shape[0]:], axis1=1, axis2=2)
+        pk_x1x2 = parent_k[:, :X1.shape[0], X1.shape[0]:]
 
         return self._K_with_pm(X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2)
 
     def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2):
         D = X1.shape[1]
 
+        # Batch over X1, and X2 to compute full K(X1, X2)
         def _K_d2(x1, x2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
-            #vectorised over 2nd input
-            #chex.assert_rank(x1, 1)
-            #chex.assert_rank(x2, 1)
+            """ Computes K(x1, x2) """
+            chex.assert_shape(x1, [D])
+            chex.assert_shape(x2, [D])
 
-            #chex.assert_equal(x1.shape[0], D)
-            #chex.assert_equal(x2.shape[0], D)
+            # batch over input_dim = first dimension 
+            k_xx = jax.vmap(
+                self._K_scaler,
+                in_axes = [0, 0, 0 , 0, 0, 0, 0, 0, 0],
+                out_axes=0
+            )(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
 
-            #vectorise over input dim
-            #k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, None, 0, None, None, None, None, None])(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
-            k_d1_d2 = self._K_scaler(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
+            k_xx = k_xx[:, 0]
 
-            #k_xx = k_d1_d2
+            chex.assert_rank(k_xx, self.input_dim)
 
-            #chex.assert_equal(k_d1_d2.shape[0], D)
-            k_xx =  np.product(k_d1_d2)
-
-            chex.assert_rank(k_xx, 0)
-
+            k_xx = np.product(k_xx)
             return k_xx
 
         def _K_d1(x1, X2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
-            #vectorised over first input
-            return jax.vmap(_K_d2, in_axes=[None, 0, None, 0, None, 0, 0], out_axes=0)(x1, X2, pm_x1, pm_x2,  pk_x1x1, pk_x2x2, pk_x1x2)
+            """ Computes K(x1, X2) """
+            return jax.vmap(
+                _K_d2, 
+                in_axes=[None, 0, None, 1, None, 1, 1],
+                out_axes=0
+            )(x1, X2, pm_x1, pm_x2,  pk_x1x1, pk_x2x2, pk_x1x2)
 
-        K = jax.vmap(_K_d1, in_axes=[0, None, 0, None, 0, None, 0], out_axes=0)(X1, X2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
+        K = jax.vmap(
+            _K_d1, 
+            in_axes=[0, None, 1, None, 1, None, 1], 
+            out_axes=0
+        )(X1, X2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
 
         chex.assert_equal(K.shape[0], X1.shape[0])
         chex.assert_equal(K.shape[1], X2.shape[0])

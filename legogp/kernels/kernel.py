@@ -160,7 +160,6 @@ class StationaryKernel(Kernel):
             ensure_float(variance)
 
         chex.assert_shape(lengthscales, [input_dim])
-        chex.assert_rank(variance, 0)  # scalar
 
         # register lengthscales and variances
         self.raw_lengthscales = objax.TrainVar(inv_positive_transform(lengthscales))

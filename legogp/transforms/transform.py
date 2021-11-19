@@ -136,7 +136,7 @@ class Independent(LinearTransform):
 
     def mean(self, X1: np.ndarray) -> np.ndarray:
         mean = batch_or_loop(
-            lambda X1, latent:  latent.mean(X1),
+            lambda X1, latent:  latent.mean(X1)[0],
             [X1, self.latents],
             [None, 0],
             dim = self.num_latents,
@@ -153,7 +153,7 @@ class Independent(LinearTransform):
 
     def covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
         k_arr = batch_or_loop(
-            lambda X1, X2, latent:  latent.covar(X1, X2),
+            lambda X1, X2, latent:  latent.covar(X1, X2)[0],
             [X1, X2, self.latents],
             [None, None, 0],
             dim = self.num_latents,
@@ -171,7 +171,7 @@ class Independent(LinearTransform):
 
     def var(self, X1: np.ndarray) -> np.ndarray:
         var = batch_or_loop(
-            lambda X1, latent:  latent.var(X1),
+            lambda X1, latent:  latent.var(X1)[0],
             [X1, self.latents],
             [None, 0],
             dim = self.num_latents,

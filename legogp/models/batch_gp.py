@@ -87,6 +87,10 @@ class BatchGP(Posterior):
                     )
                     for j in range(self.output_dim)
                 ]
+            else:
+                if type(self.kernel) is not list:
+                    self.kernel = [self.kernel]
+
 
             # Construct independent prior
             self._prior = Independent(
@@ -127,11 +131,11 @@ class BatchGP(Posterior):
         return self.log_marginal_likelihood(X, Y)
 
     def mean(self, XS):
-        mu, _ = self.predict_f(XS, diagonal=True)
+        mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
         return mu
 
     def var(self, XS):
-        _, var = self.predict_f(XS, diagonal=True)
+        _, var = self.predict_f(XS, diagonal=True, squeeze=False)
         return var
 
     def covar(self, XS_1, XS_2, X=None, Y=None):
@@ -152,7 +156,7 @@ class BatchGP(Posterior):
         )
 
         if squeeze:
-            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr)
+            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
 
         return mu_arr, var_arr
 

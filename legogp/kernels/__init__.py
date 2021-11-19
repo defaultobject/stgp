@@ -10,6 +10,7 @@ from .kernel import (
 from .matern import Matern32
 from .rbf import RBF
 from .approximate_markov import ApproximateMarkovKernel
+from .deep_kernels import DeepStationary
 
 __all__ = [
     "Kernel",
@@ -18,5 +19,6 @@ __all__ = [
     "RBF",
     "Matern32",
     "ApproximateMarkovKernel",
-    "WhiteNoiseKernel"
+    "WhiteNoiseKernel",
+    "DeepStationary"
 ]

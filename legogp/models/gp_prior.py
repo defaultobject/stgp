@@ -44,16 +44,18 @@ class GPPrior(Prior):
 
     def mean(self, XS):
         """ Assume a zero mean GP """
-        return np.zeros(XS.shape[0])[:, None]
+        return np.zeros(XS.shape[0])[None, :, None]
 
     def var(self, XS):
         k =  self.kernel.K_diag(XS)
-        chex.assert_shape(k, [XS.shape[0]])
+        k = k[None, :]
+        chex.assert_shape(k, [1, XS.shape[0]])
         return k
 
     def covar(self, X1, X2):
         k = self.kernel.K(X1, X2)
-        chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
+        k = k[None, :]
+        chex.assert_shape(k, [1, X1.shape[0], X2.shape[0]])
         return k
 
     def sample(self, X1, X2):
