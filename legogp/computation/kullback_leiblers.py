@@ -16,9 +16,12 @@ from typing import List
 from objax import ModuleList
 
 @jit
-def gaussian_kl( mu_1, mu_2, covar_chol_1, covar_chol_2) -> np.ndarray:
+def gaussian_cholesky_kl( mu_1, covar_chol_1, mu_2, covar_chol_2) -> np.ndarray:
     """
     computs KL[g1, g2]
+    where
+        g1 = N(mu_1, covar_chol_1 @ covar_chol_1.T)
+        g2 = N(mu_2, covar_chol_2 @ covar_chol_2.T)
     """
 
     log_det_term = log_chol_matrix_det(covar_chol_2) - log_chol_matrix_det(covar_chol_1)
@@ -39,6 +42,16 @@ def gaussian_kl( mu_1, mu_2, covar_chol_1, covar_chol_2) -> np.ndarray:
     N = mu_1.shape[0] * 1.0
 
     return 0.5 * (log_det_term - N + trace_term + maha_term)
+
+@jit
+def gaussian_kl( mu_1, covar_1, mu_2, covar_2) -> np.ndarray:
+    """
+    computs KL[g1, g2]
+    """
+    covar_chol_1 = cholesky(add_jitter(covar_1, jitter))
+    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+    
+    return gaussian_cholesky_kl(mu_1, covar_chol_1, mu_2, covar_chol_2)
 
 
 @jit

@@ -9,7 +9,6 @@ from ..utils import utils
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from ..utils.utils import can_batch
 
-
 import jax
 import jax.numpy as np
 from jax import jit

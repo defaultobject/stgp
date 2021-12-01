@@ -5,7 +5,8 @@ from .kernel import (
     MarkovKernel,
     SumKernel,
     ProductKernel,
-    WhiteNoiseKernel
+    WhiteNoiseKernel,
+    ScaleKernel
 )
 from .matern import Matern32
 from .rbf import RBF
@@ -20,5 +21,6 @@ __all__ = [
     "Matern32",
     "ApproximateMarkovKernel",
     "WhiteNoiseKernel",
-    "DeepStationary"
+    "DeepStationary",
+    "ScaleKernel"
 ]

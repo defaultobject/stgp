@@ -1,11 +1,13 @@
 from ..settings import jitter
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised
-from ..approximate_posteriors import GaussianApproximatePosterior
+from ..approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
 from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform
+from .elbos import precompute_variational_primitives, precompute_diagonal_variational_primitives
+from .marginals import gaussian_conditional_diagional
 
 from ..utils import utils
 from ..utils.utils import can_batch
@@ -101,18 +103,19 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
     Ns = XS.shape[0]
     N = X.shape[0]
 
-    mask = get_mask(Y)
+    if False:
+        mask = get_mask(Y)
 
-    # TODO: document and test this
-    Y = np.nan_to_num(Y, nan=0.0)
+        # TODO: document and test this
+        Y = np.nan_to_num(Y, nan=0.0)
 
 
-    mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
-    K_xs_x = np.multiply(K_xs_x, mask_xs_x)
+        mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
+        K_xs_x = np.multiply(K_xs_x, mask_xs_x)
 
-    K_xx = mask_to_identity(K_xx, mask)
+        K_xx = mask_to_identity(K_xx, mask)
 
-    mean_x =  mask_vector(mean_x, mask)
+        mean_x =  mask_vector(mean_x, mask)
 
     return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
 
@@ -212,7 +215,6 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     mean_x = prior.mean(X)
     mean_xs = prior.mean(XS)
 
-
     Y = Y[..., None]
 
     mu_arr, var_arr = batch_or_loop(
@@ -239,16 +241,18 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     mean_x = prior.vec_mean(X)
     mean_xs = prior.vec_mean(XS)
 
+
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
 
     #TODO: implement masking
 
-    mask = get_mask(Y_vec)
-    Y_vec = np.nan_to_num(Y_vec,  nan=0.0)
-    mask_xs_x = np.tile(mask, [K_xs_x.shape[0], 1]) 
-    K_xs_x = np.multiply(K_xs_x, mask_xs_x)
-    K_xx = mask_to_identity(K_xx, mask)
-    mean_x =  mask_vector(mean_x, mask)
+    if False:
+        mask = get_mask(Y_vec)
+        Y_vec = np.nan_to_num(Y_vec,  nan=0.0)
+        mask_xs_x = np.tile(mask, [K_xs_x.shape[0], 1]) 
+        K_xs_x = np.multiply(K_xs_x, mask_xs_x)
+        K_xx = mask_to_identity(K_xx, mask)
+        mean_x =  mask_vector(mean_x, mask)
 
     mu, var = full_gaussian_prediction_diagonal(
         Y_vec,
@@ -264,3 +268,24 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     var = var.reshape([P, Ns])
 
     return mu, var
+
+
+@dispatch(Independent, MeanFieldApproximatePosterior)
+def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
+    mean_xx_arr, mean_zz_arr, K_x_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, S_arr = precompute_diagonal_variational_primitives(XS, prior, approximate_posterior)
+
+    P = len(approximate_posterior.approx_posteriors)
+
+    mu, sig = batch_or_loop(
+        gaussian_conditional_diagional,
+        [XS, X, K_zz_arr, K_xz_arr, K_x_arr, m_arr, S_chol_arr],
+        [None, None, 0, 0, 0, 0, 0],
+        dim=P,
+        out_dim=2,
+        batch_flag = can_batch(None)
+    )
+
+    return mu, sig
+
+
+

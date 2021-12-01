@@ -1,6 +1,6 @@
 from ..obj_dispatch import obj_dispatch, obj_find
 from ..inference import Batch
-from .gp_prior import GPPrior
+from ..core import GPPrior
 
 def GP(*args, inference=Batch(), **kwargs):
     # Y is passed either explictly through kwargs to implitly through args

@@ -1,4 +1,3 @@
-from .sparsity import Sparsity
-from .no_sparsity import NoSparsity
+from .sparsity import Sparsity, NoSparsity, FullSparsity
 
-__all__ = ['Sparsity', 'NoSparsity']
+__all__ = ['Sparsity', 'NoSparsity', 'FullSparsity']

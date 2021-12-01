@@ -1,13 +1,27 @@
 import objax
 import jax.numpy as np
-from ..batching import batch
 
 class Sparsity(objax.Module):
-    def __init__(self, Z: np.ndarray):
-        self.raw_Z = objax.TrainVar(Z)
-        #self.raw_Z = objax.StateVar(Z)
+    @property
+    def Z(self):
+        raise NotImplementedError()
 
-    @batch
-    def Z(self, raw_fn):
-        return raw_fn()
+class NoSparsity(Sparsity):
+    def __init__(self, Z: np.ndarray):
+        super(NoSparsity, self).__init__()
+        self.raw_Z = objax.StateVar(Z)
+
+    @property
+    def Z(self):
+        return self.raw_Z.value
+
+class FullSparsity(Sparsity):
+    def __init__(self, Z: np.ndarray):
+        super(FullSparsity, self).__init__()
+        self.raw_Z = objax.TrainVar(Z)
+
+    @property
+    def Z(self):
+        return self.raw_Z.value
+
 

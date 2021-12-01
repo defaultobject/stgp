@@ -11,7 +11,8 @@ from ..obj_dispatch import obj_dispatch, obj_find
 from ..dispatch import evoke
 from ..batching import loop_or_batch
 
-from . import Model, Posterior, GP
+from ..core import Model, Posterior
+from . import GP
 from ..kernels import Kernel
 from ..inference import Batch
 from ..computation.log_marginal_likelihoods import * 
@@ -19,6 +20,7 @@ from ..likelihood import Gaussian
 from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
+from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 
 from ..sparsity import NoSparsity
 
@@ -34,6 +36,7 @@ class BatchGP(Posterior):
         if Y is None:
             raise RuntimeError('Y must be passed')
 
+        # will save X, Y as a property
         super(BatchGP, self).__init__(X, Y, **kwargs)
 
         self.inference = inference
@@ -79,37 +82,25 @@ class BatchGP(Posterior):
 
             # Only set a default kernel if we are in kernel mode and one has not been passed
             if self.kernel is None:
-                warnings.warn('Using default ARD RBF kernel')
-                self.kernel = [
-                    RBF(
-                        lengthscales=[1.0 for d in range(self.input_space_dim)],
-                        input_dim=self.input_space_dim
-                    )
-                    for j in range(self.output_dim)
-                ]
+                self.kernel = get_default_kernel(self.input_space_dim, self.output_dim)
             else:
                 if type(self.kernel) is not list:
                     self.kernel = [self.kernel]
 
-
             # Construct independent prior
-            self._prior = Independent(
-                latents = [
-                    GP(
-                        X = self.X,
-                        kernel = self.kernel[q],
-                    )
-                    for q in range(self.output_dim)
-                ],
-                prior=True
+
+            self._prior = get_default_independent_prior(
+                self.X,
+                self.input_space_dim, 
+                self.output_dim, 
+                kernel_list=self.kernel
             )
 
         if self.inference == None:
             self.inference = Batch()
 
         if self.likelihood == None:
-            warnings.warn('Using default Gaussian likelihood')
-            self._likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.output_dim)])
+            self._likelihood = get_default_likelihood(self.output_dim)
 
     def log_marginal_likelihood(self, X=None, Y=None):
 

@@ -1,16 +1,16 @@
 import jax.numpy as np
 import objax
+from ..core import Posterior
 from ..dispatch import evoke
 from ..integral_approximators.factory import get_approximator
 from .. import settings
 import chex
 
-class ApproximatePosterior(objax.Module):
-    def __init__(self, whiten=False):
-        self.whiten = whiten
+class ApproximatePosterior(Posterior):
+    def __init__(self):
+        super(ApproximatePosterior, self).__init__()
 
         self.approximator = get_approximator()
-
         self.generator = objax.random.Generator(seed=0)
 
     def ELL(self, X: np.ndarray, Y: np.ndarray, likelihood: 'Likelihood', kernel: 'Kernel', sparsity: 'Sparsity', minibatch):

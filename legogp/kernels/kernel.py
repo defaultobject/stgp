@@ -11,7 +11,6 @@ import typing
 from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..utils.utils import ensure_array, ensure_float
-from ..batching import batch
 
 
 class Kernel(objax.Module):
@@ -37,19 +36,49 @@ class Kernel(objax.Module):
     def __mul__(self, kern_2):
         return ProductKernel(self, kern_2)
 
+    def _apply_active_dim(self, X):
+        if self.active_dims is None:
+            X = X
+        else:
+            X = X[:, self.active_dims]
+
+        return X
+
+
     @abstractmethod
     def K(self, X1: np.array, X2: np.array):
         chex.assert_rank([X1, X2], [2, 2])
         chex.assert_equal(X1.shape[1], X2.shape[1])
 
-        if self.active_dims is None:
-            _X1, _X2 = X1, X2
-        else:
-            _X1 = X1[:, self.active_dims]
-            _X2 = X2[:, self.active_dims]
-
+        _X1 = self._apply_active_dim(X1)
+        _X2 = self._apply_active_dim(X2)
 
         return self._K(_X1, _X2)
+
+    def _K(self, X1, X2):
+        D = X1.shape[1]
+        def _K_d2(x1, x2):
+            chex.assert_shape(x1, [D])
+            chex.assert_shape(x1, [D])
+
+            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0])(x1, x2)
+            chex.assert_shape(k_d1_d2, [D])
+
+            k_xx =  np.product(k_d1_d2)
+            chex.assert_rank(k_xx, 0)
+
+            return k_xx
+
+        def _K_d1(x1, X2):
+            #vectorised over first input
+            return jax.vmap(_K_d2, in_axes=[None, 0], out_axes=0)(x1, X2)
+
+        K = jax.vmap(_K_d1, in_axes=[0, None], out_axes=0)(X1, X2)
+
+        chex.assert_equal(K.shape[0], X1.shape[0])
+        chex.assert_equal(K.shape[1], X2.shape[0])
+
+        return K
 
     @abstractmethod
     def K_diag(self, X: np.array):
@@ -114,35 +143,51 @@ class MarkovKernel(Kernel):
         raise NotImplementedError()
 
 class WhiteNoiseKernel(Kernel):
-    def __init__(self, variance: Optional[np.ndarray] = None):
+    def __init__(
+        self,
+        input_dim: Optional[int] = 1, 
+        active_dims: Optional[np.ndarray] = None
+    ):
+        super(WhiteNoiseKernel, self).__init__(input_dim, active_dims)
+
+    def _K_scaler(self, x1, x2):
+        chex.assert_rank(x1, 0)
+        chex.assert_rank(x2, 0)
+
+        return ((x1-x2)==0).astype(float)
+
+class ScaleKernel(Kernel):
+    def __init__(
+        self,
+        kernel: 'Kernel',
+        variance: Optional[np.ndarray] = None,
+    ) -> None:
+
+        super(ScaleKernel, self).__init__(1, None)
+        self.parent_kernel = kernel
+
         if variance is None:
             variance = 1.0
         else:
             ensure_float(variance)
 
-        chex.assert_rank(variance, 0)  # scalar
         self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
-    @batch
-    def variance(self, raw_getter) -> np.ndarray:
-        return positive_transform(raw_getter())
+
+    @property
+    def variance(self) -> np.ndarray:
+        return positive_transform(self.raw_variance.value)
 
     def K_diag(self, X1):
-        return self.variance * np.ones(X1.shape[0])
+        return self.variance * self.parent_kernel.K_diag(X1)
 
-    def K(self, X1, X2):
-        # X1 in N1 x D
-        # X2 in N2 x D
-
-        k = ((X1-X2.T)==0).astype(float) * self.variance
-
-        return k
+    def _K(self, X1, X2):
+        return self.variance * self.parent_kernel.K(X1, X2)
 
 class StationaryKernel(Kernel):
     def __init__(
         self,
         lengthscales: Optional[np.ndarray] = None,
-        variance: Optional[np.ndarray] = None,
         input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
     ) -> None:
@@ -154,27 +199,21 @@ class StationaryKernel(Kernel):
         else:
             lengthscales = ensure_array(lengthscales)
 
-        if variance is None:
-            variance = 1.0
-        else:
-            ensure_float(variance)
 
         chex.assert_shape(lengthscales, [input_dim])
 
         # register lengthscales and variances
         self.raw_lengthscales = objax.TrainVar(inv_positive_transform(lengthscales))
-        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
-    @batch
-    def lengthscales(self, raw_getter) -> np.ndarray:
-        return positive_transform(raw_getter())
+    @property
+    def lengthscales(self) -> np.ndarray:
+        return positive_transform(self.raw_lengthscales.value)
 
-    @batch
-    def variance(self, raw_getter) -> np.ndarray:
-        return positive_transform(raw_getter())
+
 
     def K_diag(self, X1):
-        return self.variance * np.ones(X1.shape[0])
+        #TODO: this needs to be multiplied by D, or var is only used once!
+        return np.ones(X1.shape[0])
 
     def _K(self, X1, X2):
         D = X1.shape[1]
@@ -187,7 +226,7 @@ class StationaryKernel(Kernel):
             chex.assert_equal(x1.shape[0], D)
             chex.assert_equal(x2.shape[0], D)
 
-            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, None, 0])(x1, x2, self.variance, self.lengthscales)
+            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, 0])(x1, x2, self.lengthscales)
 
             chex.assert_equal(k_d1_d2.shape[0], D)
 

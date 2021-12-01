@@ -3,38 +3,76 @@ import jax.numpy as np
 import objax
 import chex
 from .. import settings
+from ..utils.utils import ensure_module_list, can_batch
+from batchjax import batch_or_loop
 
 from ..transforms  import LinearTransform, NonLinearTransform
 from . import ApproximatePosterior, GaussianApproximatePosterior
-from ..batching import batch
-from .. batching import Batched
 from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower_triangle
 import chex
 from ..computation.ell_callers import linear_transform_ell, non_linear_transform_ell
 from ..computation.predictor_callers import linear_predictor, non_linear_predictor
 
+from typing import Optional, List
+
+def batch_over_posteriors(post_list, fn):
+    arr = batch_or_loop(
+        fn,
+        [post_list],
+        [0],
+        dim = post_list,
+        out_dim = 1,
+        batch_flag = can_batch(post_list)
+    )
+    return arr
+
 class MeanFieldApproximatePosterior(ApproximatePosterior):
-    def __init__(self, prior: 'Node', whiten=False):
-        super(MeanFieldApproximatePosterior, self).__init__(whiten)
+    def __init__(self, dim_list: List[int]=None, approximate_posteriors: Optional[List[GaussianApproximatePosterior]]=None):
+        super(MeanFieldApproximatePosterior, self).__init__()
 
-        self.number_latents = prior.number_of_latents()
+        self.num_of_latents = len(dim_list)
 
-        #TODO: dim
-        self.approx_posteriors = objax.ModuleList([
-            GaussianApproximatePosterior(dim=100, whiten=self.whiten)
-            for q in range(self.number_latents)
-        ])
+        if approximate_posteriors is None:
+            self.approx_posteriors = objax.ModuleList([
+                GaussianApproximatePosterior(dim=dim_list[q])
+                for q in range(self.num_of_latents)
+            ])
+        else: 
+            self.approx_posteriors = approximate_posteriors
 
+    @property
+    def m(self):
+        m_arr = batch_over_posteriors(
+            self.approx_posteriors,
+            lambda latent:  latent.m
+        )
 
-    def predict(self, XS, X, likelihood, prior, diagonal):
-        if isinstance(prior, LinearTransform):
-            return linear_predictor(XS, X, likelihood, prior, self)
-        
-        if isinstance(prior, NonLinearTransform):
-            return non_linear_predictor(XS, X, likelihood, prior, self)
+        return m_arr
 
-        raise NotImplementedError()
+    @property
+    def S_chol(self):
+        arr = batch_over_posteriors(
+            self.approx_posteriors,
+            lambda latent:  latent.S_chol
+        )
 
+        return arr
+
+    @property
+    def S(self):
+        arr = batch_over_posteriors(
+            self.approx_posteriors,
+            lambda latent:  latent.S
+        )
+        return arr
+
+    @property
+    def S_diag(self):
+        arr = batch_over_posteriors(
+            self.approx_posteriors,
+            lambda latent:  latent.S_diag
+        )
+        return arr
 
     def sample_from_precomputed(self, n_samples):
         N = self.precomputed_marginal_mean_arr[0].shape[0]
@@ -48,90 +86,3 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
         )
 
         return samples
-
-    def precompute_marginals(self, X, prior):
-        latents = prior.latents
-        num_latents = len(latents)
-        if settings.use_loop_mode:
-            mean_arr = []
-            var_arr = []
-            for q in range(num_latents):
-                mean_q, var_q = self.approx_posteriors[q].marginal(
-                    X,
-                    latents[q].kernel[0],
-                    latents[q].sparsity
-                )
-
-                mean_arr.append(mean_q)
-                var_arr.append(var_q)
-
-            mean_arr = np.array(mean_arr)
-            var_arr = np.array(var_arr)
-        else:
-
-            with Batched(latents) as latents, Batched(self.approx_posteriors) as approx_posteriors:
-                def batched_marginals(X, latent, latent_vars, approx_posterior, approx_posterior_vars):
-                    latent.set_vars(latent_vars)
-                    approx_posterior.set_vars(approx_posterior_vars)
-
-                    latent = latent.get_obj()
-                    approx_posterior = approx_posterior.get_obj()
-
-
-                    #todo cache marginals?
-                    mean_q, var_q = approx_posterior.marginal(
-                        X,
-                        latent.kernel[0],
-                        latent.sparsity
-                    )
-
-                    return mean_q,  var_q 
-
-                mean_arr, var_arr = jax.vmap(batched_marginals, (None,  None, 0, None, 0), (0, 0))(X, latents, latents.get_vars(), approx_posteriors, approx_posteriors.get_vars())
-
-
-                chex.assert_equal(mean_arr.shape, (num_latents, X.shape[0], 1))
-                chex.assert_equal(var_arr.shape, (num_latents, X.shape[0], 1))
-
-
-        self.precomputed_marginal_mean_arr = mean_arr
-        self.precomputed_marginal_var_arr = var_arr
-
-    def ELL(self, X: np.ndarray, Y: np.ndarray, likelihood: 'Likelihood', transform: 'Transform'):
-        if isinstance(transform, LinearTransform):
-            return linear_transform_ell(X, Y, likelihood, transform, self)
-
-
-        if isinstance(transform, NonLinearTransform):
-            return non_linear_transform_ell(X, Y, likelihood, transform, self)
-
-        raise NotImplementedError()
-
-    def KL(self, X: np.ndarray, transform: 'Transform'):
-        latents = transform.latents
-        num_latents = len(latents)
-
-        if False and settings.use_loop_mode:
-            raise NotImplementedError()
-        else:
-
-            with Batched(latents) as latents, Batched(self.approx_posteriors) as approx_posteriors:
-                def batched_kl(X, latent, latent_vars, approx_posterior, approx_posterior_vars):
-                    latent.set_vars(latent_vars)
-                    approx_posterior.set_vars(approx_posterior_vars)
-
-                    latent = latent.get_obj()
-                    approx_posterior = approx_posterior.get_obj()
-
-                    return approx_posterior.KL(
-                        X, 
-                        latent.kernel,
-                        latent.sparsity
-                    )
-
-                kl = jax.vmap(batched_kl, (None,  None, 0, None, 0), 0)(X, latents, latents.get_vars(),  approx_posteriors, approx_posteriors.get_vars())
-
-            chex.assert_equal(kl.shape, (num_latents, ))
-
-        return np.sum(kl)
-

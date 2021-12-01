@@ -5,9 +5,9 @@ from ..approximate_posteriors import GaussianApproximatePosterior
 from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..batching import Batched
-from ..sparsity import NoSparsity, Sparsity
+from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
-from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve
+from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky
 
 import jax
 from jax import jit
@@ -111,9 +111,18 @@ def whitened_gaussian_conditional_full(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, K
     return mu, sig
 
 
-@dispatch(object, GaussianApproximatePosterior, object, NoSparsity)
-def diagonal_marginal(X, approximate_posterior, kernel, sparsity):
-    return approximate_posterior.m, approximate_posterior.S_diag
+@dispatch(NoSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity):
+    return m, diagonal_from_cholesky(S_chol)
+
+
+@dispatch(FullSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity):
+    Z = sparsity.Z
+    return gaussian_conditional_diagional(
+        X, Z, K_zz, K_xz, K_xx, m, S_chol
+    )
+
 
 
 @dispatch(object, GaussianApproximatePosterior, object, NoSparsity)
@@ -136,7 +145,7 @@ def whitened_diagonal_marginal(X, approximate_posterior, kernel, sparsity):
     return whitened_diagonal_marginal(X, Z, approximate_posterior, kernel, sparsity)
 
 @dispatch(object, object, GaussianApproximatePosterior, object, NoSparsity)
-def diagonal_marginal(XS, X, approximate_posterior, kernel, sparsity):
+def _diagonal_marginal(XS, X, approximate_posterior, kernel, sparsity):
     X = sparsity.X
 
 

@@ -1,7 +1,8 @@
 from . import Kernel
-from .kernel import StationaryKernel, ConcatationKernel
+from .kernel import StationaryKernel, ConcatationKernel, WhiteNoiseKernel
 from ..dispatch import evoke
 from .. import settings
+from ..computation.gaussian import log_gaussian_scalar
 
 import jax
 import jax.numpy as np
@@ -11,7 +12,6 @@ from jax.scipy.special import erf
 from typing import List, Optional, Union
 
 import chex 
-from ..batching import batch
 import warnings
 
 class DeepIndependentKernel(ConcatationKernel):
@@ -38,37 +38,65 @@ class DeepNN(Kernel):
         X2_nn = self.nn(X2)
         return self.kernel.K(X1_nn, X2_nn)
 
+
+
+
+
 class DeepHetreo(Kernel):
     def __init__(
         self,
-        parent_model: Optional['Model'] = None,
-        ignore_var = False
+        parent: Optional['Model'] = None,
+        ignore_var = False,
+        input_dim: Optional[int] = 1, 
+        active_dims: Optional[np.ndarray] = None
     ):
-        self.parent_model = parent_model
+        super(DeepHetreo, self).__init__(input_dim, active_dims)
+
+        self.parent_model = parent
         self.ignore_var = ignore_var
+        self.kernel = WhiteNoiseKernel(input_dim, active_dims)
 
     def propogate_parent(self, X):
-        parent_mean, parent_k = self.parent_model.predict(X, diagonal=True)
+        N = X.shape[0]
+
+        parent_mean, parent_k = self.parent_model.predict_f(X, diagonal=True, squeeze=False)
+
+        parent_mean = parent_mean[0]
+        parent_k = parent_k[0]
+
+        chex.assert_shape(parent_mean, [N, 1])
+        chex.assert_shape(parent_k, [N, 1])
 
         return parent_mean, parent_k
 
     def K_diag(self, X):
         pm, pk = self.propogate_parent(X)
 
+        pm = pm[:, 0]
+        pk = pk[:, 0]
+
         if self.ignore_var:
             k =  np.exp(pm)
         else:
             k =  np.exp(pm+pk/2)
 
+        chex.assert_shape(k, [X.shape[0]])
         return k
 
     def K(self, X1, X2):
+        """ 
+        X1, X2 need to be full shape when we call propogate_parent hence we overwrite K not _K
+        """
         pm, pk = self.propogate_parent(X1)
 
-        pm = np.tile(pm[:, None], [1, X2.shape[0]])
-        pk = np.tile(pk[:, None], [1, X2.shape[0]])
+        pm = np.tile(pm, [1, X2.shape[0]])
+        pk = np.tile(pk, [1, X2.shape[0]])
 
-        wn_kern = ((X1-X2.T)==0).astype(float)
+        # Manually  apply active dim
+        X1 = self._apply_active_dim(X1)
+        X2 = self._apply_active_dim(X2)
+
+        wn_kern = self.kernel.K(X1, X2)
 
         pm = pm *wn_kern
         pk = pk *wn_kern
@@ -93,26 +121,35 @@ class DeepStationary(StationaryKernel):
     def __init__(
         self, 
         parent: Optional['Model'] = None,
+        kernel: Optional['Kernel'] = None,
         lengthscale: Optional[np.ndarray] = None, 
-        variance: Optional[np.ndarray] = None, 
         input_dim: Optional[int] = 1, 
         active_dims: Optional[np.ndarray] = None
     ):
-        if variance is None:
-            warnings.warn('Using default DeepStationary variance')
-            variance = np.ones(input_dim)
 
-        super(DeepStationary, self).__init__(lengthscale, variance, input_dim, active_dims)
+        super(DeepStationary, self).__init__(lengthscale, input_dim, active_dims)
         
         # If parent is not passed in the kernel constructed it MUST be added before the kernel is used
         self.parent = parent
+
+        self.kernel = kernel
+
+        if self.kernel is None:
+            self.use_parent = True
+        else:
+            self.use_parent = False
 
 
     def set_parent(self, parent):
         self.parent = parent
 
     def forward(self, X1, X2, mu_1, mu_2, k_x1, k_x2, K_x1x2):
-        # TODO: implement
+        mu_1 = mu_1[None, :, :]
+        mu_2 = mu_2[None, :, :]
+        k_x1 = k_x1[None, :, :]
+        k_x2 = k_x2[None, :, :]
+        K_x1x2 = K_x1x2[None, :, :]
+
         return self._K_with_pm(
             X1, X2, mu_1, mu_2, k_x1, K_x1x2, k_x2
         )
@@ -122,48 +159,57 @@ class DeepStationary(StationaryKernel):
         return self.K_diag(X1)
 
     def propogate_parent(self, x1, x2):
-        #_x1 = np.reshape( x1, [1, -1])
-        #_x2 = np.reshape( x2, [1, -1])
+        if self.use_parent:
+            pm_x1 = self.parent.mean(x1)
+            pm_x2 = self.parent.mean(x2)
 
-        _x1 = x1
-        _x2 = x2
+            pk_x1x1 = self.parent.var(x1)
+            pk_x2x2 = self.parent.var(x2)
+            pk_x1x2 = self.parent.covar(x1, x2)
+        else:
+            N1 = x1.shape[0]
+            N2 = x2.shape[0]
+            pm_x1 = np.zeros([1, N1, 1])
+            pm_x2 = np.zeros([1, N2, 1])
 
-        x_stacked = np.vstack([_x1, _x2])
-        N = x_stacked.shape[0]
+            pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
+            pk_x2x2 = self.kernel.K_diag(x2)[None, :, None]
+            pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
 
-        chex.assert_rank(x_stacked, 2)
 
-        parent_mean = self.parent.mean(x_stacked)
-        parent_k = self.parent.covar(x_stacked, x_stacked)
-
-        chex.assert_shape(parent_mean, [self.input_dim, N, 1])
-        chex.assert_shape(parent_k, [self.input_dim, N, N])
-
-        return parent_mean, parent_k
+        return pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2
 
     def K_diag(self, X1):
-        return self.variance * np.ones(X1.shape[0])
+        return self._K_var(self.lengthscales) * np.ones(X1.shape[0])
 
     def _K(self, X1, X2):
         # Precompute parent mean and variances
-        parent_mean, parent_k = self.propogate_parent(X1, X2)
-
-        # Get predictions for X1 and X2
-        pm_x1 = parent_mean[:, :X1.shape[0], :]
-        pm_x2 = parent_mean[:, X1.shape[0]:, :]
-
-        # Get joint_covariances
-        pk_x1x1 = np.diagonal(parent_k[:, :X1.shape[0], :X1.shape[0]], axis1=1, axis2=2)
-        pk_x2x2 = np.diagonal(parent_k[:, X1.shape[0]:, X1.shape[0]:], axis1=1, axis2=2)
-        pk_x1x2 = parent_k[:, :X1.shape[0], X1.shape[0]:]
+        pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2 = self.propogate_parent(X1, X2)
 
         return self._K_with_pm(X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2)
 
-    def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2):
+    def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1, pk_x1x2, pk_x2):
         D = X1.shape[1]
 
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
+
+        chex.assert_shape(X1, [N1, D])
+        chex.assert_shape(X2, [N2, D])
+        chex.assert_shape(pm_x1, [self.input_dim, N1, 1])
+        chex.assert_shape(pm_x2, [self.input_dim, N2, 1])
+        chex.assert_shape(pk_x1, [self.input_dim, N1, 1])
+        chex.assert_shape(pk_x2, [self.input_dim, N2, 1])
+        chex.assert_shape(pk_x1x2, [self.input_dim, N1, N2])
+
+        # Remove uncessary extra dim. Also ensures k_scalar returns a kernel not a matrix.
+        pm_x1 = pm_x1[..., 0]
+        pm_x2 = pm_x2[..., 0]
+        pk_x1 = pk_x1[..., 0]
+        pk_x2 = pk_x2[..., 0]
+
         # Batch over X1, and X2 to compute full K(X1, X2)
-        def _K_d2(x1, x2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
+        def _K_d2(x1, x2, pm_x1, pm_x2, pk_x1, pk_x2, pk_x1x2):
             """ Computes K(x1, x2) """
             chex.assert_shape(x1, [D])
             chex.assert_shape(x2, [D])
@@ -171,46 +217,54 @@ class DeepStationary(StationaryKernel):
             # batch over input_dim = first dimension 
             k_xx = jax.vmap(
                 self._K_scaler,
-                in_axes = [0, 0, 0 , 0, 0, 0, 0, 0, 0],
+                in_axes = [None, None, 0, 0, 0, 0, 0, 0],
                 out_axes=0
-            )(x1, x2, self.variance, self.lengthscales, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
-
-            k_xx = k_xx[:, 0]
-
-            chex.assert_rank(k_xx, self.input_dim)
+            )(x1, x2, self.lengthscales, pm_x1, pm_x2, pk_x1, pk_x2, pk_x1x2)
 
             k_xx = np.product(k_xx)
+
             return k_xx
 
-        def _K_d1(x1, X2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2):
+        def _K_d1(x1, X2, pm_x1, pm_x2, pk_x1, pk_x2, pk_x1x2):
             """ Computes K(x1, X2) """
             return jax.vmap(
                 _K_d2, 
                 in_axes=[None, 0, None, 1, None, 1, 1],
                 out_axes=0
-            )(x1, X2, pm_x1, pm_x2,  pk_x1x1, pk_x2x2, pk_x1x2)
+            )(x1, X2, pm_x1, pm_x2,  pk_x1, pk_x2, pk_x1x2)
 
         K = jax.vmap(
             _K_d1, 
             in_axes=[0, None, 1, None, 1, None, 1], 
             out_axes=0
-        )(X1, X2, pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2)
+        )(X1, X2, pm_x1, pm_x2, pk_x1, pk_x2, pk_x1x2)
 
-        chex.assert_equal(K.shape[0], X1.shape[0])
-        chex.assert_equal(K.shape[1], X2.shape[0])
+        chex.assert_shape(K, [X1.shape[0], X2.shape[0]])
 
         return K
 
 class DeepRBF(DeepStationary):
-    def _K_scaler(self, x1, x2, variance, lengthscale, m1, m2, k_11, k_22, k_12):
-        if m1 is None:
+    def _K_var(self, lengthscale):
+        return 1.0
+
+    def _K_scaler(self, x1, x2, lengthscale, m1, m2, k_11, k_22, k_12):
+        chex.assert_rank(k_11, 0)
+        chex.assert_rank(k_22, 0)
+        chex.assert_rank(k_12, 0)
+        chex.assert_rank(lengthscale, 0)
+
+        if self.use_parent:
             L = lengthscale + k_11 + k_22 - 2*k_12
-            k_ij =  np.sqrt(lengthscale)*variance / np.sqrt(L)
+
+            const = np.squeeze(np.sqrt(2*np.pi*lengthscale))
+
+            # setup correct dimensions for log_gaussian_scalar
+            k_ij = const * np.exp(log_gaussian_scalar(0, m1-m2, L))
         else:
             L = lengthscale + k_11 + k_22 - 2*k_12
-            k_ij =  np.exp(-(1/(2*L))*(m1-m2)**2)*np.sqrt(lengthscale)*variance / np.sqrt(L)
+            k_ij =  np.sqrt(lengthscale) / np.sqrt(L)
 
-
+        chex.assert_rank(k_ij, 0)
         return k_ij
 
         
@@ -232,6 +286,7 @@ class DeepMatern12(DeepStationary):
 
 
     def _K_scaler(self, x1, x2, variance, lengthscale):
+        raise NotImplementedError()
         #TODO: generalise to multi dimensions
 
         parent_mean, parent_k = self.propogate_parent(x1, x2)
@@ -289,12 +344,12 @@ class DeepSMComponent(DeepStationary):
         self.parent_kernel = kernel
         self.parent_model = parent_model
 
-    @batch
     def lengthscales(self, raw_getter) -> np.ndarray:
         """ \mu is not constrained to be positive in the SM kernel. """
         return raw_getter()
 
     def _K_scaler(self, x1, x2, variance, lengthscale):
+        raise NotImplementedError()
         #TODO: generalise to multi dimensions
 
         parent_mean, parent_k = self.propogate_parent(x1, x2)

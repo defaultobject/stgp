@@ -1,5 +1,6 @@
 from .models import Prior
 from ..kernels import RBF
+from ..sparsity import NoSparsity
 
 import jax
 import jax.numpy as np
@@ -14,11 +15,16 @@ class GPPrior(Prior):
         self, 
         X: np.ndarray, 
         kernel: Optional['Kernel'] = None,
+        sparsity: Optional['Sparsity'] = None,
         **kwargs
     ):
         super(GPPrior, self).__init__()
+
         self._X = objax.StateVar(X)
+
         self._kernel = kernel
+
+        self.sparsity = sparsity
 
         self.set_defaults()
 
@@ -29,6 +35,9 @@ class GPPrior(Prior):
                 lengthscales=[1.0 for d in range(self.input_dim)],
                 input_dim=self.input_dim
             )
+
+        if self.sparsity is None:
+            self.sparsity = NoSparsity(self.X)
 
     @property
     def X(self): return self._X.value

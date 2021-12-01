@@ -25,12 +25,12 @@ class Model(objax.Module, ABC):
         return 'model_checkpoint'
 
     #@property
-    @abstractmethod
+    #@abstractmethod
     def input_dim(self) -> int:
         raise NotImplementedError()
 
     #@property
-    @abstractmethod
+    #@abstractmethod
     def output_dim(self) -> int:
         raise NotImplementedError()
 
@@ -77,16 +77,18 @@ class Prior(Model):
         pass
 
 class Posterior(Model):
-    def __init__(self, X, Y, latent_y=False, latent_x=False, **kwargs):
-        if latent_y:
-            self._Y = objax.TrainVar(np.array(Y))
-        else:
-            self._Y = objax.StateVar(np.array(Y))
+    def __init__(self, X=None, Y=None, latent_y=False, latent_x=False, **kwargs):
+        if Y is not None:
+            if latent_y:
+                self._Y = objax.TrainVar(np.array(Y))
+            else:
+                self._Y = objax.StateVar(np.array(Y))
 
-        if latent_x:
-            self._X = objax.TrainVar(np.array(X))
-        else:
-            self._X = objax.StateVar(np.array(X))
+        if X is not None:
+            if latent_x:
+                self._X = objax.TrainVar(np.array(X))
+            else:
+                self._X = objax.StateVar(np.array(X))
 
     @property
     def X(self):
@@ -96,25 +98,25 @@ class Posterior(Model):
     def Y(self):
         return self._Y.value
 
-    @abstractmethod
+    #@abstractmethod
     def log_marginal_likelihood(self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         pass
 
     @property
-    @abstractmethod
+    #@abstractmethod
     def prior(self):
         pass
 
     @property
-    @abstractmethod
+    #@abstractmethod
     def likelihood(self):
         pass
 
-    @abstractmethod
+    #@abstractmethod
     def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         pass
 
-    @abstractmethod
+    #@abstractmethod
     def predict_y(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         pass
 

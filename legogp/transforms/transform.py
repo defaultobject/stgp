@@ -15,6 +15,10 @@ class Transform(objax.Module):
     def __init__(self):
         self._num_latents = None
         self._num_outputs = None
+
+        self._output_dim = None
+        self._input_dim = None
+
         self_latents = None
         self.batches = None
 
@@ -33,6 +37,12 @@ class Transform(objax.Module):
     @property
     def num_outputs(self):
         return self._num_outputs
+
+    @property
+    def output_dim(self): return self._output_dim
+
+    @property
+    def input_dim(self): return self._input_dim
 
     def get_kernels(self):
         return objax.ModuleList([g.kernel for g in self.latents])
@@ -133,10 +143,13 @@ class Independent(LinearTransform):
 
         self._latents = ensure_module_list(latents)
 
+    def get_sparsity_list(self):
+        return [p.sparsity for p in self._latents]
+
 
     def mean(self, X1: np.ndarray) -> np.ndarray:
         mean = batch_or_loop(
-            lambda X1, latent:  latent.mean(X1)[0],
+            lambda X1, latent:  latent.mean(X1),
             [X1, self.latents],
             [None, 0],
             dim = self.num_latents,
@@ -144,16 +157,17 @@ class Independent(LinearTransform):
             batch_flag = can_batch(self.latents)
         )
 
-        chex.assert_shape(
+        mean = np.reshape(
             mean, 
             [self.num_outputs, X1.shape[0], 1]
         )
+
         return mean
 
 
     def covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
         k_arr = batch_or_loop(
-            lambda X1, X2, latent:  latent.covar(X1, X2)[0],
+            lambda X1, X2, latent:  latent.covar(X1, X2),
             [X1, X2, self.latents],
             [None, None, 0],
             dim = self.num_latents,
@@ -161,9 +175,9 @@ class Independent(LinearTransform):
             batch_flag = can_batch(self.latents)
         )
 
-        chex.assert_shape(
+        k_arr = np.reshape(
             k_arr, 
-            [self.num_latents, X1.shape[0], X2.shape[0]]
+            [self.num_outputs, X1.shape[0], X2.shape[0]]
         )
 
         return k_arr
@@ -171,7 +185,7 @@ class Independent(LinearTransform):
 
     def var(self, X1: np.ndarray) -> np.ndarray:
         var = batch_or_loop(
-            lambda X1, latent:  latent.var(X1)[0],
+            lambda X1, latent:  latent.var(X1),
             [X1, self.latents],
             [None, 0],
             dim = self.num_latents,
@@ -179,9 +193,9 @@ class Independent(LinearTransform):
             batch_flag = can_batch(self.latents)
         )
 
-        chex.assert_shape(
+        var = np.reshape(
             var, 
-            [self.num_latents, X1.shape[0]]
+            [self.num_outputs, X1.shape[0]]
         )
 
         return var
@@ -226,57 +240,67 @@ class SumTransform(LinearTransform):
     def full_var(self, X1): 
         return self.t1.full_var(X1) + self.t2.full_var(X1)
 
-class DeepKernel_One2One(Independent):
-    def __init__(self, prior: Transform, kernels: List['DeepKernel']):
-        self.prior = prior
-        self.kernels = ensure_module_list(kernels)
-        self._num_outputs = prior.num_outputs
-        self._num_latents = self.num_outputs
+class One2One(Independent):
+    def __init__(self, in_model: Transform, out_models: List[Transform]):
+        self.in_model = in_model
+        self.out_models = ensure_module_list(out_models)
+
+        self._output_dim = self.in_model.output_dim
+        self._input_dim = self.output_dim
 
     def mean(self, X1): 
-        P = self.num_outputs
-        N1 = X1.shape[0]
-        return np.zeros([P, N1])
+        m =  self.in_model.mean(X1)
+        chex.assert_shape(m, [self.output_dim, X1.shape[0], 1])
+        return m
 
     def covar(self, X1, X2): 
-        P = self.num_outputs
+        P = self.output_dim
         N1 = X1.shape[0]
         N2 = X2.shape[0]
-        prior_covar = self.prior.covar(X1, X2)
-        prior_var_1 = self.prior.var(X1)
-        prior_var_2 = self.prior.var(X2)
-        prior_mean_1 = self.prior.mean(X1)
-        prior_mean_2 = self.prior.mean(X2)
+
+        # precompute kernels from in_model
+        prior_covar = self.in_model.covar(X1, X2)
+        prior_var_1 = self.in_model.var(X1)
+        prior_var_2 = self.in_model.var(X2)
+        prior_mean_1 = self.in_model.mean(X1)
+        prior_mean_2 = self.in_model.mean(X2)
+
+        def _propogate(X1, X2, model_p, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p):
+            return model_p.kernel.forward(X1, X2, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p)
 
         # push each outputs covar through a kernel
-
-        covar = loop_or_batch(
-            lambda X1, X2, kernel_p, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p:  kernel_p.forward(X1, X2, mean_p_1, mean_p_2, prior_var_1, prior_var_2, covar_p),
-            [X1, X2, self.kernels, prior_mean_1, prior_mean_2, prior_var_1, prior_var_2, prior_covar],
+        covar = batch_or_loop(
+            _propogate,
+            [X1, X2, self.out_models, prior_mean_1, prior_mean_2, prior_var_1, prior_var_2, prior_covar],
             [None, None, 0, 0, 0, 0, 0, 0],
-            self.num_outputs,
-            num_returned_args=1
+            dim=self.output_dim,
+            out_dim=1,
+            batch_flag = can_batch(self.in_model)
         )
 
         chex.assert_shape(covar, [P, N1, N2])
         return covar
 
-
-
     def var(self, X1): 
-        P = self.num_outputs
+        P = self.output_dim
         N1 = X1.shape[0]
-        prior_var = self.prior.var(X1)
-        prior_mean_1 = self.prior.mean(X1)
+
+        # precompute input mean and variances
+        prior_var = self.in_model.var(X1)
+        prior_mean_1 = self.in_model.mean(X1)
+
+        def _propogate(X1, model_p, mean_p_1, prior_var_p):
+            # TODO: model_p should just be a deep kernel
+            return model_p.kernel.forward_diag(X1, mean_p_1, prior_var_p)
 
         # push each outputs covar through a kernel
-
-        var = loop_or_batch(
-            lambda X1, kernel_p, mean_p_1, prior_var_p:  kernel_p.forward_diag(X1, mean_p_1, prior_var_p),
-            [X1, self.kernels, prior_mean_1, prior_var],
+        var = batch_or_loop(
+            _propogate,
+            [X1, self.out_models, prior_mean_1, prior_var],
             [None, 0, 0, 0, 0],
-            self.num_outputs,
-            num_returned_args=1
+            dim=self.output_dim,
+            out_dim=1,
+            batch_flag = can_batch(self.in_model)
         )
 
         chex.assert_shape(var, [P, N1])

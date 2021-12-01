@@ -38,18 +38,23 @@ def log_gaussian(Y, mu, sigma):
 @jit
 def log_gaussian_scalar(Y, mu, variance):
     # ensure scalar
-    chex.assert_rank(mu, 1)
-    chex.assert_rank(Y, 1)
-    chex.assert_rank(variance, 1)
+    chex.assert_rank(mu, 0)
+    chex.assert_rank(Y, 0)
+    chex.assert_rank(variance, 0)
 
-    N = Y.shape[0]
+    # scalar
+    N = 1
 
     c1 = -0.5 * N * np.log(2 * np.pi) - N * 0.5 * np.log(variance)
 
     err = Y - mu
-    mahal = (err.T @ err) / variance
+    mahal = (err * err) / variance
 
-    return c1 - 0.5 * mahal
+    ll = c1 - 0.5 * mahal
+
+    chex.assert_rank(ll, 0)
+
+    return ll
 
 
 @jit

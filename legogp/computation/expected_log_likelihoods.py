@@ -1,3 +1,4 @@
+from ..core import GPPrior
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian
 from ..approximate_posteriors import GaussianApproximatePosterior
@@ -118,17 +119,15 @@ def scalar_poisson_expected_log_likelihood(X:np.ndarray, Y:np.ndarray,  binsize:
     return ell
 
 
-@dispatch(object, object, GaussianApproximatePosterior, Gaussian, object, object)
-def expected_log_likelihood(X, Y, approximate_likelihood, likelihood, kernel, sparsity):
-    q_f_m, q_f_s = approximate_likelihood.marginal(X, kernel, sparsity)
-
-
+@dispatch(object, object, GaussianApproximatePosterior, GPPrior, Gaussian, object, object)
+def precomputed_expected_log_likelihood(X, Y, approx_post, prior, likelihood, q_f_mean, q_f_var):
+    #TODO: chex
     return gaussian_expected_log_likelihood(
         X, 
         Y, 
         likelihood.variance, 
-        q_f_m,
-        q_f_s
+        q_f_mean,
+        q_f_var
     )
 
 

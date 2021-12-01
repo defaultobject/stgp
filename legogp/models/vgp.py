@@ -10,7 +10,8 @@ from ..decorators import strict_mode_check, ensure_data
 from ..obj_dispatch import obj_dispatch, obj_find
 from ..dispatch import evoke
 
-from . import Model
+from ..core import Model, Posterior
+from . import GP, BatchGP
 from ..kernels import Kernel
 from ..inference import Variational
 from ..transforms import Transform, Identity
@@ -20,42 +21,58 @@ from ..kernels import RBF
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
 from ..utils.utils import ensure_module_list
+from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 
 
 @obj_dispatch(Model, 'Variational', 'NoSparsity')
-class VGP(Model):
-    def __init__(self, X=None, Y=None, inference: 'Variational'=None, likelihood: 'Likelihood'=None, kernel=None, prior: 'Transform'=None, sparsity=None, whiten=False, minibatch=None, **kwargs):
-        super(VGP, self).__init__(**kwargs)
+class VGP(Posterior):
+    def __init__(
+        self, 
+        X=None, 
+        Y=None, 
+        Z = None,
+        inference: 'Variational'=None, 
+        approximate_posterior: 'Posterior'=None, 
+        likelihood: 'Likelihood'=None, 
+        kernel: 'Kernel'=None, 
+        prior: 'Transform'=None, 
+        whiten=False, 
+        minibatch_size=None,
+        **kwargs
+    ):
 
-        self.X = X
-        self.Y = Y
+        # will save X, Y as a property
+        super(VGP, self).__init__(X, Y, **kwargs)
 
         self.inference = inference
-        self.likelihood = likelihood
-        self.prior = prior
+        self._likelihood = likelihood
+        self._prior = prior
         self.kernel = kernel
-        self.approximate_posterior = None
-        self.sparsity = sparsity
+        self.approximate_posterior = approximate_posterior
         self.whiten = whiten
-        self.minibatch = minibatch
+        self.minibatch_size = minibatch_size
+        self._Z = Z  
 
         self.set_defaults()
+        self.fix_inputs()
 
-    def predict(self, XS, diagonal=True, squeeze=True):
+    def log_marginal_likelihood(self, X=None, Y=None):
+        raise NotImplementedError()
 
-        mean, var = self.inference.predict(
-            XS, 
-            self.X, 
-            self.likelihood, 
-            self.prior,
-            self.approximate_posterior,
-            diagonal=diagonal
-        )
+    @property
+    def output_dim(self): return self.Y.shape[1]
 
-        if squeeze:
-            return np.squeeze(mean), np.squeeze(var)
+    @property
+    def input_dim(self): return self.output_dim
 
-        return mean, var
+    @property
+    def input_space_dim(self): return self.X.shape[1]
+
+    @property
+    def likelihood(self): return self._likelihood
+
+    @property
+    def prior(self): return self._prior
 
     def setup_data(self):
         """ Ensure input data is valid """
@@ -72,61 +89,81 @@ class VGP(Model):
     def fix_inputs(self):
         """ Convert all inputs into a consistent format """
 
-        self.kernel = ensure_module_list(self.kernel)
-        self.likelihood = ensure_module_list(self.likelihood)
-        self.sparsity = ensure_module_list(self.sparsity)
+        self._likelihood = ensure_module_list(self._likelihood)
 
     def set_defaults(self):
-        # Input dimension / number of covariates or features
-        self.D = self.X.shape[1]
+        # Figure out which prior mode is being used (kernel vs prior)
 
-        self.num_latents = self.Y.shape[1]
+        if (self.kernel is not None) and (self.prior is not None):
+            raise RuntimeError('Only kernel or a prior must be passed')
 
-        if self.prior == None:
-            self.prior = Identity()
+        if self.prior is None:
+            # construct an independent prior for each latent function
 
-        if self.sparsity == None:
-            self.Nq = self.X.shape[0]
-        else:
-            self.Nq = self.sparsity[0].Z.shape[0]
+            # Only set a default kernel if we are in kernel mode and one has not been passed
+            if self.kernel is None:
+                self.kernel = get_default_kernel(self.input_space_dim, self.input_dim)
+            else:
+                if type(self.kernel) is not list:
+                    self.kernel = [self.kernel]
 
+            # Construct independent prior
 
-        if self.sparsity == None:
-            #X is treated as Z
-            self.sparsity = objax.ModuleList([NoSparsity(self.X) for j in range(self.num_latents)])
+            self._prior = get_default_independent_prior(
+                self.X,
+                self.input_space_dim, 
+                self.input_dim, 
+                kernel_list=self.kernel,
+                Z = self._Z,
+            )
 
         if self.inference == None:
-            self.inference = Variational()
-
-
-        if False:
-            if self.approximate_posterior is None:
-                self.approximate_posterior = MeanFieldApproximatePosterior(self.prior, whiten=self.whiten)
-
-        if self.kernel == None:
-            self.kernel = objax.ModuleList([
-                RBF(
-                    lengthscales=[1.0 for d in range(self.D)],
-                    input_dim=self.D
-                )
-                for j in range(self.num_latents)
-            ])
+            self.inference = Variational(whiten=self.whiten, minibatch_size=self.minibatch_size)
 
         if self.likelihood == None:
-            self.likelihood = objax.ModuleList([Gaussian(variance=1.0) for j in range(self.num_latents)])
+            self._likelihood = get_default_likelihood(self.output_dim)
+
+        if self.approximate_posterior is None:
+            raise NotImplementedError()
+
 
     def get_objective(self):
-
-        return 0.0
 
         elbo = self.inference.ELBO(
             self.X,
             self.Y,
             self.likelihood,
             self.prior,
-            self.approximate_posterior,
-            self.minibatch
+            self.approximate_posterior
         )
 
         return -elbo
 
+    def mean(self, XS):
+        raise NotImplementedError()
+
+    def var(self, XS):
+        raise NotImplementedError()
+
+    def covar(self, XS_1, XS_2, X=None, Y=None):
+        raise NotImplementedError()
+
+    def predict_f(self, XS, diagonal=True, squeeze=True):
+
+        mean, var = self.inference.predict_f(
+            XS, 
+            self.X, 
+            self.Y, 
+            self.likelihood, 
+            self.prior,
+            self.approximate_posterior,
+            diagonal=diagonal
+        )
+
+        if squeeze:
+            return np.squeeze(mean), np.squeeze(var)
+
+        return mean, var
+
+    def predict_y(self, XS):
+        raise NotImplementedError()
