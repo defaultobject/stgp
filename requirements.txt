@@ -1,5 +1,5 @@
-jax==0.2.20
-jaxlib==0.1.71
+jax==0.2.17
+jaxlib==0.1.68
 objax==1.4.0
 git+git://github.com/defaultobject/batchjax/
 chex==0.0.8
@@ -10,11 +10,10 @@ flake8
 flake8-docstrings
 typer==0.3.2
 loguru==0.5.3
-slurmjobs==0.0.15
 sacred==0.8.1
-seml==0.2.4
 scikit-learn
 tabulate==0.8.6
 jupyter
 black
 pytest
+tqdm

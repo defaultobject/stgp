@@ -23,61 +23,71 @@ checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
 
 # generate data
-P = 10
+P = 1
 
 N = 100
-
-XS1 = np.linspace(-0.5, 1.5, 20)[:, None]
-XS2 = np.linspace(0, 1.5, 20)[:, None]
-XS_stacked = np.vstack([XS1, XS2])
-
+M = 20
 
 XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
 y1 = np.sin(x*10)+0.01*np.random.randn(N)
-y2 = -np.sin(x*8)+0.01*np.random.randn(N)
 
 X = x[:, None]
 Y1 = y1[:, None]
-Y2 = y2[:, None]
 
+Y = np.hstack([Y1 for p in range(P)])
 
-m1 = lego.models.GP(X, Y1)
-m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepRBF(m1))
+assert Y.shape[1] == P
 
-model_list = [m2, m1]
+qu = lego.approximate_posteriors.MeanFieldApproximatePosterior(dim_list=[M])
 
-epochs = 1000
+Z = np.linspace(0, 1, M)[:, None]
+
+m = lego.models.GP(
+    X,
+    Y,
+    Z = Z,
+    inference='Variational',
+    whiten=False,
+    minibatch_size=10,
+    kernel = lego.kernels.RBF(lengthscales=[0.1]),
+    likelihood = lego.likelihood.Gaussian(0.01),
+    approximate_posterior = qu
+)
+
+m.get_objective()
 
 restore = False
 
 if restore:
-    m2.load_from_checkpoint(str(checkpoint_folder / 'mf'))
+    m.load_from_checkpoint(str(checkpoint_folder / 'vgp'))
 else:
+    epochs = 500
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
-        model_list, 
+        m, 
         objax.optimizer.Adam,
         0.01,
         epochs,
         callback = callback
     )
-    m2.checkpoint(str(checkpoint_folder / 'mf'))
 
     plt.plot(learning_curve)
     plt.show()
 
-mu1, var1 = m1.predict_f(XS)
-mu2, var2 = m2.predict_f(XS)
+    print(learning_curve[0], learning_curve[-1])
 
-fig, axes = plt.subplots(2, 1)
+    m.checkpoint(str(checkpoint_folder / 'vgp'))
 
-axes[0].fill_between(np.squeeze(XS), np.squeeze(mu1 - 2*np.sqrt(var1)), np.squeeze(mu1 + 2*np.sqrt(var1)), alpha=0.4)
-axes[0].plot(XS, mu1)
-axes[0].scatter(X, Y1)
+pred_mu, pred_var = m.predict_f(XS, squeeze=True)
 
-axes[1].fill_between(np.squeeze(XS), np.squeeze(mu2 - 2*np.sqrt(var2)), np.squeeze(mu2 + 2*np.sqrt(var2)), alpha=0.4)
-axes[1].plot(XS, mu2)
-axes[1].scatter(X, Y2)
-
+fig = plt.figure()
+plt.fill_between(
+    np.squeeze(XS),
+    np.squeeze(pred_mu) + 2*np.squeeze(np.sqrt(pred_var)),
+    np.squeeze(pred_mu) - 2*np.squeeze(np.sqrt(pred_var)),
+    alpha = 0.4
+)
+plt.plot(XS, pred_mu)
+plt.scatter(X, Y, c='black')
 plt.show()
