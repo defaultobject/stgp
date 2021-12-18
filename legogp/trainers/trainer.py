@@ -39,6 +39,13 @@ class ScipyTrainer(Trainer):
 
         return [], 0
 
+def vc_remove_vars(vc, keys):
+    vc_new = objax.VarCollection()
+
+    for k in keys:
+        vc_new.update((name, v) for name, v in vc.items() if name not in keys)
+
+    return vc_new
 
 class SimpleTrainer(Trainer):
     def summary(self, train_vars):
@@ -50,6 +57,7 @@ class SimpleTrainer(Trainer):
         optimizer, 
         learning_rate, 
         epochs, 
+        hold_vars = None,
         callback=None
     ):
         if type(models) is not list:
@@ -60,7 +68,6 @@ class SimpleTrainer(Trainer):
         # Assume that models[0] is the 'global' model
         train_vars = models[0].vars()
 
-        self.summary(train_vars)
 
         def objective():
             obj = 0.0
@@ -69,9 +76,15 @@ class SimpleTrainer(Trainer):
             return obj
 
         objective_fn = objax.Jit(objective, train_vars)
-        grad_fn = objax.Jit(objax.GradValues(objective_fn, train_vars), train_vars)
 
-        opt = optimizer(train_vars)
+        if hold_vars is not None:
+            vars_to_train = vc_remove_vars(train_vars, hold_vars)
+        else:
+            vars_to_train = train_vars
+
+        grad_fn = objax.Jit(objax.GradValues(objective_fn, vars_to_train), train_vars)
+
+        opt = optimizer(vars_to_train)
 
         start = timer()
 

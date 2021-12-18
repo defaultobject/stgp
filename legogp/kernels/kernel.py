@@ -4,6 +4,7 @@ import jax
 import jax.numpy as np
 
 from jax import jit, partial
+from jax.scipy.linalg import block_diag 
 from abc import ABC
 from abc import abstractmethod
 from jax.numpy import vectorize
@@ -116,6 +117,18 @@ class CombinationKernel(Kernel):
 
 
 class SumKernel(CombinationKernel):
+    def to_ss(self):
+        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss()
+        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss()
+
+        F = block_diag(k1_F, k2_F)
+        L = block_diag(k1_L, k2_L)
+        Pinf = block_diag(k1_Pinf, k2_Pinf)
+        Q = block_diag(k1_Q, k2_Q)
+        H = np.hstack(k1_H, k2_H)
+
+        return F, L, Qc, H, Pinf
+
     def K(self, X1: np.array, X2: np.array):
         return self.k1.K(X1, X2) + self.k2.K(X1, X2)
 
@@ -124,6 +137,21 @@ class SumKernel(CombinationKernel):
 
 
 class ProductKernel(CombinationKernel):
+    def to_ss(self):
+        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss()
+        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss()
+
+        I_1 = np.eye(k1_F.shape[0])
+        I_2 = np.eye(k2_F.shape[0])
+
+        F = np.kron(k1_F, I_1) + np.kron(I_2, k2_F)
+        L = np.kron(k1_L, k2_L)
+        Q = np.kron(k1_Qc, k2_Qc)
+        Pinf = np.kron(k1_Pinf, k2_Pinf)
+        H = np.kron(k1_H, k2_H)
+
+        return F, L, Qc, H, Pinf
+
     def K(self, X1: np.array, X2: np.array):
         return self.k1.K(X1, X2) * self.k2.K(X1, X2)
 

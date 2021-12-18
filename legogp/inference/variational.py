@@ -3,7 +3,7 @@ from . import Inference
 from .. import settings
 
 from ..computation.elbos import elbo
-from ..computation.predictors import multi_latent_predict
+from ..computation.predictors import multi_latent_predict, multi_latent_predictive_covar
 
 import jax
 import jax.numpy as np
@@ -25,6 +25,13 @@ class Variational(Inference):
         )
 
         return mu, var
+
+    def predictive_covar(self, XS_1, XS_2, X, Y, likelihood, prior, approximate_posterior):
+        pred_var = multi_latent_predictive_covar.dispatch(type(prior), type(approximate_posterior))(
+            XS_1, XS_2, X, Y, likelihood, prior, approximate_posterior
+
+        )
+        return pred_var
 
 
     def ELBO(self, X, Y, likelihood, prior, approximate_posterior):

@@ -12,6 +12,7 @@ from .matern import Matern32
 from .rbf import RBF
 from .approximate_markov import ApproximateMarkovKernel
 from .deep_kernels import DeepStationary
+from .bias import BiasKernel
 
 __all__ = [
     "Kernel",
@@ -22,5 +23,6 @@ __all__ = [
     "ApproximateMarkovKernel",
     "WhiteNoiseKernel",
     "DeepStationary",
-    "ScaleKernel"
+    "ScaleKernel",
+    "BiasKernel"
 ]

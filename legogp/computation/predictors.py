@@ -7,7 +7,7 @@ from .gaussian import log_gaussian
 from ..batching import loop_or_batch
 from ..transforms import Independent, LinearTransform
 from .elbos import precompute_variational_primitives, precompute_diagonal_variational_primitives
-from .marginals import gaussian_conditional_diagional
+from .marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 
 from ..utils import utils
 from ..utils.utils import can_batch
@@ -286,6 +286,37 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, dia
     )
 
     return mu, sig
+
+@dispatch(Independent, MeanFieldApproximatePosterior)
+def multi_latent_predictive_covar(X1, X2, X, Y, likelihood, prior, approximate_posterior):
+
+    mean_xx_arr, mean_zz_arr, K_x_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, S_arr = precompute_variational_primitives(X1, prior, approximate_posterior)
+
+    K_x_arr = prior.covar(X1, X2)
+
+
+    K_zx_arr = batch_or_loop(
+        lambda prior: prior.kernel.K(prior.sparsity.Z, X2),
+        [prior.latents],
+        [0],
+        dim = len(prior.latents),
+        out_dim = 1,
+        batch_flag = can_batch(prior.latents)
+    )
+
+    P = len(approximate_posterior.approx_posteriors)
+
+    sig = batch_or_loop(
+        gaussian_conditional_covar,
+        [X1, X2, X, K_zz_arr, K_xz_arr, K_zx_arr, K_x_arr, m_arr, S_chol_arr],
+        [None, None, None, 0, 0, 0, 0, 0, 0],
+        dim=P,
+        out_dim=1,
+        batch_flag = can_batch(None)
+    )
+
+    chex.assert_shape(sig, [P, X1.shape[0], X2.shape[0]])
+    return sig
 
 
 

@@ -52,7 +52,6 @@ def cholesky(A):
     chex.assert_rank(A, 2)
     chex.assert_equal(A.shape[0], A.shape[1])
 
-    #A = add_jitter(A, 1e-3)
     A = A
 
     # return lower triangular cholesky factor

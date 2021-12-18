@@ -37,6 +37,17 @@ def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs
     sig = np.reshape(sig, [sig.shape[0], 1])
 
     return mu, sig
+@jit
+def gaussian_conditional_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:
+    k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    A1 = cholesky_solve(k_zz_chol, Kzx)
+    sig1 = Kxsxs - Kxz @ A1
+    sig2 = Kxz @ cholesky_solve(k_zz_chol, S_chol) @ S_chol.T @ A1
+
+    sig = sig1 + sig2
+
+    return sig
 
 @jit
 def whitened_gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol) -> np.ndarray:

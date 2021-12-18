@@ -12,6 +12,8 @@ from .computation.marginals import *
 from .computation.predictors import *
 from .computation.elbos import *
 
+from .data import *
+
 #from .computation import *
 
 __all__ = ["dispatch", "Node", "Model", "Inference"]

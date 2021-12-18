@@ -6,6 +6,7 @@ jax_config.update('jax_disable_jit', False)
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
+from legogp.kernels import RBF, ScaleKernel, BiasKernel
 
 import objax
 import jax
@@ -25,7 +26,7 @@ checkpoint_folder.mkdir(exist_ok=True)
 # generate data
 P = 10
 
-N = 100
+N = 50
 
 XS1 = np.linspace(-0.5, 1.5, 20)[:, None]
 XS2 = np.linspace(0, 1.5, 20)[:, None]
@@ -34,20 +35,20 @@ XS_stacked = np.vstack([XS1, XS2])
 
 XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+0.01*np.random.randn(N)
-y2 = -np.sin(x*8)+0.01*np.random.randn(N)
+y1 = np.sin(x*10)+0.01*np.random.randn(N)+2.0
+y2 = -np.sin(x*8)+0.01*np.random.randn(N)-1.0
 
 X = x[:, None]
 Y1 = y1[:, None]
 Y2 = y2[:, None]
 
 
-m1 = lego.models.GP(X, Y1)
+m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1]))+ScaleKernel(BiasKernel()))
 m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepRBF(m1))
 
 model_list = [m2, m1]
 
-epochs = 1000
+epochs = 5000
 
 restore = False
 

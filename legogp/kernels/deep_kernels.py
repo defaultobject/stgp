@@ -3,6 +3,7 @@ from .kernel import StationaryKernel, ConcatationKernel, WhiteNoiseKernel
 from ..dispatch import evoke
 from .. import settings
 from ..computation.gaussian import log_gaussian_scalar
+import objax
 
 import jax
 import jax.numpy as np
@@ -59,7 +60,10 @@ class DeepHetreo(Kernel):
     def propogate_parent(self, X):
         N = X.shape[0]
 
-        parent_mean, parent_k = self.parent_model.predict_f(X, diagonal=True, squeeze=False)
+        #jitted_pred = objax.Jit(self.parent_model.predict_f, self.parent_model.predict_f.vars())
+        jitted_pred = self.parent_model.predict_f
+
+        parent_mean, parent_k = jitted_pred(X, diagonal=True, squeeze=False)
 
         parent_mean = parent_mean[0]
         parent_k = parent_k[0]
@@ -140,6 +144,7 @@ class DeepStationary(StationaryKernel):
             self.use_parent = False
 
 
+
     def set_parent(self, parent):
         self.parent = parent
 
@@ -166,6 +171,7 @@ class DeepStationary(StationaryKernel):
             pk_x1x1 = self.parent.var(x1)
             pk_x2x2 = self.parent.var(x2)
             pk_x1x2 = self.parent.covar(x1, x2)
+
         else:
             N1 = x1.shape[0]
             N2 = x2.shape[0]

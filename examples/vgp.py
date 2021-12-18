@@ -26,16 +26,16 @@ checkpoint_folder.mkdir(exist_ok=True)
 P = 1
 
 N = 100
-M = 20
+M = 30
 
-XS = np.linspace(-0.5, 1.5, 1000)[:, None]
+XS = np.linspace(-2, 3, 1000)[:, None]
 x = np.linspace(0, 1, N)
 y1 = np.sin(x*10)+0.01*np.random.randn(N)
 
 X = x[:, None]
 Y1 = y1[:, None]
 
-Y = np.hstack([Y1 for p in range(P)])
+Y = np.hstack([Y1 for p in range(P)])+2.0
 
 assert Y.shape[1] == P
 
@@ -49,11 +49,14 @@ m = lego.models.GP(
     Z = Z,
     inference='Variational',
     whiten=False,
-    minibatch_size=10,
-    kernel = lego.kernels.RBF(lengthscales=[0.1]),
-    likelihood = lego.likelihood.Gaussian(0.01),
+    minibatch_size=100,
+    kernel = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.5])) + lego.kernels.ScaleKernel(lego.kernels.BiasKernel()),
+    likelihood = lego.likelihood.Gaussian(0.1),
     approximate_posterior = qu
 )
+
+
+
 
 m.get_objective()
 
