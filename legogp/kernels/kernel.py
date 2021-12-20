@@ -45,7 +45,6 @@ class Kernel(objax.Module):
 
         return X
 
-
     @abstractmethod
     def K(self, X1: np.array, X2: np.array):
         chex.assert_rank([X1, X2], [2, 2])
@@ -170,6 +169,40 @@ class MarkovKernel(Kernel):
     def cf_to_ss_spatial(self, sparsity):
         raise NotImplementedError()
 
+class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
+    def __init__(self, K_temporal, K_spatial):
+        self.k1 = K_temporal
+        self.k2 = K_spatial
+
+    def to_ss(self, X_spatial):
+        K_spatial = self.k2.K(X_spatial, X_spatial)
+
+        F, L, Qc, H, Pinf = self.k1.to_ss()
+
+        eye = np.eye(K_spatial.shape[0])
+
+        F_st = np.kron(eye, F)
+        L_st = np.kron(eye, L)
+        Qc_st = np.kron(K_spatial, Qc)
+        H_st = np.kron(eye, H)
+        Pinf_st = np.kron(K_spatial, Pinf)
+
+        return F_st, L_st, Qc_st, H_st, Pinf_st
+
+    def state_size(self):
+        # only return the temporal state_size 
+        return self.k1.state_size()
+
+    def expm(self, dt, X_spatial):
+        A_t = self.k1.expm(dt)
+
+        eye = np.eye(X_spatial.shape[0])
+
+        A = np.kron(eye, A_t)
+
+        return A
+
+
 class WhiteNoiseKernel(Kernel):
     def __init__(
         self,
@@ -236,8 +269,6 @@ class StationaryKernel(Kernel):
     @property
     def lengthscales(self) -> np.ndarray:
         return positive_transform(self.raw_lengthscales.value)
-
-
 
     def K_diag(self, X1):
         #TODO: this needs to be multiplied by D, or var is only used once!

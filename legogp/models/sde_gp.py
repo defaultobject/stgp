@@ -39,6 +39,8 @@ class SDE_GP(Posterior):
         else:
             unique_idx, sort_idx, X_sorted, Y_sorted = None, None, X, Y
 
+        self.raw_N_time = Y_sorted.shape[0]
+
         # Use the sorted X and Y to construct the model on
         super(SDE_GP, self).__init__(X_sorted, Y_sorted)
 
@@ -76,7 +78,7 @@ class SDE_GP(Posterior):
             self.Y,
             self.kernel,
             self.likelihood,
-            N = self.raw_N
+            N = self.raw_N_time
         )
 
     def get_objective(self, X=None, Y=None):
@@ -112,7 +114,6 @@ class SDE_GP(Posterior):
         X_sorted = objax.StateVar(np.array(X_sorted))
         Y_sorted = objax.StateVar(np.array(Y_sorted))
 
-
         _, mu, var = filter_and_smooth(
             X_sorted.value,
             Y_sorted.value,
@@ -120,6 +121,9 @@ class SDE_GP(Posterior):
             self.likelihood,
             N = N
         )
+
+        mu = mu.reshape([-1, 1])
+        var = var.reshape([-1, 1])
 
         # unsort
         mu = mu[sort_idx][unique_idx][self.raw_N:]

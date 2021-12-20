@@ -17,12 +17,8 @@ def order_sequentially(X, Y = None):
 
     time_zero = X[0, 0]
 
-    # Put time axis as last axis os that this is sorted first
-    #  it does not matter the order that the spatial dimensions get sorted
-    X = np.roll(X, -1, axis=1)
-
     # Get unique rows (time, space, features) to remove duplicates
-    _, unique_idx, reverse_idx = np.unique(X[:, -1], axis=0, return_index = True, return_inverse=True)
+    _, unique_idx, reverse_idx = np.unique(X, axis=0, return_index = True, return_inverse=True)
 
     # Get index to sort by time points and then spatial points
     #   we need the index so that we can undo the sort later
@@ -33,6 +29,10 @@ def order_sequentially(X, Y = None):
 
     # Since X is a spatio-temporal grid we can just extract the spatial points at the first time
     X_spatial = X[X[:, 0]==time_zero][:,1:]
+
+    # Put time axis as last axis os that this is sorted first
+    #  it does not matter the order that the spatial dimensions get sorted
+    X = np.roll(X, -1, axis=1)
 
     grid_size = X_spatial.shape[0]
     time_points = int(X.shape[0]/grid_size)
@@ -50,6 +50,7 @@ def order_sequentially(X, Y = None):
 
     #reshape for grid structure
     X = np.reshape(X, [time_points, grid_size, X.shape[1]])
+
 
     if Y is not None:
         Y = np.reshape(Y, [time_points, grid_size, 1])

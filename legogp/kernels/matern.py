@@ -7,7 +7,7 @@ from . import StationaryKernel, MarkovKernel
 
 
 class Matern32(StationaryKernel, MarkovKernel):
-    def to_ss(self):
+    def to_ss(self, X_spatial=None):
         """ Return state space representation """
         chex.assert_equal(self.input_dim, 1)
 
@@ -36,7 +36,10 @@ class Matern32(StationaryKernel, MarkovKernel):
 
         return F, L, Qc, H, Pinf
 
-    def expm(self, dt):
+    def state_size(self):
+        return 2
+
+    def expm(self, dt, X_spatial=None):
         """closed form matrix exponential A = expm(F * dt)"""
         chex.assert_equal(self.input_dim, 1)
 

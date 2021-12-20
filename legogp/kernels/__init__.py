@@ -3,6 +3,7 @@ from .kernel import (
     StationaryKernel,
     NonStationaryKernel,
     MarkovKernel,
+    SpatioTemporalSeperableKernel,
     SumKernel,
     ProductKernel,
     WhiteNoiseKernel,
@@ -24,5 +25,6 @@ __all__ = [
     "WhiteNoiseKernel",
     "DeepStationary",
     "ScaleKernel",
-    "BiasKernel"
+    "BiasKernel",
+    "SpatioTemporalSeperableKernel"
 ]

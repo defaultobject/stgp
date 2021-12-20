@@ -6,7 +6,7 @@ jax_config.update('jax_disable_jit', False)
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import RBF, ScaleKernel, BiasKernel, Matern32
+from legogp.kernels import RBF, ScaleKernel, BiasKernel, Matern32, SpatioTemporalSeperableKernel
 from legogp.computation.filtering import sequential_kalman_filter, sequential_rts_smoother, filter_and_smooth
 import objax
 import jax
@@ -32,19 +32,41 @@ from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+from sklearn.datasets import make_blobs
+
 checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
 
-# generate data
-N = 100
-x = np.linspace(0, 1, N)
-y = -np.sin(x*8)+0.01*np.random.randn(N)
+def create_grid(x1, x2, y1, y2, n1=10, n2=10):
+    y = np.linspace(y1, y2, n2)
+    x = np.linspace(x1, x2, n1)
 
-X = x[:, None]
+    grid = []
+    for i in x:
+        for j in y:
+            grid.append([i, j])
+
+    return np.array(grid)
+
+
+Nt_train = 10
+Ns = 8
+
+X = create_grid(-1, 1, -1, 1, Nt_train, Ns)
+N = X.shape[0]
+
+y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
 Y = y[:, None]
 
-kern = Matern32(lengthscales=[1.0])
-kern_batch = Matern32(lengthscales=[1.0])
+
+# generate data
+
+kern = SpatioTemporalSeperableKernel(
+    Matern32(lengthscales=[0.1], active_dims=[0], input_dim=1),
+    Matern32(lengthscales=[0.1], active_dims=[1], input_dim=1)
+)
+
+kern_batch = Matern32(lengthscales=[0.1, 0.1], input_dim=2)
 
 m = lego.models.GP(
     X, Y, kernel=kern, inference='Markov'
@@ -54,10 +76,14 @@ m_batch = lego.models.GP(
     X, Y, kernel=kern_batch, inference='Batch'
 )
 
+print('sde: ', m.get_objective())
+print('batch: ', m_batch.get_objective())
+
+
 restore = False
 if restore:
-    m.load_from_checkpoint(str(checkpoint_folder / 'sde_gp'))
-    m_batch.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_batch'))
+    m.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_st'))
+    m_batch.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_batch_st'))
 else:
     epochs = 1000
     callback = progress_bar_callback(epochs)
@@ -78,8 +104,8 @@ else:
         callback = callback
     )
 
-    m.checkpoint(str(checkpoint_folder / 'sde_gp'))
-    m_batch.checkpoint(str(checkpoint_folder / 'sde_gp_batch'))
+    m.checkpoint(str(checkpoint_folder / 'sde_gp_st'))
+    m_batch.checkpoint(str(checkpoint_folder / 'sde_gp_batch_st'))
 
     print(np.array(learning_curve_batch) - np.array(learning_curve))
 
@@ -88,22 +114,18 @@ else:
     plt.legend()
     plt.show()
 
-print(kern.lengthscales, kern_batch.lengthscales)
 
-XS = np.linspace(-1, 2, 500)[:, None]
-#XS = X
+XS = create_grid(-1, 1, -1, 1, 100, 100)
 mu, var = m.predict_f(XS)
-
 mu_batch, var_batch = m_batch.predict_f(XS)
 
-plt.fill_between(
-    np.squeeze(XS), np.squeeze(mu_batch) - np.squeeze(2*np.sqrt(var_batch)), np.squeeze(mu_batch) + np.squeeze(2*np.sqrt(var_batch)), alpha=0.4
-)
-plt.plot(XS, mu_batch)
+mu, var = np.squeeze(mu), np.squeeze(var)
+mu_batch, var_batch = np.squeeze(mu), np.squeeze(var)
 
-plt.fill_between(
-    np.squeeze(XS), np.squeeze(mu) - np.squeeze(2*np.sqrt(var)), np.squeeze(mu) + np.squeeze(2*np.sqrt(var)), alpha=0.4
-)
-plt.plot(XS, mu)
-plt.scatter(X, Y)
+print( np.sum((mu_batch-mu)**2), ' ', np.sum((var_batch-var)**2))
+
+fig, axes = plt.subplots(2, 1)
+axes[0].scatter(XS[:, 0], XS[:, 1], c=mu)
+axes[1].scatter(XS[:, 0], XS[:, 1], c=mu_batch)
+
 plt.show()
