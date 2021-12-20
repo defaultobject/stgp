@@ -43,30 +43,67 @@ y = -np.sin(x*8)+0.01*np.random.randn(N)
 X = x[:, None]
 Y = y[:, None]
 
-kern = Matern32(lengthscales=[0.1])
+kern = Matern32(lengthscales=[1.0])
+kern_batch = Matern32(lengthscales=[1.0])
 
 m = lego.models.GP(
     X, Y, kernel=kern, inference='Markov'
 )
 
-epochs = 1000
-callback = progress_bar_callback(epochs)
-learning_curve, training_time = SimpleTrainer().train(
-    m, 
-    objax.optimizer.Adam,
-    0.01,
-    epochs,
-    callback = callback
+m_batch = lego.models.GP(
+    X, Y, kernel=kern_batch, inference='Batch'
 )
 
-plt.plot(learning_curve)
-plt.show()
+restore = True
+if restore:
+    m.load_from_checkpoint(str(checkpoint_folder / 'sde_gp'))
+    m_batch.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_batch'))
+else:
+    epochs = 100
+    callback = progress_bar_callback(epochs)
+    learning_curve, training_time = SimpleTrainer().train(
+        m, 
+        objax.optimizer.Adam,
+        0.01,
+        epochs,
+        callback = callback
+    )
 
-mu, var = m.predict_f(X)
+    callback = progress_bar_callback(epochs)
+    learning_curve_batch, training_time = SimpleTrainer().train(
+        m_batch, 
+        objax.optimizer.Adam,
+        0.01,
+        epochs,
+        callback = callback
+    )
+
+    m.checkpoint(str(checkpoint_folder / 'sde_gp'))
+    m_batch.checkpoint(str(checkpoint_folder / 'sde_gp_batch'))
+
+    print(np.array(learning_curve_batch) - np.array(learning_curve))
+
+    plt.plot(learning_curve, label='sde')
+    plt.plot(learning_curve_batch, label='gp')
+    plt.legend()
+    plt.show()
+
+print(kern.lengthscales, kern_batch.lengthscales)
+
+XS = np.linspace(-1, 2, 500)[:, None]
+#XS = X
+mu, var = m.predict_f(XS)
+
+mu_batch, var_batch = m_batch.predict_f(XS)
 
 plt.fill_between(
-    np.squeeze(X), np.squeeze(mu) - np.squeeze(2*np.sqrt(var)), np.squeeze(mu) + np.squeeze(2*np.sqrt(var)), alpha=0.4
+    np.squeeze(XS), np.squeeze(mu_batch) - np.squeeze(2*np.sqrt(var_batch)), np.squeeze(mu_batch) + np.squeeze(2*np.sqrt(var_batch)), alpha=0.4
 )
-plt.plot(X, mu)
+plt.plot(XS, mu_batch)
+
+plt.fill_between(
+    np.squeeze(XS), np.squeeze(mu) - np.squeeze(2*np.sqrt(var)), np.squeeze(mu) + np.squeeze(2*np.sqrt(var)), alpha=0.4
+)
+plt.plot(XS, mu)
 plt.scatter(X, Y)
 plt.show()

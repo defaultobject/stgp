@@ -34,12 +34,11 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(log_gaussian(Y_k, mu, S))
 
-    # mask
-    #mask is True when Y_k is nan
+    # mask is zero if nan, one if not
+    # when mask is one we want to use the kalman update else use the kalman prediction
 
-    #TODO: at the moment this will ignore the WHOLE spatial slice if there is any masks 
-    #m_k = np.where(np.any(mask_k), m_, m_k)
-    #P_k = np.where(np.any(mask_k), P_, P_k)
+    m_k = m_k * mask_k + m_ * (1-mask_k)
+    P_k = P_k * mask_k + P_ * (1-mask_k)
 
     return m_k, P_k, log_Z_k
 
@@ -50,7 +49,7 @@ def sequential_kalman_filter(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N
     chex.assert_equal(Y.shape[0], N)
 
     x_t = X[:, 0, 0]
-    X_s = X[:, :, :]
+    X_s = X[0, :, :]
 
     F, L, Qc, H, P_inf = kernel.to_ss()
 
@@ -58,10 +57,19 @@ def sequential_kalman_filter(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N
 
     m_inf = np.zeros([state_size, 1])
 
-    dt = np.diff(x_t)
+    dt = np.concatenate([np.array([0.0]), np.diff(x_t)])
 
     # Compute R
     R = np.ones(N)*likelihood.variance
+
+    # nan masking
+    
+    # construct mask so we can track where nans are
+    mask = np.squeeze((~np.isnan(Y)).astype(int))
+
+    # replac nans with zero to avoid nans in code
+    Y = np.nan_to_num(Y, nan=0.0)
+    
 
     with loops.Scope() as s:
         s.log_marginal_lik = 0.0
@@ -77,7 +85,7 @@ def sequential_kalman_filter(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N
             R_k = R[k]
 
             m_k, P_k, log_marg_lik_k = kalman_step(
-                Y_k, A_k, H, s.m, s.P, Q_k, R_k, None
+                Y_k, A_k, H, s.m, s.P, Q_k, R_k, mask[k]
             )
 
             s.m = m_k
@@ -95,7 +103,7 @@ def sequential_kalman_filter(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N
             return s.log_marginal_lik
 
 @jit
-def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, H_k, Q_k, R_k):
+def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, Q_k):
     m_predicted = A_k @ m_filtered_k
     P_predicted = A_k @ P_filtered_k @ A_k.T + Q_k
 
@@ -104,7 +112,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, H_k, Q_k, R_k):
         add_jitter(P_predicted, jitter)
     )
     G = cholesky_solve(
-        P_predicted_chol, A_k @ P
+        P_predicted_chol, A_k @ P_filtered_k
     ).T
 
     m = m_filtered_k + G @ (m - m_predicted)
@@ -117,18 +125,14 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
     chex.assert_equal(X.shape[0], N)
 
     x_t = X[:, 0, 0]
-    X_s = X[:, :, :]
+    X_s = X[0, :, :]
 
     F, L, Qc, H, P_inf = kernel.to_ss()
 
     state_size = P_inf.shape[0]
 
-    m_inf = np.zeros([state_size, 1])
-
     dt = np.diff(x_t)
-
-    # Compute R
-    R = np.ones(N)*likelihood.variance
+    #dt = np.concatenate([np.array([0.0]), np.diff(x_t)])
 
     with loops.Scope() as s:
         s.m, s.P = m_filtered[-1, ...], P_filtered[-1, ...]
@@ -138,16 +142,19 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
 
         for k in s.range(N-2, -1, -1):
             dt_k = dt[k]
+
             A_k = kernel.expm(dt_k)
             Q_k = P_inf - A_k @  P_inf @ A_k.T
-            R_k = R[k]
+
             m_filtered_k = m_filtered[k, ...]
             P_filtered_k = P_filtered[k, ...]
+
             H_k = H
 
             m, P = rts_smoother_step(
-                m_filtered_k, P_filtered_k, s.m, s.P, A_k, H_k, Q_k, R_k
+                m_filtered_k, P_filtered_k, s.m, s.P, A_k, Q_k
             )
+
             s.m = m
             s.P = P
 
@@ -157,7 +164,7 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
             s.smoothed_var = index_add(
                 s.smoothed_var,
                 index[k, ...],
-                np.squeeze(H_k @ s.P @ H_k.T),
+                np.squeeze(H_k @ s.P @ H_k.T)
             )
 
         s.smoothed_mean = index_add(
@@ -166,17 +173,31 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
         s.smoothed_var = index_add(
             s.smoothed_var,
             index[-1, ...],
-            np.squeeze(H @ P_filtered[-1, ...] @ H.T),
+            np.squeeze(H @ P_filtered[-1, ...] @ H.T)
         )
+
         return s.smoothed_mean, s.smoothed_var
 
-def filter_and_smooth(X_t, Y, kernel: 'Kernel', likelihood: 'Likelihood', N: int):
+def filter_to_obvs(filtered_m, filtered_P, kernel: 'Kernel'):
+    _, _, _, H, _ = kernel.to_ss()
+    m =  ((H @ filtered_m.T).T)[..., 0]
+    P = ((H @ (filtered_P @ H.T).T).T)[..., 0]
+
+    return m, P
+
+def filter_and_smooth(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N: int):
     log_marginal_lik, filtered_m, filtered_P = sequential_kalman_filter(
-            X_t, Y, kernel, likelihood, N = N, store_intermediate=True
+            X, Y, kernel, likelihood, N = N, store_intermediate=True
     )
+
+    m, P = filter_to_obvs(filtered_m, filtered_P, kernel)
+
+    #return log_marginal_lik, m, P
+
     smoothed_m, smoothed_P = sequential_rts_smoother(
-        X_t, filtered_m, filtered_P,  kernel, likelihood, N = N
+        X, filtered_m, filtered_P,  kernel, likelihood, N = N
     )
+
 
     return log_marginal_lik, smoothed_m, smoothed_P
 

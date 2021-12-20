@@ -1,6 +1,7 @@
 import objax
 import jax
 import jax.numpy as np
+import numpy as onp
 import chex
 from typing import Optional, Tuple
 import warnings
@@ -34,14 +35,15 @@ class SDE_GP(Posterior):
         self.raw_N = Y.shape[0]
 
         if fix_input:
-            sort_idx, X_sorted, Y_sorted = order_sequentially(X, Y)
+            unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially(X, Y)
         else:
-            sort_idx, X_sorted, Y_sorted = None, X, Y
+            unique_idx, sort_idx, X_sorted, Y_sorted = None, None, X, Y
 
         # Use the sorted X and Y to construct the model on
         super(SDE_GP, self).__init__(X_sorted, Y_sorted)
 
         self.sort_idx = sort_idx
+        self.unique_idx = unique_idx
         self._likelihood = likelihood
         self.kernel = kernel
 
@@ -92,13 +94,36 @@ class SDE_GP(Posterior):
         raise NotImplementedError()
 
     def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
+        NS = XS.shape[0]
+
+        X = self.raw_X
+        Y = self.raw_Y
+
+        # Stack X first so that training data does not get removed when sorting data
+        X_stacked = onp.vstack([X, XS])
+
+        Y_nans = onp.NaN * onp.ones([NS, 1])
+        Y_stacked = onp.vstack([Y, Y_nans])
+
+        unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially(X_stacked, Y_stacked)
+
+        N = X_sorted.shape[0]
+
+        X_sorted = objax.StateVar(np.array(X_sorted))
+        Y_sorted = objax.StateVar(np.array(Y_sorted))
+
+
         _, mu, var = filter_and_smooth(
-            self.X,
-            self.Y,
+            X_sorted.value,
+            Y_sorted.value,
             self.kernel,
             self.likelihood,
-            N = self.raw_N
+            N = N
         )
+
+        # unsort
+        mu = mu[sort_idx][unique_idx][self.raw_N:]
+        var = var[sort_idx][unique_idx][self.raw_N:]
 
         return mu, var
 
