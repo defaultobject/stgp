@@ -8,7 +8,6 @@ import chex
 from ..settings import jitter
 from .matrix_ops import cholesky, cholesky_solve, add_jitter
 from .gaussian import log_gaussian, log_gaussian_with_mask
-from ..utils.nan_utils import gaussian_posterior_mean_update_with_nans, gaussian_posterior_variance_update_with_nans
 
 @jit
 def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
@@ -16,9 +15,16 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
+
+
+    M = np.multiply(
+        np.tile(H_k @ mask_k, [1, Y_k.shape[0]]),
+        np.eye(Y_k.shape[0])
+    )
+
     # -- KALMAN UPDATE --
-    mu = H_k @ m_
-    var = H_k @ P_ @ H_k.T
+    mu = M @ H_k @ m_
+    var = M @ H_k @ P_ @ H_k.T @ M.T
 
     #inovation mean and variance
     v = Y_k - mu
@@ -27,8 +33,8 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     #Kalman Gain
     S = add_jitter(S, jitter)
     L = cholesky(S)
-    K = (cholesky_solve(L, H_k @ P_)).T
-    K_xs_x = (H_k @ P_).T
+    K = (cholesky_solve(L, M @ H_k @ P_)).T
+    #K_xs_x = (H_k @ P_).T
 
     # Computes
     m_k = m_ + K @ v
@@ -42,6 +48,8 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     #        P_, K_xs_x, S, K_xs_x.T, np.squeeze(H_k @ mask_k), mask_k
     #)
 
+
+
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(
         log_gaussian_with_mask(Y_k, mu, S, np.squeeze(H_k @ mask_k))
@@ -50,9 +58,11 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     # mask is zero if nan, one if not
     # when mask is one we want to use the kalman update else use the kalman prediction
 
-    m_k = m_k * mask_k + m_ * (1-mask_k)
-    mask_kp = np.repeat(mask_k, mask_k.shape[0], axis=1)
-    P_k = P_k * mask_kp + P_ * (1-mask_kp)
+    #m_k = m_k * mask_k + m_ * (1-mask_k)
+
+    #mask_kp = mask_k @ mask_k.T 
+
+    #P_k = P_k * mask_kp + P_ * (1-mask_kp)
 
     return m_k, P_k, log_Z_k
 

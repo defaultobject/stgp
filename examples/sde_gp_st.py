@@ -130,7 +130,6 @@ print('batch: ', m_batch.get_objective())
 XS = create_grid(-1, 1, -1, 1, 100, 100)
 mu, var = m.predict_f(XS)
 mu_batch, var_batch = m_batch.predict_f(XS)
-breakpoint()
 
 mu, var = np.squeeze(mu), np.squeeze(var)
 mu_batch, var_batch = np.squeeze(mu_batch), np.squeeze(var_batch)
