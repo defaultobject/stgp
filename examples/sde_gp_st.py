@@ -49,15 +49,19 @@ def create_grid(x1, x2, y1, y2, n1=10, n2=10):
     return np.array(grid)
 
 
-Nt_train = 10
+Nt_train = 100
 Ns = 8
 
 X = create_grid(-1, 1, -1, 1, Nt_train, Ns)
 N = X.shape[0]
 
+np.random.seed(0)
 y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
 Y = y[:, None]
 
+Y[10:40, :] = np.NaN
+
+nan_idx = np.isnan(Y[:, 0])
 
 # generate data
 
@@ -73,19 +77,23 @@ m = lego.models.GP(
 )
 
 m_batch = lego.models.GP(
-    X, Y, kernel=kern_batch, inference='Batch'
+    X[~nan_idx], Y[~nan_idx], kernel=kern_batch, inference='Batch'
 )
 
 print('sde: ', m.get_objective())
 print('batch: ', m_batch.get_objective())
 
+#plt.figure(figsize=(20, 10))
+#plt.scatter(X[:, 0], X[:, 1], c=Y)
+#plt.show()
+#exit()
 
-restore = False
+restore = True
 if restore:
     m.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_st'))
     m_batch.load_from_checkpoint(str(checkpoint_folder / 'sde_gp_batch_st'))
 else:
-    epochs = 1000
+    epochs = 100
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
         m, 
@@ -96,6 +104,7 @@ else:
     )
 
     callback = progress_bar_callback(epochs)
+
     learning_curve_batch, training_time = SimpleTrainer().train(
         m_batch, 
         objax.optimizer.Adam,
@@ -114,13 +123,20 @@ else:
     plt.legend()
     plt.show()
 
+print('sde: ', m.get_objective())
+print('batch: ', m_batch.get_objective())
+
 
 XS = create_grid(-1, 1, -1, 1, 100, 100)
 mu, var = m.predict_f(XS)
 mu_batch, var_batch = m_batch.predict_f(XS)
+breakpoint()
 
 mu, var = np.squeeze(mu), np.squeeze(var)
-mu_batch, var_batch = np.squeeze(mu), np.squeeze(var)
+mu_batch, var_batch = np.squeeze(mu_batch), np.squeeze(var_batch)
+
+print(mu_batch)
+print(mu)
 
 print( np.sum((mu_batch-mu)**2), ' ', np.sum((var_batch-var)**2))
 

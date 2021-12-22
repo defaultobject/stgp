@@ -17,19 +17,27 @@ def create_grid(x1, x2, y1, y2, n1=10, n2=10):
     return np.array(grid)
 
 
-Nt_train = 10
-Ns = 10
+Nt_train = 100
+Ns = 8
 
 X = create_grid(-1, 1, -1, 1, Nt_train, Ns)
 N = X.shape[0]
 
+np.random.seed(0)
 y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
 Y = y[:, None]
 
-k = gpflow.kernels.RBF(
+Y[10:40, :] = np.NaN
+
+nan_idx = np.isnan(Y[:, 0])
+
+k = gpflow.kernels.Matern32(
     lengthscales = [0.1, 0.1]
 )
-m = gpflow.models.GPR(data=(X, Y), kernel=k)
+m = gpflow.models.GPR(data=(X[~nan_idx], Y[~nan_idx]), kernel=k)
+
+print(m.log_marginal_likelihood())
+exit()
 
 opt = tf.optimizers.Adam(0.01)
 learning_curve = []

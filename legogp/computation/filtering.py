@@ -7,7 +7,8 @@ import chex
 
 from ..settings import jitter
 from .matrix_ops import cholesky, cholesky_solve, add_jitter
-from .gaussian import log_gaussian
+from .gaussian import log_gaussian, log_gaussian_with_mask
+from ..utils.nan_utils import gaussian_posterior_mean_update_with_nans, gaussian_posterior_variance_update_with_nans
 
 @jit
 def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
@@ -27,22 +28,31 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     S = add_jitter(S, jitter)
     L = cholesky(S)
     K = (cholesky_solve(L, H_k @ P_)).T
+    K_xs_x = (H_k @ P_).T
 
+    # Computes
     m_k = m_ + K @ v
+    #m_k = gaussian_posterior_mean_update_with_nans(
+    #        m_, K, Y_k, mu, np.squeeze(H_k @ mask_k)
+    #)
+
+    # Computes
     P_k = P_ - K @ S @ K.T
+    #P_k = gaussian_posterior_variance_update_with_nans(
+    #        P_, K_xs_x, S, K_xs_x.T, np.squeeze(H_k @ mask_k), mask_k
+    #)
 
     #log marginal likelihood (assuming Gaussian likelihood)
-    log_Z_k = np.sum(log_gaussian(Y_k, mu, S))
+    log_Z_k = np.sum(
+        log_gaussian_with_mask(Y_k, mu, S, np.squeeze(H_k @ mask_k))
+    )
 
     # mask is zero if nan, one if not
     # when mask is one we want to use the kalman update else use the kalman prediction
 
-    #m_k = m_k * mask_k + m_ * (1-mask_k)
-
-    #mask_kp = np.repeat(mask_k, mask_k.shape[0], axis=1)
-
-    #P_k = P_k * mask_kp + P_ * (1-mask_kp)
-
+    m_k = m_k * mask_k + m_ * (1-mask_k)
+    mask_kp = np.repeat(mask_k, mask_k.shape[0], axis=1)
+    P_k = P_k * mask_kp + P_ * (1-mask_kp)
 
     return m_k, P_k, log_Z_k
 
@@ -72,8 +82,8 @@ def sequential_kalman_filter(X, Y, kernel: 'Kernel', likelihood: 'Likelihood', N
 
     # nan masking
     # construct mask so we can track where nans are
-    mask = np.squeeze((~np.isnan(Y)).astype(int))
-    mask = np.repeat(mask, state_size, axis=1)[..., None]
+    mask_y = np.squeeze((~np.isnan(Y)).astype(int))
+    mask = np.repeat(mask_y, state_size, axis=1)[..., None]
 
     # replace nans with zero to avoid nans in code
     Y = np.nan_to_num(Y, nan=0.0)
