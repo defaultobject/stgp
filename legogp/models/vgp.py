@@ -22,6 +22,7 @@ from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
 from ..utils.utils import ensure_module_list
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
+from ..computation.natural_gradients.nat_grad import general_ell_natural_gradients
 
 
 @obj_dispatch(Model, 'Variational', 'NoSparsity')
@@ -184,3 +185,10 @@ class VGP(Posterior):
 
     def predict_y(self, XS):
         raise NotImplementedError()
+
+    def natural_gradients(self, learning_rate, m_var, s_chol_var):
+        return general_ell_natural_gradients(
+            self,
+            learning_rate,
+            [m_var, s_chol_var]
+        )

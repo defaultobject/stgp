@@ -14,6 +14,8 @@ import json
 import typing
 from typing import List, Union
 
+from ..utils.utils import vc_remove_vars
+
 class Trainer:
     pass
 
@@ -39,13 +41,7 @@ class ScipyTrainer(Trainer):
 
         return [], 0
 
-def vc_remove_vars(vc, keys):
-    vc_new = objax.VarCollection()
 
-    for k in keys:
-        vc_new.update((name, v) for name, v in vc.items() if name not in keys)
-
-    return vc_new
 
 class SimpleTrainer(Trainer):
     def summary(self, train_vars):

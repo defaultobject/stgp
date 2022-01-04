@@ -1,5 +1,6 @@
 from ...settings import jitter
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle
+from ...utils.utils import vc_keep_vars
 
 import jax
 import jax.numpy as np
@@ -8,7 +9,7 @@ from jax import vjp
 
 import objax
 
-import warnings
+from typing import List
 
 
 @jit
@@ -77,24 +78,10 @@ def expectation_to_xi(mu1, mu2):
 
     return mu1, xi2
 
-def match_suffix(s, arr, return_single = True):
-    res =  [a for a in arr if a.endswith(s)]
 
-    if return_single:
-        assert len(res) == 1
-        return res[0]
 
-    return res
 
-def vc_keep_vars(vc, keys):
-    vc_new = objax.VarCollection()
-
-    for k in keys:
-        vc_new.update((name, v) for name, v in vc.items() if name in keys)
-
-    return vc_new
-
-def general_ell_natural_gradients(model, beta: float) -> np.ndarray:
+def general_ell_natural_gradients(model, beta: float, approx_posterior_vars: List[str]) -> np.ndarray:
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -128,8 +115,8 @@ def general_ell_natural_gradients(model, beta: float) -> np.ndarray:
     # TODO: generalize
     approx_posterior = model.approximate_posterior.approx_posteriors[0]
 
-    m = approx_posterior._m
-    S_chol_flattened = approx_posterior._S_chol
+    m = approx_posterior._m.value
+    S_chol_flattened = approx_posterior._S_chol.value
 
     M = m.shape[0]
 
@@ -146,10 +133,10 @@ def general_ell_natural_gradients(model, beta: float) -> np.ndarray:
     vc = model.vars()
 
     #TODO: this should not be hardcoded
-    m_name = match_suffix('._m', vc.keys())
-    s_chol_name = match_suffix('._S_chol', vc.keys())
+    m_name = approx_posterior_vars[0]
+    s_chol_name = approx_posterior_vars[1]
 
-    vars_to_diff = vc_keep_vars(vc, [m_name, s_chol_name])
+    vars_to_diff = vc_keep_vars(vc, approx_posterior_vars)
 
     grad_fn = objax.Jit(
         objax.GradValues(model.get_objective, vars_to_diff)
@@ -189,5 +176,5 @@ def general_ell_natural_gradients(model, beta: float) -> np.ndarray:
     xi1, xi2 = theta_to_xi(theta_1, theta_2)
     xi2 = xi2[np.tril_indices(M, 0)]
 
-    return {m_name: xi1, s_chol_name:xi2}
+    return [xi1, xi2]
 

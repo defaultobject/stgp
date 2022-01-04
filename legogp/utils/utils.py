@@ -30,3 +30,29 @@ def key_that_ends_with(d: dict, k: str):
 
 def can_batch(module_list):
     return True
+
+
+def match_suffix(s, arr, return_single = True):
+    res =  [a for a in arr if a.endswith(s)]
+
+    if return_single:
+        assert len(res) == 1
+        return res[0]
+
+    return res
+
+def vc_keep_vars(vc, keys):
+    vc_new = objax.VarCollection()
+
+    for k in keys:
+        vc_new.update((name, v) for name, v in vc.items() if name in keys)
+
+    return vc_new
+
+def vc_remove_vars(vc, keys):
+    vc_new = objax.VarCollection()
+
+    for k in keys:
+        vc_new.update((name, v) for name, v in vc.items() if name not in keys)
+
+    return vc_new

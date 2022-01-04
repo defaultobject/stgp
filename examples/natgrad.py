@@ -4,7 +4,7 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import legogp as lego
-from legogp.trainers import SimpleTrainer, ScipyTrainer
+from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.computation.natural_gradients.nat_grad import general_ell_natural_gradients
 
@@ -51,13 +51,33 @@ m = lego.models.GP(
     inference='Variational',
     whiten=False,
     minibatch_size=100,
-    kernel = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.5])) + lego.kernels.ScaleKernel(lego.kernels.BiasKernel()),
+    kernel = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1])),
     likelihood = lego.likelihood.Gaussian(0.1),
     approximate_posterior = qu
 )
 
-general_ell_natural_gradients(m, beta=0.1)
+epochs = 5
+callback = progress_bar_callback(epochs)
+learning_curve, training_time = NatGradTrainer().train(
+    m, 
+    None,
+    1.0,
+    epochs,
+    callback = callback
+)
 
 
 m.get_objective()
 
+pred_mu, pred_var = m.predict_f(XS, squeeze=True)
+
+fig = plt.figure()
+plt.fill_between(
+    np.squeeze(XS),
+    np.squeeze(pred_mu) + 2*np.squeeze(np.sqrt(pred_var)),
+    np.squeeze(pred_mu) - 2*np.squeeze(np.sqrt(pred_var)),
+    alpha = 0.4
+)
+plt.plot(XS, pred_mu)
+plt.scatter(X, Y, c='black')
+plt.show()
