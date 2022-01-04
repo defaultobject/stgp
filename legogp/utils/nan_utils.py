@@ -41,3 +41,8 @@ def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
     return K
 
+def gaussian_posterior_mean_update_with_nans(prior_m, K, Y, Y_mu, mask):
+    raise NotImplementedError()
+
+def gaussian_posterior_variance_update_with_nans(K_xs, K_xs_x, K_xx, K_x_xs, mask, mask_2):
+    raise NotImplementedError()

@@ -1,6 +1,52 @@
 """ Numpy operations for dealing sequential data """
 import numpy as np
 
+def pad_with_nan_to_make_grid(X, Y):
+    #converts data into grid
+
+    N = X.shape[0]
+
+    #construct target grid
+    unique_time = np.unique(X[:, 0])
+    unique_space = np.unique(X[:, 1:], axis=0)
+
+    Nt = unique_time.shape[0]
+    Ns = unique_space.shape[0]
+
+    print('grid size:', N, Nt, Ns, Nt*Ns)
+
+    X_tmp = np.tile(np.expand_dims(unique_space, 0), [Nt, 1, 1])
+
+    time_tmp = np.tile(unique_time, [Ns]).reshape([Nt, Ns], order='F')
+
+    X_tmp = X_tmp.reshape([Nt*Ns, -1])
+
+    time_tmp = time_tmp.reshape([Nt*Ns, 1])
+
+    #X_tmp is the full grid
+    X_tmp = np.hstack([time_tmp, X_tmp])
+
+    #Find the indexes in X_tmp that we need to add to X to make a full grid
+    _X = np.vstack([X,  X_tmp])
+    _Y = np.nan*np.zeros([_X.shape[0], 1])
+
+    _, idx = np.unique(_X, return_index=True, axis=0)
+    idx = idx[idx>=N]
+    print('unique points: ', idx.shape)
+
+    X_to_add = _X[idx, :]
+    Y_to_add = _Y[idx, :]
+
+    X_grid = np.vstack([X, X_to_add])
+    Y_grid = np.vstack([Y, Y_to_add])
+
+    #sort for good measure
+    _X = np.roll(X_grid, -1, axis=1)
+    #sort by time points first
+    idx = np.lexsort(_X.T)
+
+    return X_grid[idx], Y_grid[idx]
+
 def order_sequentially(X, Y = None):
     """
         lexsort uses the final column as the primary sort key and then sorts by each column from the last

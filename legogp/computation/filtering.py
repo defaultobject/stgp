@@ -48,8 +48,6 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     #        P_, K_xs_x, S, K_xs_x.T, np.squeeze(H_k @ mask_k), mask_k
     #)
 
-
-
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(
         log_gaussian_with_mask(Y_k, mu, S, np.squeeze(H_k @ mask_k))

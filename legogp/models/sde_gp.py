@@ -13,7 +13,7 @@ from . import GP, BatchGP
 from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
 from ..defaults import get_default_likelihood
 
-from ..data.sequential import order_sequentially
+from ..data.sequential import order_sequentially, pad_with_nan_to_make_grid
 
 @obj_dispatch(Model, 'Markov', 'NoSparsity')
 class SDE_GP(Posterior):
@@ -106,6 +106,9 @@ class SDE_GP(Posterior):
 
         Y_nans = onp.NaN * onp.ones([NS, 1])
         Y_stacked = onp.vstack([Y, Y_nans])
+
+        breakpoint()
+        X_stacked, Y_stacked = pad_with_nan_to_make_grid(X_stacked, Y_stacked)
 
         unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially(X_stacked, Y_stacked)
 

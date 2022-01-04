@@ -31,10 +31,10 @@ print(A_tilde.T @ L_tilde @ A_tilde)
 a = np.array([1, 1, 0, 1])[:, None]
 
 print(a @ a.T)
+breakpoint()
 
 target = np.linalg.inv(np.linalg.inv(K) + np.linalg.inv(A.T @ L @ A))
 target_tilde = np.linalg.inv(np.linalg.inv(K) + np.linalg.inv(A_tilde.T @ L_tilde @ A_tilde))
 print(target)
 print(target_tilde)
 
-breakpoint()
