@@ -10,8 +10,6 @@ from ..transforms  import LinearTransform, NonLinearTransform
 from . import ApproximatePosterior, GaussianApproximatePosterior
 from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower_triangle
 import chex
-from ..computation.ell_callers import linear_transform_ell, non_linear_transform_ell
-from ..computation.predictor_callers import linear_predictor, non_linear_predictor
 
 from typing import Optional, List
 
@@ -30,15 +28,18 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
     def __init__(self, dim_list: List[int]=None, approximate_posteriors: Optional[List[GaussianApproximatePosterior]]=None):
         super(MeanFieldApproximatePosterior, self).__init__()
 
-        self.num_of_latents = len(dim_list)
-
         if approximate_posteriors is None:
             self.approx_posteriors = objax.ModuleList([
                 GaussianApproximatePosterior(dim=dim_list[q])
-                for q in range(self.num_of_latents)
+                for q in range(len(dim_list))
             ])
-        else: 
+
+        elif type(approximate_posteriors) is list: 
+            self.approx_posteriors = objax.ModuleList(approximate_posteriors)
+        else:
             self.approx_posteriors = approximate_posteriors
+
+        self.num_of_latents = len(self.approx_posteriors)
 
     @property
     def m(self):

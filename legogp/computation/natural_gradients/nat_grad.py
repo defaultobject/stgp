@@ -2,9 +2,10 @@ from ...settings import jitter
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle
 from ...utils.utils import vc_keep_vars
 
+
 import jax
 import jax.numpy as np
-from jax import jit
+from jax import grad, jit
 from jax import vjp
 
 import objax
@@ -81,7 +82,7 @@ def expectation_to_xi(mu1, mu2):
 
 
 
-def general_ell_natural_gradients(model, beta: float, approx_posterior_vars: List[str]) -> np.ndarray:
+def general_ell_natural_gradients(model, beta: float, grad_1, grad_2) -> np.ndarray:
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -130,22 +131,8 @@ def general_ell_natural_gradients(model, beta: float, approx_posterior_vars: Lis
 
     #calculate ∂L/∂ξ - this is already computed by the model
 
-    vc = model.vars()
-
-    #TODO: this should not be hardcoded
-    m_name = approx_posterior_vars[0]
-    s_chol_name = approx_posterior_vars[1]
-
-    vars_to_diff = vc_keep_vars(vc, approx_posterior_vars)
-
-    grad_fn = objax.Jit(
-        objax.GradValues(model.get_objective, vars_to_diff)
-    , vc)
-
-    gradients, _ = grad_fn()
-
-    partial_m = gradients[0]
-    partial_s_chol_flattened = gradients[1]
+    partial_m = grad_1
+    partial_s_chol_flattened = grad_2
     partial_s_chol = lower_triangle(partial_s_chol_flattened, M)
 
     #calculate ∂ξ/μ 

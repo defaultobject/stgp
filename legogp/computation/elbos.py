@@ -125,17 +125,20 @@ def elbo(
 
     # Compute marginals q(f)
     # Collext all marginal dispatched callers
+    # TODO: assume that all approx_posts are the same
+
     marginal_callers = [
         diagonal_marginal.dispatch(
+            type(approx_posts[0]),
             type(sparsity_list[p])
         )
         for p in range(P)
     ]
     # assume all marginals callers are the same
     q_f_m_arr, q_f_s_arr = batch_or_loop(
-        lambda X, mean, kxx, kxz, kzz, m, S, prior: marginal_callers[0](X, mean, kxx, kxz, kzz, m, S, prior.sparsity),
-        [X, mean_zz_arr, K_xx_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, prior.latents],
-        [None, 0, 0, 0, 0, 0, 0, 0],
+        lambda X, mean, kxx, kxz, kzz, m, S, prior, q: marginal_callers[0](X, mean, kxx, kxz, kzz, m, S, prior.sparsity, q),
+        [X, mean_zz_arr, K_xx_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, prior.latents, approx_posts],
+        [None, 0, 0, 0, 0, 0, 0, 0, 0],
         dim = len(sparsity_list),
         out_dim = 2,
         batch_flag = can_batch(sparsity_list)

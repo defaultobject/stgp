@@ -186,9 +186,9 @@ class VGP(Posterior):
     def predict_y(self, XS):
         raise NotImplementedError()
 
-    def natural_gradients(self, learning_rate, m_var, s_chol_var):
+    def natural_gradients(self, learning_rate, g1, g2):
         return general_ell_natural_gradients(
             self,
             learning_rate,
-            [m_var, s_chol_var]
+            g1, g2
         )

@@ -18,45 +18,83 @@ from legogp.computation.natural_gradients.nat_grad import general_ell_natural_gr
 
 
 class NatGradTrainer(Trainer):
-    def train(
+    def __init__(
         self, 
-        model:'Model', 
-        optimizer, 
-        learning_rate, 
-        epochs, 
+        model,
         hold_vars = None,
-        callback=None
+        schedule='constant',
+        total_epochs=None
     ):
-
-        m = model
-        vc = m.vars()
+        self.m = model
+        vc = self.m.vars()
 
         m_name = match_suffix('._m', vc.keys())
         s_chol_name = match_suffix('._S_chol', vc.keys())
-        approx_posterior_vars = [m_name, s_chol_name]
+        self.approx_posterior_vars = [m_name, s_chol_name]
 
-        vars_to_update = vc_keep_vars(vc, approx_posterior_vars)
+        self.vars_to_update = vc_keep_vars(vc, self.approx_posterior_vars)
 
-        natgrad_fn = objax.Jit(
-            model.natural_gradients,
-            vc,
-            static_argnums = (0, 1, 2,)
+        self.natgrad_fn = objax.Jit(
+            self.m.natural_gradients,
+            vc
         )
 
-        def gradient_step(i):
-            params = natgrad_fn(
-                learning_rate, approx_posterior_vars[0], approx_posterior_vars[1]
+        self.objective_fn = objax.Jit(self.m.get_objective, vc)
+
+        self.schedule = schedule
+        self.total_epochs = total_epochs
+        self.vc = vc
+
+
+
+    def train(
+        self, 
+        learning_rate, 
+        epochs, 
+        callback=None,
+        epoch_ofset=0
+    ):
+
+        def gradient_step(i, global_i):
+
+            if self.total_epochs:
+                percent = global_i/self.total_epochs
+            else:
+                percent = i/epochs
+            if self.schedule == 'linear':
+                lr = learning_rate[1] * percent + (1-percent) * learning_rate[0]
+            if self.schedule == 'log':
+                lr = np.power(learning_rate[1], percent) * np.power(learning_rate[0], (1-percent))
+            elif self.schedule == 'constant':
+                lr = learning_rate
+            else:
+                raise NotImplementedError(f'{scheudle} is not implemented')
+
+            print(f'{i} / {self.total_epochs} -- {lr}')
+
+            vars_to_diff = vc_keep_vars(self.m.vars(), self.approx_posterior_vars)
+            grad_fn = objax.GradValues(self.m.get_objective, vars_to_diff)
+            gradients, _ = grad_fn()
+
+            params = self.natgrad_fn(
+                lr, gradients[0], gradients[1]
             )
 
-            vars_to_update.assign(params)
+            if np.any(np.isnan(params[0])):
+                raise RuntimeError('NaN encountered whilst natgrad training!')
 
+            self.vars_to_update.assign(params)
 
+        epoch_arr = []
         for i in range(epochs):
-            gradient_step(i)
+            val = self.objective_fn()
 
+            epoch_arr.append(val)
+
+            gradient_step(i, i + epoch_ofset)
 
             if callback is not None:
                 callback(i, None, None)
 
-        return None, None
+        return epoch_arr, None
 

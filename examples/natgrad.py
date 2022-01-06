@@ -7,6 +7,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.computation.natural_gradients.nat_grad import general_ell_natural_gradients
+from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior 
 
 import objax
 import jax
@@ -40,7 +41,12 @@ Y = np.hstack([Y1 for p in range(P)])+2.0
 
 assert Y.shape[1] == P
 
-qu = lego.approximate_posteriors.MeanFieldApproximatePosterior(dim_list=[M])
+K1 = lego.kernels.deep_kernels.DeepRBF()
+
+
+qu = lego.approximate_posteriors.MeanFieldApproximatePosterior(
+    approximate_posteriors = [MM_GaussianInnerLayerApproximatePosterior(kernel=K1, dim=M)]
+)
 
 Z = np.linspace(0, 1, M)[:, None]
 
@@ -65,6 +71,8 @@ learning_curve, training_time = NatGradTrainer().train(
     epochs,
     callback = callback
 )
+
+breakpoint()
 
 
 m.get_objective()

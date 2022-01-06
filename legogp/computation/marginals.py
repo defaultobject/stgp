@@ -1,7 +1,7 @@
 from .. import settings
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian
-from ..approximate_posteriors import GaussianApproximatePosterior
+from ..approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..batching import Batched
@@ -122,13 +122,39 @@ def whitened_gaussian_conditional_full(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, K
     return mu, sig
 
 
-@dispatch(NoSparsity)
-def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity):
+@dispatch(GaussianApproximatePosterior, NoSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
     return m, diagonal_from_cholesky(S_chol)
 
 
-@dispatch(FullSparsity)
-def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity):
+@dispatch(GaussianApproximatePosterior, FullSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
+    Z = sparsity.Z
+    return gaussian_conditional_diagional(
+        X, Z, K_zz, K_xz, K_xx, m, S_chol
+    )
+
+@dispatch(MM_GaussianInnerLayerApproximatePosterior, NoSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
+    S = S_chol @ S_chol.T
+    S_diag = np.diag(S)[:, None]
+
+    MMK = q.kernel._K_with_pm(
+        X, 
+        X,
+        m[None, ...], 
+        m[None, ...],
+        S_diag[None, ...],
+        S[None, ...],
+        S_diag[None, ...]
+    )
+
+    return np.zeros_like(m), MMK
+
+@dispatch(MM_GaussianInnerLayerApproximatePosterior, FullSparsity)
+def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
+    print('here')
+    breakpoint()
     Z = sparsity.Z
     return gaussian_conditional_diagional(
         X, Z, K_zz, K_xz, K_xx, m, S_chol

@@ -1,10 +1,11 @@
 from ..core import GPPrior
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian
-from ..approximate_posteriors import GaussianApproximatePosterior
+from ..approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..batching import Batched
+from .matrix_ops import add_jitter
 from .. import utils
 
 import jax
@@ -130,4 +131,13 @@ def precomputed_expected_log_likelihood(X, Y, approx_post, prior, likelihood, q_
         q_f_var
     )
 
+@dispatch(object, object, MM_GaussianInnerLayerApproximatePosterior, GPPrior, Gaussian, object, object)
+def precomputed_expected_log_likelihood(X, Y, approx_post, prior, likelihood, q_f_mean, q_f_var):
+    #TODO: chex
+    K = add_jitter(q_f_var, likelihood.variance)
+    return log_gaussian(
+        Y,
+        np.zeros_like(Y),
+        K
+    )
 

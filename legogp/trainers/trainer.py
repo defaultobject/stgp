@@ -14,7 +14,7 @@ import json
 import typing
 from typing import List, Union
 
-from ..utils.utils import vc_remove_vars
+from ..utils.utils import vc_remove_vars, vc_keep_vars
 
 class Trainer:
     pass
@@ -42,6 +42,77 @@ class ScipyTrainer(Trainer):
         return [], 0
 
 
+class GradDescentTrainer(Trainer):
+    def __init__(
+        self, 
+        models: Union['Model', List['Model']], 
+        optimizer, 
+        hold_vars = None,
+        keep_vars = None,
+    ):
+        if type(models) is not list:
+            models = [models]
+
+        self.models = models
+
+        train_vars = models[0].vars()
+
+        def objective():
+            obj = 0.0
+            for m in models:
+                obj += m.get_objective()
+            return obj
+
+        objective_fn = objax.Jit(objective, train_vars)
+
+
+        if hold_vars is not None:
+            vars_to_train = vc_remove_vars(train_vars, hold_vars)
+        elif keep_vars is not None:
+            vars_to_train = vc_keep_vars(train_vars, keep_vars)
+        else:
+            vars_to_train = train_vars
+
+        self.grad_fn = objax.Jit(
+            objax.GradValues(objective_fn, vars_to_train), 
+            train_vars
+        )
+
+        self.opt = optimizer(vars_to_train)
+
+    def train(
+        self,
+        learning_rate,
+        epochs,
+        callback=None,
+        epoch_ofset = None
+    ):
+        start = timer()
+
+        epoch_arr = []
+
+        def train_op():
+            grad, val = self.grad_fn()
+            self.opt(learning_rate, grad)
+            return grad, val
+
+        for i in range(epochs):
+            grad, val = train_op()
+
+            if np.isnan(val):
+                print(grad)
+                raise RuntimeError('NaN encountered whilst training!')
+
+            if callback is not None:
+                callback(i, grad, val)
+
+            epoch_arr.append(val)
+
+        end = timer()
+        training_time = end - start
+
+        return epoch_arr, training_time
+
 
 class SimpleTrainer(Trainer):
     def summary(self, train_vars):
@@ -54,6 +125,7 @@ class SimpleTrainer(Trainer):
         learning_rate, 
         epochs, 
         hold_vars = None,
+        keep_vars = None,
         callback=None
     ):
         if type(models) is not list:
@@ -75,6 +147,8 @@ class SimpleTrainer(Trainer):
 
         if hold_vars is not None:
             vars_to_train = vc_remove_vars(train_vars, hold_vars)
+        elif keep_vars is not None:
+            vars_to_train = vc_keep_vars(train_vars, keep_vars)
         else:
             vars_to_train = train_vars
 
@@ -107,3 +181,48 @@ class SimpleTrainer(Trainer):
         training_time = end - start
 
         return epoch_arr, training_time
+
+
+class SwitchTrainer(Trainer):
+    def __init__(
+        self,
+        trainer_list,
+        iters,
+        learning_rate_list,
+        epoch_list,
+        callback_list = None
+    ):
+        self.trainer_list = trainer_list
+        self.iters = iters
+        self.learning_rate_list = learning_rate_list
+        self.epoch_list = epoch_list
+
+        if callback_list is None:
+            callback_list = [None] * len(trainer_list)
+
+        self.callback_list = callback_list
+
+    def train(self):
+        start = timer()
+
+        num_trainers = len(self.trainer_list)
+
+        total_elbos = []
+        epochs = [0 for j in range(num_trainers)]
+
+        for i in range(self.iters):
+            for j in range(num_trainers):
+                epochs_j, _ = self.trainer_list[j].train(
+                    self.learning_rate_list[j], 
+                    self.epoch_list[j], 
+                    self.callback_list[j],
+                    epoch_ofset = epochs[j]
+                )
+
+                total_elbos.append(epochs_j)
+                epochs[j] += self.epoch_list[j]
+
+        end = timer()
+        training_time = end - start
+
+        return total_elbos, training_time
