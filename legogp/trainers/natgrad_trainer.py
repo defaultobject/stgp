@@ -36,14 +36,14 @@ class NatGradTrainer(Trainer):
 
         self.natgrad_fn = objax.Jit(
             self.m.natural_gradients,
-            vc
+            vc,
+            static_argnums = (1, 2,)
         )
 
         self.objective_fn = objax.Jit(self.m.get_objective, vc)
 
         self.schedule = schedule
         self.total_epochs = total_epochs
-        self.vc = vc
 
 
 
@@ -56,11 +56,10 @@ class NatGradTrainer(Trainer):
     ):
 
         def gradient_step(i, global_i):
-
             if self.total_epochs:
-                percent = global_i/self.total_epochs
+                percent = (global_i+1)/self.total_epochs
             else:
-                percent = i/epochs
+                percent = (i+1)/epochs
             if self.schedule == 'linear':
                 lr = learning_rate[1] * percent + (1-percent) * learning_rate[0]
             if self.schedule == 'log':
@@ -70,14 +69,10 @@ class NatGradTrainer(Trainer):
             else:
                 raise NotImplementedError(f'{scheudle} is not implemented')
 
-            print(f'{i} / {self.total_epochs} -- {lr}')
-
-            vars_to_diff = vc_keep_vars(self.m.vars(), self.approx_posterior_vars)
-            grad_fn = objax.GradValues(self.m.get_objective, vars_to_diff)
-            gradients, _ = grad_fn()
+            #print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
             params = self.natgrad_fn(
-                lr, gradients[0], gradients[1]
+                lr, self.approx_posterior_vars[0], self.approx_posterior_vars[1]
             )
 
             if np.any(np.isnan(params[0])):
@@ -91,7 +86,7 @@ class NatGradTrainer(Trainer):
 
             epoch_arr.append(val)
 
-            gradient_step(i, i + epoch_ofset)
+            gradient_step(i, i+epoch_ofset)
 
             if callback is not None:
                 callback(i, None, None)

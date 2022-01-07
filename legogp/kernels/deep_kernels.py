@@ -15,6 +15,8 @@ from typing import List, Optional, Union
 import chex 
 import warnings
 
+
+
 class DeepIndependentKernel(ConcatationKernel):
     def K(self, X1: np.array, X2: np.array):
         K_arr = super(DeepIndependentKernel, self).K(X1, X2)
@@ -114,7 +116,94 @@ class DeepHetreo(Kernel):
 
         return k
 
+class DeepKernel(Kernel):
+    def __init__(
+        self,
+        parent: Optional['Model'] = None,
+        kernel: Optional['Kernel'] = None,
+    ):
+        # If parent is not passed in the kernel constructed it MUST be added before the kernel is used
+        self.parent = parent
 
+        self.kernel = kernel
+
+        if self.kernel is None:
+            self.use_parent = True
+        else:
+            self.use_parent = False
+
+    def set_parent(self, parent):
+        self.parent = parent
+
+    def forward(self, X1, X2, mu_1, mu_2, k_x1, k_x2, K_x1x2):
+        mu_1 = mu_1[None, :, :]
+        mu_2 = mu_2[None, :, :]
+        k_x1 = k_x1[None, :, :]
+        k_x2 = k_x2[None, :, :]
+        K_x1x2 = K_x1x2[None, :, :]
+
+        return self._K_with_pm(
+            X1, X2, mu_1, mu_2, k_x1, K_x1x2, k_x2
+        )
+        return K
+
+    def propogate_parent_var(self, x1):
+        if self.use_parent:
+            pm_x1 = self.parent.mean(x1)
+            pk_x1x1 = self.parent.var(x1)
+
+        else:
+            N1 = x1.shape[0]
+            N2 = x2.shape[0]
+            pm_x1 = np.zeros([1, N1, 1])
+
+            pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
+
+
+        return pm_x1, pk_x1x1
+
+    def propogate_parent(self, x1, x2):
+        if self.use_parent:
+            pm_x1 = self.parent.mean(x1)
+            pm_x2 = self.parent.mean(x2)
+
+            pk_x1x1 = self.parent.var(x1)
+            pk_x2x2 = self.parent.var(x2)
+            pk_x1x2 = self.parent.covar(x1, x2)
+
+        else:
+            N1 = x1.shape[0]
+            N2 = x2.shape[0]
+            pm_x1 = np.zeros([1, N1, 1])
+            pm_x2 = np.zeros([1, N2, 1])
+
+            pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
+            pk_x2x2 = self.kernel.K_diag(x2)[None, :, None]
+            pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
+
+
+        return pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2
+
+    def _K(self, X1, X2):
+        # Precompute parent mean and variances
+        pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2 = self.propogate_parent(X1, X2)
+
+        return self._K_with_pm(X1, X2,pm_x1,pm_x2,pk_x1x1,pk_x1x2, pk_x2x2)
+
+    def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1, pk_x1x2, pk_x2):
+        raise NotImplementedError()
+
+    def K_diag(self, X1):
+        raise NotImplementedError()
+
+class DeepLinear(DeepKernel):
+    def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1, pk_x1x2, pk_x2):
+        return pm_x1 @ pm_x2.T + pk_x1x2
+
+    def K_diag(self, X1):
+        pm_x1, pk_x1x1 = self.propogate_parent_var(X1)
+
+        return pm_x1 * pm_x1 + pk_x1x1
 
 class DeepStationary(StationaryKernel):
     """

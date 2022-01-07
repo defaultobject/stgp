@@ -82,7 +82,7 @@ def expectation_to_xi(mu1, mu2):
 
 
 
-def general_ell_natural_gradients(model, beta: float, grad_1, grad_2) -> np.ndarray:
+def general_ell_natural_gradients(model, beta: float, approx_posterior_vars: List[str]) -> np.ndarray:
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -130,9 +130,20 @@ def general_ell_natural_gradients(model, beta: float, grad_1, grad_2) -> np.ndar
     mu1, mu2 = xi_to_expectation(m, S_chol)
 
     #calculate ∂L/∂ξ - this is already computed by the model
+    vc = model.vars()
 
-    partial_m = grad_1
-    partial_s_chol_flattened = grad_2
+    #TODO: this should not be hardcoded
+    m_name = approx_posterior_vars[0]
+    s_chol_name = approx_posterior_vars[1]
+
+    vars_to_diff = vc_keep_vars(vc, approx_posterior_vars)
+
+    grad_fn = objax.GradValues(model.get_objective, vars_to_diff)
+
+    gradients, _ = grad_fn()
+
+    partial_m = gradients[0]
+    partial_s_chol_flattened = gradients[1]
     partial_s_chol = lower_triangle(partial_s_chol_flattened, M)
 
     #calculate ∂ξ/μ 
