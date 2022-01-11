@@ -122,6 +122,9 @@ class DeepKernel(Kernel):
         parent: Optional['Model'] = None,
         kernel: Optional['Kernel'] = None,
     ):
+        # setup active dims and input_dim
+        super(DeepKernel, self).__init__()
+
         # If parent is not passed in the kernel constructed it MUST be added before the kernel is used
         self.parent = parent
 
@@ -198,12 +201,13 @@ class DeepKernel(Kernel):
 
 class DeepLinear(DeepKernel):
     def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1, pk_x1x2, pk_x2):
-        return pm_x1 @ pm_x2.T + pk_x1x2
+        # TODO: assume single latent function
+        return pm_x1[0] @ pm_x2[0].T + pk_x1x2[0]
 
     def K_diag(self, X1):
         pm_x1, pk_x1x1 = self.propogate_parent_var(X1)
 
-        return pm_x1 * pm_x1 + pk_x1x1
+        return (pm_x1[0] * pm_x1[0] + pk_x1x1[0])[:, 0]
 
 class DeepStationary(StationaryKernel):
     """

@@ -69,7 +69,7 @@ class NatGradTrainer(Trainer):
             else:
                 raise NotImplementedError(f'{scheudle} is not implemented')
 
-            #print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
+            print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
             params = self.natgrad_fn(
                 lr, self.approx_posterior_vars[0], self.approx_posterior_vars[1]
