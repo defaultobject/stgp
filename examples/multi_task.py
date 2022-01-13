@@ -123,15 +123,15 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 2000
+    epochs = 100
     P = Y.shape[1]
     Q = P
 
     # Construct independt prior
-    latents = [
+    latents = lego.transforms.Independent([
         lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True)
         for q in range(Q)
-    ]
+    ], prior=True)
 
     # Make LMC prior
     prior = lego.transforms.multi_output.LMC_Unit_Tri(latents, output_dim = P)
@@ -191,7 +191,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     if model_type == 'LMC_Hetreo':
         for mod in latent_noise_gp:
-            mu, var = mod.predict(XS, diagonal=True)
+            mu, var = mod.predict_f(XS, diagonal=True)
 
             NS = XS.shape[0]
             mu_i = mu.reshape([NS])
@@ -202,7 +202,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
             plt.scatter(mod.X.value, mod.Y.value)
             plt.show()
 
-    mu, var = m.predict(XS, diagonal=True)
+    mu, var = m.predict_f(XS, diagonal=True)
 
     return {'mu': mu, 'var': var}
 
@@ -212,9 +212,9 @@ X, Y, Y_all, XS = toy_data()
 results = {
     #'gp_bfgs': gp(X, Y, train_bfgs, 'gp_bfgs', model_type = 'LMC', restore=False),
     #'lmc_bfgs': lmc(X, Y, train_bfgs, 'lmc_bfgs', model_type = 'LMC', restore=False),
-    #'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
+    'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
     #'lmc_hetro_bfgs': lmc(X, Y, train_bfgs, 'lmc_hetro_bfgs', model_type= 'LMC_Hetreo' , restore=False),
-    'lmc_hetro_adam': lmc(X, Y, train_adam, 'lmc_hetro_adam', model_type= 'LMC_Hetreo' , restore=True)
+    #'lmc_hetro_adam': lmc(X, Y, train_adam, 'lmc_hetro_adam', model_type= 'LMC_Hetreo' , restore=True)
 }
 
 num_models = len(results.keys())

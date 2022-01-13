@@ -4,7 +4,7 @@ import chex
 import objax
 
 from ..batching import loop_or_batch
-from ..transforms import Independent, LinearTransform, LMC
+from ..transforms import Independent, LinearTransform
 
 from typing import List
 

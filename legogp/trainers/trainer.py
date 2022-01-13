@@ -136,7 +136,6 @@ class SimpleTrainer(Trainer):
         # Assume that models[0] is the 'global' model
         train_vars = models[0].vars()
 
-
         def objective():
             obj = 0.0
             for m in models:

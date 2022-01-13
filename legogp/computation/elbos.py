@@ -1,6 +1,6 @@
 from ..utils.utils import can_batch
 from ..approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
-from ..transforms import Independent, LinearTransform, LMC
+from ..transforms import Independent, LinearTransform
 import jax
 import jax.numpy as np
 from jax import jit

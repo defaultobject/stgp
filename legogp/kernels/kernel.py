@@ -306,10 +306,38 @@ class StationaryKernel(Kernel):
 
         return K
 
+class StationaryVarianceKernel(StationaryKernel):
+    def __init__(
+        self,
+        lengthscales: Optional[np.ndarray] = None,
+        variance: Optional[np.ndarray] = None,
+        input_dim: Optional[int] = 1,
+        active_dims: Optional[np.ndarray] = None,
+    ) -> None:
 
+        super(StationaryVarianceKernel, self).__init__(lengthscales, input_dim, active_dims)
+
+        # register lengthscales and variances
+        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
+
+    @property
+    def variance(self) -> np.ndarray:
+        return positive_transform(self.raw_variance.value)
+
+    def _K_scaler(self, x1, x2, lengthscale):
+        return self._K_scaler_with_var(x1, x2, lengthscale, self.variance)
 
 class NonStationaryKernel(Kernel):
     def __init__(self) -> None:
         super(Kernel, self).__init__()
 
         pass
+
+class Linear(Kernel):
+    def _K(self, X1, X2):
+        return X1 @ X2.T
+
+    def K_diag(self, X1):
+        return np.square(self._apply_active_dim(X1))[:, 0]
+
+

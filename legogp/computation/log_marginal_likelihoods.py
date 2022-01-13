@@ -2,7 +2,7 @@ from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
-from ..transforms import Independent, LinearTransform, LMC
+from ..transforms import Independent, LinearTransform
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from ..utils import utils
 

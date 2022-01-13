@@ -246,7 +246,7 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
 
     #TODO: implement masking
 
-    if False:
+    if True:
         mask = get_mask(Y_vec)
         Y_vec = np.nan_to_num(Y_vec,  nan=0.0)
         mask_xs_x = np.tile(mask, [K_xs_x.shape[0], 1]) 

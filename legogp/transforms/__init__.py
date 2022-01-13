@@ -1,7 +1,7 @@
 """Import all transforms."""
 from .transform import Transform, LinearTransform, NonLinearTransform, Independent, SumTransform, One2One
 from .basic import Identity
-from .multi_output import LMC
+from .multi_output import LMC_Base, LMC_Unit_Tri
 
 __all__ = [
     "Transform", 
@@ -10,6 +10,7 @@ __all__ = [
     "LinearTransform", 
     "SumTransform",
     "NonLinearTransform", 
-    "Identity", 
-    "LMC"
+    "Identity",
+    "LMC_Base",
+    "LMC_Unit_Tri"
 ]
