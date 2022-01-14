@@ -59,7 +59,7 @@ class GPPrior(Prior):
         k =  self.kernel.K_diag(XS)
         k = k[None, :]
         chex.assert_shape(k, [1, XS.shape[0]])
-        return k
+        return k[..., None]
 
     def covar(self, X1, X2):
         k = self.kernel.K(X1, X2)

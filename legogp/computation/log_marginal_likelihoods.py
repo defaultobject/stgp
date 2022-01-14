@@ -88,6 +88,7 @@ def multi_latent_log_marginal_likelihood(
     # get correct marginal likelihood from dispatch
     lml_fn = evoke('log_marginal_likelihood')
 
+    # Ensure batched Y has rank 2
     Y = Y[..., None]
 
     lml_arr = batch_or_loop(

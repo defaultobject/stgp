@@ -103,7 +103,7 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
     Ns = XS.shape[0]
     N = X.shape[0]
 
-    if False:
+    if True:
         mask = get_mask(Y)
 
         # TODO: document and test this
@@ -240,6 +240,8 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
     mean_x = prior.vec_mean(X)
     mean_xs = prior.vec_mean(XS)
+
+    print('predict -- LinearTransform -- here')
 
 
     Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')

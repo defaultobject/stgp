@@ -29,7 +29,7 @@ def key_that_ends_with(d: dict, k: str):
 
 
 def can_batch(module_list):
-    return True
+    return False
 
 
 def match_suffix(s, arr, return_single = True):

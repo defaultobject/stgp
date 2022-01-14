@@ -123,7 +123,7 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 100
+    epochs = 1
     P = Y.shape[1]
     Q = P
 
