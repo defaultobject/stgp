@@ -344,7 +344,8 @@ class DeepStationary(StationaryKernel):
 
 class DeepRBF(DeepStationary):
     def _K_var(self, lengthscale):
-        return np.sqrt(np.pi*lengthscale)
+        #return np.sqrt(np.pi*lengthscale)
+        return np.sqrt(np.pi*lengthscale)/np.sqrt(2*np.pi*(lengthscale))
 
     def _K_scaler(self, x1, x2, lengthscale, m1, m2, k_11, k_22, k_12):
         chex.assert_rank(k_11, 0)
