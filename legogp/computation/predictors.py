@@ -13,7 +13,7 @@ from ..utils import utils
 from ..utils.utils import can_batch
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
-from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve
+from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
 from .model_ops import get_block_diag_gram_matrix, get_diagonal_gaussian_likelihood_variances, get_linear_multi_task_model_covariance, get_linear_multi_task_prior_covariance, get_linear_multi_task_prior_diag_covariance
 
 import jax
@@ -23,6 +23,26 @@ import chex
 from typing import List
 from objax import ModuleList
 from batchjax import batch_or_loop
+
+def gp_posterior_with_nans(Y, K_xx, mean_x, lik_var):
+    N = Y.shape[0]
+    mask = get_mask(Y)
+
+    Y = np.nan_to_num(Y, nan=0.0)
+
+    k = K_xx + np.eye(N)*lik_var
+
+    k = mask_to_identity(k, mask)
+
+    k_chol = cholesky(k)
+
+
+    m = mean_x + K_xx @ cholesky_solve(k_chol, Y-mean_x) 
+
+
+    S = np.eye(N)
+
+    return m, S
 
 @jit
 def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
@@ -58,6 +78,8 @@ def full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, li
     chex.assert_equal(mu.shape, sig.shape)
 
     return mu, sig
+
+
 
 
 
@@ -243,31 +265,26 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
 
     print('predict -- LinearTransform -- here')
 
+    Y_vec = vec_columns(Y)
 
-    Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
+    m_post, S_post = gp_posterior_with_nans(Y_vec, K_xx, mean_x, lik_var)
 
-    #TODO: implement masking
-
-    if True:
-        mask = get_mask(Y_vec)
-        Y_vec = np.nan_to_num(Y_vec,  nan=0.0)
-        mask_xs_x = np.tile(mask, [K_xs_x.shape[0], 1]) 
-        K_xs_x = np.multiply(K_xs_x, mask_xs_x)
-        K_xx = mask_to_identity(K_xx, mask)
-        mean_x =  mask_vector(mean_x, mask)
-
-    mu, var = full_gaussian_prediction_diagonal(
-        Y_vec,
-        K_xs,
-        K_xs_x,
+    mu, var = gaussian_conditional_diagional(
+        XS, 
+        X,
         K_xx,
+        K_xs_x,
+        K_xs,
+        m_post,
+        S_post,
         mean_x,
-        mean_xs,
-        lik_var
-    )   
+        mean_xs
+    )
 
     mu = mu.reshape([P, Ns])
     var = var.reshape([P, Ns])
+
+    #breakpoint()
 
     return mu, var
 
@@ -278,10 +295,17 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, dia
 
     P = len(approximate_posterior.approx_posteriors)
 
+    mean_x = np.tile(
+        np.zeros([m_arr.shape[1], 1]), [P, 1, 1]
+    )
+    mean_xs = np.tile(
+        np.zeros([XS.shape[0], 1]), [P, 1, 1]
+    )
+
     mu, sig = batch_or_loop(
         gaussian_conditional_diagional,
-        [XS, X, K_zz_arr, K_xz_arr, K_x_arr, m_arr, S_chol_arr],
-        [None, None, 0, 0, 0, 0, 0],
+        [XS, X, K_zz_arr, K_xz_arr, K_x_arr, m_arr, S_chol_arr, mean_x, mean_xs],
+        [None, None, 0, 0, 0, 0, 0, 0, 0],
         dim=P,
         out_dim=2,
         batch_flag = can_batch(None)

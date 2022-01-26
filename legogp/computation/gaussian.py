@@ -33,13 +33,14 @@ def log_gaussian(Y, mu, sigma):
     ml = c - 0.5 * mahal
     return np.squeeze(ml) 
 
+
 @jit
 def log_gaussian_with_mask(Y, mu, sigma, mask):
     # ensure matrices
     chex.assert_rank(mu, 2)
     chex.assert_rank(Y, 2)
     chex.assert_rank(sigma, 2)
-    chex.assert_rank(mask, 1)
+
 
     # ensure square matrix
     chex.assert_equal(sigma.shape[0], sigma.shape[1])
@@ -68,6 +69,11 @@ def log_gaussian_with_mask(Y, mu, sigma, mask):
     log_n = np.log(np.clip(N_mask, 1.0, None))
 
     return np.sum(np.squeeze(ml)) + 0.5 * (N_mask * np.log(2* np.pi))
+
+@jit
+def log_gaussian_with_nans(Y, mu, sigma):
+    mask = get_mask(Y)
+    return log_gaussian_with_mask(Y, mu, sigma, mask)
 
 @jit
 def log_gaussian_scalar(Y, mu, variance):

@@ -65,7 +65,6 @@ class GradDescentTrainer(Trainer):
 
         objective_fn = objax.Jit(objective, train_vars)
 
-
         if hold_vars is not None:
             vars_to_train = vc_remove_vars(train_vars, hold_vars)
         elif keep_vars is not None:
@@ -77,6 +76,16 @@ class GradDescentTrainer(Trainer):
             objax.GradValues(objective_fn, vars_to_train), 
             train_vars
         )
+
+        aa = models[0].vars()
+
+        seen = set()
+
+        for v in aa.values():
+            if id(v) not in seen:
+                seen.add(id(v))
+            else:
+                print(v)
 
         self.opt = optimizer(vars_to_train)
 

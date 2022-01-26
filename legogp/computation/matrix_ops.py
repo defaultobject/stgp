@@ -81,3 +81,6 @@ def lower_triangle(val, N):
     return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
 
 
+@jit
+def vec_columns(A):
+    return A.T.reshape(A.shape[0]*A.shape[1], 1)

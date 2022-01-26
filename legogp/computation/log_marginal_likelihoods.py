@@ -1,9 +1,10 @@
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised
 from ..dispatch import dispatch, evoke
-from .gaussian import log_gaussian
+from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform
 from .model_ops import get_diagonal_gaussian_likelihood_variances
+from .matrix_ops import vec_columns
 from ..utils import utils
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -43,12 +44,7 @@ def log_marginal_likelihood(
 
     k = K + lik_noise * np.eye(N)
 
-    mask = get_mask(Y)
-    Y = np.nan_to_num(Y, nan=0.0)
-    k = mask_to_identity(k, mask)
-    mean = mask_vector(mean, mask)
-
-    return log_gaussian(Y, mean, k) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
+    return log_gaussian_with_nans(Y, mean, k) 
 
 
 @dispatch(object, object, GaussianParameterised, Kernel, object)
@@ -117,7 +113,7 @@ def multi_latent_log_marginal_likelihood(
 
     N = Y.shape[0]
 
-    Y_vec = Y.reshape(Y.shape[0]*Y.shape[1], 1, order='F')
+    Y_vec = vec_columns(Y)
 
     mean = prior.vec_mean(X)
     K_xx = prior.full_covar(X, X)
@@ -125,13 +121,5 @@ def multi_latent_log_marginal_likelihood(
 
     sigma = K_xx + lik_xx
 
-    mask = get_mask(Y_vec)
-    Y_vec = np.nan_to_num(Y_vec, nan=0.0)
-    sigma = mask_to_identity(sigma, mask)
-    mean = mask_vector(mean, mask)
-
-
-    return log_gaussian(Y_vec, mean, sigma) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
-
-    #return log_gaussian(Y_vec, mean, sigma)
+    return log_gaussian_with_nans(Y_vec, mean, sigma) 
 

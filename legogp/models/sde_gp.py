@@ -95,6 +95,35 @@ class SDE_GP(Posterior):
     def covar(self, XS_1, XS_2, X=None, Y=None):
         raise NotImplementedError()
 
+    def jittable_predict_f(self, XS, YS, nan_grid_X, nan_grid_Y, sort_idx, return_idx):
+        """
+        Due to the sorting required to into a spatio-temporal grid we require a separate prediction function that passes through the indexes required to sort.
+        """
+        X = self.raw_X
+        Y = self.raw_Y
+        X_stacked = np.vstack([X, XS, nan_grid_X])
+        Y_stacked = np.vstack([Y, YS, nan_grid_Y])
+
+        X_sorted = X_stacked[sort_idx]
+        Y_sorted = Y_stacked[sort_idx]
+
+        _, mu, var = filter_and_smooth(
+            X_sorted.value,
+            Y_sorted.value,
+            self.kernel,
+            self.likelihood,
+            N = N
+        )
+
+        mu = mu.reshape([-1, 1])
+        var = var.reshape([-1, 1])
+
+        # unsort
+        mu = mu[return_idx]
+        var = var[return_idx]
+
+        return mu, var
+
     def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         NS = XS.shape[0]
 

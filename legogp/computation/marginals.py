@@ -17,9 +17,12 @@ from typing import List
 from objax import ModuleList
 
 @jit
-def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol) -> np.ndarray:
+def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:
     """
-    tbd.
+    Let A = K(XS, X) K(X, X)^{-1} then
+        
+        N(f_s) = \int N(f_s | A (f - mean_x) + mean_s, K(XS, XS) - A K(X, XS)) N(f \mid m, S) df
+               = N(f_s | mean_s + A (m-mean_x), K(XS, XS) - A K(X, XS) + A S A^T)
     """
 
     Kxsxs_diag = np.squeeze(Kxsxs_diag)
@@ -29,7 +32,7 @@ def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs
     A1 = triangular_solve(k_zz_chol.T, A, lower=False) # M x N
     A2 = (S_chol.T @ A1).T # N x M 
 
-    mu = A1.T @ m # N x 1
+    mu = mean_xs + A1.T @ (m-mean_x) # N x 1
     sig = Kxsxs_diag - np.sum(np.square(A), axis=0) + np.sum(np.square(A2), axis=1) #N x 1
 
     #ensure correct shapes
@@ -130,8 +133,12 @@ def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
 @dispatch(GaussianApproximatePosterior, FullSparsity)
 def diagonal_marginal(X, mean, K_xx, K_xz, K_zz, m, S_chol, sparsity, q):
     Z = sparsity.Z
+
+    mean_x = np.zeros([K_zz.shape[0], 1])
+    mean_xs = np.zeros([K_xx.shape[0], 1])
+
     return gaussian_conditional_diagional(
-        X, Z, K_zz, K_xz, K_xx, m, S_chol
+        X, Z, K_zz, K_xz, K_xx, m, S_chol, mean_x, mean_xs
     )
 
 @dispatch(MM_GaussianInnerLayerApproximatePosterior, NoSparsity)
@@ -229,6 +236,9 @@ def whitened_diagonal_marginal(XS, X, approximate_posterior, kernel, sparsity):
     Kxsxs_diag = kernel.K_diag(XS)
     m, S_chol = approximate_posterior.m, approximate_posterior.S_chol
 
+    mean_x = np.zeros([Kxx.shape[0], 1])
+    mean_xs = np.zeros([Kxsx.shape[0], 1])
+
     return whitened_gaussian_conditional_diagional(
         XS,
         X,
@@ -236,7 +246,9 @@ def whitened_diagonal_marginal(XS, X, approximate_posterior, kernel, sparsity):
         Kxsx,
         Kxsxs_diag,
         m, 
-        S_chol
+        S_chol,
+        mean_x,
+        mean_xs
     )
 
 @dispatch(object, object, GaussianApproximatePosterior, object, NoSparsity)
