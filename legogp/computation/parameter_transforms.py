@@ -2,7 +2,7 @@
 
 import jax
 import jax.numpy as np
-from jax import jit
+from jax import jit, partial
 
 
 @jit
@@ -50,14 +50,13 @@ def inv_correlation_transform(val, a):
     return inv_sigmoid((val + 1) / 2) / a
 
 
-# TODO: can we figure N automatically?
-#@partial(jit, static_argnums=(1,))
+@partial(jit, static_argnums=(1,))
 def lower_triangle(val, N):
     tri = np.zeros((N, N))
     return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
 
 
-#@partial(jit, static_argnums=(1,))
+@partial(jit, static_argnums=(1,))
 def flatten_cholesky(val, N):
     tri = np.zeros((N, N))
     return val[np.tril_indices(N, 0)]

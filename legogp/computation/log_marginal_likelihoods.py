@@ -18,7 +18,7 @@ from typing import List
 import objax
 from objax import ModuleList
 from typing import List
-from batchjax import batch_or_loop
+from batchjax import batch_or_loop, BatchType
 
 @dispatch(object, object, Gaussian, object, object)
 def log_marginal_likelihood(
@@ -93,7 +93,7 @@ def multi_latent_log_marginal_likelihood(
         [ None, None, 1, 0, 0, 0],
         dim = num_latents,
         out_dim = 1,
-        batch_flag = can_batch(likelihood)
+        batch_type = BatchType.LOOP
     )
 
     lml =  np.sum(lml_arr)

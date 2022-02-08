@@ -85,7 +85,8 @@ class GradDescentTrainer(Trainer):
             if id(v) not in seen:
                 seen.add(id(v))
             else:
-                print(v)
+                #print(v)
+                pass
 
         self.opt = optimizer(vars_to_train)
 

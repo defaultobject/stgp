@@ -22,7 +22,7 @@ import jax.numpy as np
 import chex
 from typing import List
 from objax import ModuleList
-from batchjax import batch_or_loop
+from batchjax import batch_or_loop, BatchType
 
 def gp_posterior_with_nans(Y, K_xx, mean_x, lik_var):
     N = Y.shape[0]
@@ -205,7 +205,7 @@ def multi_latent_predictive_covar(XS_1, XS_2, X, Y, likelihood, prior):
         [1, 0, 0, 0, 0, 0, 0],
         dim=num_latents,
         out_dim=1,
-        batch_flag = can_batch(likelihood)
+        batch_type = BatchType.LOOP
     )
 
     chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
@@ -245,7 +245,7 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
         [None, None, 1, 0, 0, 0, 0, 0, 0],
         dim=num_latents,
         out_dim=2,
-        batch_flag = can_batch(likelihood)
+        batch_type = BatchType.LOOP
     )
 
     return mu_arr, var_arr
@@ -308,7 +308,7 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, dia
         [None, None, 0, 0, 0, 0, 0, 0, 0],
         dim=P,
         out_dim=2,
-        batch_flag = can_batch(None)
+        batch_type = BatchType.LOOP
     )
 
     return mu, sig
@@ -327,7 +327,7 @@ def multi_latent_predictive_covar(X1, X2, X, Y, likelihood, prior, approximate_p
         [0],
         dim = len(prior.latents),
         out_dim = 1,
-        batch_flag = can_batch(prior.latents)
+        batch_type = BatchType.LOOP
     )
 
     P = len(approximate_posterior.approx_posteriors)
@@ -338,7 +338,7 @@ def multi_latent_predictive_covar(X1, X2, X, Y, likelihood, prior, approximate_p
         [None, None, None, 0, 0, 0, 0, 0, 0],
         dim=P,
         out_dim=1,
-        batch_flag = can_batch(None)
+        batch_type = BatchType.LOOP
     )
 
     chex.assert_shape(sig, [P, X1.shape[0], X2.shape[0]])

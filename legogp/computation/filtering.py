@@ -143,7 +143,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, Q_k):
     m = m_filtered_k + G @ (m - m_predicted)
     P = P_filtered_k + G @ (P - P_predicted) @ G.T
 
-    return m, P
+    return m, P, G
 
 def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelihood: 'Likelihood', N: int):
     chex.assert_rank(X, 3)
@@ -160,13 +160,14 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
     state_size = P_inf.shape[0]
 
     dt = np.diff(x_t)
-    #dt = np.concatenate([np.array([0.0]), np.diff(x_t)])
 
     with loops.Scope() as s:
         s.m, s.P = m_filtered[-1, ...], P_filtered[-1, ...]
 
         s.smoothed_mean = np.zeros([N_t, N_s])
         s.smoothed_var = np.zeros([N_t, N_s, N_s])
+        s.Gs = np.zeros([N_t, state_size, state_size])
+        s.Ps = np.zeros([N_t, state_size, state_size])
 
         for k in s.range(N-2, -1, -1):
             dt_k = dt[k]
@@ -179,12 +180,20 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
 
             H_k = H
 
-            m, P = rts_smoother_step(
+            m, P, G = rts_smoother_step(
                 m_filtered_k, P_filtered_k, s.m, s.P, A_k, Q_k
             )
 
             s.m = m
             s.P = P
+
+            s.Gs = index_add(
+                s.Gs, index[k, ...], G
+            )
+
+            s.Ps = index_add(
+                s.Ps, index[k, ...], P
+            )
 
             s.smoothed_mean = index_add(
                 s.smoothed_mean, index[k, ...], np.squeeze((H_k @ s.m).T)
@@ -204,6 +213,7 @@ def sequential_rts_smoother(X, m_filtered, P_filtered, kernel: 'Kernel', likelih
             np.squeeze(H @ P_filtered[-1, ...] @ H.T)
         )
 
+        breakpoint()
         return s.smoothed_mean, s.smoothed_var
 
 def filter_to_obvs(filtered_m, filtered_P, kernel: 'Kernel'):

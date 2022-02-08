@@ -3,7 +3,6 @@ import objax
 import jax.numpy as np
 from . import Likelihood
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
-from ..batching import batch
 
 from ..computation.gaussian import log_gaussian_scalar
 
@@ -20,9 +19,9 @@ class Gaussian(Likelihood):
         #self.raw_variance = objax.StateVar(inv_positive_transform(variance))
         self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
-    @batch
-    def variance(self, raw_getter) -> np.ndarray:
-        return positive_transform(raw_getter())
+    @property
+    def variance(self) -> np.ndarray:
+        return positive_transform(self.raw_variance)
 
     def log_likelihood_scalar(self, y, f):
         var = np.array([self.variance])

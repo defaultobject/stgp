@@ -60,6 +60,7 @@ class NatGradTrainer(Trainer):
                 percent = (global_i+1)/self.total_epochs
             else:
                 percent = (i+1)/epochs
+
             if self.schedule == 'linear':
                 lr = learning_rate[1] * percent + (1-percent) * learning_rate[0]
             if self.schedule == 'log':
@@ -67,7 +68,7 @@ class NatGradTrainer(Trainer):
             elif self.schedule == 'constant':
                 lr = learning_rate
             else:
-                raise NotImplementedError(f'{scheudle} is not implemented')
+                raise NotImplementedError(f'{self.schedule} is not implemented')
 
             print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 

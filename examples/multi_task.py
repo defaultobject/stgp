@@ -28,7 +28,6 @@ checkpoint_id = 'multi_task'
 def toy_data():
     np.random.seed(0)
 
-
     N = 100
     x = np.linspace(0, 1, N)
     X = x[:, None]

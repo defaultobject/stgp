@@ -1,6 +1,6 @@
 """Base transform class."""
 from ..utils.utils import ensure_module_list, can_batch
-from batchjax import batch_or_loop
+from batchjax import batch_or_loop, BatchType
 
 import jax
 import jax.numpy as np
@@ -154,7 +154,7 @@ class Independent(LinearTransform):
             [None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_flag = can_batch(self.latents)
+            batch_type = BatchType.LOOP
         )
 
         mean = np.reshape(
@@ -172,7 +172,7 @@ class Independent(LinearTransform):
             [None, None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_flag = can_batch(self.latents)
+            batch_type = BatchType.LOOP
         )
 
         k_arr = np.reshape(
@@ -190,7 +190,7 @@ class Independent(LinearTransform):
             [None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_flag = can_batch(self.latents)
+            batch_type = BatchType.LOOP
         )
 
         var = np.reshape(
@@ -275,7 +275,7 @@ class One2One(Independent):
             [None, None, 0, 0, 0, 0, 0, 0],
             dim=self.output_dim,
             out_dim=1,
-            batch_flag = can_batch(self.in_model)
+            batch_type = BatchType.LOOP
         )
 
         chex.assert_shape(covar, [P, N1, N2])
@@ -300,7 +300,7 @@ class One2One(Independent):
             [None, 0, 0, 0, 0],
             dim=self.output_dim,
             out_dim=1,
-            batch_flag = can_batch(self.in_model)
+            batch_type = BatchType.LOOP
         )
 
         chex.assert_shape(var, [P, N1])

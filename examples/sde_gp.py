@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
