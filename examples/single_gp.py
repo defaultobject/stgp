@@ -45,7 +45,6 @@ Y2 = y2[:, None]
 
 m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 
-breakpoint()
 
 model_list = [m1]
 

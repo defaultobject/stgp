@@ -16,12 +16,11 @@ class Gaussian(Likelihood):
         if variance is None:
             variance = 1.0
 
-        #self.raw_variance = objax.StateVar(inv_positive_transform(variance))
         self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
 
     @property
     def variance(self) -> np.ndarray:
-        return positive_transform(self.raw_variance)
+        return positive_transform(self.raw_variance.value)
 
     def log_likelihood_scalar(self, y, f):
         var = np.array([self.variance])
