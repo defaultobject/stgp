@@ -70,7 +70,7 @@ fig, axes = plt.subplots(1, 1)
 
 axes.fill_between(np.squeeze(XS), np.squeeze(mu1 - 2*np.sqrt(var1)), np.squeeze(mu1 + 2*np.sqrt(var1)), alpha=0.4)
 axes.plot(XS, mu1)
-axes.scatter(X, Y1)
+axes.scatter(X, Y)
 
 plt.show()
 
