@@ -1,7 +1,9 @@
 import jax
 import jax.numpy as np
 import objax
+from .. import Parameter
 from batchjax import BatchType
+import numpy as onp
 
 """ General Utils. """
 def ensure_module_list(arr: list) -> objax.ModuleList:
@@ -69,3 +71,48 @@ def vc_remove_vars(vc, keys):
         vc_new.update((name, v) for name, v in vc.items() if name not in keys)
 
     return vc_new
+
+def _summarize_var(v):
+    if onp.sum(v.shape) > 5:
+        return v.shape
+
+    elif isinstance(v, objax.BaseVar):
+        return onp.array(v.value)
+
+    return onp.array(v)
+
+def get_parameters(m, scope=''):
+    parameters = {}
+
+    #imitate objax scoping so that parameters are consistently printed
+    scope += f'({m.__class__.__name__}).'
+
+    for k, v in m.__dict__.items():
+        if isinstance(v, objax.BaseVar):
+            #ignore statevars as they are not trained
+            if not isinstance(v, objax.StateVar):
+                parameters[scope + k] = _summarize_var(v)
+
+        elif isinstance(v, Parameter):
+            if v.name == None:
+                parameters[scope + k] = _summarize_var(v.value)
+            else:
+                parameters[v.name] = _summarize_var(v.value)
+
+        elif isinstance(v, objax.ModuleList):
+            for p, v in enumerate(v):
+                parameters.update(
+                    get_parameters(v, scope=f'{scope}[{p}]')
+                )
+
+        elif isinstance(v, objax.Module):
+            if k == '__wrapped__':
+                parameters.update(
+                    get_parameters(v, scope=scope[:-1])
+                )
+            else:
+                parameters.update(
+                    get_parameters(v, scope=scope + k)
+                )
+
+    return parameters

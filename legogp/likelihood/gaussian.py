@@ -2,8 +2,10 @@
 import objax
 import jax.numpy as np
 from . import Likelihood
-from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 
+from .. import Parameter
+
+from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar
 
 
@@ -16,11 +18,11 @@ class Gaussian(Likelihood):
         if variance is None:
             variance = 1.0
 
-        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
+        self.variance_param = Parameter(variance, constraint='positive', name='Gaussian Noise')
 
     @property
     def variance(self) -> np.ndarray:
-        return positive_transform(self.raw_variance.value)
+        return self.variance_param.value
 
     def log_likelihood_scalar(self, y, f):
         var = np.array([self.variance])

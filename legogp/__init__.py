@@ -1,3 +1,4 @@
+from .parameter import Parameter
 from .core import Model
 from .inference import Inference
 from .dispatch import dispatch
@@ -18,4 +19,4 @@ from .data import *
 
 #from .computation import *
 
-__all__ = ["dispatch", "Node", "Model", "Inference"]
+__all__ = ["dispatch", "Node", "Model", "Inference", "Parameter"]

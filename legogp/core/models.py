@@ -7,6 +7,7 @@ import objax
 import jax.numpy as np
 import numpy as onp
 from typing import Optional, Tuple
+from ..utils import utils
 
 class Model(objax.Module, ABC):
     def __init__(self, **kwargs):
@@ -44,9 +45,10 @@ class Model(objax.Module, ABC):
         raise NotImplementedError()
 
     def print(self):
-        var_dict = self.vars()
-        for k, v in var_dict.items():
-            print(f'{k}: {v.shape}')
+        param_dict = utils.get_parameters(self)
+
+        for k, v in param_dict.items():
+            print(f'{k}: {v}')
 
     def checkpoint(self, name=None):
         if name is None:

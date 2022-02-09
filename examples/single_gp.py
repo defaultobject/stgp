@@ -8,6 +8,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import RBF, ScaleKernel, BiasKernel
+from legogp.utils import utils
 
 import objax
 import jax.numpy as jnp
@@ -26,7 +27,6 @@ name = __file__
 P = 1
 N = 50
 
-
 xs = np.linspace(-0.5, 1.5, 1000)
 x = np.linspace(0, 1, N)
 y = np.sin(x*10)+1*np.random.randn(N)
@@ -38,6 +38,10 @@ Y = y[:, None]
 
 m1 = lego.models.GP(X, Y, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 
+m1.print()
+exit()
+
+
 
 model_list = [m1]
 
@@ -45,7 +49,7 @@ epochs = 500
 
 restore = False
 
-if True:
+if False:
     if restore:
         m2.load_from_checkpoint(str(checkpoint_folder / name))
     else:
