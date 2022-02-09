@@ -259,7 +259,6 @@ class StationaryKernel(Kernel):
         else:
             lengthscales = ensure_array(lengthscales)
 
-
         chex.assert_shape(lengthscales, [input_dim])
 
         # register lengthscales and variances
@@ -317,11 +316,11 @@ class StationaryVarianceKernel(StationaryKernel):
         super(StationaryVarianceKernel, self).__init__(lengthscales, input_dim, active_dims)
 
         # register lengthscales and variances
-        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
+        self.variance_param = Parameter(variance, constraint='positive')
 
     @property
     def variance(self) -> np.ndarray:
-        return positive_transform(self.raw_variance.value)
+        return self.variance_param.value
 
     def _K_scaler(self, x1, x2, lengthscale):
         return self._K_scaler_with_var(x1, x2, lengthscale, self.variance)

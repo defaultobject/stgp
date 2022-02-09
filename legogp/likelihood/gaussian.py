@@ -18,7 +18,7 @@ class Gaussian(Likelihood):
         if variance is None:
             variance = 1.0
 
-        self.variance_param = Parameter(variance, constraint='positive', name='Gaussian Noise')
+        self.variance_param = Parameter(variance, constraint='positive')
 
     @property
     def variance(self) -> np.ndarray:
