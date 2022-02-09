@@ -28,22 +28,17 @@ name = __file__
 P = 1
 N = 50
 
-XS1 = np.linspace(-0.5, 1.5, 20)[:, None]
-XS2 = np.linspace(0, 1.5, 20)[:, None]
-XS_stacked = np.vstack([XS1, XS2])
 
-
-XS = np.linspace(-0.5, 1.5, 1000)[:, None]
+xs = np.linspace(-0.5, 1.5, 1000)
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+0.1*np.random.randn(N)
-y2 = -np.sin(x*8)+0.1*np.random.randn(N)
+y = np.sin(x*10)+0.1*np.random.randn(N)
 
+XS = xs[:, None]
 X = x[:, None]
-Y1 = y1[:, None]
-Y2 = y2[:, None]
+Y = y[:, None]
 
 
-m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
+m1 = lego.models.GP(X, Y, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 
 
 model_list = [m1]
