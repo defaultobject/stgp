@@ -54,16 +54,19 @@ def gaussian_predictive_mean(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     return mu
 
 @jit
-def gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
-    Ns = K_xs.shape[0]
+def gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var):
+    Ns_1 = K_xs.shape[0]
+    Ns_2 = K_xs.shape[1]
     N = Y.shape[0]
 
     k = add_jitter(K_xx, lik_var)
     k_chol = cholesky(k)
 
     A1 = jax.scipy.linalg.solve_triangular(k_chol, K_xs_x.T, lower=True)
-    sig = K_xs - A1.T @ A1
-    sig = np.reshape(sig, [Ns, Ns])
+    A2 = jax.scipy.linalg.solve_triangular(k_chol, K_x_xs, lower=True)
+    sig = K_xs - A1.T @ A2
+
+    sig = np.reshape(sig, [Ns_1, Ns_2])
 
     return sig
 
@@ -129,6 +132,13 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
         mean_x =  mask_vector(mean_x, mask)
 
     return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
+
+@dispatch('BatchGP', Gaussian)
+def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
+
+    # TODO: nans
+    return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, likelihood.variance)
+
 
 @dispatch(object, object, object, GaussianParameterised, object)
 def predict_diagonal(XS, X, Y, likelihood, kernel):
@@ -341,3 +351,47 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):
     )
 
     return mu_arr, var_arr
+
+@dispatch('BatchGP', ProductLikelihood, Independent)
+def predict_covar(XS_1, XS_2, X, Y, gp, likelihood, prior):
+    num_latents = prior.num_latents
+    num_outputs = prior.num_outputs
+
+    # precompute batched kernels
+    
+    K_xs = prior.covar(XS_1, XS_2)
+    K_xx = prior.covar(X, X)
+    K_xs_x = prior.covar(XS_1, X)
+    K_x_xs = prior.covar(X, XS_2)
+    mean_x = prior.mean(X)
+    mean_xs_1 = prior.mean(XS_1)
+    mean_xs_2 = prior.mean(XS_2)
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    evoke_name = 'predict_covar'
+    # if all likelihooods are the same we only need the first object
+    #   and then we can batch it
+    # otherwises we need the whole array and we will loop through them all
+    if can_batch(likelihood_arr):
+        pred_fn = evoke(evoke_name, gp, likelihood_arr[0])
+        pred_axes = None
+    else:
+        pred_fn = [evoke(evoke_name, gp, lik) for lik in likelihood_arr]
+        pred_axes = 0
+
+    fn = lambda pred_fn, *args: pred_fn(*args)
+
+    var_arr = batch_or_loop(
+        fn,
+        [pred_fn, XS_1, XS_2, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs_1],
+        [pred_axes, None, None, None, 1, 0, 0, 0, 0, 0, 0, 0],
+        dim=num_latents,
+        out_dim=1,
+        batch_type = get_batch_type(likelihood_arr)
+    )
+
+    chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
+
+    return var_arr
+

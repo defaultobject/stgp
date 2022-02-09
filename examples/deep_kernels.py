@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
@@ -50,7 +50,7 @@ model_list = [m2, m1]
 
 epochs = 100
 
-restore = False
+restore = True
 
 if restore:
     m2.load_from_checkpoint(str(checkpoint_folder / 'mf'))
@@ -68,8 +68,8 @@ else:
     plt.plot(learning_curve)
     plt.show()
 
-mu1, var1 = m1.predict_f(XS)
-mu2, var2 = m2.predict_f(XS)
+mu1, var1 = m1.predict_y(XS)
+mu2, var2 = m2.predict_y(XS)
 
 fig, axes = plt.subplots(2, 1)
 

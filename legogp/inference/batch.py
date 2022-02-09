@@ -32,10 +32,10 @@ class Batch(Inference):
 
         return pred_y_mu, pred_y_var
 
-    def predictive_covar(self, XS_1, XS_2, X, Y, likelihood, prior):
+    def predictive_covar(self, XS_1, XS_2, X, Y, gp, likelihood, prior):
 
-        pred_var = multi_latent_predictive_covar(
-            XS_1, XS_2, X, Y, likelihood, prior
+        pred_var = evoke('predict_covar', gp, likelihood, prior)(
+            XS_1, XS_2, X, Y, gp, likelihood, prior
         )
 
         return pred_var
