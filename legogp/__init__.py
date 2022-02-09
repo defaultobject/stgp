@@ -4,6 +4,7 @@ from .dispatch import dispatch
 from .kernels import Kernel
 from .likelihood import Likelihood
 from .models import BatchGP, VGP
+from .trainers import Trainer
 
 from .computation.log_marginal_likelihoods import *
 from .computation.expected_log_likelihoods import *
