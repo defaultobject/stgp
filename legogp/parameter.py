@@ -20,6 +20,8 @@ class Parameter(objax.Module):
             else:
                 Parameter._NAME_DICT[name] = 1
                 self.name = name
+        else:
+            self.name = None
     
     @property
     def value(self):

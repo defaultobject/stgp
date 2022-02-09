@@ -11,6 +11,7 @@ import typing
 from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..utils.utils import ensure_array, ensure_float
+from .. import Parameter
 
 
 class Kernel(objax.Module):
@@ -231,12 +232,11 @@ class ScaleKernel(Kernel):
         else:
             ensure_float(variance)
 
-        self.raw_variance = objax.TrainVar(inv_positive_transform(variance))
-
+        self.variance_param = Parameter(variance, constraint='positive')
 
     @property
     def variance(self) -> np.ndarray:
-        return positive_transform(self.raw_variance.value)
+        return self.variance_param.value
 
     def K_diag(self, X1):
         return self.variance * self.parent_kernel.K_diag(X1)
@@ -263,11 +263,11 @@ class StationaryKernel(Kernel):
         chex.assert_shape(lengthscales, [input_dim])
 
         # register lengthscales and variances
-        self.raw_lengthscales = objax.TrainVar(inv_positive_transform(lengthscales))
+        self.lengthscale_param = Parameter(lengthscales, constraint='positive')
 
     @property
     def lengthscales(self) -> np.ndarray:
-        return positive_transform(self.raw_lengthscales.value)
+        return self.lengthscale_param.value
 
     def K_diag(self, X1):
         #TODO: this needs to be multiplied by D, or var is only used once!

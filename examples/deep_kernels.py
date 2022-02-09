@@ -50,7 +50,7 @@ model_list = [m2, m1]
 
 epochs = 100
 
-restore = True
+restore = False
 
 if restore:
     m2.load_from_checkpoint(str(checkpoint_folder / 'mf'))
