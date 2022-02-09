@@ -1,11 +1,14 @@
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian, GaussianParameterised
+from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from .matrix_ops import vec_columns
+from ..models import BatchGP
 from ..utils import utils
+from ..utils.utils import get_batch_type
+
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from ..utils.utils import can_batch
@@ -66,43 +69,9 @@ def log_marginal_likelihood(
     return log_gaussian(Y, np.zeros_like(Y), k)
 
 
-@dispatch(object, object, object, Independent)
+@dispatch(object, object, ProductLikelihood, LinearTransform)
 def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent
-):
-    """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
-
-    # Assume that are likelihoods are the same such that they can be batched over
-
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
-
-    # precompute prior covariance
-    k_xx_arr = prior.covar(X, X)
-    mean_arr = prior.mean(X) 
-
-    # get correct marginal likelihood from dispatch
-    lml_fn = evoke('log_marginal_likelihood')
-
-    # Ensure batched Y has rank 2
-    Y = Y[..., None]
-
-    lml_arr = batch_or_loop(
-        lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean),
-        [ lml_fn, X, Y, likelihood, k_xx_arr, mean_arr],
-        [ None, None, 1, 0, 0, 0],
-        dim = num_latents,
-        out_dim = 1,
-        batch_type = BatchType.LOOP
-    )
-
-    lml =  np.sum(lml_arr)
-
-    return lml
-
-@dispatch(object, object, object, LinearTransform)
-def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: List[Gaussian], prior: LinearTransform
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: LinearTransform
 ) -> np.ndarray:
     """
     The marginal likelihood is:
@@ -123,3 +92,40 @@ def multi_latent_log_marginal_likelihood(
 
     return log_gaussian_with_nans(Y_vec, mean, sigma) 
 
+
+@dispatch(BatchGP, ProductLikelihood, Independent)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
+):
+    """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
+
+    # Assume that are likelihoods are the same such that they can be batched over
+
+    num_latents = prior.num_latents
+    num_outputs = prior.num_outputs
+
+    # precompute prior covariance
+    k_xx_arr = prior.covar(X, X)
+    mean_arr = prior.mean(X) 
+
+    # get correct marginal likelihood from dispatch
+    lml_fn = evoke('log_marginal_likelihood')
+
+    # Ensure batched Y has rank 2
+    Y = Y[..., None]
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    # Compute lml for each likelihood and prior
+    lml_arr = batch_or_loop(
+        lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean),
+        [ lml_fn, X, Y, likelihood_arr, k_xx_arr, mean_arr],
+        [ None, None, 1, 0, 0, 0],
+        dim = num_latents,
+        out_dim = 1,
+        batch_type = get_batch_type(likelihood_arr)
+    )
+
+    lml =  np.sum(lml_arr)
+
+    return lml

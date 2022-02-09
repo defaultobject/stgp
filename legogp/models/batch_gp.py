@@ -7,16 +7,14 @@ import chex
 
 from .. import settings
 from ..decorators import strict_mode_check, ensure_data
-from ..obj_dispatch import obj_dispatch, obj_find
-from ..dispatch import evoke
+from ..dispatch import dispatch
 from ..batching import loop_or_batch
 
 from ..core import Model, Posterior
 from . import GP
 from ..kernels import Kernel
 from ..inference import Batch
-from ..computation.log_marginal_likelihoods import * 
-from ..likelihood import Gaussian
+from ..likelihood import Gaussian, ProductLikelihood
 from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
@@ -26,7 +24,7 @@ from ..sparsity import NoSparsity
 
 import warnings
 
-@obj_dispatch(Model, 'Batch')
+@dispatch('Model', 'Batch')
 class BatchGP(Posterior):
     def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, **kwargs):
 
@@ -46,7 +44,6 @@ class BatchGP(Posterior):
         self.sparsity = NoSparsity(self.X) # Sparsity for batch GPs is not supported
 
         self.set_defaults()
-        self.fix_inputs()
 
     @property
     def likelihood(self): return self._likelihood
@@ -62,12 +59,6 @@ class BatchGP(Posterior):
 
     @property
     def input_dim(self): return self.output_dim
-
-    def fix_inputs(self):
-        """ Convert all inputs into a consistent format """
-
-        # We do not need to make kernel a module list because this is done within the prior object
-        self._likelihood = ensure_module_list(self._likelihood)
 
     def set_defaults(self):
         """ Replace missing options with defaults """
@@ -110,6 +101,7 @@ class BatchGP(Posterior):
         nlml = self.inference.neg_log_marginal_likelihood(
             X,
             Y,
+            self, 
             self.likelihood,
             self.prior
         )
@@ -142,8 +134,8 @@ class BatchGP(Posterior):
         if X is None:
             X, Y = self.X, self.Y
 
-        mu_arr, var_arr =  self.inference.predict(
-            XS, X, Y, self.likelihood, self.prior, diagonal=diagonal
+        mu_arr, var_arr =  self.inference.predict_f(
+            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
         )
 
         if squeeze:
@@ -151,5 +143,14 @@ class BatchGP(Posterior):
 
         return mu_arr, var_arr
 
-    def predict_y(self, XS):
-        raise NotImplementedError()
+    def predict_y(self, XS, diagonal=True, squeeze=True):
+        X, Y = self.X, self.Y
+
+        mu_arr, var_arr =  self.inference.predict_f(
+            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+        )
+
+        if squeeze:
+            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
+
+        return mu_arr, var_arr

@@ -1,6 +1,6 @@
 from ..settings import jitter
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian, GaussianParameterised
+from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood
 from ..approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian
@@ -10,7 +10,7 @@ from .elbos import precompute_variational_primitives, precompute_diagonal_variat
 from .marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 
 from ..utils import utils
-from ..utils.utils import can_batch
+from ..utils.utils import can_batch, get_batch_type
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
@@ -24,33 +24,54 @@ from typing import List
 from objax import ModuleList
 from batchjax import batch_or_loop, BatchType
 
+@jit
 def gp_posterior_with_nans(Y, K_xx, mean_x, lik_var):
     N = Y.shape[0]
     mask = get_mask(Y)
 
     Y = np.nan_to_num(Y, nan=0.0)
-
     k = K_xx + np.eye(N)*lik_var
 
     k = mask_to_identity(k, mask)
-
     k_chol = cholesky(k)
 
-
     m = mean_x + K_xx @ cholesky_solve(k_chol, Y-mean_x) 
-
-
     S = np.eye(N)
 
     return m, S
 
 @jit
-def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+def gaussian_predictive_mean(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     Ns = K_xs.shape[0]
     N = Y.shape[0]
 
-    k = K_xx + np.eye(N)*lik_var
+    k = add_jitter(K_xx, lik_var)
+    k_chol = cholesky(k)
 
+    mu = K_xs_x @ cholesky_solve(k_chol, Y-mean_x) + mean_xs
+    mu = np.reshape(mu, [Ns, 1])
+
+    return mu
+
+@jit
+def gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    Ns = K_xs.shape[0]
+    N = Y.shape[0]
+
+    k = add_jitter(K_xx, lik_var)
+    k_chol = cholesky(k)
+
+    A1 = jax.scipy.linalg.solve_triangular(k_chol, K_xs_x.T, lower=True)
+    sig = K_xs - A1.T @ A1
+    sig = np.reshape(sig, [Ns, Ns])
+
+    return sig
+
+@jit
+def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    Ns = K_xs.shape[0]
+
+    k = add_jitter(K_xx, lik_var)
     k_chol = cholesky(k)
 
     A1 = jax.scipy.linalg.solve_triangular(k_chol, K_xs_x.T, lower=True)
@@ -64,8 +85,8 @@ def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     return mu, sig
 
 @jit 
-def full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_xx):
-    k = K_xx + lik_xx
+def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    k = add_jitter(K_xx, lik_var)
 
     k_chol = cholesky(k)
 
@@ -80,57 +101,25 @@ def full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, li
     return mu, sig
 
 
-
-
-
-@jit 
-def full_gaussian_predictive_covar(Y, K_xs, K_xs_x, K_x_xs, K_xx, lik_xx):
-    k = K_xx + lik_xx
-    k_chol = cholesky(k)
-
-    sig = K_xs - K_xs_x @ cholesky_solve(k_chol, K_x_xs)
-
-    return sig
-
-@dispatch(object, object, object, object, object, Gaussian)
-def full_predictive_covar(Y, K_xs, K_xs_x, K_x_xs, K_xx, likelihood):
-    N = Y.shape[0]
-    lik_xx = np.eye(N)*likelihood.variance
-
-    return full_gaussian_predictive_covar(Y, K_xs, K_xs_x, K_x_xs, K_xx, lik_xx)
-
-@jit
-def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
-    N = Y.shape[0]
-    lik_xx = np.eye(N)*lik_var
-
-    return full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_xx)
-    
-
-@dispatch(object, object, object, Gaussian, object, object, object, object, object)
+@dispatch('BatchGP', Gaussian)
 def predict(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
-
-    Ns = XS.shape[0]
-    N = X.shape[0]
-
     chex.assert_equal(K_xx.shape, (X.shape[0], X.shape[0]))
     chex.assert_equal(K_xs_x.shape, (XS.shape[0], X.shape[0]))
     chex.assert_equal(K_xs.shape, (XS.shape[0], XS.shape[0]))
 
+    # TODO: nans?
+
     return gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
 
-@dispatch(object, object, object, Gaussian, object, object, object, object, object)
+@dispatch('BatchGP', Gaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
 
-    Ns = XS.shape[0]
-    N = X.shape[0]
-
-    if True:
+    #TODO: masking
+    if False:
         mask = get_mask(Y)
 
         # TODO: document and test this
         Y = np.nan_to_num(Y, nan=0.0)
-
 
         mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
         K_xs_x = np.multiply(K_xs_x, mask_xs_x)
@@ -212,44 +201,6 @@ def multi_latent_predictive_covar(XS_1, XS_2, X, Y, likelihood, prior):
 
     return var_arr
 
-@dispatch(object, object, object, object, Independent, object)
-def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
-    """ Independent Latent functions. Each predictions is computed separately"""
-
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
-
-    if diagonal:
-        pred_fn = evoke('predict_diagonal')
-
-        # Precompute batched kernels
-        K_xs = prior.var(XS)
-        K_xx = prior.covar(X, X)
-        K_xs_x = prior.covar(XS, X)
-    else:
-        pred_fn = evoke('predict')
-
-        # Precompute batched kernels
-        K_xs = prior.covar(XS, XS)
-        K_xx = prior.covar(X, X)
-        K_xs_x = prior.covar(XS, X)
-
-    mean_x = prior.mean(X)
-    mean_xs = prior.mean(XS)
-
-    Y = Y[..., None]
-
-    mu_arr, var_arr = batch_or_loop(
-        pred_fn,
-        [XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs],
-        [None, None, 1, 0, 0, 0, 0, 0, 0],
-        dim=num_latents,
-        out_dim=2,
-        batch_type = BatchType.LOOP
-    )
-
-    return mu_arr, var_arr
-
 @dispatch(object, object, object, object, LinearTransform, object)
 def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     Ns = XS.shape[0]
@@ -284,7 +235,6 @@ def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
     mu = mu.reshape([P, Ns])
     var = var.reshape([P, Ns])
 
-    #breakpoint()
 
     return mu, var
 
@@ -344,5 +294,50 @@ def multi_latent_predictive_covar(X1, X2, X, Y, likelihood, prior, approximate_p
     chex.assert_shape(sig, [P, X1.shape[0], X2.shape[0]])
     return sig
 
+@dispatch('BatchGP', ProductLikelihood, Independent)
+def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):
+    num_latents = prior.num_latents
+    num_outputs = prior.num_outputs
 
+    if diagonal:
+        K_xs = prior.var(XS)
+        evoke_name = 'predict_diagonal'
+    else:
+        K_xs = prior.covar(XS, XS)
+        evoke_name = 'predict'
 
+    # Precompute batched kernels
+    K_xx = prior.covar(X, X)
+    K_xs_x = prior.covar(XS, X)
+
+    mean_x = prior.mean(X)
+    mean_xs = prior.mean(XS)
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    # if all likelihooods are the same we only need the first object
+    #   and then we can batch it
+    # otherwises we need the whole array and we will loop through them all
+    if can_batch(likelihood_arr):
+        pred_fn = evoke(evoke_name, gp, likelihood_arr[0])
+        pred_axes = None
+    else:
+        pred_fn = [evoke(evoke_name, gp, lik) for lik in likelihood_arr]
+        pred_axes = 0
+
+    fn = lambda pred_fn, *args: pred_fn(*args)
+
+    # Ensure Y is rank 2 after batching
+    Y = Y[..., None]
+
+    # Compute prediction for each likelihood-prior pair
+    mu_arr, var_arr = batch_or_loop(
+        fn,
+        [pred_fn, XS, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, mean_x, mean_xs],
+        [pred_axes, None, None, 1, 0, 0, 0, 0, 0, 0],
+        dim=num_latents,
+        out_dim=2,
+        batch_type = get_batch_type(likelihood_arr)
+    )
+
+    return mu_arr, var_arr

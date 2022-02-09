@@ -6,7 +6,7 @@ import chex
 from typing import Optional, Tuple
 import warnings
 
-from ..obj_dispatch import obj_dispatch, obj_find
+from ..dispatch import dispatch
 from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
@@ -15,7 +15,7 @@ from ..defaults import get_default_likelihood
 
 from ..data.sequential import order_sequentially, pad_with_nan_to_make_grid
 
-@obj_dispatch(Model, 'Markov', 'NoSparsity')
+@dispatch(Model, 'Markov', 'NoSparsity')
 class SDE_GP(Posterior):
     def __init__(
         self, 

@@ -38,7 +38,7 @@ class _DISPATCHER:
         return True
 
 
-def obj_dispatch(*args, **kwargs):
+def dispatch(*args, **kwargs):
     def decorator(obj):
         k = _REGISTERED_KEY(args, kwargs)
         _REGISTERED[k] = obj
@@ -47,7 +47,7 @@ def obj_dispatch(*args, **kwargs):
 
     return decorator
 
-def obj_find(*args, **kwargs):
+def evoke(*args, **kwargs):
     for k, item in _REGISTERED.items():
         if _DISPATCHER.match(k, *args, **kwargs):
             return item

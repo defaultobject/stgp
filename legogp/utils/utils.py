@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as np
 import objax
+from batchjax import BatchType
 
 """ General Utils. """
 def ensure_module_list(arr: list) -> objax.ModuleList:
@@ -29,7 +30,19 @@ def key_that_ends_with(d: dict, k: str):
 
 
 def can_batch(module_list):
-    return True
+    # if all types are the same then batch
+    first_type = type(module_list[0])
+
+    if all(type(m) == first_type for m in module_list):
+        return True
+
+    return False
+
+def get_batch_type(module_list):
+    if can_batch(module_list):
+        return BatchType.OBJAX
+
+    return BatchType.LOOP
 
 
 def match_suffix(s, arr, return_single = True):

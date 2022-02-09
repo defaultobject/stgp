@@ -7,7 +7,7 @@ import chex
 
 from .. import settings
 from ..decorators import strict_mode_check, ensure_data
-from ..obj_dispatch import obj_dispatch, obj_find
+from ..dispatch import dispatch
 from ..dispatch import evoke
 
 from ..core import Model, Posterior
@@ -25,7 +25,7 @@ from ..defaults import get_default_kernel, get_default_likelihood, get_default_i
 from ..computation.natural_gradients.nat_grad import general_ell_natural_gradients
 
 
-@obj_dispatch(Model, 'Variational', 'NoSparsity')
+@dispatch(Model, 'Variational', 'NoSparsity')
 class VGP(Posterior):
     def __init__(
         self, 
