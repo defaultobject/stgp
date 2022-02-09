@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
@@ -35,8 +35,8 @@ XS_stacked = np.vstack([XS1, XS2])
 
 XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+0.01*np.random.randn(N)+2.0
-y2 = -np.sin(x*8)+0.01*np.random.randn(N)-1.0
+y1 = np.sin(x*10)+1*np.random.randn(N)+2.0
+y2 = -np.sin(x*8)+1*np.random.randn(N)-1.0
 
 X = x[:, None]
 Y1 = y1[:, None]
@@ -48,9 +48,9 @@ m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepLinear(m1))
 
 model_list = [m2, m1]
 
-epochs = 100
+epochs = 500
 
-restore = True
+restore = False
 
 if restore:
     m2.load_from_checkpoint(str(checkpoint_folder / 'mf'))
