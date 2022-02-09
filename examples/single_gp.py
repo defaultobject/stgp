@@ -15,8 +15,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import batchjax
-import stdata as st
-from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
 
