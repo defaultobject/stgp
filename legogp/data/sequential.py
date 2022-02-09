@@ -1,7 +1,8 @@
 """ Numpy operations for dealing sequential data """
 import numpy as onp
 import jax.numpy as np
-from jax import jit, partial
+from jax import jit
+from functools import partial
 import chex
 
 def pad_with_nan_to_make_grid(X, Y):

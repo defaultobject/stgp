@@ -35,8 +35,8 @@ XS_stacked = np.vstack([XS1, XS2])
 
 XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+0.01*np.random.randn(N)+2.0
-y2 = -np.sin(x*8)+0.01*np.random.randn(N)-1.0
+y1 = np.sin(x*10)+0.1*np.random.randn(N)
+y2 = -np.sin(x*8)+0.1*np.random.randn(N)
 
 X = x[:, None]
 Y1 = y1[:, None]
@@ -48,27 +48,28 @@ m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 
 model_list = [m1]
 
-epochs = 100
+epochs = 500
 
 restore = False
 
-if restore:
-    m2.load_from_checkpoint(str(checkpoint_folder / name))
-else:
-    callback = progress_bar_callback(epochs)
-    learning_curve, training_time = SimpleTrainer().train(
-        model_list, 
-        objax.optimizer.Adam,
-        0.01,
-        epochs,
-        callback = callback
-    )
-    m1.checkpoint(str(checkpoint_folder / name))
+if True:
+    if restore:
+        m2.load_from_checkpoint(str(checkpoint_folder / name))
+    else:
+        callback = progress_bar_callback(epochs)
+        learning_curve, training_time = SimpleTrainer().train(
+            model_list, 
+            objax.optimizer.Adam,
+            0.01,
+            epochs,
+            callback = callback
+        )
+        m1.checkpoint(str(checkpoint_folder / name))
 
-    plt.plot(learning_curve)
-    plt.show()
+        plt.plot(learning_curve)
+        plt.show()
 
-mu1, var1 = m1.predict_f(XS)
+mu1, var1 = m1.predict_y(XS)
 
 fig, axes = plt.subplots(1, 1)
 

@@ -3,7 +3,6 @@ import chex
 import jax
 import jax.numpy as np
 
-from jax import jit, partial
 from jax.scipy.linalg import block_diag 
 from abc import ABC
 from abc import abstractmethod
