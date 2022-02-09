@@ -146,7 +146,7 @@ class BatchGP(Posterior):
     def predict_y(self, XS, diagonal=True, squeeze=True):
         X, Y = self.X, self.Y
 
-        mu_arr, var_arr =  self.inference.predict_f(
+        mu_arr, var_arr =  self.inference.predict_y(
             XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
         )
 

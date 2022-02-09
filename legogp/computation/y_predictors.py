@@ -3,8 +3,9 @@ from jax import jit
 import jax.numpy as np
 import chex
 
-from ..dispatch import dispatch
+from ..dispatch import dispatch, evoke
 from ..utils.utils import can_batch, get_batch_type
+from batchjax import batch_or_loop, BatchType
 from .matrix_ops import add_jitter
 
 # Gaussian Likelihoods
@@ -21,6 +22,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
 @dispatch('BatchGP', 'ProductLikelihood', 'Independent')
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+    num_outputs = gp.output_dim
 
     if diagonal:
         evoke_name = 'predict_y_diagonal'
@@ -39,12 +41,13 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         pred_fn = [evoke(evoke_name, gp, lik) for lik in likelihood_arr]
         pred_axes = 0
 
+    fn = lambda pred_fn, *args: pred_fn(*args)
     # Compute prediction for each likelihood-prior pair
     mu_arr, var_arr = batch_or_loop(
         fn,
         [pred_fn, XS, likelihood_arr, post_mu, post_var],
         [pred_axes, None, 0, 0, 0],
-        dim=num_latents,
+        dim=num_outputs,
         out_dim=2,
         batch_type = get_batch_type(likelihood_arr)
     )

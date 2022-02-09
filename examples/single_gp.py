@@ -29,7 +29,7 @@ N = 50
 
 xs = np.linspace(-0.5, 1.5, 1000)
 x = np.linspace(0, 1, N)
-y = np.sin(x*10)+0.1*np.random.randn(N)
+y = np.sin(x*10)+1*np.random.randn(N)
 
 XS = xs[:, None]
 X = x[:, None]

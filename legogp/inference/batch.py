@@ -25,7 +25,7 @@ class Batch(Inference):
 
     def predict_y(self, XS, X, Y, gp, likelihood, prior, diagonal: bool):
 
-        pred_mu, pred_var = predict_f(XS, X, Y, gp, likelihood, prior, diagonal)
+        pred_mu, pred_var = self.predict_f(XS, X, Y, gp, likelihood, prior, diagonal)
         pred_y_mu, pred_y_var = evoke('predict_y', gp, likelihood, prior)(
             XS, gp, likelihood, pred_mu, pred_var, diagonal
         )
