@@ -14,6 +14,33 @@ def _ensure_str(k):
         return k.__name__
     return k
 
+def _try_match(x, y):
+    # check if y is a child class of x
+
+    if inspect.isclass(x):
+        _x = x
+    else:
+        _x = type(x)
+
+    if inspect.isclass(y):
+        _y = y  
+    else:
+        _y = type(y)
+
+    # avoid catch alls
+    if _x != object and _y != object:
+        if _x != _y:
+            # only check for inherentance
+            # as string comparision will catch same types
+
+            if issubclass(_y, _x):
+                return True
+
+    if _ensure_str(x) != _ensure_str(y):
+        return False
+
+    return True
+
 
 class _REGISTERED_KEY:
     def __init__(self, obj, args, kwargs):
@@ -25,14 +52,14 @@ class _DISPATCHER:
     @staticmethod
     def match(key:_REGISTERED_KEY, *args, **kwargs):
         for x, y in zip(key.args, args):
-            if _ensure_str(x) != _ensure_str(y):
+            if not _try_match(x, y):
                 return False
 
         for k, i in key.kwargs.items():
             if _ensure_str(k) not in kwargs.keys():
                 return False
 
-            if _ensure_str(kwargs[k]) != _ensure_str(key.kwargs[k]):
+            if not _try_match(kwargs[k], key.kwargs[k]):
                 return False
 
         return True
@@ -60,8 +87,15 @@ def dispatch(*args, **kwargs):
     return decorator
 
 def evoke(*args, **kwargs):
+    matched_items = []
     for k, item in _REGISTERED.items():
         if _DISPATCHER.match(k, *args, **kwargs):
-            return item
+            matched_items.append(item)
+
+    if len(matched_items) == 1:
+        return matched_items[0]
+
+    if len(matched_items) >= 1:
+        breakpoint()
 
     raise RuntimeError(f'Cannot evoke {args}, {kwargs}')

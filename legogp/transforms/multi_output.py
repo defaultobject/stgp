@@ -101,7 +101,7 @@ class LMC_Unit_Tri(LMC_Base):
 
         # Setup correlation matrix variables
         num_vars = int(self.output_dim*(self.output_dim-1)/2)
-        self.z_arr = objax.TrainVar(onp.zeros(num_vars))
+        self.z_arr = objax.TrainVar(np.zeros(num_vars))
         #self.z_arr = objax.StateVar(onp.zeros(num_vars))
 
     @property

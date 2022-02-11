@@ -47,7 +47,7 @@ Y2 = y2[:, None]
 
 
 m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1]))+ScaleKernel(BiasKernel()))
-m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepLinear(m1))
+m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepRBF(m1))
 
 model_list = [m2, m1]
 

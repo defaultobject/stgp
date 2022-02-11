@@ -153,6 +153,7 @@ class SimpleTrainer(Trainer):
             return obj
 
         objective_fn = objax.Jit(objective, train_vars)
+        objective_fn()
 
         if hold_vars is not None:
             vars_to_train = vc_remove_vars(train_vars, hold_vars)

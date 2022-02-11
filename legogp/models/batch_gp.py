@@ -93,6 +93,11 @@ class BatchGP(Posterior):
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)
 
+        else:
+            if type(self.likelihood) == list:
+                self._likelihood = ProductLikelihood(self._likelihood)
+
+
     def log_marginal_likelihood(self, X=None, Y=None):
 
         if X is None:

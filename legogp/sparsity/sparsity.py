@@ -9,7 +9,7 @@ class Sparsity(objax.Module):
 class NoSparsity(Sparsity):
     def __init__(self, Z: np.ndarray):
         super(NoSparsity, self).__init__()
-        self.raw_Z = objax.StateVar(Z)
+        self.raw_Z = objax.StateVar(np.array(Z))
 
     @property
     def Z(self):
@@ -18,7 +18,7 @@ class NoSparsity(Sparsity):
 class FullSparsity(Sparsity):
     def __init__(self, Z: np.ndarray):
         super(FullSparsity, self).__init__()
-        self.raw_Z = objax.TrainVar(Z)
+        self.raw_Z = objax.TrainVar(np.array(Z))
 
     @property
     def Z(self):

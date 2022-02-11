@@ -68,17 +68,15 @@ def log_marginal_likelihood(
 
     return log_gaussian(Y, np.zeros_like(Y), k)
 
+@dispatch(BatchGP, ProductLikelihood, LinearTransform)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: ProductLikelihood, prior: LinearTransform
+):
+    """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
-@dispatch(object, object, ProductLikelihood, LinearTransform)
-def multi_latent_log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: LinearTransform
-) -> np.ndarray:
-    """
-    The marginal likelihood is:
-        p(Y)  = N(Y | 0, (W \kron I) K (W \kron I)^T + diag(eps_p))
-    """
-
-    assert all([type(lik) == Gaussian for lik in likelihood])
+    likelihood_arr = likelihood.likelihood_arr
+    # Assume that are likelihoods are the same such that they can be batched over
+    assert all([type(lik) == Gaussian for lik in likelihood_arr])
 
     N = Y.shape[0]
 
@@ -86,7 +84,7 @@ def multi_latent_log_marginal_likelihood(
 
     mean = prior.vec_mean(X)
     K_xx = prior.full_covar(X, X)
-    lik_xx = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
+    lik_xx = get_diagonal_gaussian_likelihood_variances(Y, likelihood_arr)
 
     sigma = K_xx + lik_xx
 

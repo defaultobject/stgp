@@ -20,7 +20,7 @@ class GPPrior(Prior):
     ):
         super(GPPrior, self).__init__()
 
-        self._X = objax.StateVar(X)
+        self._X = objax.StateVar(np.array(X))
 
         self._kernel = kernel
 

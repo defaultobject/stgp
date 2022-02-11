@@ -38,8 +38,6 @@ XS = xs[:, None]
 X = x[:, None]
 Y = y[:, None]
 
-
-
 m1 = lego.models.GP(X, Y, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 m1.print()
 
