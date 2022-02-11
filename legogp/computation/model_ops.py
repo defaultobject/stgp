@@ -78,6 +78,23 @@ def get_diagonal_gaussian_likelihood_variances(Y: np.ndarray, likelihood) -> np.
 
     return var_arr
 
+def get_vec_gaussian_likelihood_variances(Y: np.ndarray, likelihood) -> np.ndarray:
+    num_latents = Y.shape[1]
+    N = Y.shape[0]
+
+    def _compute_lik_variance(N, likelihood):
+        return likelihood.variance * np.ones(N)
+
+    var_arr = loop_or_batch(
+        _compute_lik_variance,
+        [ N, likelihood ],
+        [ None, 0 ],
+        num_latents,
+        num_returned_args=1
+    )
+
+    return var_arr
+
 def get_linear_multi_task_prior_covariance(X1, X2, prior):
     mixing_matrix = prior.W
     kernels = prior.get_kernels()

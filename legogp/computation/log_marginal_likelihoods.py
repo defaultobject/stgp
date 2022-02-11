@@ -1,5 +1,5 @@
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood
+from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform

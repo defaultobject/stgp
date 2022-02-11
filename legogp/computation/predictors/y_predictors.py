@@ -3,10 +3,12 @@ from jax import jit
 import jax.numpy as np
 import chex
 
+from ...transforms import LinearTransform
 from ...dispatch import dispatch, evoke
 from ...utils.batch_utils import batch_over_likelihoods
 from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter
+from ..model_ops import get_diagonal_gaussian_likelihood_variances, get_vec_gaussian_likelihood_variances
 
 # Gaussian Likelihoods
 @dispatch('BatchGP', 'Gaussian')
@@ -43,3 +45,16 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
     )
 
     return mu_arr, var_arr
+
+@dispatch('BatchGP', 'GaussianProductLikelihood', LinearTransform)
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    if diagonal:
+        lik_var = get_vec_gaussian_likelihood_variances(post_var.T, likelihood_arr)
+
+        return post_mu, post_var+lik_var
+    else:
+        raise NotImplementedError()
+

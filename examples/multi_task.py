@@ -122,7 +122,7 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 1
+    epochs = 200
     P = Y.shape[1]
     Q = P
 
@@ -190,7 +190,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     if model_type == 'LMC_Hetreo':
         for mod in latent_noise_gp:
-            mu, var = mod.predict_f(XS, diagonal=True)
+            mu, var = mod.predict_y(XS, diagonal=True)
 
             NS = XS.shape[0]
             mu_i = mu.reshape([NS])
@@ -201,7 +201,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
             plt.scatter(mod.X.value, mod.Y.value)
             plt.show()
 
-    mu, var = m.predict_f(XS, diagonal=True)
+    mu, var = m.predict_y(XS, diagonal=True)
 
     return {'mu': mu, 'var': var}
 

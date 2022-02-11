@@ -89,71 +89,6 @@ def predict_full(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
     m, S = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=False)
     return m, S + np.eye(XS.shape[0])*likelihood.variance
 
-@dispatch(object, object, object, object, object, Independent)
-def multi_latent_predictive_covar(XS_1, XS_2, X, Y, likelihood, prior):
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
-
-    # Precompute batched kernels
-    K_xs = prior.covar(XS_1, XS_2)
-    K_xx = prior.covar(X, X)
-    K_xs_x = prior.covar(XS_1, X)
-    K_x_xs = prior.covar(X, XS_2)
-
-    Y = Y[..., None]
-
-    pred_fn = evoke('full_predictive_covar')
-
-    var_arr = batch_or_loop(
-        pred_fn,
-        [Y, K_xs, K_xs_x, K_x_xs, K_xx, likelihood],
-        [1, 0, 0, 0, 0, 0, 0],
-        dim=num_latents,
-        out_dim=1,
-        batch_type = BatchType.LOOP
-    )
-
-    chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
-
-    return var_arr
-
-@dispatch(object, object, object, object, LinearTransform, object)
-def multi_latent_predict(XS, X, Y, likelihood, prior, diagonal):
-    Ns = XS.shape[0]
-    N = X.shape[0]
-    P = Y.shape[1]
-
-    K_xs = prior.vec_var(XS)[:, 0]
-    K_xx = prior.full_covar(X, X)
-    K_xs_x = prior.full_covar(XS, X)
-    lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood)
-    mean_x = prior.vec_mean(X)
-    mean_xs = prior.vec_mean(XS)
-
-    print('predict -- LinearTransform -- here')
-
-    Y_vec = vec_columns(Y)
-
-    m_post, S_post = gp_posterior_with_nans(Y_vec, K_xx, mean_x, lik_var)
-
-    mu, var = gaussian_conditional_diagional(
-        XS, 
-        X,
-        K_xx,
-        K_xs_x,
-        K_xs,
-        m_post,
-        S_post,
-        mean_x,
-        mean_xs
-    )
-
-    mu = mu.reshape([P, Ns])
-    var = var.reshape([P, Ns])
-
-
-    return mu, var
-
 
 @dispatch(Independent, MeanFieldApproximatePosterior)
 def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
@@ -279,3 +214,34 @@ def predict_covar(XS_1, XS_2, X, Y, gp, likelihood, prior):
     chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
 
     return var_arr
+
+
+@dispatch('BatchGP', ProductLikelihood, LinearTransform)
+def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+    Ns = XS.shape[0]
+    N = X.shape[0]
+    P = Y.shape[1]
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    K_xs = prior.vec_var(XS)[:, 0]
+    K_xx = prior.full_covar(X, X)
+    K_xs_x = prior.full_covar(XS, X)
+    lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood_arr)
+    mean_x = prior.vec_mean(X)
+    mean_xs = prior.vec_mean(XS)
+
+    Y_vec = vec_columns(Y)
+
+
+    # gaussian_prediction(_*) support both lik_var being a scalar and a diagonal matrix
+    if diagonal:
+        mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+    else:
+        mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    mu = mu.reshape([P, Ns])
+    var = var.reshape([P, Ns])
+
+
+    return mu, var

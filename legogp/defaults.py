@@ -1,7 +1,7 @@
 import objax
 from .models import GP
 from .kernels import RBF
-from .likelihood import Gaussian, ProductLikelihood
+from .likelihood import Gaussian, get_product_likelihood
 from .transforms import Independent
 from typing import List, Optional
 from .sparsity import NoSparsity, FullSparsity
@@ -19,7 +19,7 @@ def get_default_kernel(input_dim: int, num_latents: int) -> List['Kernel']:
 
 def get_default_likelihood(num_outputs: int) -> List['Likelihood']:
     warnings.warn('Using default Product Gaussian Likelihood')
-    return ProductLikelihood([
+    return get_product_likelihood([
         Gaussian(variance=1.0)
         for p in range(num_outputs)
     ])
