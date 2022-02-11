@@ -23,30 +23,34 @@ checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
 name = __file__
 
+np.random.seed(0)
 # generate data
 P = 1
 N = 50
 
 xs = np.linspace(-0.5, 1.5, 1000)
 x = np.linspace(0, 1, N)
-y = np.sin(x*10)+1*np.random.randn(N)
+y = np.sin(x*10)+0.01*np.random.randn(N)
+
+y[30:50] = np.NaN
 
 XS = xs[:, None]
 X = x[:, None]
 Y = y[:, None]
 
 
+
 m1 = lego.models.GP(X, Y, kernel=ScaleKernel(RBF(lengthscales=[0.1])))
 m1.print()
-exit()
 
 model_list = [m1]
 
 epochs = 500
 
 restore = False
+train = True
 
-if False:
+if train:
     if restore:
         m2.load_from_checkpoint(str(checkpoint_folder / name))
     else:
@@ -62,6 +66,8 @@ if False:
 
         plt.plot(learning_curve)
         plt.show()
+
+m1.print()
 
 mu1, var1 = m1.predict_y(XS)
 

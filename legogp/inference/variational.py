@@ -3,7 +3,7 @@ from . import Inference
 from .. import settings
 
 from ..computation.elbos import elbo
-from ..computation.predictors import multi_latent_predict, multi_latent_predictive_covar
+#from ..computation.predictors import multi_latent_predict, multi_latent_predictive_covar
 
 import jax
 import jax.numpy as np

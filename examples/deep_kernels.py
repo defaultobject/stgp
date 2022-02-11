@@ -35,8 +35,11 @@ XS_stacked = np.vstack([XS1, XS2])
 
 XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+1*np.random.randn(N)+2.0
+y1 = np.sin(x*10)+0.01*np.random.randn(N)+2.0
 y2 = -np.sin(x*8)+1*np.random.randn(N)-1.0
+
+y1[35:45] = np.NaN
+y2[10:20] = np.NaN
 
 X = x[:, None]
 Y1 = y1[:, None]
