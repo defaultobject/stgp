@@ -1,19 +1,21 @@
-from ..settings import jitter
-from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian
-from ..approximate_posteriors import GaussianApproximatePosterior
-from ..dispatch import dispatch
-from .gaussian import log_gaussian
-from ..batching import Batched
-from .. import utils
-from .matrix_ops import cholesky, log_chol_matrix_det, add_jitter, diagonal_from_cholesky
-
 import jax
 from jax import jit
 import jax.numpy as np
 import chex
 from typing import List
 from objax import ModuleList
+
+from ...settings import jitter
+from ...kernels import Kernel, RBF
+from ...likelihood import Gaussian
+from ...approximate_posteriors import GaussianApproximatePosterior
+from ...dispatch import dispatch
+from ..gaussian import log_gaussian
+from ...batching import Batched
+from ... import utils
+from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, diagonal_from_cholesky
+
+
 
 @jit
 def gaussian_cholesky_kl( mu_1, covar_chol_1, mu_2, covar_chol_2) -> np.ndarray:
@@ -74,7 +76,6 @@ def whitened_gaussian_kl(mu_1, covar_chol_1) -> np.ndarray:
 
     return 0.5 * (log_det_term - N + trace_term + maha_term)
 
-@dispatch(object, GaussianApproximatePosterior, object, object)
 def KL(X, approximate_posterior, kernel, sparsity):
     mu_1 = approximate_posterior.m
     covar_chol_1 = approximate_posterior.S_chol
@@ -86,7 +87,6 @@ def KL(X, approximate_posterior, kernel, sparsity):
 
     return gaussian_kl(mu_1, mu_2, covar_chol_1, covar_chol_2)
 
-@dispatch(object, GaussianApproximatePosterior, object, object)
 def whitened_KL(X, approximate_posterior, kernel, sparsity):
 
     mu_1 = approximate_posterior.m

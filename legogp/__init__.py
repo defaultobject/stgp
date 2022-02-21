@@ -8,8 +8,6 @@ from .models import BatchGP, VGP
 from .trainers import Trainer
 
 from .computation.log_marginal_likelihoods import *
-from .computation.expected_log_likelihoods import *
-from .computation.kullback_leiblers import *
 from .computation.marginals import *
 from .computation.predictors import *
 from .computation.elbos import *

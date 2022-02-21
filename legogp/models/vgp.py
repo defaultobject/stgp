@@ -123,11 +123,13 @@ class VGP(Posterior):
             self.inference = Variational(whiten=self.whiten, minibatch_size=self.minibatch_size)
 
         if self.likelihood == None:
+            # Default Gaussian liklelihood
             self._likelihood = get_default_likelihood(self.output_dim)
 
         if self.approximate_posterior is None:
-            raise NotImplementedError()
-
+            self.approximate_posterior = MeanFieldApproximatePosterior(
+                dim_list=[self.Y.shape[0]]*self.input_dim
+            )
 
     def get_objective(self):
 

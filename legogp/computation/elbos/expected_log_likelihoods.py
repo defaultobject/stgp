@@ -1,13 +1,3 @@
-from ..core import GPPrior
-from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian
-from ..approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
-from ..dispatch import dispatch
-from .gaussian import log_gaussian
-from ..batching import Batched
-from .matrix_ops import add_jitter
-from .. import utils
-
 import jax
 from jax import jit
 import jax.numpy as np
@@ -15,6 +5,17 @@ import objax
 import chex
 from typing import List
 from objax import ModuleList
+
+from ...core import GPPrior
+from ...likelihood import Gaussian
+from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
+from ...dispatch import dispatch
+from ..gaussian import log_gaussian
+from ...batching import Batched
+from ..matrix_ops import add_jitter
+from ... import utils
+
+
 
 
 @jit

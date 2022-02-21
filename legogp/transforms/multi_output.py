@@ -153,7 +153,6 @@ class LMC_Corr(LMC_Base):
         self.Q = int(self.P*(self.P-1)/2)
 
         # Set defaults
-
         if variances is None:
             variances = np.ones(self.P)
 
@@ -164,7 +163,6 @@ class LMC_Corr(LMC_Base):
             self.a = 1.0
 
         # Setup Parameters
-
         self.variances = Parameter(variances, constraint='positive', name='variance')
 
         self.mixing_weights = Parameter(

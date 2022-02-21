@@ -1,6 +1,3 @@
-from ..utils.utils import can_batch
-from ..approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
-from ..transforms import Independent, LinearTransform
 import jax
 import jax.numpy as np
 from jax import jit
@@ -8,10 +5,15 @@ import objax
 import chex
 from batchjax import batch_or_loop
 
-from ..dispatch import dispatch, evoke
+from ...utils.utils import can_batch
+from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
+from ...transforms import Independent, LinearTransform
+from ...likelihood import ProductLikelihood
+from ...dispatch import dispatch, evoke
 from .expected_log_likelihoods import precomputed_expected_log_likelihood 
-from .kullback_leiblers import gaussian_kl
-from .marginals import diagonal_marginal, whitened_diagonal_marginal
+from ..marginals import diagonal_marginal, whitened_diagonal_marginal
+
+from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
 def precompute_diagonal_variational_primitives(X, prior, approximate_posterior):
     K_x_arr = prior.var(X)
@@ -89,9 +91,35 @@ def precompute_variational_primitives(X, prior, approximate_posterior):
 
     return mean_xx_arr, mean_zz_arr, K_xx_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, S_arr
 
-@dispatch(object, object, object, Independent, MeanFieldApproximatePosterior, object)
+@dispatch(ProductLikelihood, LinearTransform, MeanFieldApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
+):
+
+    # Compute KL term
+
+    KL_arr = evoke('kullback_leibler', approximate_posterior, prior)(
+        X, approximate_posterior, prior
+    )
+
+    kl_arr = batch_or_loop(
+        gaussian_kl,
+        [m_arr, S_arr, mean_zz_arr, K_zz_arr],
+        [0, 0, 0, 0],
+        dim = P,
+        out_dim = 1,
+        batch_flag = can_batch(mean_zz_arr)
+    )
+
+
+    # Compute approximate posterior
+
+    # Compute Expected Log Likelihood   
+    breakpoint()
+
+@dispatch(ProductLikelihood, Independent, MeanFieldApproximatePosterior)
+def elbo(
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
 ):
     P = len(likelihood)
     Q = prior.num_outputs

@@ -1,3 +1,10 @@
+import jax
+from jax import jit
+import jax.numpy as np
+import chex
+from typing import List
+from objax import ModuleList
+
 from .. import settings
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian
@@ -9,12 +16,7 @@ from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
 from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky
 
-import jax
-from jax import jit
-import jax.numpy as np
-import chex
-from typing import List
-from objax import ModuleList
+
 
 @jit
 def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:

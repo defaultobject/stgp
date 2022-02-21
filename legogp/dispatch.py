@@ -3,6 +3,48 @@ import inspect
 
 _REGISTERED = {}
 
+def is_more_specific(key_1, key_2):
+    """
+    Returns true if key_1 is more specific than key_2
+    key_1 is only more specific if every arg and kwargs is a subclass or the same class as the 
+        correpondigs (k)args in key_2
+    """
+
+    specific_flag = True
+
+    def _is_arg_more_specific(arg1, arg2):
+        # If the argument of arg1 or arg2 is a string they must be the same
+        #   as we cannot do inhertentence checking on strings
+        if type(arg1) == str or type(arg2) == str:
+            if _ensure_str(arg1) != _ensure_str(arg2):
+                raise RuntimeError(f'Cannot compare dispatched types with strings: {arg1} - {arg2}')
+
+        # If arg1 and arg2 are the same class then it is more specific
+        elif arg1 == arg2:
+            return True
+
+        # If arg1 is not a subclass of arg2 this means that it must be more general hence we can return False
+        elif not issubclass(arg1, arg2):
+            return False
+
+        return True
+
+
+    for i in range(len(key_1.args)):
+        if _is_arg_more_specific(key_1.args[i], key_2.args[i]):
+            continue
+        else:
+            return False
+
+    for k, v in key_1.kwargs.items():
+        if _is_arg_more_specific(key_1.kwargs[k], key_2.kwargs[k]):
+            continue
+        else:
+            return False
+
+
+    return True
+
 def _ensure_str(k):
     if type(k) is not str:
         #the passed k is either a class or an class instance / object
@@ -87,15 +129,18 @@ def dispatch(*args, **kwargs):
     return decorator
 
 def evoke(*args, **kwargs):
-    matched_items = []
+    matched_item = None
+    matched_key = None
+
     for k, item in _REGISTERED.items():
         if _DISPATCHER.match(k, *args, **kwargs):
-            matched_items.append(item)
 
-    if len(matched_items) == 1:
-        return matched_items[0]
+            if matched_item is None or is_more_specific(k, matched_key):
+                matched_item = item
+                matched_key = k
 
-    if len(matched_items) >= 1:
-        breakpoint()
+
+    if matched_item != None:
+        return matched_item
 
     raise RuntimeError(f'Cannot evoke {args}, {kwargs}')

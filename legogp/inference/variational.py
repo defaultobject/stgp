@@ -1,9 +1,9 @@
 """Variational inference class."""
 from . import Inference
 from .. import settings
+from ..dispatch import evoke
 
-from ..computation.elbos import elbo
-#from ..computation.predictors import multi_latent_predict, multi_latent_predictive_covar
+from ..computation.elbos import *
 
 import jax
 import jax.numpy as np
@@ -44,7 +44,7 @@ class Variational(Inference):
             approximate_posterior:  approximate posterior
         """
 
-        val = elbo(
+        val = evoke('elbo', likelihood, prior, approximate_posterior)(
             X, Y, likelihood, prior, approximate_posterior, self
         )
 
