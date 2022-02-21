@@ -1,7 +1,5 @@
 """Batch inference class."""
 from . import Inference
-#from ..computation.log_marginal_likelihoods import multi_latent_log_marginal_likelihood, log_marginal_likelihood
-#from ..computation.predictors import multi_latent_predict, multi_latent_predictive_covar
 from ..dispatch import evoke
 
 

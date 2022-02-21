@@ -4,9 +4,13 @@ from .computation.parameter_transforms import inv_positive_transform, positive_t
 
 
 class Parameter(objax.Module):
+    """
+    A wrapper around objax Trainvar to support naming a Parameter (for pretty printing of models)
+        and to make constraints easier to use.
+    """
     _NAME_DICT = {}
-    def __init__(self, val, constraint:str=None, name=None):
 
+    def __init__(self, val, constraint:str=None, name=None):
         self.constraint = constraint
         self.raw_var = objax.TrainVar(self.inv_transform(val))
 
@@ -29,7 +33,7 @@ class Parameter(objax.Module):
     
     def transform(self, var):
         if self.constraint == None:
-            return val
+            return var
         elif self.constraint == 'positive':
             return positive_transform(var)
 

@@ -16,7 +16,7 @@ from ..kernels import Kernel
 from ..inference import Variational
 from ..transforms import Transform, Identity
 from ..computation.log_marginal_likelihoods import *
-from ..likelihood import Gaussian
+from ..likelihood import get_product_likelihood
 from ..kernels import RBF
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
@@ -90,7 +90,8 @@ class VGP(Posterior):
     def fix_inputs(self):
         """ Convert all inputs into a consistent format """
 
-        self._likelihood = ensure_module_list(self._likelihood)
+        if type(self.likelihood) == list:
+            self._likelihood = get_product_likelihood(self._likelihood)
 
     def set_defaults(self):
         # Figure out which prior mode is being used (kernel vs prior)

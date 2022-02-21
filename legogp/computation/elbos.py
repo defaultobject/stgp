@@ -91,7 +91,7 @@ def precompute_variational_primitives(X, prior, approximate_posterior):
 
 @dispatch(object, object, object, Independent, MeanFieldApproximatePosterior, object)
 def elbo(
-        X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
+    X: np.ndarray, Y: np.ndarray, likelihood: list, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
 ):
     P = len(likelihood)
     Q = prior.num_outputs
@@ -99,6 +99,7 @@ def elbo(
     N = Y.shape[0]
 
     minibatch = False
+
     if inference.minibatch_size is not None:
         minibatch = True
 

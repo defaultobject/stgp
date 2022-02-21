@@ -10,6 +10,7 @@ import chex
 from ..batching import batch
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
+from .. import Parameter
 
 class LMC_Base(LinearTransform):
     """
@@ -87,7 +88,55 @@ class LMC_Base(LinearTransform):
 
         return covar
 
+# TODO: implement ICM
+
+class LMC(LMC_Base):
+    def __init__(
+        self, 
+        latents: Optional[Union[List['Model'], Transform]]=None, 
+        output_dim: Optional[int]=None, 
+        input_dim: Optional[int]=None, 
+        W: Optional[np.ndarray] = None
+    ):
+        super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
+
+        self._num_latents = self.input_dim
+
+        # Setup correlation matrix variables
+        self._W = Parameter(np.eye(self.output_dim, self.input_dim), name='W')
+
+    @property
+    def W(self):
+        return self._W.value
+
 class LMC_Unit_Tri(LMC_Base):
+    def __init__(
+        self, 
+        latents: Optional[Union[List['Model'], Transform]]=None, 
+        output_dim: Optional[int]=None, 
+        input_dim: Optional[int]=None, 
+        W: Optional[np.ndarray] = None
+    ):
+        super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
+
+        self._num_latents = self.input_dim
+
+        # Setup correlation matrix variables
+        num_vars = int(self.output_dim*(self.output_dim-1)/2)
+        self.z_arr = Parameter(np.zeros(num_vars), name='Z_arr')
+
+    @property
+    def W(self):
+        P = self.output_dim
+        Q = self.input_dim
+
+        tri = np.eye(P, Q)
+        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(self.z_arr.value)
+
+        return mixing_matrix
+
+
+class LMC_corr(LMC_Base):
     def __init__(
         self, 
         latents: Optional[Union[List['Model'], Transform]]=None, 
