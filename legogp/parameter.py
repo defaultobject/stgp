@@ -1,4 +1,5 @@
 import objax
+from typing import Callable, Optional
 
 from .computation.parameter_transforms import inv_positive_transform, positive_transform
 
@@ -10,8 +11,18 @@ class Parameter(objax.Module):
     """
     _NAME_DICT = {}
 
-    def __init__(self, val, constraint:str=None, name=None):
+    def __init__(
+        self, 
+        val, 
+        constraint:Optional[str]=None, 
+        constraint_fn:Optional[Callable] = None, 
+        inv_constraint_fn:Optional[Callable] = None, 
+        name: Optional[str] = None
+    ):
         self.constraint = constraint
+        self.constraint_fn = constraint_fn
+        self.inv_constraint_fn = inv_constraint_fn
+
         self.raw_var = objax.TrainVar(self.inv_transform(val))
 
         self.set_name(name)
@@ -32,6 +43,9 @@ class Parameter(objax.Module):
         return self.transform(self.raw_var.value)
     
     def transform(self, var):
+        if self.constraint_fn is not None:
+            return self.constraint_fn(var)
+
         if self.constraint == None:
             return var
         elif self.constraint == 'positive':
@@ -40,6 +54,14 @@ class Parameter(objax.Module):
         raise RuntimeError(f'Constraint {self.constraint} is not supported!')
 
     def inv_transform(self, val):
+        """
+        Inverse transform val to the parameter space.
+            If constraint_fn is passed this is a user constraint and so use the user defined inv_constraint_fn
+            otherwise find the correct inverse function.
+        """
+
+        if self.constraint_fn is not None:
+            return self.inv_constraint_fn(val)
 
         if self.constraint == None:
             return val

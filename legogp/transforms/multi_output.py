@@ -8,8 +8,7 @@ import numpy as onp
 import objax
 import chex
 from ..batching import batch
-from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
-from ..computation.parameter_transforms import inv_positive_transform, positive_transform
+from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform
 from .. import Parameter
 
 class LMC_Base(LinearTransform):
@@ -136,29 +135,51 @@ class LMC_Unit_Tri(LMC_Base):
         return mixing_matrix
 
 
-class LMC_corr(LMC_Base):
+class LMC_Corr(LMC_Base):
     def __init__(
         self, 
         latents: Optional[Union[List['Model'], Transform]]=None, 
         output_dim: Optional[int]=None, 
-        input_dim: Optional[int]=None, 
-        W: Optional[np.ndarray] = None
+        variances: Optional[np.ndarray] = None,
+        mixing_weights: Optional[np.ndarray] = None,
+        a: Optional[float] = None
     ):
         super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
 
         self._num_latents = self.input_dim
 
-        # Setup correlation matrix variables
-        num_vars = int(self.output_dim*(self.output_dim-1)/2)
-        self.z_arr = objax.TrainVar(np.zeros(num_vars))
-        #self.z_arr = objax.StateVar(onp.zeros(num_vars))
+        # When using LMC_corr the mixing matrix must be square
+        self.P = self.output_dim
+        self.Q = int(self.P*(self.P-1)/2)
+
+        # Set defaults
+
+        if variances is None:
+            variances = np.ones(self.P)
+
+        if mixing_weights is None:
+            mixing_weights = np.zeros(self.Q)
+
+        if a is None:
+            self.a = 1.0
+
+        # Setup Parameters
+
+        self.variances = Parameter(variances, constraint='positive', name='variance')
+
+        self.mixing_weights = Parameter(
+            mixing_weights,
+            constraint_fn=lambda x: correlation_transform(x, self.a), 
+            inv_constraint_fn=lambda x: inv_correlation_transform(x, self.a), 
+            name='mixing_weights'
+        )
+        
 
     @property
     def W(self):
-        P = self.output_dim
-        Q = self.input_dim
+        z_arr = self.mixing_weights.value
+        correlation_cholesky =  get_correlation_cholesky(z_arr, self.P, self.Q)
 
-        tri = np.eye(P, Q)
-        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(self.z_arr.value)
+        var_diag = np.diag(self.variances.value)
 
-        return mixing_matrix
+        return var_diag @ correlation_cholesky
