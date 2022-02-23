@@ -6,12 +6,11 @@ from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...batching import loop_or_batch
 from ...transforms import Independent, LinearTransform
-from ..elbos import precompute_variational_primitives, precompute_diagonal_variational_primitives
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 
 from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
-from ...utils.batch_utils import batch_over_likelihoods
+from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
@@ -169,7 +168,7 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):
     # Ensure Y is rank 2 after batching
     Y = Y[..., None]
 
-    mu_arr, var_arr =  batch_over_likelihoods(
+    mu_arr, var_arr =  batch_over_module_types(
         evoke_name,
         [gp],
         likelihood_arr,
@@ -201,7 +200,7 @@ def predict_covar(XS_1, XS_2, X, Y, gp, likelihood, prior):
     # Ensure Y is rank 2 after batching
     Y = Y[..., None]
 
-    var_arr =  batch_over_likelihoods(
+    var_arr =  batch_over_module_types(
         'predict_covar',
         [gp],
         likelihood_arr,
@@ -245,3 +244,10 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
 
     return mu, var
+
+@dispatch(ProductLikelihood, LinearTransform, 'MeanFieldApproximatePosterior')
+def predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
+
+    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
+        XS, X, approximate_posterior, prior
+    )

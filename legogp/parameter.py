@@ -17,13 +17,18 @@ class Parameter(objax.Module):
         constraint:Optional[str]=None, 
         constraint_fn:Optional[Callable] = None, 
         inv_constraint_fn:Optional[Callable] = None, 
-        name: Optional[str] = None
+        name: Optional[str] = None,
+        train: bool = True
     ):
         self.constraint = constraint
         self.constraint_fn = constraint_fn
         self.inv_constraint_fn = inv_constraint_fn
 
-        self.raw_var = objax.TrainVar(self.inv_transform(val))
+        if train:
+            self.raw_var = objax.TrainVar(self.inv_transform(val))
+        else:
+            self.raw_var = objax.StateVar(self.inv_transform(val))
+
 
         self.set_name(name)
 

@@ -186,8 +186,23 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_y(self, XS):
-        raise NotImplementedError()
+    def predict_y(self, XS, diagonal=True, squeeze=True):
+        X, Y = self.X, self.Y
+
+        mu_arr, var_arr =  self.inference.predict_y(
+            XS, 
+            self.X, 
+            self.Y, 
+            self.likelihood, 
+            self.prior,
+            self.approximate_posterior,
+            diagonal=diagonal
+        )
+
+        if squeeze:
+            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
+
+        return mu_arr, var_arr
 
     def natural_gradients(self, learning_rate, m_var, s_chol_var):
         return general_ell_natural_gradients(

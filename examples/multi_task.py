@@ -40,12 +40,13 @@ def toy_data():
     Y_all = (W @ np.hstack([u1, u2]).T).T
 
     eps_1 = 0.1*np.random.rand(N)[:, None]
-    eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
-    eps = np.hstack([eps_1, eps_2])
+    #eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
+    #eps = np.hstack([eps_1, eps_2])
+    eps = eps_1
 
     Y_all = Y_all + eps
 
-    missing_region = [70, 85]
+    missing_region = [60, 85]
 
     Y = Y_all.copy()
 
@@ -57,6 +58,7 @@ def toy_data():
         exit()
 
     XS = np.linspace(0, 1, 1000)[:, None]
+    XS = X
 
     return X, Y, Y_all, XS
 
@@ -69,7 +71,7 @@ def train_adam(m_arr, epochs):
         epochs,
         callback = callback
     )
-    if False:
+    if True:
         plt.plot(learning_curve)
         plt.show()
 
@@ -122,7 +124,7 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 200
+    epochs = 1000
     P = Y.shape[1]
     Q = P
 
@@ -137,6 +139,10 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     if model_type == 'LMC': 
         pass
+
+    elif model_type == 'LMC_corr':
+        prior = lego.transforms.multi_output.LMC_Corr(latents, output_dim = P)
+
     elif model_type == 'LMC_Hetreo':
         subsample = 15
         latent_noise_gp = [lego.models.GP(
@@ -166,16 +172,20 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
 
     # Likelihood for each output
-    lik = [lego.likelihood.Gaussian(0.1) for p in range(P)]
+    lik = [lego.likelihood.Gaussian(0.01) for p in range(P)]
 
     # Construct GP Model
     m = lego.models.GP(
         X=X, 
         Y = Y,  
         prior = prior,
-        inference='Batch', 
+        inference='Variational', 
         likelihood=lik
     )
+
+
+    print("before training")
+    m.print()
 
     if model_type == 'LMC_Hetreo':
         models = [m] + latent_noise_gp
@@ -187,6 +197,9 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
     else:
         train_fn(models, epochs)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
+
+    print("after training")
+    m.print()
 
     if model_type == 'LMC_Hetreo':
         for mod in latent_noise_gp:
@@ -203,6 +216,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     mu, var = m.predict_y(XS, diagonal=True)
 
+
     return {'mu': mu, 'var': var}
 
 X, Y, Y_all, XS = toy_data()
@@ -211,7 +225,8 @@ X, Y, Y_all, XS = toy_data()
 results = {
     #'gp_bfgs': gp(X, Y, train_bfgs, 'gp_bfgs', model_type = 'LMC', restore=False),
     #'lmc_bfgs': lmc(X, Y, train_bfgs, 'lmc_bfgs', model_type = 'LMC', restore=False),
-    'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
+    #'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
+    'lmc_corr_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC_corr', restore=False),
     #'lmc_hetro_bfgs': lmc(X, Y, train_bfgs, 'lmc_hetro_bfgs', model_type= 'LMC_Hetreo' , restore=False),
     #'lmc_hetro_adam': lmc(X, Y, train_adam, 'lmc_hetro_adam', model_type= 'LMC_Hetreo' , restore=True)
 }

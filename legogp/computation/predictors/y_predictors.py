@@ -5,7 +5,7 @@ import chex
 
 from ...transforms import LinearTransform
 from ...dispatch import dispatch, evoke
-from ...utils.batch_utils import batch_over_likelihoods
+from ...utils.batch_utils import batch_over_module_types
 from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter
 from ..model_ops import get_diagonal_gaussian_likelihood_variances, get_vec_gaussian_likelihood_variances
@@ -34,7 +34,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
     likelihood_arr = likelihood.likelihood_arr
 
     # Compute prediction for each likelihood-prior pair
-    mu_arr, var_arr =  batch_over_likelihoods(
+    mu_arr, var_arr =  batch_over_module_types(
         evoke_name,
         [gp],
         likelihood_arr,

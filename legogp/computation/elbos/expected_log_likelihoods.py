@@ -16,7 +16,25 @@ from ..matrix_ops import add_jitter
 from ... import utils
 
 
+@jit
+def scalar_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar_diag:np.ndarray) ->  np.ndarray:
 
+    chex.assert_rank(X, 2)
+    chex.assert_shape(Y, [1, 1])
+    chex.assert_equal(Y.shape, q_mu.shape)
+    chex.assert_equal(Y.shape, q_covar_diag.shape)
+
+    N = Y.shape[0]
+    c1 = -0.5*np.log(2*np.pi) - 0.5*np.log(noise)
+
+    err = Y - q_mu
+    err = np.sum(np.matmul(err.T, err))
+
+    ell =  N*c1  -0.5*(err + np.sum(q_covar_diag))/noise
+
+
+    chex.assert_rank(ell, 0)
+    return ell
 
 @jit
 def gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar_diag:np.ndarray) ->  np.ndarray:

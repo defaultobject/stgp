@@ -13,6 +13,7 @@ def cartesian_product(X, Y):
 def add_jitter(A, jit):
     return A + jit*np.eye(A.shape[0])
 
+@jit
 def diagonal_from_cholesky(L):
     """ Compute diag(LL^T). """
     # ensure square matrix

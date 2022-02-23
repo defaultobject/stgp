@@ -19,21 +19,16 @@ import stdata as st
 from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
-import jax.tools.jax_to_hlo
-from jax.lib import xla_client
-import jax.profiler
 
 
 checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
 
-#jax.profiler.start_trace("/tmp/tensorboard")
-
 
 # generate data
 P = 1
 
-N = 1000000
+N = 1000
 M = 500
 
 XS = np.linspace(-2, 3, 500)[:, None]

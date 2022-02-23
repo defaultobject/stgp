@@ -22,6 +22,10 @@ class Transform(objax.Module):
         self_latents = None
         self.batches = None
 
+    def transform_diagonal(self, mu, var):
+        """Transform a Gaussian dist """
+        raise NotImplementedError()
+
     def forward(self):
         """Compute f=T(x)."""
         pass
@@ -62,6 +66,21 @@ class LinearTransform(Transform):
     """
     All linear transforms support .W returns the mixing matrix
     """
+
+    def transform_diagonal(self, mu, var):
+        W = self.W
+
+        # Mixing latent functions
+        mu = W @ mu[..., 0] 
+        var = np.square(W) @ var[..., 0] 
+
+        # fix shapes
+
+        mu = mu[..., None]
+        var = var[..., None]
+
+        return mu, var
+
     def mean(self, X1):
         """ Output shape [P, N1]. """
         raise NotImplementedError()

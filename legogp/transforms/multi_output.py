@@ -122,7 +122,7 @@ class LMC_Unit_Tri(LMC_Base):
 
         # Setup correlation matrix variables
         num_vars = int(self.output_dim*(self.output_dim-1)/2)
-        self.z_arr = Parameter(np.zeros(num_vars), name='Z_arr')
+        self.z_arr = Parameter(np.zeros(num_vars), name='LMC_Unit_Tri/Z_arr')
 
     @property
     def W(self):
@@ -165,17 +165,17 @@ class LMC_Corr(LMC_Base):
         # Setup Parameters
         self.variances = Parameter(variances, constraint='positive', name='variance')
 
-        self.mixing_weights = Parameter(
+        self.z_arr = Parameter(
             mixing_weights,
             constraint_fn=lambda x: correlation_transform(x, self.a), 
             inv_constraint_fn=lambda x: inv_correlation_transform(x, self.a), 
-            name='mixing_weights'
+            name='LMC_Corr/z_arr'
         )
         
 
     @property
     def W(self):
-        z_arr = self.mixing_weights.value
+        z_arr = self.z_arr.value
         correlation_cholesky =  get_correlation_cholesky(z_arr, self.P, self.Q)
 
         var_diag = np.diag(self.variances.value)

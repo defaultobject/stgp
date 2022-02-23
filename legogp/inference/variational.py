@@ -20,11 +20,15 @@ class Variational(Inference):
         self.generator = objax.random.Generator(seed=0)
 
     def predict_f(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
-        mu, var = multi_latent_predict.dispatch(type(prior), type(approximate_posterior))(
+        mu, var = evoke('predict', likelihood, prior, approximate_posterior)(
             XS, X, Y, likelihood, prior, approximate_posterior, diagonal
         )
 
         return mu, var
+
+    def predict_y(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
+        return self.predict_f(XS, X, Y, likelihood, prior, approximate_posterior, diagonal)
+
 
     def predictive_covar(self, XS_1, XS_2, X, Y, likelihood, prior, approximate_posterior):
         pred_var = multi_latent_predictive_covar.dispatch(type(prior), type(approximate_posterior))(
