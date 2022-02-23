@@ -72,7 +72,7 @@ def train_adam(m_arr, epochs):
         callback = callback
     )
     if True:
-        plt.plot(learning_curve)
+        plt.plot(learning_curve[10:])
         plt.show()
 
 def train_bfgs(m, epochs):
@@ -124,7 +124,7 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 1000
+    epochs = 500
     P = Y.shape[1]
     Q = P
 
@@ -180,7 +180,8 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
         Y = Y,  
         prior = prior,
         inference='Variational', 
-        likelihood=lik
+        likelihood=lik,
+        minibatch_size=None
     )
 
 

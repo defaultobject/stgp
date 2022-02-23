@@ -6,14 +6,21 @@ from ...dispatch import dispatch, evoke
 from ...transforms import LinearTransform, Independent
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector
-from ...likelihood import ProductLikelihood
+from ...likelihood import ProductLikelihood, DiagonalLikelihood
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood
 
-@dispatch('Gaussian', 'GaussianApproximatePosterior')
+@dispatch('scalar', 'Gaussian', 'GaussianApproximatePosterior')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
+@dispatch(DiagonalLikelihood, 'GaussianApproximatePosterior')
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    """ For diagonal likelihoods adds support for missing data. """ 
+
+    # Get nan mask for output
     mask = get_mask(Y)
 
+    # Convert nans to zeros
     Y = mask_vector(Y, mask)
 
     X = X[..., None]
@@ -21,15 +28,19 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     q_f_mu = q_f_mu[..., None]
     q_f_var = q_f_var[..., None]
 
+    fn = evoke('expected_log_likelihood', 'scalar', likelihood, 'GaussianApproximatePosterior')
 
+    # Compute ELL for each datapoint
     ell_arr = jax.vmap(
-        scalar_gaussian_expected_log_likelihood,
-        [0, 0, None, 0, 0],
+        fn,
+        [0, 0, 0, 0, None],
         0
-    )(X, Y, likelihood.variance, q_f_mu, q_f_var)
+    )(X, Y, q_f_mu, q_f_var, likelihood)
 
+    # Set elements that correposnd to missing data to zero
     ell_arr = mask_vector(ell_arr[:, None], mask)
 
+    # Only sums the ELL terms without missing data
     ell = np.sum(ell_arr)
 
     return ell

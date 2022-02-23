@@ -1,13 +1,13 @@
 """Gaussian likelihood."""
 import objax
 import jax.numpy as np
-from . import Likelihood
+from . import DiagonalLikelihood
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.general import log_poisson
 from ..batching import batch
 
 
-class Poisson(Likelihood):
+class Poisson(DiagonalLikelihood):
     """Poisson likelihood."""
 
     def __init__(self, binsize):

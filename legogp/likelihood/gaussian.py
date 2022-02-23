@@ -1,7 +1,7 @@
 """Gaussian likelihood."""
 import objax
 import jax.numpy as np
-from . import Likelihood
+from . import Likelihood, DiagonalLikelihood
 
 from .. import Parameter
 
@@ -10,7 +10,7 @@ from ..computation.gaussian import log_gaussian_scalar
 
 
 
-class Gaussian(Likelihood):
+class Gaussian(DiagonalLikelihood):
     """Gaussian likelihood."""
 
     def __init__(self, variance=None):

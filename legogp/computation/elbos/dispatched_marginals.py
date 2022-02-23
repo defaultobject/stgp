@@ -40,6 +40,8 @@ def marginal(X, approximate_posterior, prior):
     num_latents = len(sparsity_arr)
     N = X.shape[0]
 
+    # TODO: pre-compute Kzz and Kzx so that any kernel can be used in the latents and batching can still be used.
+
     # Compute q(f) for each output
     marginal_mu, marginal_var = batch_over_module_types(
         evoke_name = 'marginal',
