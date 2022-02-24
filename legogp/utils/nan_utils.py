@@ -57,5 +57,5 @@ def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
     return K
 
-#def mask_matrix(mask: np.ndarray) -> np.ndarray:
-#    return np.diag(mask)
+def get_diag_mask(mask: np.ndarray) -> np.ndarray:
+    return np.diag(mask)

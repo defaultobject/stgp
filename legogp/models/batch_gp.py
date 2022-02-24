@@ -14,7 +14,7 @@ from ..core import Model, Posterior
 from . import GP
 from ..kernels import Kernel
 from ..inference import Batch
-from ..likelihood import Gaussian, get_product_likelihood
+from ..likelihood import Gaussian, get_product_likelihood, ProductLikelihood
 from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
@@ -96,6 +96,9 @@ class BatchGP(Posterior):
         else:
             if type(self.likelihood) == list:
                 self._likelihood = get_product_likelihood(self._likelihood)
+            elif not issubclass(type(self.likelihood), ProductLikelihood):
+                self._likelihood = get_product_likelihood([self.likelihood])
+
 
 
     def log_marginal_likelihood(self, X=None, Y=None):

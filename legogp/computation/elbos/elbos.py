@@ -59,7 +59,6 @@ def elbo(
         X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
-    breakpoint()
     # TODO: the minibatch scaling is biased when there is missing data
     return (N/minibatch_size) * ELL - KL
     #return  ELL 

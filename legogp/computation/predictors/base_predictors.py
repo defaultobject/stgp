@@ -9,7 +9,7 @@ from ...transforms import Independent, LinearTransform
 
 from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
-from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector, mask_matrix
+from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector, get_diag_mask
 
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
 from ..model_ops import get_block_diag_gram_matrix, get_diagonal_gaussian_likelihood_variances, get_linear_multi_task_model_covariance, get_linear_multi_task_prior_covariance, get_linear_multi_task_prior_diag_covariance
@@ -26,7 +26,7 @@ from batchjax import batch_or_loop, BatchType
 @jit
 def gaussian_predictive_mean(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     mask = get_mask(Y)
-    M = mask_matrix(mask)
+    M = get_diag_mask(mask)
     Y = mask_vector(Y, mask)
 
     Ns = K_xs.shape[0]
@@ -43,7 +43,7 @@ def gaussian_predictive_mean(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
 @jit
 def gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var):
     mask = get_mask(Y)
-    M = mask_matrix(mask)
+    M = get_diag_mask(mask)
 
     Ns_1 = K_xs.shape[0]
     Ns_2 = K_xs.shape[1]
@@ -80,7 +80,7 @@ def _gaussian_prediction_no_nans(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
 @jit
 def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     mask = get_mask(Y)
-    M = mask_matrix(mask)
+    M = get_diag_mask(mask)
     Y = mask_vector(Y, mask)
 
     Ns = K_xs.shape[0]
@@ -119,7 +119,7 @@ def _gaussian_prediction_diagonal_no_nans(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs
 @jit 
 def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     mask = get_mask(Y)
-    M = mask_matrix(mask)
+    M = get_diag_mask(mask)
     Y = mask_vector(Y, mask)
 
     k = add_jitter(M.T @ K_xx @ M, lik_var)

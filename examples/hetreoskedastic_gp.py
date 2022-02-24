@@ -18,7 +18,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.kernels.deep_kernels import DeepRBF, DeepHetreo
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import RBF
+from legogp.kernels import RBF, ScaleKernel
 
 checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
@@ -46,16 +46,17 @@ XS = np.linspace(np.min(X[:, 0])-20, np.max(X[:, 0])+20, 500)[:, None]
 
 # Construct Models
 
-def train_adam(m, epochs):
+def train_adam(m, epochs, ls=0.01):
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
         m, 
         objax.optimizer.Adam,
-        0.01,
+        ls,
         epochs,
         callback = callback
     )
     if True:
+        print(learning_curve[0], learning_curve[-1])
         plt.plot(learning_curve)
         plt.show()
 
@@ -86,59 +87,55 @@ def gp(X, Y, XS, train_fn, name, restore=False):
         train_fn(m, epochs)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
-    mu, var = m.predict(XS, diagonal=True)
+    mu, var = m.predict_f(XS, diagonal=True)
 
     return {'mu': mu, 'var': var}
 
-
-def hetro_gp(X, Y, XS, train_fn, name, model_type, restore=False):
+def vgp(X, Y, XS, train_fn, model, name, restore=False):
     epochs = 1000
 
-    # Construct uncertain input GP
-    #    Subsample data to avoid overfitting
-    subsample = 10
-    latent_noise_gp = lego.models.GP(
-        X=X[::subsample, :], 
-        Y = Y[::subsample, :], 
-        latent_y=True, 
-        inference='Batch',
-        kernel = RBF(lengthscales=[1.0], variance=1.0)
-    )
+    Q = 1
+    P = 1
+    f_latents = [
+        lego.models.GP(X=X, kernel=ScaleKernel(RBF(input_dim=1, lengthscales=[5.0])), latent=True) for q in range(Q)
+    ]
 
-    # Construct Deep Kernel
-    if model_type == 'prior':
-        kern = RBF(lengthscales=[1.0], variance=0.1)*DeepRBF(DeepHetreo(latent_noise_gp))
-    elif model_type == 'lik':
-        # This is v. sensitive to how latent_noise_gp noise GP is init.
-        kern = RBF(lengthscales=[1.0], variance=0.1) + DeepHetreo(latent_noise_gp)
+    W_latents = [
+        [
+            lego.models.GP(X=X, kernel=ScaleKernel(RBF(input_dim=1, lengthscales=[5.0])), latent=True) for q in range(Q)
+        ] 
+        for p in range(P)
+    ]
+
+    if model == 'gprn':
+        prior = lego.transforms.multi_output.GPRN(W_latents, f_latents, output_dim = P)
+    elif model == 'gprn-exp':
+        prior = lego.transforms.multi_output.GPRN_Exp(W_latents, f_latents, output_dim = P)
 
     m = lego.models.GP(
         X=X, 
         Y = Y,  
-        kernel = kern,
-        inference='Batch', 
-        likelihood=lego.likelihood.Gaussian(0.01)
+        prior=prior,
+        inference='Variational', 
+        likelihood=[lego.likelihood.Gaussian(0.01)]
     )
-
-    train_fn(m, epochs)
 
     if restore:
         m.load_from_checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
     else:
-
+        train_fn(m, epochs, 0.01)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
-
-    mu, var = m.predict(XS, diagonal=True)
+    mu, var = m.predict_f(XS, diagonal=True)
 
     return {'mu': mu, 'var': var}
 
 
 
 results = {
-    'gp_bfgs': gp(X, Y, XS, train_bfgs, 'gp_bfgs', restore=False),
-    'hetreo_gp_bfgs': hetro_gp(X, Y, XS, train_bfgs, 'hetreo_gp_bfgs', model_type='prior', restore=False),
-    'hetreo_lik_gp_bfgs': hetro_gp(X, Y, XS, train_bfgs, 'hetreo_lik_gp_bfgs', model_type='lik', restore=False),
+    #'gp_adam': gp(X, Y, XS, train_adam, 'gp_adam', restore=False),
+    'gprn_adam': vgp(X, Y, XS, train_adam, 'gprn', 'gprn_adam', restore=False),
+    #'gprn_exp_adam': vgp(X, Y, XS, train_adam, 'gprn-exp', 'gprn_exp_adam', restore=False),
 }
 
 num_models = len(results.keys())

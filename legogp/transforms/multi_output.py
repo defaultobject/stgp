@@ -34,13 +34,9 @@ class GPRN_Base(NonLinearTransform):
 
 class GPRN(GPRN_Base):
     def forward(self, f):
-        # TODO: 
         # f has the same ordering as self.latents
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
-
-        #return latent_W[:self.input_dim]
-        return latent_f
 
         # W is in row-major ordering
         latent_W = latent_W.reshape(
@@ -50,6 +46,22 @@ class GPRN(GPRN_Base):
         )
 
         return latent_W @ latent_f
+
+class GPRN_Exp(GPRN_Base):
+    def forward(self, f):
+        # f has the same ordering as self.latents
+        latent_f = f[:self.input_dim]
+        latent_W = f[self.input_dim:]
+
+        # W is in row-major ordering
+        latent_W = latent_W.reshape(
+            self.output_dim,
+            self.input_dim,
+            order='C'
+        )
+
+        # Element wise exponential to force W to be positive
+        return np.exp(latent_W) @ latent_f
 
 class LMC_Base(LinearTransform):
     """

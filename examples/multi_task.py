@@ -40,9 +40,9 @@ def toy_data():
     Y_all = (W @ np.hstack([u1, u2]).T).T
 
     eps_1 = 0.1*np.random.rand(N)[:, None]
-    #eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
-    #eps = np.hstack([eps_1, eps_2])
-    eps = eps_1
+    eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
+    eps = np.hstack([eps_1, eps_2])
+    #eps = eps_1
 
     Y_all = Y_all + eps
 
@@ -148,12 +148,12 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     elif model_type == 'GPRN':
         f_latents = [
-            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[1.0]), latent=True) for q in range(Q)
         ]
 
         W_latents = [
             [
-                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[1.0]), latent=True) for q in range(Q)
             ] 
             for p in range(P)
         ]

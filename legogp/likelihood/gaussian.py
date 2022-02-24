@@ -18,7 +18,12 @@ class Gaussian(DiagonalLikelihood):
         if variance is None:
             variance = 1.0
 
-        self.variance_param = Parameter(variance, constraint='positive', name ='Gaussian/variance', train=False)
+        self.variance_param = Parameter(
+            variance, 
+            constraint='positive', 
+            name ='Gaussian/variance', 
+            train=False
+        )
 
     @property
     def variance(self) -> np.ndarray:
