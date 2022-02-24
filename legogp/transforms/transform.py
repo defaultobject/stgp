@@ -35,10 +35,6 @@ class Transform(objax.Module):
         pass
 
     @property
-    def num_latents(self):
-        return self._num_latents
-
-    @property
     def num_outputs(self):
         return self._num_outputs
 
@@ -58,14 +54,20 @@ class Transform(objax.Module):
     def get_batches(self):
         return self.batches
 
-
-
+class NonLinearTransform(Transform):
+    @property
+    def num_latents(self):
+        return len(self.latents.latents)
 
 
 class LinearTransform(Transform):
     """
     All linear transforms support .W returns the mixing matrix
     """
+
+    @property
+    def num_latents(self):
+        return len(self.latents.latents)
 
     def transform_diagonal(self, mu, var):
         W = self.W
@@ -158,9 +160,14 @@ class Independent(LinearTransform):
         else:
             self._num_latents = latent.num_outputs
 
-        self._num_outputs = self.num_latents
 
         self._latents = ensure_module_list(latents)
+
+        self._num_outputs = self.num_latents
+
+    @property
+    def num_latents(self):
+        return len(self.latents)
 
     def get_sparsity_list(self):
         return [p.sparsity for p in self._latents]
@@ -327,8 +334,6 @@ class One2One(Independent):
 
 
 
-class NonLinearTransform(Transform):
-    pass
 
 class ElementWiseTransform(Transform):
     def __init__(self):

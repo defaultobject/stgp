@@ -5,7 +5,7 @@ from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApp
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...batching import loop_or_batch
-from ...transforms import Independent, LinearTransform
+from ...transforms import Independent, LinearTransform, NonLinearTransform
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 
 from ...utils import utils
@@ -232,7 +232,6 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     Y_vec = vec_columns(Y)
 
-
     # gaussian_prediction(_*) support both lik_var being a scalar and a diagonal matrix
     if diagonal:
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
@@ -250,4 +249,11 @@ def predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
 
     return  evoke('marginal', 'prediction', approximate_posterior, prior)(
         XS, X, approximate_posterior, prior
+    )
+
+@dispatch(ProductLikelihood, NonLinearTransform, 'MeanFieldApproximatePosterior')
+def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
+
+    return  evoke('marginal', 'prediction', approximate_posterior, prior, inference)(
+        XS, X, approximate_posterior, prior, inference
     )

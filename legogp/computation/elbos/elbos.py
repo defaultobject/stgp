@@ -3,11 +3,10 @@ import jax.numpy as np
 from jax import jit
 import objax
 import chex
-from batchjax import batch_or_loop
 
 from ...utils.utils import can_batch
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
-from ...transforms import Independent, LinearTransform
+from ...transforms import Independent, Transform
 from ...likelihood import ProductLikelihood
 from ...dispatch import dispatch, evoke
 from .expected_log_likelihoods import precomputed_expected_log_likelihood 
@@ -15,7 +14,7 @@ from ..marginals import diagonal_marginal, whitened_diagonal_marginal
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
-@dispatch(ProductLikelihood, LinearTransform, MeanFieldApproximatePosterior)
+@dispatch(ProductLikelihood, Transform, MeanFieldApproximatePosterior)
 def elbo(
     X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
 ):
@@ -57,8 +56,10 @@ def elbo(
 
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', likelihood, prior, approximate_posterior)(
-        X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior
+        X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
+    breakpoint()
     # TODO: the minibatch scaling is biased when there is missing data
     return (N/minibatch_size) * ELL - KL
+    #return  ELL 

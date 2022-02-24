@@ -10,16 +10,31 @@ import chex
 from ..computation.matrix_ops import cholesky, cholesky_solve, add_jitter
 from ..settings import jitter
 
+
+def get_same_shape_mask(Y: np.ndarray) -> np.ndarray:
+    """
+    Returns 1 if Y_n is numeric, otherwise 0
+    """
+    return (~np.isnan(Y)).astype(int)
+
 def get_mask(Y: np.ndarray) -> np.ndarray:
     """
     Returns 1 if Y_n is numeric, otherwise 0
     """
-    return np.squeeze((~np.isnan(Y)).astype(int))
+    return np.squeeze(get_same_shape_mask(Y))
 
 def mask_vector(Y, mask):
     # Element wise multiplication to make 'nan' element zero
     Y = np.nan_to_num(Y, nan=0.0)
     return Y * mask[:, None]
+
+def mask_matrix(Y, mask):
+    chex.assert_equal(Y.shape, mask.shape)
+
+    Y = np.nan_to_num(Y, nan=0.0)
+
+    # Element wise multiplication to make 'nan' element zero
+    return Y * mask
 
 def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
@@ -42,5 +57,5 @@ def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
 
     return K
 
-def mask_matrix(mask: np.ndarray) -> np.ndarray:
-    return np.diag(mask)
+#def mask_matrix(mask: np.ndarray) -> np.ndarray:
+#    return np.diag(mask)

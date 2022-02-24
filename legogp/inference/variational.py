@@ -21,10 +21,18 @@ class Variational(Inference):
 
     def predict_f(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
         mu, var = evoke('predict', likelihood, prior, approximate_posterior)(
-            XS, X, Y, likelihood, prior, approximate_posterior, diagonal
+            XS, X, Y, likelihood, prior, approximate_posterior, self, diagonal
         )
 
         return mu, var
+
+    def predict_latents(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
+
+        latents = prior.latents
+
+        return evoke('marginal', 'prediction', approximate_posterior, latents)(
+            XS, X, approximate_posterior, latents
+        )
 
     def predict_y(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
         return self.predict_f(XS, X, Y, likelihood, prior, approximate_posterior, diagonal)

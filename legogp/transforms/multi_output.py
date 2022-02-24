@@ -11,6 +11,46 @@ from ..batching import batch
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform
 from .. import Parameter
 
+class GPRN_Base(NonLinearTransform):
+    def __init__(self, W, f, input_dim: int = None, output_dim: int = None):
+
+        super(NonLinearTransform, self).__init__()
+
+        # Flatten W into a vector - row major ordering
+        W_vec = [w for W_p in W for w in W_p]
+
+        # Flatten latents to fit into VI framework
+        self._latents = Independent(
+            latents = f+W_vec,
+            prior = True
+        )
+
+        self._input_dim = len(f)
+        self._output_dim = len(W)
+
+    @property
+    def forward(self, f):
+        raise NotImplementedError()
+
+class GPRN(GPRN_Base):
+    def forward(self, f):
+        # TODO: 
+        # f has the same ordering as self.latents
+        latent_f = f[:self.input_dim]
+        latent_W = f[self.input_dim:]
+
+        #return latent_W[:self.input_dim]
+        return latent_f
+
+        # W is in row-major ordering
+        latent_W = latent_W.reshape(
+            self.output_dim,
+            self.input_dim,
+            order='C'
+        )
+
+        return latent_W @ latent_f
+
 class LMC_Base(LinearTransform):
     """
     Inherits

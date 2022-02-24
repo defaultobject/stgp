@@ -128,7 +128,7 @@ class VGP(Posterior):
 
         if self.approximate_posterior is None:
             self.approximate_posterior = MeanFieldApproximatePosterior(
-                dim_list=[self.Y.shape[0]]*self.input_dim
+                dim_list=[self.Y.shape[0]]*self.prior.num_latents
             )
 
     def get_objective(self):
@@ -168,6 +168,22 @@ class VGP(Posterior):
 
         chex.assert_shape(var_arr, [self.output_dim, XS_1.shape[0], XS_2.shape[0]])
         return var_arr
+
+    def predict_latents(self, XS, diagonal=True, squeeze=True):
+        mean, var = self.inference.predict_latents(
+            XS, 
+            self.X, 
+            self.Y, 
+            self.likelihood, 
+            self.prior,
+            self.approximate_posterior,
+            diagonal=diagonal
+        )
+
+        if squeeze:
+            return np.squeeze(mean), np.squeeze(var)
+
+        return mean, var
 
     def predict_f(self, XS, diagonal=True, squeeze=True):
 

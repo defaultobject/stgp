@@ -71,8 +71,11 @@ def train_adam(m_arr, epochs):
         epochs,
         callback = callback
     )
+
+    print(learning_curve[0], learning_curve[-1])
+
     if True:
-        plt.plot(learning_curve[10:])
+        plt.plot(learning_curve)
         plt.show()
 
 def train_bfgs(m, epochs):
@@ -124,7 +127,7 @@ def gp(X, Y, train_fn, name, model_type, restore=False):
 
 
 def lmc(X, Y, train_fn, name, model_type, restore=False):
-    epochs = 500
+    epochs = 1000
     P = Y.shape[1]
     Q = P
 
@@ -142,6 +145,21 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     elif model_type == 'LMC_corr':
         prior = lego.transforms.multi_output.LMC_Corr(latents, output_dim = P)
+
+    elif model_type == 'GPRN':
+        f_latents = [
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+        ]
+
+        W_latents = [
+            [
+                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+            ] 
+            for p in range(P)
+        ]
+
+
+        prior = lego.transforms.multi_output.GPRN(W_latents, f_latents, output_dim = P)
 
     elif model_type == 'LMC_Hetreo':
         subsample = 15
@@ -215,7 +233,8 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
             plt.scatter(mod.X.value, mod.Y.value)
             plt.show()
 
-    mu, var = m.predict_y(XS, diagonal=True)
+    #mu, var = m.predict_latents(XS, diagonal=True)
+    mu, var = m.predict_f(XS, diagonal=True)
 
 
     return {'mu': mu, 'var': var}
@@ -227,7 +246,8 @@ results = {
     #'gp_bfgs': gp(X, Y, train_bfgs, 'gp_bfgs', model_type = 'LMC', restore=False),
     #'lmc_bfgs': lmc(X, Y, train_bfgs, 'lmc_bfgs', model_type = 'LMC', restore=False),
     #'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
-    'lmc_corr_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC_corr', restore=False),
+    #'lmc_corr_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC_corr', restore=False),
+    'gprn_adam': lmc(X, Y, train_adam, 'gprn_adam', model_type = 'GPRN', restore=False),
     #'lmc_hetro_bfgs': lmc(X, Y, train_bfgs, 'lmc_hetro_bfgs', model_type= 'LMC_Hetreo' , restore=False),
     #'lmc_hetro_adam': lmc(X, Y, train_adam, 'lmc_hetro_adam', model_type= 'LMC_Hetreo' , restore=True)
 }
@@ -238,6 +258,7 @@ P = Y.shape[1]
 
 fig, axes = plt.subplots(num_models, squeeze=False)
 
+#P = 6
 colors = cm.rainbow(np.linspace(0, 1, P))
 
 for i, model_name in enumerate(list(results.keys())):

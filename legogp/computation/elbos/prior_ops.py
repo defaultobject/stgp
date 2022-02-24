@@ -16,7 +16,7 @@ def _batch_over_prior(prior, fn):
         batch_flag = can_batch(prior.latents)
     )
 
-def prior_mean_Z():
+def prior_mean_Z(prior):
     K_zz_arr = _batch_over_prior(
         prior,
         lambda prior: prior.kernel.K(prior.sparsity.Z, prior.sparsity.Z),

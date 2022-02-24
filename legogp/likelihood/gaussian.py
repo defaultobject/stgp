@@ -18,15 +18,14 @@ class Gaussian(DiagonalLikelihood):
         if variance is None:
             variance = 1.0
 
-        self.variance_param = Parameter(variance, constraint='positive')
+        self.variance_param = Parameter(variance, constraint='positive', name ='Gaussian/variance', train=False)
 
     @property
     def variance(self) -> np.ndarray:
         return self.variance_param.value
 
     def log_likelihood_scalar(self, y, f):
-        var = np.array([self.variance])
-        ll = log_gaussian_scalar(y, f, var)
+        ll = log_gaussian_scalar(y, f, self.variance)
         return ll
 
     def conditional_var(self, f):

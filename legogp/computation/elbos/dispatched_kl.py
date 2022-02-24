@@ -3,7 +3,7 @@ import jax.numpy as np
 
 from ...dispatch import dispatch, evoke
 from .kullback_leiblers import gaussian_cholesky_kl
-from ...transforms import LinearTransform, Independent
+from ...transforms import Transform, Independent
 from ...utils.batch_utils import batch_over_module_types
 from ..matrix_ops import cholesky, add_jitter
 from ...settings import jitter
@@ -45,7 +45,7 @@ def kullback_leibler(X, approximate_posterior, prior):
     return np.sum(kl_arr)
 
 
-@dispatch('MeanFieldApproximatePosterior', LinearTransform)
+@dispatch('MeanFieldApproximatePosterior', Transform)
 def kullback_leibler(X, approximate_posterior, prior):
 
     latents = prior.latents
