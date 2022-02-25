@@ -4,13 +4,13 @@ import jax.numpy as np
 import objax
 
 from ...dispatch import dispatch, evoke
-from ...transforms import LinearTransform, Independent, NonLinearTransform
+from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
 from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood
-from ..integrals.approximators import mv_indepentdent_monte_carlo
+from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 
 
 from batchjax import batch_or_loop, BatchType
@@ -113,6 +113,49 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     return np.sum(ell_arr)
 
+def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
+    likelihood_arr = likelihood.likelihood_arr
+    num_likelihoods = len(likelihood_arr)
+
+    # Reparameterise
+    # Transform through prior
+    transformed_f = jax.vmap(
+        prior.forward,
+        [1],
+        0
+    )(f)
+    chex.assert_shape(transformed_f, Y.shape)
+
+    Y = Y[..., None]
+    transformed_f = transformed_f[..., None]
+
+    # Get nan mask for output
+    mask = get_same_shape_mask(Y)
+
+    # Convert nans to zeros
+    Y = mask_matrix(Y, mask)
+
+    # batch over outputs
+    # log likelihood for each outout
+    ll_arr = batch_or_loop(
+        lambda y, f, lik: lik.log_likelihood(y, f),
+        [Y, transformed_f, likelihood_arr],
+        [1, 1, 0],
+        dim = num_likelihoods,
+        out_dim=1,
+        batch_type = get_batch_type(likelihood_arr)
+    )
+    # Fix shapes so that ll_arr matches Y
+    ll_arr = ll_arr[..., None]
+    ll_arr = np.transpose(ll_arr, [1, 0, 2])
+
+    chex.assert_equal(ll_arr.shape, Y.shape)
+
+    # Mask out log-liklihoods that correspond to missing data
+    ll_arr = mask_matrix(ll_arr, mask)
+
+    return np.sum(ll_arr)
+
 @dispatch(ProductLikelihood, NonLinearTransform, 'MeanFieldApproximatePosterior')
 def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
@@ -127,43 +170,11 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     num_likelihoods = len(likelihood_arr)
     N = Y.shape[0]
 
-    def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
-        # Reparameterise
-        # Transform through prior
-        transformed_f = jax.vmap(
-            prior.forward,
-            [1],
-            0
-        )(f)
-        chex.assert_shape(transformed_f, Y.shape)
 
-        # Get nan mask for output
-        mask = get_same_shape_mask(Y)
 
-        # Convert nans to zeros
-        Y = mask_matrix(Y, mask)
-
-        # batch over outputs
-        # log likelihood for each outout
-        ll_arr = batch_or_loop(
-            lambda y, f, lik: lik.log_likelihood(y, f),
-            [Y, transformed_f, likelihood_arr],
-            [1, 1, 0],
-            dim = num_likelihoods,
-            out_dim=1,
-            batch_type = get_batch_type(likelihood_arr)
-        )
-        # Fix shapes so that ll_arr matches Y
-        ll_arr = ll_arr[..., None]
-        ll_arr = np.transpose(ll_arr, [1, 0, 2])
-
-        chex.assert_equal(ll_arr.shape, Y.shape)
-
-        # Mask out log-liklihoods that correspond to missing data
-        ll_arr = mask_matrix(ll_arr, mask)
-
-        return np.sum(ll_arr)
-
+    # TODO: This is the average of sums
+    # but it should be the sum of averages?
+    # Or does it not make a difference?
     Y = Y[..., None]
 
     return mv_indepentdent_monte_carlo(
@@ -171,6 +182,27 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         q_f_mu_arr, 
         q_f_var_arr, 
         fn_args = [X, Y, prior, likelihood, approx_posteriors_arr],
+        generator = inference.generator, 
+        num_samples = 100
+    )
+
+@dispatch(ProductLikelihood, Transform, 'FullGaussianApproximatePosterior')
+def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    Samples from the approximate posteriors need to be transformed through the prior and then the 
+        ELL is approximated using monte-carlo
+    """
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    num_likelihoods = len(likelihood_arr)
+    N = Y.shape[0]
+
+    return mv_block_monte_carlo(
+        compute_ell_for_sample, 
+        q_f_mu_arr, 
+        q_f_var_arr, 
+        fn_args = [X, Y, prior, likelihood, approximate_posterior],
         generator = inference.generator, 
         num_samples = 100
     )

@@ -49,3 +49,6 @@ class GaussianApproximatePosterior(ApproximatePosterior):
     @property
     def S_diag(self):
         return diagonal_from_cholesky(self.S_chol)
+
+class FullGaussianApproximatePosterior(GaussianApproximatePosterior):
+    pass

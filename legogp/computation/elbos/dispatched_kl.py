@@ -1,4 +1,5 @@
 import chex
+import jax
 import jax.numpy as np
 
 from ...dispatch import dispatch, evoke
@@ -52,4 +53,32 @@ def kullback_leibler(X, approximate_posterior, prior):
 
     return evoke('kullback_leibler', approximate_posterior, latents)(
         X, approximate_posterior, latents
+    )
+
+@dispatch('FullGaussianApproximatePosterior', Transform)
+def kullback_leibler(X, approximate_posterior, prior):
+
+    latent = prior.latents
+
+    mean_2 = latent.mean(X)
+
+    # Reshape mean_2 to have same shape as approxiamte posterior
+    Q = mean_2.shape[0]
+    N = mean_2.shape[1]
+    mean_2 = np.reshape(mean_2, [Q * N , 1])
+
+    covar_2 = jax.scipy.linalg.block_diag(*latent.covar(X, X))
+    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+
+    m = approximate_posterior.m
+    S_chol = approximate_posterior.S_chol
+
+    chex.assert_equal(m.shape, mean_2.shape)
+    chex.assert_equal(S_chol.shape, covar_chol_2.shape)
+
+    return gaussian_cholesky_kl(
+        approximate_posterior.m,
+        approximate_posterior.S_chol,
+        mean_2,
+        covar_chol_2
     )

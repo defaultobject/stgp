@@ -6,6 +6,25 @@ from jax import jit
 from functools import partial
 import chex
 
+@partial(jit, static_argnums=(1))
+def get_block_diagonal(A, block_size):
+    N = A.shape[0]
+
+    num_blocks = N / block_size
+    a = np.array(list(range(N)))
+
+    indexes = np.reshape(a, [-1, block_size])
+
+    blocks =  jax.vmap(
+        lambda A, i: A[i,:][:, i],
+        [None, 0],
+        0
+    )(A, indexes)
+
+    chex.assert_shape(blocks, [num_blocks, block_size, block_size])
+
+    return blocks
+
 @jit
 def cartesian_product(X, Y):
     return np.vstack([np.tile(X, Y.shape[0]), np.repeat(Y, X.shape[0])])

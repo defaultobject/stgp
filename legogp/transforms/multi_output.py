@@ -63,6 +63,72 @@ class GPRN_Exp(GPRN_Base):
         # Element wise exponential to force W to be positive
         return np.exp(latent_W) @ latent_f
 
+class GPRN_LDL(GPRN_Base):
+
+    def __init__(self, W_vec, f, input_dim: int = None, output_dim: int = None):
+
+        super(GPRN_LDL, self).__init__()
+
+        # Flatten latents to fit into VI framework
+        self._latents = Independent(
+            latents = f+W_vec,
+            prior = True
+        )
+
+        self._input_dim = len(f)
+        self._output_dim = len(W)
+
+    def forward(self, f):
+        # f has the same ordering as self.latents
+        latent_f = f[:self.input_dim]
+        latent_W = f[self.input_dim:]
+
+        P = self.output_dim
+        Q = self.input_dim
+        tri = np.eye(P, Q)
+        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W)
+
+        # Element wise exponential to force W to be positive
+        return mixing_matrix @ latent_f
+
+class GPRN_DRD(GPRN_Base):
+
+    def __init__(self, W_vec, f, input_dim: int = None, output_dim: int = None):
+
+        super(GPRN_LDL, self).__init__()
+
+        # When using LMC_corr the mixing matrix must be square
+        self.P = self.output_dim
+        self.Q = int(self.P*(self.P-1)/2)
+
+        # Set defaults
+        if variances is None:
+            variances = np.ones(self.P)
+
+        # Setup Parameters
+        self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance')
+
+        # Flatten latents to fit into VI framework
+        self._latents = Independent(
+            latents = f+W_vec,
+            prior = True
+        )
+
+        self._input_dim = len(f)
+        self._output_dim = len(W)
+
+    def forward(self, f):
+        # f has the same ordering as self.latents
+        latent_f = f[:self.input_dim]
+        latent_W = f[self.input_dim:]
+
+        correlation_cholesky =  get_correlation_cholesky(latent_W, self.P, self.Q)
+
+        var_diag = np.diag(self.variances.value)
+
+        # Element wise exponential to force W to be positive
+        return var_diag @ correlation_cholesky @ latent_f
+
 class LMC_Base(LinearTransform):
     """
     Inherits
@@ -215,7 +281,7 @@ class LMC_Corr(LMC_Base):
             self.a = 1.0
 
         # Setup Parameters
-        self.variances = Parameter(variances, constraint='positive', name='variance')
+        self.variances = Parameter(variances, constraint='positive', name='LMC_Corr/variance')
 
         self.z_arr = Parameter(
             mixing_weights,

@@ -42,7 +42,8 @@ Y = data[:,1][:, None]
 Y = Y-np.mean(Y)
 Y = Y/np.std(Y)
 
-XS = np.linspace(np.min(X[:, 0])-20, np.max(X[:, 0])+20, 500)[:, None]
+#XS = np.linspace(np.min(X[:, 0])-20, np.max(X[:, 0])+20, 500)[:, None]
+XS = X
 
 # Construct Models
 
@@ -102,7 +103,7 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
 
     W_latents = [
         [
-            lego.models.GP(X=X, kernel=ScaleKernel(RBF(input_dim=1, lengthscales=[5.0])), latent=True) for q in range(Q)
+            lego.models.GP(X=X, kernel=ScaleKernel(RBF(input_dim=1, lengthscales=[10.0])), latent=True) for q in range(Q)
         ] 
         for p in range(P)
     ]
@@ -112,12 +113,15 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
     elif model == 'gprn-exp':
         prior = lego.transforms.multi_output.GPRN_Exp(W_latents, f_latents, output_dim = P)
 
+    q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0])
+
     m = lego.models.GP(
         X=X, 
         Y = Y,  
         prior=prior,
         inference='Variational', 
-        likelihood=[lego.likelihood.Gaussian(0.01)]
+        approximate_posterior=q,
+        likelihood=[lego.likelihood.Gaussian(0.001)]
     )
 
     if restore:
@@ -125,6 +129,32 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
     else:
         train_fn(m, epochs, 0.01)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
+
+    m.print()
+
+
+    if True:
+        mu_latent, var_latent = m.predict_latents(XS, diagonal=True)
+
+        P = mu_latent.shape[0]
+
+        colors = cm.rainbow(np.linspace(0, 1, P))
+        for i in range(P):
+            mu_i = np.squeeze(mu_latent[i])
+            var_i = np.squeeze(var_latent[i])
+            XS_i = np.squeeze(XS)
+
+            plt.fill_between(
+                XS_i, 
+                mu_i-1.96*np.sqrt(var_i), 
+                mu_i+1.96*np.sqrt(var_i), 
+                facecolor=colors[i],
+                alpha=0.4
+            )
+            plt.plot(XS_i, mu_i, label=i)
+
+        plt.legend()
+        plt.show()
 
     mu, var = m.predict_f(XS, diagonal=True)
 
@@ -134,8 +164,8 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
 
 results = {
     #'gp_adam': gp(X, Y, XS, train_adam, 'gp_adam', restore=False),
-    'gprn_adam': vgp(X, Y, XS, train_adam, 'gprn', 'gprn_adam', restore=False),
-    #'gprn_exp_adam': vgp(X, Y, XS, train_adam, 'gprn-exp', 'gprn_exp_adam', restore=False),
+    #'gprn_adam': vgp(X, Y, XS, train_adam, 'gprn', 'gprn_adam', restore=False),
+    'gprn_exp_adam': vgp(X, Y, XS, train_adam, 'gprn-exp', 'gprn_exp_adam', restore=True),
 }
 
 num_models = len(results.keys())

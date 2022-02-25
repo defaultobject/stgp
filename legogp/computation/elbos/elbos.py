@@ -5,7 +5,7 @@ import objax
 import chex
 
 from ...utils.utils import can_batch
-from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
+from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior
 from ...transforms import Independent, Transform
 from ...likelihood import ProductLikelihood
 from ...dispatch import dispatch, evoke
@@ -14,9 +14,9 @@ from ..marginals import diagonal_marginal, whitened_diagonal_marginal
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
-@dispatch(ProductLikelihood, Transform, MeanFieldApproximatePosterior)
+@dispatch(ProductLikelihood, Transform, ApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: MeanFieldApproximatePosterior, inference: 'Variational'
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
     N = Y.shape[0]
 
@@ -61,4 +61,3 @@ def elbo(
 
     # TODO: the minibatch scaling is biased when there is missing data
     return (N/minibatch_size) * ELL - KL
-    #return  ELL 

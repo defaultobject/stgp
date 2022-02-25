@@ -25,7 +25,7 @@ from ..defaults import get_default_kernel, get_default_likelihood, get_default_i
 from ..computation.natural_gradients.nat_grad import general_ell_natural_gradients
 
 
-@dispatch(Model, 'Variational', 'NoSparsity')
+@dispatch(Model, 'Variational')
 class VGP(Posterior):
     def __init__(
         self, 

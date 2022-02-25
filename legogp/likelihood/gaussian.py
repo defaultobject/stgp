@@ -22,7 +22,7 @@ class Gaussian(DiagonalLikelihood):
             variance, 
             constraint='positive', 
             name ='Gaussian/variance', 
-            train=False
+            train=True
         )
 
     @property

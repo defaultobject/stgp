@@ -1,13 +1,16 @@
 import chex
 import jax
 import jax.numpy as np
+from jax.scipy.linalg import block_diag
 
+from ...core import GPPrior
+from ...transforms import Transform
 from ...dispatch import dispatch, evoke
 from ...transforms import LinearTransform, Independent, NonLinearTransform
 from ...utils.batch_utils import batch_over_module_types
 from ..marginals import gaussian_conditional_diagional
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
-from ..matrix_ops import diagonal_from_cholesky
+from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal
 from ..integrals.approximators import mv_indepentdent_monte_carlo
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
@@ -16,7 +19,6 @@ def marginal(X, approximate_posterior, prior, sparsity):
 
 @dispatch('prediction', 'GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(XS, X, approximate_posterior, prior, sparsity):
-    # Compute Kzz, Kxz, Kxs_diag, mean_x, mean_xs
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol
 
@@ -31,6 +33,60 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
         prior.mean(sparsity.Z)[0],
         prior.mean(XS)[0],
     )
+
+@dispatch('FullGaussianApproximatePosterior', Transform, 'NoSparsity')
+def marginal(X, approximate_posterior, prior, sparsity):
+    m = approximate_posterior.m
+    S = approximate_posterior.S
+
+    num_latents = prior.num_latents
+    num_outputs = prior.output_dim
+
+    N = m.shape[0]
+
+    # X is shaped so that all outputs are grouped together
+    # We need to instead group by each input
+
+    # Create permutation matrix
+    i = np.hstack([np.arange(i,N, num_latents) for i in range(num_latents)])
+    P = np.eye(N)[i]
+
+    # Rearrange m and S
+    m_p = P @ m
+    S_p = P @ S @ P.T
+
+    m_p = np.reshape(m_p, [-1, num_latents])
+
+    # Extract block diagonals
+    S_blocks = get_block_diagonal(S_p, num_latents)
+
+    # Assert shapes are correct
+    chex.assert_shape(m_p, [N/num_latents, num_latents])
+    chex.assert_shape(S_blocks, [N/num_latents, num_latents, num_latents])
+
+    return m_p, S_blocks
+
+
+@dispatch('prediction', 'FullGaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
+def marginal(XS, X, approximate_posterior, prior, sparsity):
+    # Compute Kzz, Kxz, Kxs_diag, mean_x, mean_xs
+    m = approximate_posterior.m
+    S_chol = approximate_posterior.S_chol
+
+    fix_shape = lambda v: np.reshape(v, [v.shape[0]*v.shape[1], 1])
+
+    return gaussian_conditional_diagional(
+        XS, 
+        X, 
+        block_diag(prior.covar(sparsity.Z, sparsity.Z)), 
+        block_diag(XS, sparsity.Z), 
+        fix_shape(prior.var(XS)), 
+        m,
+        S_chol,
+        fix_shape(prior.mean(sparsity.Z)),
+        fix_shape(prior.mean(XS)),
+    )
+
 
 
 @dispatch('MeanFieldApproximatePosterior', Independent)
@@ -107,9 +163,32 @@ def marginal(X, approximate_posterior, prior):
 
     return marginal_mu, marginal_var
 
+@dispatch('FullGaussianApproximatePosterior', Transform)
+def marginal(X, approximate_posterior, prior):
+    # TODO: figure out how to handle sparsity here
+    fn = evoke('marginal', approximate_posterior, prior, 'NoSparsity')
+
+    return fn(
+        X, approximate_posterior, prior, None
+    ) 
+
+
+@dispatch('prediction', 'FullGaussianApproximatePosterior', Transform)
+def marginal(XS, X, approximate_posterior, prior):
+    # TODO: figure out how to handle sparsity here
+    fn = evoke('marginal', approximate_posterior, prior, 'NoSparsity')
+
+    # TODO: predict here
+    mu, var =  fn(
+        X, approximate_posterior, prior, None
+    ) 
+
+    return mu.T, np.diagonal(var, axis1=1, axis2=2).T
+
 @dispatch('MeanFieldApproximatePosterior', NonLinearTransform)
 def marginal(X, approximate_posterior, prior):
     latents = prior.latents
+
     return   evoke('marginal', approximate_posterior, latents)(
         X, approximate_posterior, latents
     ) 
@@ -152,7 +231,7 @@ def marginal(XS, X, approximate_posterior, prior, inference):
         latent_var,
         fn_args=[vmaped_prior_forard],
         generator = inference.generator, 
-        num_samples = 1000,
+        num_samples = 10000,
         average=False
     )
     

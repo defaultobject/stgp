@@ -93,6 +93,12 @@ class _REGISTERED_KEY:
 class _DISPATCHER:
     @staticmethod
     def match(key:_REGISTERED_KEY, *args, **kwargs):
+        if len(key.args) != len(args):
+            return False
+
+        if len(key.kwargs.keys()) != len(kwargs.keys()):
+            return False
+
         for x, y in zip(key.args, args):
             if not _try_match(x, y):
                 return False
