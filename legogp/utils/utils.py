@@ -81,7 +81,7 @@ def _summarize_var(v):
 
     return onp.array(v)
 
-def get_parameters(m, scope=''):
+def get_parameters(m, scope='', only_fixed=False, replace_name=True):
     parameters = {}
 
     #imitate objax scoping so that parameters are consistently printed
@@ -89,30 +89,46 @@ def get_parameters(m, scope=''):
 
     for k, v in m.__dict__.items():
         if isinstance(v, objax.BaseVar):
+            if only_fixed:
+                # Only a Parameter type can be 'fixed' there skip
+                continue
             #ignore statevars as they are not trained
             if not isinstance(v, objax.StateVar):
                 parameters[scope + k] = _summarize_var(v)
 
         elif isinstance(v, Parameter):
-            if v.name == None:
-                parameters[scope + k] = _summarize_var(v.value)
+            if only_fixed and v.is_trainable :
+                continue
+
+            if v.name == None or replace_name is False:
+                # A parameter object only has one objax variable (raw_var)
+                # Only_fixed is true, we are only in this if statement if v is not trainable
+                #   hence we want to return raw_var
+                # If only_fixed is False, then clamping it to only_fixed=False will make no difference
+                parameters.update(
+                    get_parameters(v, scope=scope + k, only_fixed=False, replace_name=replace_name)
+                )
             else:
                 parameters[v.name] = _summarize_var(v.value)
 
         elif isinstance(v, objax.ModuleList):
-            for p, v in enumerate(v):
+            for p, v_i in enumerate(v):
                 parameters.update(
-                    get_parameters(v, scope=f'{scope}[{p}]')
+                    get_parameters(v_i, scope=f'{scope}{k}({v.__class__.__name__})[{p}]', only_fixed=only_fixed, replace_name=replace_name)
                 )
 
         elif isinstance(v, objax.Module):
             if k == '__wrapped__':
                 parameters.update(
-                    get_parameters(v, scope=scope[:-1])
+                    get_parameters(v, scope=scope[:-1], only_fixed=only_fixed, replace_name=replace_name)
                 )
             else:
                 parameters.update(
-                    get_parameters(v, scope=scope + k)
+                    get_parameters(v, scope=scope + k, only_fixed=only_fixed, replace_name=replace_name)
                 )
 
     return parameters
+
+def get_fixed_params(m):
+    param_dict =  get_parameters(m, scope='', only_fixed=True, replace_name=False)
+    return list(param_dict.keys())

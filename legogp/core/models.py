@@ -13,11 +13,9 @@ class Model(objax.Module, ABC):
     def __init__(self, **kwargs):
         super(Model, self).__init__()
 
-    #@abstractmethod
     def set_defaults(self):
         pass
 
-    #@abstractmethod
     def fix_inputs(self):
         pass
 
@@ -25,13 +23,9 @@ class Model(objax.Module, ABC):
     def name(self) -> int:
         return 'model_checkpoint'
 
-    #@property
-    #@abstractmethod
     def input_dim(self) -> int:
         raise NotImplementedError()
 
-    #@property
-    #@abstractmethod
     def output_dim(self) -> int:
         raise NotImplementedError()
 
@@ -61,6 +55,9 @@ class Model(objax.Module, ABC):
             name = self.name
 
         objax.io.load_var_collection(f'{name}.npz', self.vars())
+
+    def get_fixed_params(self):
+        return utils.get_fixed_params(self)
 
 class Prior(Model):
     @property

@@ -5,7 +5,7 @@ from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApp
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...batching import loop_or_batch
-from ...transforms import Independent, LinearTransform, NonLinearTransform
+from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 
 from ...utils import utils
@@ -178,6 +178,12 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):
         2
     )
 
+    Ns = XS.shape[0]
+    P = Y.shape[1]
+
+    mu_arr = mu_arr.reshape([P, Ns])
+    var_arr = var_arr.reshape([P, Ns])
+
     return mu_arr, var_arr
 
 @dispatch('BatchGP', ProductLikelihood, Independent)
@@ -254,6 +260,13 @@ def predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
 @dispatch(ProductLikelihood, NonLinearTransform, 'MeanFieldApproximatePosterior')
 def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
 
-    return  evoke('marginal', 'prediction', approximate_posterior, prior, inference)(
+    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
+        XS, X, approximate_posterior, prior, inference
+    )
+
+@dispatch(ProductLikelihood, Transform, 'FullGaussianApproximatePosterior')
+def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
+
+    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
         XS, X, approximate_posterior, prior, inference
     )

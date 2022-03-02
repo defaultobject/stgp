@@ -215,6 +215,9 @@ class LMC(LMC_Base):
         input_dim: Optional[int]=None, 
         W: Optional[np.ndarray] = None
     ):
+        if type(latents) == list:
+            latents = Independent(latents)
+
         super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
 
         self._num_latents = self.input_dim
@@ -234,13 +237,16 @@ class LMC_Unit_Tri(LMC_Base):
         input_dim: Optional[int]=None, 
         W: Optional[np.ndarray] = None
     ):
+        if type(latents) == list:
+            latents = Independent(latents)
+
         super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
 
         self._num_latents = self.input_dim
 
         # Setup correlation matrix variables
         num_vars = int(self.output_dim*(self.output_dim-1)/2)
-        self.z_arr = Parameter(np.zeros(num_vars), name='LMC_Unit_Tri/Z_arr')
+        self.z_arr = Parameter(np.zeros(num_vars), name='LMC_Unit_Tri/Z_arr', train=True)
 
     @property
     def W(self):
@@ -262,6 +268,10 @@ class LMC_Corr(LMC_Base):
         mixing_weights: Optional[np.ndarray] = None,
         a: Optional[float] = None
     ):
+
+        if type(latents) == list:
+            latents = Independent(latents)
+
         super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
 
         self._num_latents = self.input_dim

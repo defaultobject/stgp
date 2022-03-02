@@ -18,7 +18,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.kernels.deep_kernels import DeepRBF, DeepHetreo
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import RBF, ScaleKernel
+from legogp.kernels import RBF, ScaleKernel, Linear
 
 checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
@@ -42,8 +42,8 @@ Y = data[:,1][:, None]
 Y = Y-np.mean(Y)
 Y = Y/np.std(Y)
 
-#XS = np.linspace(np.min(X[:, 0])-20, np.max(X[:, 0])+20, 500)[:, None]
-XS = X
+XS = np.linspace(np.min(X[:, 0])-20, np.max(X[:, 0])+20, 500)[:, None]
+#XS = X
 
 # Construct Models
 
@@ -93,7 +93,7 @@ def gp(X, Y, XS, train_fn, name, restore=False):
     return {'mu': mu, 'var': var}
 
 def vgp(X, Y, XS, train_fn, model, name, restore=False):
-    epochs = 1000
+    epochs = 5000
 
     Q = 1
     P = 1
@@ -107,6 +107,7 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
         ] 
         for p in range(P)
     ]
+
 
     if model == 'gprn':
         prior = lego.transforms.multi_output.GPRN(W_latents, f_latents, output_dim = P)
@@ -133,7 +134,7 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
     m.print()
 
 
-    if True:
+    if False:
         mu_latent, var_latent = m.predict_latents(XS, diagonal=True)
 
         P = mu_latent.shape[0]
@@ -165,7 +166,7 @@ def vgp(X, Y, XS, train_fn, model, name, restore=False):
 results = {
     #'gp_adam': gp(X, Y, XS, train_adam, 'gp_adam', restore=False),
     #'gprn_adam': vgp(X, Y, XS, train_adam, 'gprn', 'gprn_adam', restore=False),
-    'gprn_exp_adam': vgp(X, Y, XS, train_adam, 'gprn-exp', 'gprn_exp_adam', restore=True),
+    'gprn_exp_adam': vgp(X, Y, XS, train_adam, 'gprn-exp', 'gprn_exp_adam', restore=False),
 }
 
 num_models = len(results.keys())

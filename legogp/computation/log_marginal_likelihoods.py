@@ -23,8 +23,7 @@ from objax import ModuleList
 from typing import List
 from batchjax import batch_or_loop, BatchType
 
-@dispatch(object, object, Gaussian, object, object)
-def log_marginal_likelihood(
+def gaussian_log_marginal_likelihood(
         X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray
 ):
     """
@@ -106,13 +105,11 @@ def log_marginal_likelihood(
     k_xx_arr = prior.covar(X, X)
     mean_arr = prior.mean(X) 
 
-    # get correct marginal likelihood from dispatch
-    lml_fn = evoke('log_marginal_likelihood')
-
     # Ensure batched Y has rank 2
     Y = Y[..., None]
 
     likelihood_arr = likelihood.likelihood_arr
+    lml_fn = gaussian_log_marginal_likelihood
 
     # Compute lml for each likelihood and prior
     lml_arr = batch_or_loop(

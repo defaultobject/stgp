@@ -114,6 +114,9 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     return np.sum(ell_arr)
 
 def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
+    chex.assert_rank(f, 3)
+    chex.assert_rank(Y, 2)
+
     likelihood_arr = likelihood.likelihood_arr
     num_likelihoods = len(likelihood_arr)
 
@@ -124,10 +127,11 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
         [1],
         0
     )(f)
-    chex.assert_shape(transformed_f, Y.shape)
 
+    # Y and F must be rank 2 when they are passed to log_likelihood
+    # When vmapping one dimension is lost so extent here
     Y = Y[..., None]
-    transformed_f = transformed_f[..., None]
+    chex.assert_shape(transformed_f, Y.shape)
 
     # Get nan mask for output
     mask = get_same_shape_mask(Y)
@@ -166,16 +170,8 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     likelihood_arr = likelihood.likelihood_arr
     approx_posteriors_arr = approximate_posterior.approx_posteriors
 
-
     num_likelihoods = len(likelihood_arr)
     N = Y.shape[0]
-
-
-
-    # TODO: This is the average of sums
-    # but it should be the sum of averages?
-    # Or does it not make a difference?
-    Y = Y[..., None]
 
     return mv_indepentdent_monte_carlo(
         compute_ell_for_sample, 

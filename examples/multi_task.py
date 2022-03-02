@@ -148,7 +148,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     elif model_type == 'GPRN':
         f_latents = [
-            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[1.0]), latent=True) for q in range(Q)
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
         ]
 
         W_latents = [
@@ -194,7 +194,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
     # Construct GP Model
     m = lego.models.GP(
-        X=X, 
+        X = X, 
         Y = Y,  
         prior = prior,
         inference='Variational', 
@@ -202,6 +202,8 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
         minibatch_size=None
     )
 
+    for l in lik:
+        l.variance_param.fix()
 
     print("before training")
     m.print()

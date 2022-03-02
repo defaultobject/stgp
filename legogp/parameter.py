@@ -29,8 +29,10 @@ class Parameter(objax.Module):
         else:
             self.raw_var = objax.StateVar(self.inv_transform(val))
 
+        self._train_state = train
 
         self.set_name(name)
+
 
     def set_name(self, name):
         if name is not None:
@@ -42,6 +44,16 @@ class Parameter(objax.Module):
                 self.name = name
         else:
             self.name = None
+
+    @property
+    def is_trainable(self):
+        return self._train_state
+
+    def fix(self):
+        self._train_state = False
+
+    def release(self):
+        self._train_state = True
     
     @property
     def value(self):

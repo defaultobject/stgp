@@ -31,7 +31,7 @@ class Variational(Inference):
         latents = prior.latents
 
         return evoke('marginal', 'prediction', approximate_posterior, latents)(
-            XS, X, approximate_posterior, latents
+            XS, X, approximate_posterior, latents, self
         )
 
     def predict_y(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):

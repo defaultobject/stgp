@@ -138,6 +138,10 @@ class SimpleTrainer(Trainer):
         keep_vars = None,
         callback=None
     ):
+
+        if hold_vars is None:
+            hold_vars = []
+
         if type(models) is not list:
             models = [models]
 
@@ -154,7 +158,9 @@ class SimpleTrainer(Trainer):
 
         objective_fn = objax.Jit(objective, train_vars)
 
-        if hold_vars is not None:
+        hold_vars += models[0].get_fixed_params()
+
+        if len(hold_vars) > 0:
             vars_to_train = vc_remove_vars(train_vars, hold_vars)
         elif keep_vars is not None:
             vars_to_train = vc_keep_vars(train_vars, keep_vars)
@@ -162,7 +168,6 @@ class SimpleTrainer(Trainer):
             vars_to_train = train_vars
 
         grad_fn = objax.Jit(objax.GradValues(objective_fn, vars_to_train), train_vars)
-
         opt = optimizer(vars_to_train)
 
         start = timer()

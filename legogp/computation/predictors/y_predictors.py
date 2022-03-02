@@ -51,8 +51,12 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
     likelihood_arr = likelihood.likelihood_arr
 
+
     if diagonal:
-        lik_var = get_vec_gaussian_likelihood_variances(post_var.T, likelihood_arr)
+        lik_var = get_vec_gaussian_likelihood_variances(
+            np.transpose(post_var, [1, 0]),
+            likelihood_arr
+        )
 
         return post_mu, post_var+lik_var
     else:

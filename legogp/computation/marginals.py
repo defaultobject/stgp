@@ -42,6 +42,41 @@ def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs
     sig = np.reshape(sig, [sig.shape[0], 1])
 
     return mu, sig
+
+@jit
+def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+    """
+    Let A = K(XS, X) K(X, X)^{-1} then
+        
+        N(f_s) = \int N(f_s | A (f - mean_x) + mean_s, K(XS, XS) - A K(X, XS)) N(f \mid m, S) df
+               = N(f_s | mean_s + A (m-mean_x), K(XS, XS) - A K(X, XS) + A S A^T)
+    """
+    N = Kxsxs.shape[0]
+    M = m.shape[0]
+
+    chex.assert_shape(Kxsxs, [N, N])
+    chex.assert_shape(Kzz, [M, M])
+    chex.assert_shape(Kxz, [N, M])
+    chex.assert_shape(mean_x, [M, 1])
+    chex.assert_shape(mean_xs, [N, 1])
+    chex.assert_shape(m, [M, 1])
+    chex.assert_shape(S_chol, [M, M])
+
+    k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+    
+    A = triangular_solve(k_zz_chol, Kxz.T, lower=True) # M x N
+    A1 = triangular_solve(k_zz_chol.T, A, lower=False) # M x N
+
+    A2 = (S_chol.T @ A1).T # N x M 
+
+    mu = mean_xs + A1.T @ (m-mean_x) # N x 1
+    sig = Kxsxs - A.T @ A + A2 @ A2.T #N x N
+
+    #ensure correct shapes
+    mu = np.reshape(mu, [N, 1])
+    sig = np.reshape(sig, [N, N])
+
+    return mu, sig
 @jit
 def gaussian_conditional_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:
     k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
