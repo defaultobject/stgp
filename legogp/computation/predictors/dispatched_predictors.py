@@ -251,7 +251,7 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
     return mu, var
 
 @dispatch(ProductLikelihood, LinearTransform, 'MeanFieldApproximatePosterior')
-def predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
+def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
 
     return  evoke('marginal', 'prediction', approximate_posterior, prior)(
         XS, X, approximate_posterior, prior

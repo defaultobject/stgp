@@ -222,7 +222,7 @@ def marginal(XS, X, approximate_posterior, prior, inference):
         latent_var,
         fn_args=[vmaped_prior_forard],
         generator = inference.generator, 
-        num_samples = 10000,
+        num_samples = inference.prediction_samples,
         average=False
     )
 
@@ -286,7 +286,7 @@ def marginal(XS, X, approximate_posterior, prior, inference):
         latent_var,
         fn_args=[vmaped_prior_forard],
         generator = inference.generator, 
-        num_samples = 10000,
+        num_samples = inference.prediction_samples,
         average=False
     )
     

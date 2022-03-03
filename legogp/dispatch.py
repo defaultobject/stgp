@@ -17,6 +17,7 @@ def is_more_specific(key_1, key_2):
         #   as we cannot do inhertentence checking on strings
         if type(arg1) == str or type(arg2) == str:
             if _ensure_str(arg1) != _ensure_str(arg2):
+                breakpoint()
                 raise RuntimeError(f'Cannot compare dispatched types with strings: {arg1} - {arg2}')
 
         # If arg1 and arg2 are the same class then it is more specific

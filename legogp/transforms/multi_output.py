@@ -67,7 +67,7 @@ class GPRN_LDL(GPRN_Base):
 
     def __init__(self, W_vec, f, input_dim: int = None, output_dim: int = None):
 
-        super(GPRN_LDL, self).__init__()
+        #super(GPRN_LDL, self).__init__()
 
         # Flatten latents to fit into VI framework
         self._latents = Independent(
@@ -76,7 +76,7 @@ class GPRN_LDL(GPRN_Base):
         )
 
         self._input_dim = len(f)
-        self._output_dim = len(W)
+        self._output_dim = self._input_dim
 
     def forward(self, f):
         # f has the same ordering as self.latents
@@ -86,7 +86,7 @@ class GPRN_LDL(GPRN_Base):
         P = self.output_dim
         Q = self.input_dim
         tri = np.eye(P, Q)
-        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W)
+        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W[:, 0])
 
         # Element wise exponential to force W to be positive
         return mixing_matrix @ latent_f

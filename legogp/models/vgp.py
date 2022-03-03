@@ -39,6 +39,8 @@ class VGP(Posterior):
         prior: 'Transform'=None, 
         whiten=False, 
         minibatch_size=None,
+        ell_samples=None,
+        prediction_samples=None,
         **kwargs
     ):
 
@@ -53,6 +55,8 @@ class VGP(Posterior):
         self.whiten = whiten
         self.minibatch_size = minibatch_size
         self._Z = Z  
+        self.ell_samples = ell_samples
+        self.prediction_samples = prediction_samples
 
         self.set_defaults()
         self.fix_inputs()
@@ -120,7 +124,12 @@ class VGP(Posterior):
             )
 
         if self.inference == None:
-            self.inference = Variational(whiten=self.whiten, minibatch_size=self.minibatch_size)
+            self.inference = Variational(
+                whiten=self.whiten,
+                minibatch_size=self.minibatch_size,
+                ell_samples = self.ell_samples,
+                prediction_samples = self.prediction_samples
+            )
 
         if self.likelihood == None:
             # Default Gaussian liklelihood

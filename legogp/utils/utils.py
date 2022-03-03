@@ -101,13 +101,16 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True):
                 continue
 
             if v.name == None or replace_name is False:
-                # A parameter object only has one objax variable (raw_var)
-                # Only_fixed is true, we are only in this if statement if v is not trainable
-                #   hence we want to return raw_var
-                # If only_fixed is False, then clamping it to only_fixed=False will make no difference
-                parameters.update(
-                    get_parameters(v, scope=scope + k, only_fixed=False, replace_name=replace_name)
-                )
+                if replace_name is False:
+                    # A parameter object only has one objax variable (raw_var)
+                    # Only_fixed is true, we are only in this if statement if v is not trainable
+                    #   hence we want to return raw_var
+                    # If only_fixed is False, then clamping it to only_fixed=False will make no difference
+                    parameters.update(
+                        get_parameters(v, scope=scope + k, only_fixed=False, replace_name=replace_name)
+                    )
+                else:
+                    parameters[scope + k] = _summarize_var(v.value)
             else:
                 parameters[v.name] = _summarize_var(v.value)
 

@@ -12,12 +12,14 @@ import chex
 
 class Variational(Inference):
     """Variational inference class."""
-    def __init__(self, whiten=False, minibatch_size=False):
+    def __init__(self, whiten=False, minibatch_size=False, ell_samples=1, prediction_samples=100):
         super(Variational, self).__init__()
 
         self.whiten = whiten
         self.minibatch_size = minibatch_size
         self.generator = objax.random.Generator(seed=0)
+        self.ell_samples=ell_samples
+        self.prediction_samples=prediction_samples
 
     def predict_f(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
         mu, var = evoke('predict', likelihood, prior, approximate_posterior)(
@@ -31,7 +33,7 @@ class Variational(Inference):
         latents = prior.latents
 
         return evoke('marginal', 'prediction', approximate_posterior, latents)(
-            XS, X, approximate_posterior, latents, self
+            XS, X, approximate_posterior, latents
         )
 
     def predict_y(self, XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
