@@ -81,7 +81,7 @@ def _summarize_var(v):
 
     return onp.array(v)
 
-def get_parameters(m, scope='', only_fixed=False, replace_name=True):
+def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=False):
     parameters = {}
 
     #imitate objax scoping so that parameters are consistently printed
@@ -94,7 +94,14 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True):
                 continue
             #ignore statevars as they are not trained
             if not isinstance(v, objax.StateVar):
-                parameters[scope + k] = _summarize_var(v)
+                if return_id:
+                    parameters[scope + k] = {
+                        'id': id(v)
+                    }
+                else:
+                    parameters[scope + k] = {
+                        'var': _summarize_var(v),
+                    }
 
         elif isinstance(v, Parameter):
             if only_fixed and v.is_trainable :
@@ -107,31 +114,58 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True):
                     #   hence we want to return raw_var
                     # If only_fixed is False, then clamping it to only_fixed=False will make no difference
                     parameters.update(
-                        get_parameters(v, scope=scope + k, only_fixed=False, replace_name=replace_name)
+                        get_parameters(v, scope=scope + k, only_fixed=False, replace_name=replace_name, return_id=return_id)
                     )
                 else:
-                    parameters[scope + k] = _summarize_var(v.value)
+                    if return_id:
+                        parameters[scope + k] = {
+                            'id': id(v)
+                        }
+                    else:
+                        parameters[scope + k] = {
+                            'var': _summarize_var(v.value),
+                        }
             else:
-                parameters[v.name] = _summarize_var(v.value)
+                if return_id:
+                    parameters[v.name] = {
+                        'id': id(v)
+                    }
+                else:
+                    parameters[v.name] = {
+                        'var': _summarize_var(v.value),
+                    }
 
         elif isinstance(v, objax.ModuleList):
             for p, v_i in enumerate(v):
                 parameters.update(
-                    get_parameters(v_i, scope=f'{scope}{k}({v.__class__.__name__})[{p}]', only_fixed=only_fixed, replace_name=replace_name)
+                    get_parameters(v_i, scope=f'{scope}{k}({v.__class__.__name__})[{p}]', only_fixed=only_fixed, replace_name=replace_name, return_id=return_id)
                 )
 
         elif isinstance(v, objax.Module):
             if k == '__wrapped__':
                 parameters.update(
-                    get_parameters(v, scope=scope[:-1], only_fixed=only_fixed, replace_name=replace_name)
+                    get_parameters(v, scope=scope[:-1], only_fixed=only_fixed, replace_name=replace_name, return_id=return_id)
                 )
             else:
                 parameters.update(
-                    get_parameters(v, scope=scope + k, only_fixed=only_fixed, replace_name=replace_name)
+                    get_parameters(v, scope=scope + k, only_fixed=only_fixed, replace_name=replace_name, return_id=return_id)
                 )
 
     return parameters
 
 def get_fixed_params(m):
     param_dict =  get_parameters(m, scope='', only_fixed=True, replace_name=False)
+
     return list(param_dict.keys())
+
+
+def get_var_name_with_id(model, _id, param_dict=None):
+    if param_dict is None:
+        param_dict = get_parameters(model, replace_name=False)
+
+    for k, v in param_dict.items():
+        if v['id'] == _id:
+            return k
+
+    return None
+

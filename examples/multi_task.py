@@ -15,7 +15,7 @@ import matplotlib.cm as cm
 from pathlib import Path
 
 import legogp as lego
-from legogp.trainers import SimpleTrainer, ScipyTrainer
+from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer
 from legogp.kernels.deep_kernels import DeepRBF, DeepHetreo
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import RBF
@@ -153,7 +153,7 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
         W_latents = [
             [
-                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[1.0]), latent=True) for q in range(Q)
+                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[2.0]), latent=True) for q in range(Q)
             ] 
             for p in range(P)
         ]
@@ -199,11 +199,10 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
         prior = prior,
         inference='Variational', 
         likelihood=lik,
-        minibatch_size=None
+        minibatch_size=None,
+        ell_samples=100,
+        prediction_samples=1000,
     )
-
-    for l in lik:
-        l.variance_param.fix()
 
     print("before training")
     m.print()
@@ -216,7 +215,12 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
     if restore:
         m.load_from_checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
     else:
-        train_fn(models, epochs)
+
+        natgrad_trainer = NatGradTrainer(m, schedule='linear')
+        natgrad_trainer.train([1e-5, 0.1], 10)
+        natgrad_trainer.train([0.1, 0.1], 100)
+
+        #train_fn(models, epochs)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
     print("after training")

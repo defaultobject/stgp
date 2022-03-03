@@ -11,6 +11,7 @@ from .computation.log_marginal_likelihoods import *
 from .computation.marginals import *
 from .computation.predictors import *
 from .computation.elbos import *
+from .computation.natural_gradients import *
 
 from .data import *
 

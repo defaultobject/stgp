@@ -10,11 +10,44 @@ import numpy as np
 from typing import List, Union
 
 from .trainer import Trainer, vc_remove_vars
-from ..utils.utils import vc_keep_vars, match_suffix
+from ..utils.utils import vc_keep_vars, match_suffix, get_parameters, get_var_name_with_id
 
-import legogp
-from legogp.computation.natural_gradients.nat_grad import general_ell_natural_gradients
+from ..dispatch import _ensure_str
 
+def get_vars_to_update(model, vc):
+    approx_posterior = model.approximate_posterior
+
+    param_dict = get_parameters(model, replace_name=False, return_id=True)
+
+    if _ensure_str(approx_posterior) == 'MeanFieldApproximatePosterior':
+        m_name_list = []
+        S_chol_name_list = []
+        for q in approx_posterior.approx_posteriors:
+            m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
+            S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
+            m_name_list.append(m_name)
+            S_chol_name_list.append(S_chol_name)
+            
+    elif _ensure_str(approx_posterior) == 'FullGaussianApproximatePosterior':
+        pass
+    else:
+        raise RuntimeError()
+
+    return vc_keep_vars(vc, [*m_name_list, *S_chol_name_list])
+
+def update_vars(model, vars_to_update, params):
+    approx_posterior = model.approximate_posterior
+
+    if _ensure_str(approx_posterior) == 'MeanFieldApproximatePosterior':
+        q_arr = approx_posterior.approx_posteriors
+
+        new_params = []
+        for q in range(len(q_arr)):
+            new_params += [params[0][q], params[1][q]]
+
+        vars_to_update.assign(new_params)
+    else:
+        raise RuntimeError()
 
 
 class NatGradTrainer(Trainer):
@@ -28,24 +61,17 @@ class NatGradTrainer(Trainer):
         self.m = model
         vc = self.m.vars()
 
-        m_name = match_suffix('._m', vc.keys())
-        s_chol_name = match_suffix('._S_chol', vc.keys())
-        self.approx_posterior_vars = [m_name, s_chol_name]
-
-        self.vars_to_update = vc_keep_vars(vc, self.approx_posterior_vars)
+        self.vars_to_update = get_vars_to_update(self.m, vc)
 
         self.natgrad_fn = objax.Jit(
             self.m.natural_gradients,
-            vc,
-            static_argnums = (1, 2,)
+            vc
         )
 
         self.objective_fn = objax.Jit(self.m.get_objective, vc)
 
         self.schedule = schedule
         self.total_epochs = total_epochs
-
-
 
     def train(
         self, 
@@ -63,8 +89,10 @@ class NatGradTrainer(Trainer):
 
             if self.schedule == 'linear':
                 lr = learning_rate[1] * percent + (1-percent) * learning_rate[0]
-            if self.schedule == 'log':
+
+            elif self.schedule == 'log':
                 lr = np.power(learning_rate[1], percent) * np.power(learning_rate[0], (1-percent))
+
             elif self.schedule == 'constant':
                 lr = learning_rate
             else:
@@ -72,14 +100,12 @@ class NatGradTrainer(Trainer):
 
             print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
-            params = self.natgrad_fn(
-                lr, self.approx_posterior_vars[0], self.approx_posterior_vars[1]
-            )
+            params = self.natgrad_fn(lr)
 
             if np.any(np.isnan(params[0])):
                 raise RuntimeError('NaN encountered whilst natgrad training!')
 
-            self.vars_to_update.assign(params)
+            update_vars(self.m, self.vars_to_update, params)
 
         epoch_arr = []
         for i in range(epochs):
