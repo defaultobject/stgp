@@ -93,13 +93,19 @@ class GPRN_LDL(GPRN_Base):
 
 class GPRN_DRD(GPRN_Base):
 
-    def __init__(self, W_vec, f, input_dim: int = None, output_dim: int = None):
+    def __init__(self, W_vec, f, a=None, variances =  None, input_dim: int = None, output_dim: int = None):
 
-        super(GPRN_LDL, self).__init__()
+        #super(GPRN_DRD, self).__init__()
+
+        self._input_dim = len(f)
+        self._output_dim = self.input_dim
 
         # When using LMC_corr the mixing matrix must be square
         self.P = self.output_dim
         self.Q = int(self.P*(self.P-1)/2)
+
+        if a is None:
+            self.a = 1.0
 
         # Set defaults
         if variances is None:
@@ -114,19 +120,21 @@ class GPRN_DRD(GPRN_Base):
             prior = True
         )
 
-        self._input_dim = len(f)
-        self._output_dim = len(W)
-
     def forward(self, f):
         # f has the same ordering as self.latents
+
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
 
-        correlation_cholesky =  get_correlation_cholesky(latent_W, self.P, self.Q)
+        correlation_cholesky =  get_correlation_cholesky(
+            correlation_transform(latent_W[:, 0], self.a), 
+            self.P, 
+            self.Q
+        )
 
         var_diag = np.diag(self.variances.value)
 
-        # Element wise exponential to force W to be positive
+
         return var_diag @ correlation_cholesky @ latent_f
 
 class LMC_Base(LinearTransform):

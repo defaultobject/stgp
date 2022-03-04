@@ -26,10 +26,10 @@ checkpoint_folder.mkdir(exist_ok=True)
 checkpoint_id = 'multi_task'
 
 def toy_data():
-    np.random.seed(0)
+    np.random.seed(1)
 
-    N = 100
-    x = np.linspace(0, 1, N)
+    N = 200
+    x = np.linspace(0, 2, N)
     X = x[:, None]
 
     u1 = -np.sin(X*10)
@@ -40,25 +40,24 @@ def toy_data():
     Y_all = (W @ np.hstack([u1, u2]).T).T
 
     eps_1 = 0.1*np.random.rand(N)[:, None]
-    eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
-    eps = np.hstack([eps_1, eps_2])
-    #eps = eps_1
+    #eps_2 = 0.01*np.random.normal(scale=np.arange(0,N)/2)[:, None]
+    #eps = np.hstack([eps_1, eps_2])
+    eps = eps_1
 
     Y_all = Y_all + eps
 
-    missing_region = [60, 85]
+    missing_region = [40, 60]
 
     Y = Y_all.copy()
 
-    Y[missing_region[0]:missing_region[1], 0] = np.NaN
+    Y[missing_region[0]:missing_region[1], 1] = np.NaN
 
     if False:
         plt.plot(X, Y); 
         plt.show()
         exit()
 
-    XS = np.linspace(0, 1, 1000)[:, None]
-    XS = X
+    XS = np.linspace(0, 2, 1000)[:, None]
 
     return X, Y, Y_all, XS
 
@@ -153,13 +152,39 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
 
         W_latents = [
             [
-                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[2.0]), latent=True) for q in range(Q)
+                lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[10.0]), latent=True) for q in range(Q)
             ] 
             for p in range(P)
         ]
 
 
         prior = lego.transforms.multi_output.GPRN(W_latents, f_latents, output_dim = P)
+
+    elif model_type == 'GPRN_LDL':
+        f_latents = [
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+        ]
+
+        num_Z = int(P*(P-1)/2)
+        Z_latents = [
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[10.0]), latent=True) for q in range(num_Z)
+        ]
+
+
+        prior = lego.transforms.multi_output.GPRN_LDL(Z_latents, f_latents, output_dim = P)
+
+    elif model_type == 'GPRN_DRD':
+        f_latents = [
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[0.1]), latent=True) for q in range(Q)
+        ]
+
+        num_Z = int(P*(P-1)/2)
+        Z_latents = [
+            lego.models.GP(X=X, kernel=RBF(input_dim=1, lengthscales=[1.0]), latent=True) for q in range(num_Z)
+        ]
+
+
+        prior = lego.transforms.multi_output.GPRN_DRD(Z_latents, f_latents, output_dim = P)
 
     elif model_type == 'LMC_Hetreo':
         subsample = 15
@@ -216,15 +241,25 @@ def lmc(X, Y, train_fn, name, model_type, restore=False):
         m.load_from_checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
     else:
 
-        natgrad_trainer = NatGradTrainer(m, schedule='linear')
-        natgrad_trainer.train([1e-5, 0.1], 10)
-        natgrad_trainer.train([0.1, 0.1], 100)
+        if True:
+            natgrad_trainer = NatGradTrainer(m, schedule='linear')
+            natgrad_trainer.train([1e-5, 0.1], 10)
+            natgrad_trainer.train([0.1, 0.1], 100)
 
-        #train_fn(models, epochs)
+        train_fn(models, epochs)
         m.checkpoint(str(checkpoint_folder / f'{checkpoint_id}_{name}'))
 
     print("after training")
     m.print()
+
+    if True:
+        mu_latents, var_latents = m.predict_latents(XS)
+        num_latents = mu_latents.shape[0]
+
+        for i in range(num_latents):
+            plt.plot(XS, mu_latents[i], label='i')
+
+        plt.show()
 
     if model_type == 'LMC_Hetreo':
         for mod in latent_noise_gp:
@@ -251,9 +286,11 @@ X, Y, Y_all, XS = toy_data()
 results = {
     #'gp_bfgs': gp(X, Y, train_bfgs, 'gp_bfgs', model_type = 'LMC', restore=False),
     #'lmc_bfgs': lmc(X, Y, train_bfgs, 'lmc_bfgs', model_type = 'LMC', restore=False),
-    #'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
+    'lmc_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC', restore=False),
     #'lmc_corr_adam': lmc(X, Y, train_adam, 'lmc_adam', model_type = 'LMC_corr', restore=False),
-    'gprn_adam': lmc(X, Y, train_adam, 'gprn_adam', model_type = 'GPRN', restore=False),
+    #'gprn_adam': lmc(X, Y, train_adam, 'gprn_adam', model_type = 'GPRN', restore=False),
+    #'gprn_ldl_adam': lmc(X, Y, train_adam, 'gprn_ldl_adam', model_type = 'GPRN_LDL', restore=False),
+    #'gprn_drd_adam': lmc(X, Y, train_adam, 'gprn_drd_adam', model_type = 'GPRN_DRD', restore=False),
     #'lmc_hetro_bfgs': lmc(X, Y, train_bfgs, 'lmc_hetro_bfgs', model_type= 'LMC_Hetreo' , restore=False),
     #'lmc_hetro_adam': lmc(X, Y, train_adam, 'lmc_hetro_adam', model_type= 'LMC_Hetreo' , restore=True)
 }
@@ -291,6 +328,8 @@ for i, model_name in enumerate(list(results.keys())):
             c=colors[p],
             label=f'O: {p}'
         )
+
+        axes[i][0].scatter(X, Y_all[:, p], c='grey')
         axes[i][0].scatter(X, Y[:, p], c='black')
 
     axes[i][0].set_title(model_name)

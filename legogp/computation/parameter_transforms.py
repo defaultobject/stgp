@@ -62,7 +62,7 @@ def flatten_cholesky(val, N):
     return val[np.tril_indices(N, 0)]
 
 
-#@partial(jit, static_argnums=(1, 2))
+@partial(jit, static_argnums=(1, 2))
 def get_correlation_cholesky(z_arr, P, Q):
     """
     Constructs a correlation matrix given z_arr and returns the cholesky
