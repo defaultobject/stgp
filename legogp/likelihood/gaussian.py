@@ -9,8 +9,32 @@ from ..computation.parameter_transforms import inv_positive_transform, positive_
 from ..computation.gaussian import log_gaussian_scalar
 
 
+class DiagonalGaussian(DiagonalLikelihood):
+    """Gaussian likelihood."""
 
-class Gaussian(DiagonalLikelihood):
+    def __init__(self, variance=None, train=True):
+
+        if variance is None:
+            raise NotImplementedError()
+
+        self.variance_param = Parameter(
+            variance, 
+            constraint='positive', 
+            name ='Gaussian/variance', 
+            train=True
+        )
+
+    @property
+    def variance(self) -> np.ndarray:
+        return np.squeeze(self.variance_param.value)
+
+    def conditional_var(self, f):
+        return self.variance
+
+    def conditional_mean(self, f):
+        return f
+
+class Gaussian(DiagonalGaussian):
     """Gaussian likelihood."""
 
     def __init__(self, variance=None):

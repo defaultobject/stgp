@@ -1,6 +1,6 @@
 from ...settings import jitter
 from ...kernels import Kernel, RBF
-from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood
+from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, DiagonalGaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
@@ -35,114 +35,15 @@ def predict(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
 
     return gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
 
-@dispatch('BatchGP', Gaussian)
+@dispatch('BatchGP', DiagonalGaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
+    # Supports likelihood.variance being scalar or a vector
     return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
 
 @dispatch('BatchGP', Gaussian)
 def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
-
     return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, likelihood.variance)
 
-
-@dispatch(object, object, object, GaussianParameterised, object)
-def predict_diagonal(XS, X, Y, likelihood, kernel):
-
-    Ns = XS.shape[0]
-    N = X.shape[0]
-
-    K_xs = kernel.K_diag(XS)
-    K_xs_x = kernel.K(XS, X)
-    K_xx = kernel.K(X, X)
-
-    lik_var = likelihood.variance(X)
-
-
-    if (mask is not None):
-        Y = np.nan_to_num(Y, nan=0.0)
-
-        mask_xs_x = np.tile(mask, [XS.shape[0], 1]) 
-        K_xs_x = np.multiply(K_xs_x, mask_xs_x)
-
-        mask_xx = np.tile(mask, [mask.shape[0], 1]) 
-
-        K_xx = K_xx-np.eye(N)
-        K_xx = np.multiply(K_xx, mask_xx)
-        K_xx = np.multiply(K_xx, mask_xx.T)
-        K_xx = K_xx+np.eye(N)
-
-        lik_var = lik_var-np.eye(N)
-        lik_var = np.multiply(lik_var, mask_xx)
-        lik_var = np.multiply(lik_var, mask_xx.T)
-        lik_var = lik_var+np.eye(N)
-
-    return  full_gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, lik_var)
-
-@dispatch(object, object, GaussianApproximatePosterior, Gaussian, object, object)
-def predict_diagonal(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
-    m, S_diag = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=True)
-    return m, S_diag + likelihood.variance
-
-@dispatch(object, object, GaussianApproximatePosterior, Gaussian, object, object)
-def predict_full(XS, X,  approximate_posterior, likelihood, kernel, sparsity):
-    m, S = approximate_posterior.predictive_marginal(XS, X, kernel, sparsity, diagonal=False)
-    return m, S + np.eye(XS.shape[0])*likelihood.variance
-
-
-@dispatch(Independent, MeanFieldApproximatePosterior)
-def multi_latent_predict(XS, X, Y, likelihood, prior, approximate_posterior, diagonal):
-    mean_xx_arr, mean_zz_arr, K_x_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, S_arr = precompute_diagonal_variational_primitives(XS, prior, approximate_posterior)
-
-    P = len(approximate_posterior.approx_posteriors)
-
-    mean_x = np.tile(
-        np.zeros([m_arr.shape[1], 1]), [P, 1, 1]
-    )
-    mean_xs = np.tile(
-        np.zeros([XS.shape[0], 1]), [P, 1, 1]
-    )
-
-    mu, sig = batch_or_loop(
-        gaussian_conditional_diagional,
-        [XS, X, K_zz_arr, K_xz_arr, K_x_arr, m_arr, S_chol_arr, mean_x, mean_xs],
-        [None, None, 0, 0, 0, 0, 0, 0, 0],
-        dim=P,
-        out_dim=2,
-        batch_type = BatchType.LOOP
-    )
-
-    return mu, sig
-
-@dispatch(Independent, MeanFieldApproximatePosterior)
-def multi_latent_predictive_covar(X1, X2, X, Y, likelihood, prior, approximate_posterior):
-
-    mean_xx_arr, mean_zz_arr, K_x_arr, K_xz_arr, K_zz_arr, m_arr, S_chol_arr, S_arr = precompute_variational_primitives(X1, prior, approximate_posterior)
-
-    K_x_arr = prior.covar(X1, X2)
-
-
-    K_zx_arr = batch_or_loop(
-        lambda prior: prior.kernel.K(prior.sparsity.Z, X2),
-        [prior.latents],
-        [0],
-        dim = len(prior.latents),
-        out_dim = 1,
-        batch_type = BatchType.LOOP
-    )
-
-    P = len(approximate_posterior.approx_posteriors)
-
-    sig = batch_or_loop(
-        gaussian_conditional_covar,
-        [X1, X2, X, K_zz_arr, K_xz_arr, K_zx_arr, K_x_arr, m_arr, S_chol_arr],
-        [None, None, None, 0, 0, 0, 0, 0, 0],
-        dim=P,
-        out_dim=1,
-        batch_type = BatchType.LOOP
-    )
-
-    chex.assert_shape(sig, [P, X1.shape[0], X2.shape[0]])
-    return sig
 
 @dispatch('BatchGP', ProductLikelihood, Independent)
 def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):

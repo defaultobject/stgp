@@ -8,19 +8,21 @@ from ...transforms import LinearTransform, Independent, NonLinearTransform, Tran
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
-from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, Gaussian
+from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
+from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior
 
 
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
 
-@dispatch('scalar', Gaussian, 'GaussianApproximatePosterior')
+@dispatch('scalar', Gaussian, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
-@dispatch('scalar', Likelihood, 'GaussianApproximatePosterior')
+
+@dispatch('scalar', Likelihood, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     num_quad_points = 10
 
@@ -46,8 +48,42 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     
     return np.sum(w * const*res)
 
+@dispatch("DiagonalGaussian", GaussianApproximatePosterior)
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    """ Special case for diagonal Gaussian"""
+    N = X.shape[0]
 
-@dispatch(DiagonalLikelihood, 'GaussianApproximatePosterior')
+    # Get nan mask for output
+    mask = get_mask(Y)
+
+    # Convert nans to zeros
+    Y = mask_vector(Y, mask)
+
+    X = X[..., None]
+    Y = Y[..., None]
+    q_f_mu = q_f_mu[..., None]
+    q_f_var = q_f_var[..., None]
+
+    lik_var = likelihood.variance
+    chex.assert_shape(lik_var, [N])
+
+    ell_arr = jax.vmap(
+        scalar_gaussian_expected_log_likelihood,
+        [0, 0, 0, 0, 0],
+        0
+    )(X, Y, lik_var, q_f_mu, q_f_var)
+    chex.assert_shape(ell_arr, [N])
+
+    # Set elements that correposnd to missing data to zero
+    ell_arr = mask_vector(ell_arr[:, None], mask)
+
+    # Only sums the ELL terms without missing data
+    ell = np.sum(ell_arr)
+
+    return ell
+
+
+@dispatch(DiagonalLikelihood, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ For diagonal likelihoods adds support for missing data. """ 
 
@@ -79,14 +115,14 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     return ell
 
-@dispatch('GaussianApproximatePosterior', False)
+@dispatch(GaussianApproximatePosterior, False)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, approx_posterior, minibatch):
     return evoke('expected_log_likelihood', likelihood, approx_posterior)(
         X, Y, q_f_mu, q_f_var, likelihood
     )
 
 
-@dispatch(ProductLikelihood, LinearTransform, 'MeanFieldApproximatePosterior')
+@dispatch(ProductLikelihood, LinearTransform, MeanFieldApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     When the prior is a linear transform the approximate posterior is Gaussian and 
@@ -160,7 +196,7 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
 
     return np.sum(ll_arr)
 
-@dispatch(ProductLikelihood, NonLinearTransform, 'MeanFieldApproximatePosterior')
+@dispatch(ProductLikelihood, NonLinearTransform, MeanFieldApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     Samples from the approximate posteriors need to be transformed through the prior and then the 

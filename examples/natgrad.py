@@ -3,11 +3,11 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
+import legogp
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.computation.natural_gradients.nat_grad import general_ell_natural_gradients
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior 
+from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior , MeanFieldConjugateGaussian
 
 import objax
 import jax
@@ -28,51 +28,43 @@ checkpoint_folder.mkdir(exist_ok=True)
 P = 1
 
 N = 100
-M = 30
 
-XS = np.linspace(-2, 3, 1000)[:, None]
+XS = np.linspace(-1, 2, 1000)[:, None]
 x = np.linspace(0, 1, N)
 y1 = np.sin(x*10)+0.01*np.random.randn(N)
 
 X = x[:, None]
 Y1 = y1[:, None]
 
-Y = np.hstack([Y1 for p in range(P)])+2.0
+Y = np.hstack([Y1 for p in range(P)])
 
 assert Y.shape[1] == P
 
-K1 = lego.kernels.deep_kernels.DeepRBF()
+K = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1]))
 
-
-qu = lego.approximate_posteriors.MeanFieldApproximatePosterior(
-    approximate_posteriors = [MM_GaussianInnerLayerApproximatePosterior(kernel=K1, dim=M)]
-)
-
-Z = np.linspace(0, 1, M)[:, None]
+cvi_q = MeanFieldConjugateGaussian([
+    legogp.approximate_posteriors.ConjugateGaussian(
+        X=X,
+        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+    )
+])
 
 m = lego.models.GP(
     X,
     Y,
-    Z = Z,
     inference='Variational',
     whiten=False,
-    minibatch_size=100,
-    kernel = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1])),
-    likelihood = lego.likelihood.Gaussian(0.1),
-    approximate_posterior = qu
+    minibatch_size=None,
+    kernel = K,
+    likelihood = [lego.likelihood.Gaussian(0.1)],
+    approximate_posterior = cvi_q
 )
-
-epochs = 5
-callback = progress_bar_callback(epochs)
-learning_curve, training_time = NatGradTrainer().train(
-    m, 
-    None,
-    1.0,
-    epochs,
-    callback = callback
-)
-
+print(m.get_objective())
 breakpoint()
+
+natgrad_trainer = NatGradTrainer(m, schedule=None)
+natgrad_trainer.train(1.0, 1)
+#breakpoint()
 
 
 m.get_objective()

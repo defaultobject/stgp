@@ -4,8 +4,9 @@ from jax import jit
 import objax
 import chex
 
-from ...utils.utils import can_batch
-from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior
+from batchjax import batch_or_loop
+from ...utils.utils import get_batch_type
+from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior
 from ...transforms import Independent, Transform
 from ...likelihood import ProductLikelihood
 from ...dispatch import dispatch, evoke
@@ -14,17 +15,8 @@ from ..marginals import diagonal_marginal, whitened_diagonal_marginal
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
-@dispatch(ProductLikelihood, Transform, ApproximatePosterior)
-def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
-):
+def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference):
     N = Y.shape[0]
-
-    # Compute KL term
-    # TODO: this should not have X
-    KL = evoke('kullback_leibler', approximate_posterior, prior)(
-        X, approximate_posterior, prior
-    )
 
     # Minibatching across all outputs
     minibatch = False
@@ -35,6 +27,8 @@ def elbo(
         #minibatch
         minibatch_size = inference.minibatch_size
 
+        # TODO: minibatching should only happen at locations WITHOUT missing data
+        # TODO: OR scaling should take into account the missing data
         idx = objax.random.randint((minibatch_size,), low=0, high=N-1, generator=inference.generator)
 
         X = X[idx,:]
@@ -59,5 +53,58 @@ def elbo(
         X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
-    # TODO: the minibatch scaling is biased when there is missing data
-    return (N/minibatch_size) * ELL - KL
+    return (N/minibatch_size) * ELL
+
+@dispatch(ProductLikelihood, Transform, ApproximatePosterior)
+def elbo(
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
+):
+    N = Y.shape[0]
+
+    # Compute KL term
+    # TODO: this should not have X
+    KL = evoke('kullback_leibler', approximate_posterior, prior)(
+        X, approximate_posterior, prior
+    )
+
+    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference)
+
+    return  ELL - KL
+
+
+@dispatch(ProductLikelihood, Transform, ConjugateApproximatePosterior)
+def elbo(
+    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, q: ConjugateApproximatePosterior, inference: 'Variational'
+):
+    # Compute ELL
+    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
+
+    # Compute surrogate ELL
+
+    ELL_surrogate = compute_expected_log_liklihood(
+        q.X[0], # ALL X has to be the same so this makes no difference
+        q.Y, 
+        q.likelihood, 
+        prior, 
+        q, 
+        inference
+    )
+
+
+    # Compute surrogate marginal likelihood
+    # TODO: assuming a mean-field approx posterior
+    q_list = q.approx_posteriors
+
+    ML_arr =  batch_or_loop(
+        lambda qq: qq.surrogate.get_objective(),
+        [q_list],
+        [0],
+        dim=len(q_list),
+        out_dim = 1,
+        batch_type = get_batch_type(q_list)
+    )
+
+    ML_surrogate = np.sum(ML_arr)
+
+    return ELL - ML_surrogate + ML_surrogate
+

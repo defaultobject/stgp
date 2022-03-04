@@ -19,7 +19,7 @@ from ... import utils
 @jit
 def scalar_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar_diag:np.ndarray) ->  np.ndarray:
 
-    chex.assert_rank(X, 2)
+    chex.assert_shape(X, [1, 1])
     chex.assert_shape(Y, [1, 1])
     chex.assert_equal(Y.shape, q_mu.shape)
     chex.assert_equal(Y.shape, q_covar_diag.shape)

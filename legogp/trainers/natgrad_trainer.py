@@ -55,7 +55,7 @@ class NatGradTrainer(Trainer):
         self, 
         model,
         hold_vars = None,
-        schedule='constant',
+        schedule=None,
         total_epochs=None
     ):
         self.m = model
@@ -69,6 +69,9 @@ class NatGradTrainer(Trainer):
         )
 
         self.objective_fn = objax.Jit(self.m.get_objective, vc)
+
+        if schedule is None:
+            schedule = 'constant'
 
         self.schedule = schedule
         self.total_epochs = total_epochs

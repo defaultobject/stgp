@@ -12,10 +12,16 @@ from ..marginals import gaussian_conditional_diagional, gaussian_conditional
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_X, prior_covar_X
 from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
+from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
     return approximate_posterior.m, diagonal_from_cholesky(approximate_posterior.S_chol)
+
+@dispatch('ConjugateGaussian', 'GPPrior', 'NoSparsity')
+def marginal(X, approximate_posterior, prior, sparsity):
+    mu, var = approximate_posterior.surrogate.predict_f(X, diagonal=True)
+    return mu[..., None], var[..., None]
 
 @dispatch('prediction', 'GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(XS, X, approximate_posterior, prior, sparsity):
@@ -117,7 +123,7 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
 
     return m_p, S_blocks
 
-@dispatch('MeanFieldApproximatePosterior', Independent)
+@dispatch(MeanFieldApproximatePosterior, Independent)
 def marginal(X, approximate_posterior, prior):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -145,7 +151,7 @@ def marginal(X, approximate_posterior, prior):
     return marginal_mu, marginal_var
 
 
-@dispatch('prediction', 'MeanFieldApproximatePosterior', Independent)
+@dispatch('prediction', MeanFieldApproximatePosterior, Independent)
 def marginal(XS, X, approximate_posterior, prior):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -170,7 +176,7 @@ def marginal(XS, X, approximate_posterior, prior):
 
     return marginal_mu, marginal_var
 
-@dispatch('MeanFieldApproximatePosterior', LinearTransform)
+@dispatch(MeanFieldApproximatePosterior, LinearTransform)
 def marginal(X, approximate_posterior, prior):
 
     latents = prior.latents
@@ -241,7 +247,7 @@ def marginal(XS, X, approximate_posterior, prior, inference):
 
 
 
-@dispatch('MeanFieldApproximatePosterior', NonLinearTransform)
+@dispatch(MeanFieldApproximatePosterior, NonLinearTransform)
 def marginal(X, approximate_posterior, prior):
     latents = prior.latents
 
@@ -249,7 +255,7 @@ def marginal(X, approximate_posterior, prior):
         X, approximate_posterior, latents
     ) 
 
-@dispatch('prediction', 'MeanFieldApproximatePosterior', LinearTransform)
+@dispatch('prediction', MeanFieldApproximatePosterior, LinearTransform)
 def marginal(XS, X, approximate_posterior, prior):
 
     latents = prior.latents
@@ -270,7 +276,7 @@ def marginal(XS, X, approximate_posterior, prior):
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', 'MeanFieldApproximatePosterior', NonLinearTransform)
+@dispatch('prediction', MeanFieldApproximatePosterior, NonLinearTransform)
 def marginal(XS, X, approximate_posterior, prior, inference):
     latents = prior.latents
 
@@ -302,4 +308,3 @@ def marginal(XS, X, approximate_posterior, prior, inference):
     var = second_moment - np.square(mu)
     
     return mu, var
-

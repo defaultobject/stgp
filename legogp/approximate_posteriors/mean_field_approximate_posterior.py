@@ -74,16 +74,3 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             lambda latent:  latent.S_diag
         )
         return arr
-
-    def sample_from_precomputed(self, n_samples):
-        N = self.precomputed_marginal_mean_arr[0].shape[0]
-        num_latents = len(self.precomputed_marginal_mean_arr)
-
-        samples = objax.random.normal(
-            (n_samples,num_latents, N, 1), 
-            mean=self.precomputed_marginal_mean_arr[None, ...], 
-            stddev = np.sqrt(self.precomputed_marginal_var_arr)[None, ...],
-            generator=self.generator
-        )
-
-        return samples
