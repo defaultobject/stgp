@@ -21,16 +21,16 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         self.dim = X.shape[0]
         self.surrogate = surrogate_model
 
-        lambda_1 = 1e-5*np.ones([self.dim, 1])
-        variance = np.ones([self.dim, 1])
+        Y_tilde = 1e-5*np.ones([self.dim, 1])
+        V_tilde = np.ones([self.dim, 1])
 
         surrogate_likelihood = DiagonalGaussian(
-            variance
+            V_tilde
         )
 
         self.surrogate = surrogate_model(
             X = X,
-            Y = lambda_1,
+            Y = Y_tilde,
             likelihood = surrogate_likelihood
         )
 

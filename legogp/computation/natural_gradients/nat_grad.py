@@ -2,8 +2,10 @@ from ...settings import jitter
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ...dispatch import dispatch, evoke
+from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior
 
 
+import chex
 from batchjax import batch_or_loop, BatchType
 import jax
 import jax.numpy as np
@@ -14,6 +16,8 @@ import objax
 
 from typing import List
 
+# TODO: this is a hack to get the natural gradients to match
+jitter = 1e-8
 
 @jit
 def xi_to_theta(xi1, xi2):
@@ -42,6 +46,20 @@ def theta_to_lambda(theta_1, theta_2):
     lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
 
     return lambda_1, lambda_2
+
+@jit
+def theta_to_lambda_diagonal(theta_1, theta_2):
+    lambda_1 = theta_1 / theta_2
+    lambda_2 = -0.5/theta_2
+
+    return lambda_1, lambda_2
+
+@jit
+def lambda_to_theta_diagonal(lambda_1, lambda_2):
+    theta_2 = 1/(-2*lambda_2)
+    theta_1 = theta_2 * lambda_1
+
+    return theta_1, theta_2
 
 @jit
 def lambda_to_theta(lambda_1, lambda_2):
@@ -211,6 +229,100 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return xi1_arr, xi2_arr
 
+@jit
+def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
+    # Get natural parameters for approximate likelihood
+    lambda_1, lambda_2 = theta_to_lambda_diagonal(Y_tilde, V_tilde)
+
+    # mu_grad and var_grad are ∂ell/∂θ 
+    #calculate ∂ell/∂μ  = ∂ell/∂θ ∂θ/∂μ 
+    grad_1 = m_grad - 2*s_grad*m
+    grad_2 = s_grad
+
+    # Natural gradient update updatae
+    lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
+    lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+
+    # Convert to theta
+    theta_1, theta_2 = lambda_to_theta_diagonal(lambda_1_new, lambda_2_new)
+
+    return theta_1[..., None], theta_2[..., None]
+
+
+@dispatch('VGP', ConjugateApproximatePosterior)
+def natural_gradients(model, beta: float) -> np.ndarray:
+    """
+    Diagonal CVI Natural Gradients
+    """
+    # Get natural parameters
+    q_list = model.approximate_posterior.approx_posteriors
+    Q = len(q_list)
+
+    # Collect CVI parameters
+    Y_tilde_arr, V_tilde_arr = batch_or_loop(
+        lambda q: (q.surrogate.Y, q.surrogate.likelihood.likelihood_arr[0].variance),
+        [q_list],
+        [0],
+        dim=len(q_list),
+        out_dim=2,
+        batch_type = get_batch_type(q_list)
+    )
+
+    # Fix shapes
+    V_tilde_arr = V_tilde_arr[..., None]
+
+    # Compute approx posterior mean and var
+
+    mu_arr, var_arr = evoke('marginal', model.approximate_posterior, model.prior)(
+        model.X, model.approximate_posterior, model.prior
+    )
+
+    # Get ELL function
+    ell_fn = evoke(
+        'expected_log_likelihood', 
+        model.likelihood, 
+        model.prior,
+        model.approximate_posterior,
+    )
+
+    # TODO: check if there is a better way to do this
+    def partial_ell(mu, var):
+        return ell_fn(
+            model.X, 
+            model.Y, 
+            mu,
+            var, 
+            model.likelihood, 
+            model.prior, 
+            model.approximate_posterior,
+            model.inference
+        )
+
+    # Compute gradients
+    mu_grads, var_grads = jax.grad(partial_ell, (0, 1))(mu_arr, var_arr)
+
+    # Make sure shapes are correct
+    chex.assert_shape(Y_tilde_arr, mu_grads.shape)
+    chex.assert_shape(Y_tilde_arr, mu_arr.shape)
+    chex.assert_shape(V_tilde_arr, var_grads.shape)
+    chex.assert_shape(V_tilde_arr, var_arr.shape)
+
+    # Update natural parameters
+    new_Y_tilde, new_V_tilde = jax.vmap(
+        cvi_diagonal_update,
+        [0, 0, 0, 0, 0, 0, None],
+        0
+    )(
+        Y_tilde_arr[..., 0], 
+        V_tilde_arr[..., 0], 
+        mu_arr[..., 0], 
+        var_arr[..., 0],
+        mu_grads[..., 0], 
+        var_grads[..., 0], 
+        beta
+    )
+
+    return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', 'FullGaussianApproximatePosterior')
 def natural_gradients(model, beta: float) -> np.ndarray:

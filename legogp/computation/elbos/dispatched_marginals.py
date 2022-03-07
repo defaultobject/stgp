@@ -23,6 +23,11 @@ def marginal(X, approximate_posterior, prior, sparsity):
     mu, var = approximate_posterior.surrogate.predict_f(X, diagonal=True)
     return mu[..., None], var[..., None]
 
+@dispatch('prediction', 'ConjugateGaussian', 'GPPrior', 'NoSparsity')
+def marginal(XS, X, approximate_posterior, prior, sparsity):
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
+    return mu[..., None], var[..., None]
+
 @dispatch('prediction', 'GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(XS, X, approximate_posterior, prior, sparsity):
     m = approximate_posterior.m
@@ -152,7 +157,7 @@ def marginal(X, approximate_posterior, prior):
 
 
 @dispatch('prediction', MeanFieldApproximatePosterior, Independent)
-def marginal(XS, X, approximate_posterior, prior):
+def marginal(XS, X, approximate_posterior, prior, inference):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
@@ -256,7 +261,7 @@ def marginal(X, approximate_posterior, prior):
     ) 
 
 @dispatch('prediction', MeanFieldApproximatePosterior, LinearTransform)
-def marginal(XS, X, approximate_posterior, prior):
+def marginal(XS, X, approximate_posterior, prior, inference):
 
     latents = prior.latents
 

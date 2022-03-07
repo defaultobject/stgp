@@ -90,13 +90,14 @@ def elbo(
         inference
     )
 
-
     # Compute surrogate marginal likelihood
     # TODO: assuming a mean-field approx posterior
     q_list = q.approx_posteriors
 
+    # get_ojective returns the negative log liklihood
+    # We require the (postive) log liklihood
     ML_arr =  batch_or_loop(
-        lambda qq: qq.surrogate.get_objective(),
+        lambda qq: -qq.surrogate.get_objective(),
         [q_list],
         [0],
         dim=len(q_list),
@@ -106,5 +107,5 @@ def elbo(
 
     ML_surrogate = np.sum(ML_arr)
 
-    return ELL - ML_surrogate + ML_surrogate
+    return ELL - ELL_surrogate + ML_surrogate
 

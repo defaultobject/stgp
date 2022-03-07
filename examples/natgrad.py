@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 
 import legogp
 import legogp as lego
@@ -42,12 +42,17 @@ assert Y.shape[1] == P
 
 K = lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1]))
 
-cvi_q = MeanFieldConjugateGaussian([
-    legogp.approximate_posteriors.ConjugateGaussian(
-        X=X,
-        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
-    )
-])
+legogp.settings.jitter = 1e-5
+
+if True:
+    cvi_q = MeanFieldConjugateGaussian([
+        legogp.approximate_posteriors.ConjugateGaussian(
+            X=X,
+            surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+        )
+    ])
+else: 
+    cvi_q = None
 
 m = lego.models.GP(
     X,
@@ -59,17 +64,15 @@ m = lego.models.GP(
     likelihood = [lego.likelihood.Gaussian(0.1)],
     approximate_posterior = cvi_q
 )
-print(m.get_objective())
-breakpoint()
 
 natgrad_trainer = NatGradTrainer(m, schedule=None)
 natgrad_trainer.train(1.0, 1)
-#breakpoint()
 
-
-m.get_objective()
+print('OBJ: ', m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS, squeeze=True)
+
+print(np.sum(pred_mu), np.sum(pred_var))
 
 fig = plt.figure()
 plt.fill_between(

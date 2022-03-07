@@ -8,6 +8,7 @@ import jax.numpy as np
 import numpy as onp
 from typing import Optional, Tuple
 from ..utils import utils
+from .. import Parameter
 
 class Model(objax.Module, ABC):
     def __init__(self, **kwargs):
@@ -77,17 +78,8 @@ class Prior(Model):
 
 class Posterior(Model):
     def __init__(self, X=None, Y=None, latent_y=False, latent_x=False, **kwargs):
-        if Y is not None:
-            if latent_y:
-                self._Y = objax.TrainVar(np.array(Y))
-            else:
-                self._Y = objax.StateVar(np.array(Y))
-
-        if X is not None:
-            if latent_x:
-                self._X = objax.TrainVar(np.array(X))
-            else:
-                self._X = objax.StateVar(np.array(X))
+        self._Y = Parameter(np.array(Y), train=latent_y, name='Y')
+        self._X = Parameter(np.array(X), train=latent_x, name='X')
 
     @property
     def X(self):

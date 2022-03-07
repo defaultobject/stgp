@@ -17,9 +17,11 @@ from ..dispatch import _ensure_str
 def get_vars_to_update(model, vc):
     approx_posterior = model.approximate_posterior
 
-    param_dict = get_parameters(model, replace_name=False, return_id=True)
+    param_dict = get_parameters(model, replace_name=False, return_id=True, return_state_var=True)
 
-    if _ensure_str(approx_posterior) == 'MeanFieldApproximatePosterior':
+    q_type = _ensure_str(approx_posterior)
+
+    if q_type == 'MeanFieldApproximatePosterior':
         m_name_list = []
         S_chol_name_list = []
         for q in approx_posterior.approx_posteriors:
@@ -28,8 +30,22 @@ def get_vars_to_update(model, vc):
             m_name_list.append(m_name)
             S_chol_name_list.append(S_chol_name)
             
-    elif _ensure_str(approx_posterior) == 'FullGaussianApproximatePosterior':
+    elif q_type == 'FullGaussianApproximatePosterior':
         pass
+
+    elif q_type == 'MeanFieldConjugateGaussian':
+        # collect conjugate vars
+        m_name_list = []
+        S_chol_name_list = []
+
+        for q in approx_posterior.approx_posteriors:
+            lik_var = q.surrogate.likelihood.likelihood_arr[0].variance_param
+
+            Y_name = get_var_name_with_id(model, id(q.surrogate._Y.raw_var), param_dict)
+            V_chol_name = get_var_name_with_id(model, id(lik_var.raw_var), param_dict)
+
+            m_name_list.append(Y_name)
+            S_chol_name_list.append(V_chol_name)
     else:
         raise RuntimeError()
 
@@ -38,7 +54,9 @@ def get_vars_to_update(model, vc):
 def update_vars(model, vars_to_update, params):
     approx_posterior = model.approximate_posterior
 
-    if _ensure_str(approx_posterior) == 'MeanFieldApproximatePosterior':
+    q_type = _ensure_str(approx_posterior)
+
+    if _ensure_str(approx_posterior) in ['MeanFieldApproximatePosterior']:
         q_arr = approx_posterior.approx_posteriors
 
         new_params = []
@@ -46,6 +64,19 @@ def update_vars(model, vars_to_update, params):
             new_params += [params[0][q], params[1][q]]
 
         vars_to_update.assign(new_params)
+
+    elif q_type == 'MeanFieldConjugateGaussian':
+        q_arr = approx_posterior.approx_posteriors
+
+        new_params = []
+        for q in range(len(q_arr)):
+
+            lik_var = q_arr[0].surrogate.likelihood.likelihood_arr[0].variance_param
+
+            new_params += [params[0][q], lik_var.inv_transform(params[1][q])]
+
+        vars_to_update.assign(new_params)
+
     else:
         raise RuntimeError()
 

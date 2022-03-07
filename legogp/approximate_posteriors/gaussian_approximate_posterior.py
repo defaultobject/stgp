@@ -8,7 +8,7 @@ import chex
 import warnings
 
 class GaussianApproximatePosterior(ApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S=None):
+    def __init__(self, dim: int=None, m=None, S=None, train=True):
         super(GaussianApproximatePosterior, self).__init__()
 
         if dim is None and m is None:
@@ -27,13 +27,15 @@ class GaussianApproximatePosterior(ApproximatePosterior):
         self._m = Parameter(
             m,
             constraint=None,
-            name='GaussianApproxPosterior/m'
+            name='GaussianApproxPosterior/m',
+            train=train
         )
 
         self._S_chol = Parameter(
             vectorized_lower_triangular_cholesky(S),
             constraint=None,
-            name='GaussianApproxPosterior/S_chol'
+            name='GaussianApproxPosterior/S_chol',
+            train=train
         )
 
         self.dim = dim

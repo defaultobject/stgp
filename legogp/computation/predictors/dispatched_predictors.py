@@ -1,7 +1,7 @@
 from ...settings import jitter
 from ...kernels import Kernel, RBF
 from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, DiagonalGaussian
-from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
+from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...batching import loop_or_batch
@@ -151,21 +151,7 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch(ProductLikelihood, LinearTransform, 'MeanFieldApproximatePosterior')
-def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
-
-    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
-        XS, X, approximate_posterior, prior
-    )
-
-@dispatch(ProductLikelihood, NonLinearTransform, 'MeanFieldApproximatePosterior')
-def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
-
-    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
-        XS, X, approximate_posterior, prior, inference
-    )
-
-@dispatch(ProductLikelihood, Transform, 'FullGaussianApproximatePosterior')
+@dispatch(ProductLikelihood, Transform, ApproximatePosterior)
 def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
 
     return  evoke('marginal', 'prediction', approximate_posterior, prior)(
