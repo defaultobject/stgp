@@ -196,7 +196,7 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     P = Y.shape[1]
 
 
-    K_xs = prior.vec_var(XS)[:, 0]
+    K_xs = prior.full_covar(XS, XS)
     K_xx = prior.full_covar(X, X)
     K_xs_x = prior.full_covar(XS, X)
 
@@ -207,7 +207,7 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     N = X.shape[0]
     NS = likelihood_var.shape[0]
 
-    i = np.hstack([np.arange(i , NS, P) for i in range(P)])
+    i = np.hstack([np.arange(i , NS, N) for i in range(N)])
     permutaton = np.eye(NS)[i]
 
     lik_var = permutaton @ likelihood_var @ permutaton.T
@@ -220,6 +220,7 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     # TODO: this is v. inefficient
     # Compute full matrix
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
 
     K = permutaton @ var @ permutaton.T
 

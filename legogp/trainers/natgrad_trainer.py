@@ -50,6 +50,19 @@ def get_vars_to_update(model, vc):
 
             m_name_list.append(Y_name)
             S_chol_name_list.append(V_chol_name)
+
+
+    elif q_type == 'FullConjugateGaussian':
+        q = approx_posterior
+
+        lik_var = q.surrogate.likelihood.variance_param
+
+        Y_name = get_var_name_with_id(model, id(q.surrogate._Y.raw_var), param_dict)
+        V_chol_name = get_var_name_with_id(model, id(lik_var.raw_var), param_dict)
+
+        m_name_list = [Y_name]
+        S_chol_name_list = [V_chol_name]
+
     else:
         raise RuntimeError()
 
@@ -83,6 +96,16 @@ def update_vars(model, vars_to_update, params):
 
     elif q_type == 'FullGaussianApproximatePosterior':
         vars_to_update.assign(params)
+
+    elif q_type == 'FullConjugateGaussian':
+        lik_var = approx_posterior.surrogate.likelihood.variance_param
+
+        new_params = [
+            params[0],
+            lik_var.inv_transform(params[1])
+        ]
+
+        vars_to_update.assign(new_params)
     else:
         raise RuntimeError()
 

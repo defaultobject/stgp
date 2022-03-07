@@ -96,6 +96,7 @@ m = lego.models.GP(
 )
 
 print(m.get_objective())
+print(m.natural_gradients(0.1))
 
 breakpoint()
 

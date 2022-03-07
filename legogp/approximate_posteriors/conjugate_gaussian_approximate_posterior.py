@@ -107,11 +107,13 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         self.block_size = num_latents
 
         Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size])
-        #V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
-        V_tilde = np.tile(
-            np.ones([self.block_size, self.block_size]) + np.eye(self.block_size)*1e-5, 
-            [self.num_blocks, 1, 1]
-        )
+        V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+        if False:
+            V_tilde = np.tile(
+                np.ones([self.block_size, self.block_size]) + np.eye(self.block_size)*1e-5, 
+                [self.num_blocks, 1, 1]
+            )
 
         surrogate_likelihood = BlockDiagonalGaussian(
             block_size=self.block_size,

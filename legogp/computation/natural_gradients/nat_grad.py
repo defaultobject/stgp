@@ -2,7 +2,7 @@ from ...settings import jitter
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ...dispatch import dispatch, evoke
-from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior
+from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian
 
 
 import chex
@@ -276,6 +276,25 @@ def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
 
     return theta_1[..., None], theta_2[..., None]
 
+@jit
+def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
+    # Get natural parameters for approximate likelihood
+    lambda_1, lambda_2 = theta_to_lambda(Y_tilde, V_tilde)
+
+    # mu_grad and var_grad are ∂ell/∂θ 
+    #calculate ∂ell/∂μ  = ∂ell/∂θ ∂θ/∂μ 
+    grad_1 = m_grad - 2*s_grad @ m
+    grad_2 = s_grad
+
+    # Natural gradient update updatae
+    lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
+    lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+
+    # Convert to theta
+    theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)
+
+    return theta_1, theta_2
+
 @dispatch('VGP', ConjugateApproximatePosterior)
 def natural_gradients(model, beta: float) -> np.ndarray:
     """
@@ -351,6 +370,51 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
+
+@dispatch('VGP', FullConjugateGaussian)
+def natural_gradients(model, beta: float) -> np.ndarray:
+    # Get natural parameters
+    q = model.approximate_posterior
+
+    # Collect CVI parameters
+    Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
+
+    # Compute approx posterior mean and var
+    mu_arr, var_arr = evoke('marginal', model.approximate_posterior, model.prior)(
+        model.X, model.approximate_posterior, model.prior
+    )
+
+    # Get ELL function
+    ell_fn = evoke(
+        'expected_log_likelihood', 
+        model.likelihood, 
+        model.prior,
+        model.approximate_posterior,
+    )
+
+    # TODO: check if there is a better way to do this
+    def partial_ell(mu, var):
+        return ell_fn(
+            model.X, 
+            model.Y, 
+            mu,
+            var, 
+            model.likelihood, 
+            model.prior, 
+            model.approximate_posterior,
+            model.inference
+        )
+
+    # Compute gradients
+    mu_grads, var_grads = jax.grad(partial_ell, (0, 1))(mu_arr, var_arr)
+
+    new_Y_tilde, new_V_tilde = jax.vmap(
+        cvi_block_update,
+        [0, 0, 0, 0, 0, 0, None],
+        0
+    )(Y_tilde_arr, V_tilde_arr, mu_arr, var_arr, mu_grads, var_grads, beta)
+
+    return new_Y_tilde, new_V_tilde
 
 
 
