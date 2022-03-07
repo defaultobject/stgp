@@ -50,6 +50,12 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
 def marginal(X, approximate_posterior, prior, sparsity):
     return approximate_posterior.surrogate.predict_blocks(X, diagonal=True)
 
+@dispatch('prediction', 'FullConjugateGaussian', Transform, 'NoSparsity')
+def marginal(XS, X, approximate_posterior, prior, sparsity):
+    return approximate_posterior.surrogate.predict_blocks(XS, diagonal=True)
+
+
+
 
 @dispatch('FullGaussianApproximatePosterior', Transform, 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
@@ -217,7 +223,7 @@ def marginal(X, approximate_posterior, prior):
     ) 
 
 
-@dispatch('prediction', 'FullGaussianApproximatePosterior', Transform)
+@dispatch('prediction', FullGaussianApproximatePosterior, Transform)
 def marginal(XS, X, approximate_posterior, prior, inference):
 
     latents = prior.latent_obj

@@ -222,6 +222,11 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
 
+    NS = var.shape[0]
+    N = XS.shape[0]
+    i = np.hstack([np.arange(i , NS, N) for i in range(N)])
+    permutaton = np.eye(NS)[i]
+
     K = permutaton @ var @ permutaton.T
 
     var = get_block_diagonal(K, likelihood.block_size)

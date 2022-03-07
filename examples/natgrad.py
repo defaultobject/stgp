@@ -98,7 +98,6 @@ m = lego.models.GP(
 print(m.get_objective())
 print(m.natural_gradients(0.1))
 
-breakpoint()
 
 if True:
     natgrad_trainer = NatGradTrainer(m, schedule=None)
@@ -108,6 +107,7 @@ else:
 
 
 print('OBJ: ', m.get_objective())
+breakpoint()
 
 pred_mu, pred_var = m.predict_f(XS, squeeze=True)
 
