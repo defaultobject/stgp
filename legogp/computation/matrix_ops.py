@@ -86,21 +86,40 @@ def triangular_solve(chol, X, lower):
 
 
 @jit
+def lower_triangular_cholesky(A):
+    N = A.shape[0]
+    return cholesky(A)[np.tril_indices(N)].flatten()
+
+@jit
 def vectorized_lower_triangular_cholesky(A:np.ndarray) -> np.ndarray:
     """
         Takes the cholesky decomposition of A vectorized the output
     """
-    N = A.shape[0]
-    #init = cholesky(A)+1e-7*np.eye(N) #add jitter for numerical stability
-    init = cholesky(A)
-    init = init[np.tril_indices(N)].flatten()
-    return init
+    chex.assert_rank(A, 3)
+    chex.assert_equal(A.shape[1], A.shape[2])
+
+    A_chol_flattened = jax.vmap(
+        lower_triangular_cholesky,
+        [0],
+        0
+    )(A)
+
+    return A_chol_flattened
 
 @partial(jit, static_argnums=(1,))
 def lower_triangle(val, N):
     tri = np.zeros((N, N))
     return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
 
+
+
+@partial(jit, static_argnums=(1,))
+def vectorized_lower_triangular(val:np.ndarray, N) -> np.ndarray:
+    return jax.vmap(
+        lambda x: lower_triangle(x, N),
+        [0],
+        0
+    )(val)
 
 @jit
 def vec_columns(A):

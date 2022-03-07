@@ -31,7 +31,11 @@ def get_vars_to_update(model, vc):
             S_chol_name_list.append(S_chol_name)
             
     elif q_type == 'FullGaussianApproximatePosterior':
-        pass
+        m_name = get_var_name_with_id(model, id(approx_posterior._m.raw_var), param_dict)
+        S_chol_name = get_var_name_with_id(model, id(approx_posterior._S_chol.raw_var), param_dict)
+
+        m_name_list = [m_name]
+        S_chol_name_list = [S_chol_name]
 
     elif q_type == 'MeanFieldConjugateGaussian':
         # collect conjugate vars
@@ -77,6 +81,8 @@ def update_vars(model, vars_to_update, params):
 
         vars_to_update.assign(new_params)
 
+    elif q_type == 'FullGaussianApproximatePosterior':
+        vars_to_update.assign(params)
     else:
         raise RuntimeError()
 

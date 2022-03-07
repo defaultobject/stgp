@@ -20,7 +20,7 @@ class GPRN_Base(NonLinearTransform):
         W_vec = [w for W_p in W for w in W_p]
 
         # Flatten latents to fit into VI framework
-        self._latents = Independent(
+        self._latent_obj = Independent(
             latents = f+W_vec,
             prior = True
         )
@@ -70,7 +70,7 @@ class GPRN_LDL(GPRN_Base):
         #super(GPRN_LDL, self).__init__()
 
         # Flatten latents to fit into VI framework
-        self._latents = Independent(
+        self._latent_obj = Independent(
             latents = f+W_vec,
             prior = True
         )
@@ -115,7 +115,7 @@ class GPRN_DRD(GPRN_Base):
         self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance')
 
         # Flatten latents to fit into VI framework
-        self._latents = Independent(
+        self._latent_obj = Independent(
             latents = f+W_vec,
             prior = True
         )
@@ -149,9 +149,9 @@ class LMC_Base(LinearTransform):
 
         # Allow passing a list of prior models and transformed model
         if type(latents) is list:
-            self._latents = Independent(latents=latents, prior=True)
+            self._latent_obj = Independent(latents=latents, prior=True)
         else:
-            self._latents = latents
+            self._latent_obj = latents
 
         self._input_dim = input_dim
         self._output_dim = output_dim

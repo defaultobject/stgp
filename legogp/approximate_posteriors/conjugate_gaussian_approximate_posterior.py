@@ -3,9 +3,9 @@ import objax
 from typing import List, Optional
 from batchjax import batch_or_loop
 
-from . import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior
+from . import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 
-from ..likelihood import DiagonalGaussian, ProductLikelihood
+from ..likelihood import DiagonalGaussian, ProductLikelihood, BlockDiagonalGaussian
 from ..utils.utils import get_batch_type
 
 
@@ -19,7 +19,6 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
             raise RuntimeError('X must be passed')
 
         self.dim = X.shape[0]
-        self.surrogate = surrogate_model
 
         Y_tilde = 1e-5*np.ones([self.dim, 1])
         V_tilde = np.ones([self.dim, 1])
@@ -97,6 +96,43 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
 
     @property
     def likelihood(self):
+        # TODO: check this
         return ProductLikelihood([
             q.surrogate.likelihood.likelihood_arr[0] for q in self.approx_posteriors
         ])
+
+class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior):
+    def __init__(self, X, num_latents: int, surrogate_model: 'Model' = None):
+        self.num_blocks = X.shape[0]
+        self.block_size = num_latents
+
+        Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size])
+        #V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+        V_tilde = np.tile(
+            np.ones([self.block_size, self.block_size]) + np.eye(self.block_size)*1e-5, 
+            [self.num_blocks, 1, 1]
+        )
+
+        surrogate_likelihood = BlockDiagonalGaussian(
+            block_size=self.block_size,
+            num_blocks = self.num_blocks,
+            variance=V_tilde
+        )
+
+        self.surrogate = surrogate_model(
+            X = X,
+            Y = Y_tilde,
+            likelihood = surrogate_likelihood
+        )
+
+    @property
+    def likelihood(self):
+        return self.surrogate.likelihood
+
+    @property
+    def X(self):
+        return self.surrogate.X 
+
+    @property
+    def Y(self):
+        return self.surrogate.Y

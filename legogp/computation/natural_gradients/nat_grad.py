@@ -197,7 +197,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     # Precompute all gradients
     # Then vmap through them
 
-    #calculate ∂L/∂ξ - this is already computed by the model
+    #calculate ∂L/∂ξ 
     vc = model.vars()
 
     # To use objax to compute gradients we have to pass a VarCollection
@@ -229,6 +229,34 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return xi1_arr, xi2_arr
 
+@dispatch('VGP', 'FullGaussianApproximatePosterior')
+def natural_gradients(model, beta: float) -> np.ndarray:
+    q = model.approximate_posterior
+
+    param_dict = get_parameters(model, replace_name=False, return_id=True)
+
+    # Collect q parameters
+    m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
+    S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
+
+    approx_posterior_vars = [m_name, S_chol_name]
+
+    #calculate ∂L/∂ξ 
+    vc = model.vars()
+
+    # Extract only the approximate posterior variables to compute grads with
+    vars_to_diff = vc_keep_vars(vc, approx_posterior_vars)
+
+    # Construct the objax grad fucntions
+    grad_fn = objax.GradValues(model.get_objective, vars_to_diff)
+    gradients, _ = grad_fn()
+    m_grad = gradients[0]
+    S_grad = gradients[1]
+
+    xi1, xi2 = natural_gradient_for_gaussian_approx_posterior(model, beta, q, m_grad, S_grad)
+
+    return xi1, xi2
+
 @jit
 def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
     # Get natural parameters for approximate likelihood
@@ -247,7 +275,6 @@ def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
     theta_1, theta_2 = lambda_to_theta_diagonal(lambda_1_new, lambda_2_new)
 
     return theta_1[..., None], theta_2[..., None]
-
 
 @dispatch('VGP', ConjugateApproximatePosterior)
 def natural_gradients(model, beta: float) -> np.ndarray:
@@ -324,13 +351,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-@dispatch('VGP', 'FullGaussianApproximatePosterior')
-def natural_gradients(model, beta: float) -> np.ndarray:
-    xi1, xi2 = natural_gradient_for_gaussian_approx_posterior(model, beta, model.approximate_posterior)
-    # TODO: fix shapes
-    breakpoint()
 
-    return xi1, xi2
 
 
 

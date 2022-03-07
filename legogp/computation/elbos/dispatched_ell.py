@@ -8,10 +8,10 @@ from ...transforms import LinearTransform, Independent, NonLinearTransform, Tran
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
-from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian
-from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood
+from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian
+from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior
+from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 
 
 from batchjax import batch_or_loop, BatchType
@@ -121,7 +121,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, approx_posterior,
         X, Y, q_f_mu, q_f_var, likelihood
     )
 
-
 @dispatch(ProductLikelihood, LinearTransform, MeanFieldApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
@@ -150,7 +149,7 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     return np.sum(ell_arr)
 
 def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
-    chex.assert_rank(f, 3)
+    chex.assert_rank(f, 2)
     chex.assert_rank(Y, 2)
 
     likelihood_arr = likelihood.likelihood_arr
@@ -167,6 +166,7 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     # Y and F must be rank 2 when they are passed to log_likelihood
     # When vmapping one dimension is lost so extent here
     Y = Y[..., None]
+    transformed_f = transformed_f[..., None]
     chex.assert_shape(transformed_f, Y.shape)
 
     # Get nan mask for output
@@ -185,6 +185,7 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
         out_dim=1,
         batch_type = get_batch_type(likelihood_arr)
     )
+
     # Fix shapes so that ll_arr matches Y
     ll_arr = ll_arr[..., None]
     ll_arr = np.transpose(ll_arr, [1, 0, 2])
@@ -218,7 +219,7 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
-@dispatch(ProductLikelihood, Transform, 'FullGaussianApproximatePosterior')
+@dispatch(ProductLikelihood, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     Samples from the approximate posteriors need to be transformed through the prior and then the 
@@ -238,3 +239,33 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         generator = inference.generator, 
         num_samples = inference.ell_samples
     )
+
+@dispatch(BlockDiagonalGaussian, Transform, FullGaussianApproximatePosterior)
+def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    Samples from the approximate posteriors need to be transformed through the prior and then the 
+        ELL is approximated using monte-carlo
+    """
+    N, P = Y.shape
+
+    variance = likelihood.variance
+
+    # q_f_var and variance blocks should be the same dimension
+    chex.assert_shape(variance, q_f_var_arr.shape)
+    chex.assert_shape(Y, q_f_mu_arr.shape)
+
+    X = X[..., None]
+    Y = Y[..., None]
+    q_f_mu_arr = q_f_mu_arr[..., None]
+
+    # ELL is the sum of the individual blocks
+    ell_blocks = jax.vmap(
+        full_gaussian_expected_log_likelihood,
+        [0, 0, 0, 0, 0],
+        0
+    )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
+
+    chex.assert_shape(ell_blocks, [N])
+
+    return np.sum(ell_blocks)
+

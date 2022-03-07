@@ -1,13 +1,58 @@
 """Gaussian likelihood."""
 import objax
 import jax.numpy as np
-from . import Likelihood, DiagonalLikelihood
+from . import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 
 from .. import Parameter
 
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar
+from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular
 
+class FullGaussian(FullLikelihood):
+    def __init__(self, dim: int = None, variance=None, train=True):
+        #if (block_size is None and num_blocks is None) or variance is None:
+        #    raise NotImplementedError()
+
+        self.dim = dim
+
+        if variance is None:
+            variance = np.eye(dim)
+
+        # TODO: ensure positivity here
+        self.variance_param = Parameter(
+            variance, 
+            constraint=None, 
+            name ='FullGaussian/variance', 
+            train=True
+        )
+
+class BlockDiagonalGaussian(BlockDiagonalLikelihood):
+    def __init__(self, block_size:int=None, num_blocks:int=None, variance=None, train=True):
+        #if (block_size is None and num_blocks is None) or variance is None:
+        #    raise NotImplementedError()
+
+        self.block_size = block_size
+        self.num_blocks = num_blocks
+
+        if variance is None:
+            variance = np.tile(np.eye(block_size), [num_blocks, 1, 1])
+
+        chol = vectorized_lower_triangular_cholesky(variance)
+
+        self.variance_param = Parameter(
+            variance, 
+            inv_constraint_fn = vectorized_lower_triangular_cholesky, 
+            constraint_fn = lambda x: vectorized_lower_triangular(x, self.block_size), 
+            name ='BlockGaussian/variance', 
+            train=True
+        )
+
+    @property
+    def variance(self) -> np.ndarray:
+        var_chol =  self.variance_param.value
+        # Compute LL^T for each block
+        return var_chol @ np.transpose(var_chol, [0, 2, 1])
 
 class DiagonalGaussian(DiagonalLikelihood):
     """Gaussian likelihood."""

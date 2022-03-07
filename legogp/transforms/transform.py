@@ -19,18 +19,20 @@ class Transform(objax.Module):
         self._output_dim = None
         self._input_dim = None
 
-        self_latents = None
+        self._latent_obj = None
+        self._latents_arr = None
+
         self.batches = None
 
     def transform_diagonal(self, mu, var):
         """Transform a Gaussian dist """
         raise NotImplementedError()
 
-    def forward(self):
+    def forward(self, x):
         """Compute f=T(x)."""
         pass
 
-    def inverse(self):
+    def inverse(self, f):
         """Compute x=T^{-1}(f)."""
         pass
 
@@ -49,7 +51,11 @@ class Transform(objax.Module):
 
     @property
     def latents(self):
-        return self._latents
+        return self._latents_arr
+
+    @property
+    def latent_obj(self):
+        return self._latent_obj
 
     def get_batches(self):
         return self.batches
@@ -57,7 +63,7 @@ class Transform(objax.Module):
 class NonLinearTransform(Transform):
     @property
     def num_latents(self):
-        return len(self.latents.latents)
+        return len(self.latent_obj.latents)
 
 
 class LinearTransform(Transform):
@@ -67,7 +73,7 @@ class LinearTransform(Transform):
 
     @property
     def num_latents(self):
-        return len(self.latents.latents)
+        return len(self.latent_obj.latents)
 
     def transform_diagonal(self, mu, var):
         W = self.W
@@ -92,7 +98,7 @@ class LinearTransform(Transform):
         P = self.num_outputs
 
         mean = self.mean(X1)
-        mean = np.hstack(mean)[:, None]
+        mean = np.vstack(mean)
 
         chex.assert_shape(mean, [N1*P, 1])
         return mean
@@ -161,16 +167,30 @@ class Independent(LinearTransform):
             self._num_latents = latent.num_outputs
 
 
-        self._latents = ensure_module_list(latents)
+        self._latents_arr = ensure_module_list(latents)
 
         self._num_outputs = self.num_latents
+
+
+    def forward(self, x):
+        """Compute f=T(x)."""
+        return x
+
+    def inverse(self, f):
+        """Compute x=T^{-1}(f)."""
+        return f
+
+    @property
+    def latent_obj(self):
+        # For consistency with other transform classes
+        return self 
 
     @property
     def num_latents(self):
         return len(self.latents)
 
     def get_sparsity_list(self):
-        return [p.sparsity for p in self._latents]
+        return [p.sparsity for p in self.latents]
 
 
     def mean(self, X1: np.ndarray) -> np.ndarray:

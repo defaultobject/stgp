@@ -14,7 +14,7 @@ from ..core import Model, Posterior
 from . import GP
 from ..kernels import Kernel
 from ..inference import Batch
-from ..likelihood import Gaussian, get_product_likelihood, ProductLikelihood
+from ..likelihood import Gaussian, get_product_likelihood, ProductLikelihood, DiagonalLikelihood
 from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
@@ -96,7 +96,7 @@ class BatchGP(Posterior):
         else:
             if type(self.likelihood) == list:
                 self._likelihood = get_product_likelihood(self._likelihood)
-            elif not issubclass(type(self.likelihood), ProductLikelihood):
+            elif issubclass(type(self.likelihood), DiagonalLikelihood):
                 self._likelihood = get_product_likelihood([self.likelihood])
 
 
@@ -155,6 +155,19 @@ class BatchGP(Posterior):
         X, Y = self.X, self.Y
 
         mu_arr, var_arr =  self.inference.predict_y(
+            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+        )
+
+        if squeeze:
+            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
+
+        return mu_arr, var_arr
+
+    def predict_blocks(self, XS, diagonal=True, squeeze=False):
+        """ Returns predictions with the same block size as the likelihood. """ 
+        X, Y = self.X, self.Y
+
+        mu_arr, var_arr =  self.inference.predict_f_blocks(
             XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
         )
 

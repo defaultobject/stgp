@@ -1,5 +1,5 @@
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood
+from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform
@@ -48,24 +48,6 @@ def gaussian_log_marginal_likelihood(
 
     return log_gaussian_with_nans(Y, mean, k) 
 
-
-@dispatch(object, object, GaussianParameterised, Kernel, object)
-def log_marginal_likelihood(
-    X: np.ndarray, Y: np.ndarray, likelihood: GaussianParameterised, kernel: Kernel, mask: np.ndarray
-):
-
-    N = X.shape[0]
-
-    k_xx = kernel.K(X, X)
-    k = k_xx + likelihood.variance(X)
-
-    if (mask is not None):
-        Y = np.nan_to_num(Y, nan=0.0)
-        k = mask_to_identity(k, mask)
-
-        return log_gaussian(Y, np.zeros_like(Y), k) - np.sum(1-mask)*(1/np.sqrt(2*np.pi))
-
-    return log_gaussian(Y, np.zeros_like(Y), k)
 
 @dispatch(BatchGP, ProductLikelihood, LinearTransform)
 def log_marginal_likelihood(
@@ -124,3 +106,42 @@ def log_marginal_likelihood(
     lml =  np.sum(lml_arr)
 
     return lml
+
+@dispatch(BatchGP, BlockDiagonalGaussian, LinearTransform)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: LinearTransform
+):
+    """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
+
+    # Assume that are likelihoods are the same such that they can be batched over
+
+    num_latents = prior.num_latents
+    num_outputs = prior.num_outputs
+
+    # precompute prior covariance
+    k_xx_arr = prior.full_covar(X, X)
+    mean_arr = prior.vec_mean(X) 
+
+
+    # Ensure batched Y has rank 2
+    Y = Y[..., None]
+
+    Y_vec = vec_columns(Y)
+
+    likelihood_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+
+    # Permute so that the ordering between likelihood_var and Y is the same
+    N = X.shape[0]
+    NS = likelihood_var.shape[0]
+
+    i = np.hstack([np.arange(i , NS, num_outputs) for i in range(num_outputs)])
+    P = np.eye(NS)[i]
+
+    likelihood_var = P @ likelihood_var @ P.T
+
+    return log_gaussian_with_nans(
+        Y_vec,
+        mean_arr,
+        k_xx_arr + likelihood_var
+    )
+

@@ -6,13 +6,14 @@ import chex
 from typing import List
 from objax import ModuleList
 
+from ...settings import jitter
 from ...core import GPPrior
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ...dispatch import dispatch
 from ..gaussian import log_gaussian
 from ...batching import Batched
-from ..matrix_ops import add_jitter
+from ..matrix_ops import add_jitter, cholesky, cholesky_solve
 from ... import utils
 
 
@@ -88,26 +89,17 @@ def diagonal_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:
 
 @jit
 def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar:np.ndarray) ->  np.ndarray:
-    """
-        Args:
-            X: N x D
-            Y: N x 1
-            noise: N x N
-            q_mu: N x 1
-            q_covar_diag: N x N
-    """
-
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
     chex.assert_rank(q_covar,  2)
     chex.assert_equal(Y.shape[1], 1)
     chex.assert_equal(Y.shape, q_mu.shape)
-    chex.assert_equal(q_covar.shape, [Y.shape[0], Y.shape[0]])
+    chex.assert_shape(q_covar, [Y.shape[0], Y.shape[0]])
 
-    sigma_chol = cholesky(noise+Settings.jitter*np.eye(noise.shape[0]))
+    noise_chol = cholesky(add_jitter(noise, jitter))
 
     ml =  log_gaussian(Y, q_mu, noise) 
-    trace_term = -0.5*np.trace(cholesky_solve(sigma_chol, q_covar))
+    trace_term = -0.5*np.trace(cholesky_solve(noise_chol, q_covar))
 
     ell =  ml + trace_term
 

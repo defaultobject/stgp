@@ -15,5 +15,11 @@ class Likelihood(objax.Module):
 
         return jax.vmap(self.log_likelihood_scalar, (0, 0), 0)(Y[:, 0], F[:, 0])
 
+class FullLikelihood(Likelihood):
+    """Likelihood that does not decompose """
+
 class DiagonalLikelihood(Likelihood):
     """Likelihood that decomposes across data """
+
+class BlockDiagonalLikelihood(Likelihood):
+    """Likelihood that can decompose across blocks """

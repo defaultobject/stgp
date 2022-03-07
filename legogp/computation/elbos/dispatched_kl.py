@@ -49,7 +49,7 @@ def kullback_leibler(X, approximate_posterior, prior):
 @dispatch('MeanFieldApproximatePosterior', Transform)
 def kullback_leibler(X, approximate_posterior, prior):
 
-    latents = prior.latents
+    latents = prior.latent_obj
 
     return evoke('kullback_leibler', approximate_posterior, latents)(
         X, approximate_posterior, latents
@@ -57,17 +57,17 @@ def kullback_leibler(X, approximate_posterior, prior):
 
 @dispatch('FullGaussianApproximatePosterior', Transform)
 def kullback_leibler(X, approximate_posterior, prior):
+    # Get latents
+    latent_obj = prior.latent_obj
 
-    latent = prior.latents
-
-    mean_2 = latent.mean(X)
+    mean_2 = latent_obj.mean(X)
 
     # Reshape mean_2 to have same shape as approxiamte posterior
     Q = mean_2.shape[0]
     N = mean_2.shape[1]
     mean_2 = np.reshape(mean_2, [Q * N , 1])
 
-    covar_2 = jax.scipy.linalg.block_diag(*latent.covar(X, X))
+    covar_2 = jax.scipy.linalg.block_diag(*latent_obj.covar(X, X))
     covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
 
     m = approximate_posterior.m

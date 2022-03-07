@@ -6,9 +6,9 @@ import chex
 
 from batchjax import batch_or_loop
 from ...utils.utils import get_batch_type
-from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior
+from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior, FullConjugateGaussian
 from ...transforms import Independent, Transform
-from ...likelihood import ProductLikelihood
+from ...likelihood import Likelihood
 from ...dispatch import dispatch, evoke
 from .expected_log_likelihoods import precomputed_expected_log_likelihood 
 from ..marginals import diagonal_marginal, whitened_diagonal_marginal
@@ -55,9 +55,9 @@ def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterio
 
     return (N/minibatch_size) * ELL
 
-@dispatch(ProductLikelihood, Transform, ApproximatePosterior)
+@dispatch(Likelihood, Transform, ApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
+    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
     N = Y.shape[0]
 
@@ -72,15 +72,14 @@ def elbo(
     return  ELL - KL
 
 
-@dispatch(ProductLikelihood, Transform, ConjugateApproximatePosterior)
+@dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: ProductLikelihood, prior: Independent, q: ConjugateApproximatePosterior, inference: 'Variational'
+    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
     # Compute ELL
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
-
     ELL_surrogate = compute_expected_log_liklihood(
         q.X[0], # ALL X has to be the same so this makes no difference
         q.Y, 
@@ -106,6 +105,27 @@ def elbo(
     )
 
     ML_surrogate = np.sum(ML_arr)
+
+    return ELL - ELL_surrogate + ML_surrogate
+
+
+@dispatch(Likelihood, Transform, FullConjugateGaussian)
+def elbo(
+    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
+):
+    # Compute ELL
+    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
+
+    # Compute surrogate ELL
+    ELL_surrogate = compute_expected_log_liklihood(
+        q.X, 
+        q.Y, 
+        q.likelihood, 
+        prior, 
+        q, 
+        inference
+    )
+    ML_surrogate = - q.surrogate.get_objective()
 
     return ELL - ELL_surrogate + ML_surrogate
 

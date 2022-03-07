@@ -2,7 +2,7 @@ import jax.numpy as np
 import objax
 
 from . import ApproximatePosterior
-from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, lower_triangle, diagonal_from_cholesky
+from ..computation.matrix_ops import lower_triangular_cholesky, lower_triangle, diagonal_from_cholesky
 from .. import Parameter
 import chex
 import warnings
@@ -32,7 +32,7 @@ class GaussianApproximatePosterior(ApproximatePosterior):
         )
 
         self._S_chol = Parameter(
-            vectorized_lower_triangular_cholesky(S),
+            lower_triangular_cholesky(S),
             constraint=None,
             name='GaussianApproxPosterior/S_chol',
             train=train
