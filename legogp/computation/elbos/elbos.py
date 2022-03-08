@@ -10,7 +10,6 @@ from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximate
 from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
 from ...dispatch import dispatch, evoke
-from ..marginals import diagonal_marginal, whitened_diagonal_marginal
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 

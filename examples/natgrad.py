@@ -39,12 +39,13 @@ def train_adam(m_arr, epochs):
 
 checkpoint_folder = Path('checkpoints')
 checkpoint_folder.mkdir(exist_ok=True)
+np.random.seed(0)
 
 # generate data
 P = 2
 Q = P
 
-N = 100
+N = 50
 
 XS = np.linspace(-1, 2, 1000)[:, None]
 x = np.linspace(0, 1, N)
@@ -61,8 +62,9 @@ legogp.settings.jitter = 1e-5
 
 K = [lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1])) for q in range(Q)]
 
-if True:
-    if False:
+if False:
+    print('--------- CVI --------')
+    if True:
         q = MeanFieldConjugateGaussian([
             legogp.approximate_posteriors.ConjugateGaussian(
                 X=X,
@@ -77,8 +79,20 @@ if True:
             surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
         )
 else: 
-    if True:
-        q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0])
+    print('--------- VI --------')
+    if False:
+        # Initialise the same as CVI
+
+        # Construct CVI
+        q = FullConjugateGaussian(
+            X = X,
+            num_latents=Q,
+            surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+        )
+        # Get q(f)
+        q_m, q_S = q.surrogate.predict_f(X, diagonal=False)
+        q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0], m = q_m[..., None], S= q_S+1e-5*np.eye(q_S.shape[0]))
+
     else:
         q = None # Mean field
 
@@ -96,18 +110,20 @@ m = lego.models.GP(
 )
 
 print(m.get_objective())
-print(m.natural_gradients(0.1))
+#print(m.natural_gradients(0.1))
+#breakpoint()
 
 
 if True:
-    natgrad_trainer = NatGradTrainer(m, schedule=None)
-    natgrad_trainer.train(0.1, 20)
-else:
-    train_adam(m, 500)
+    if True:
+        natgrad_trainer = NatGradTrainer(m, schedule='linear')
+        natgrad_trainer.train([0.01, 0.1], 10)
+        natgrad_trainer.train([0.1, 0.1], 1)
+    else:
+        train_adam(m, 500)
 
 
-print('OBJ: ', m.get_objective())
-breakpoint()
+    print('OBJ: ', m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS, squeeze=True)
 
