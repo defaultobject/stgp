@@ -24,17 +24,16 @@ def get_mask(Y: np.ndarray) -> np.ndarray:
     return np.squeeze(get_same_shape_mask(Y))
 
 def mask_vector(Y, mask):
-    # Element wise multiplication to make 'nan' element zero
-    Y = np.nan_to_num(Y, nan=0.0)
-    return Y * mask[:, None]
+    chex.assert_equal(Y.shape[0], mask.shape[0])
+    chex.assert_rank(Y, 2)
+    chex.assert_rank(mask, 1)
+
+    return np.where(mask[:, None], Y, np.zeros_like(Y))
 
 def mask_matrix(Y, mask):
     chex.assert_equal(Y.shape, mask.shape)
+    return np.where(mask, Y, np.zeros_like(Y))
 
-    Y = np.nan_to_num(Y, nan=0.0)
-
-    # Element wise multiplication to make 'nan' element zero
-    return Y * mask
 
 def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
