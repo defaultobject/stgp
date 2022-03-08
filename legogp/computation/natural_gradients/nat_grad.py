@@ -4,7 +4,6 @@ from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, g
 from ...dispatch import dispatch, evoke
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian
 
-
 import chex
 from batchjax import batch_or_loop, BatchType
 import jax
@@ -16,7 +15,7 @@ import objax
 
 from typing import List
 
-# TODO: this is a hack to get the natural gradients to match
+# TODO: this is a hack to get the natural gradients to match CVI updates
 jitter = 1e-8
 
 @jit

@@ -8,6 +8,7 @@ from .matrix_ops import vec_columns
 from ..models import BatchGP
 from ..utils import utils
 from ..utils.utils import get_batch_type
+from .permutations import data_order_to_output_order
 
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -134,14 +135,13 @@ def log_marginal_likelihood(
     N = X.shape[0]
     NS = likelihood_var.shape[0]
 
-    i = np.hstack([np.arange(i , NS, num_outputs) for i in range(num_outputs)])
-    P = np.eye(NS)[i]
+    P = data_order_to_output_order(num_outputs, N)
 
-    likelihood_var = P @ likelihood_var @ P.T
+    ordered_likelihood_var = P @ likelihood_var @ P.T
 
     return log_gaussian_with_nans(
         Y_vec,
         mean_arr,
-        k_xx_arr + likelihood_var
+        k_xx_arr + ordered_likelihood_var
     )
 

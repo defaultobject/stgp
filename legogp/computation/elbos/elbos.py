@@ -10,7 +10,6 @@ from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximate
 from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
 from ...dispatch import dispatch, evoke
-from .expected_log_likelihoods import precomputed_expected_log_likelihood 
 from ..marginals import diagonal_marginal, whitened_diagonal_marginal
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
@@ -127,5 +126,7 @@ def elbo(
     )
     ML_surrogate = - q.surrogate.get_objective()
 
-    return ELL - ELL_surrogate + ML_surrogate
+    elbo =  ELL - ELL_surrogate + ML_surrogate
+
+    return elbo
 

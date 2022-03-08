@@ -13,6 +13,7 @@ from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_
 from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
+from ..permutations import data_order_to_output_order
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
@@ -55,8 +56,6 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
     return approximate_posterior.surrogate.predict_blocks(XS, diagonal=True)
 
 
-
-
 @dispatch('FullGaussianApproximatePosterior', Transform, 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
     m = approximate_posterior.m
@@ -65,18 +64,14 @@ def marginal(X, approximate_posterior, prior, sparsity):
     num_latents = prior.num_latents
     num_outputs = prior.output_dim
 
-    N = m.shape[0]
+    Ns = m.shape[0]
+    N = X.shape[0]
 
     # X is shaped so that all outputs are grouped together
     # We need to instead group by each input
 
     # Create permutation matrix
-    num_latents = prior.num_latents
-    NS = X.shape[0]
-    N = m.shape[0]
-
-    i = np.hstack([np.arange(i,N, NS) for i in range(NS)])
-    P = np.eye(N)[i]
+    P = data_order_to_output_order(num_latents, N)
 
     # Rearrange m and S
     m_p = P @ m
@@ -88,8 +83,8 @@ def marginal(X, approximate_posterior, prior, sparsity):
     S_blocks = get_block_diagonal(S_p, num_latents)
 
     # Assert shapes are correct
-    chex.assert_shape(m_p, [N/num_latents, num_latents])
-    chex.assert_shape(S_blocks, [N/num_latents, num_latents, num_latents])
+    chex.assert_shape(m_p, [Ns/num_latents, num_latents])
+    chex.assert_shape(S_blocks, [Ns/num_latents, num_latents, num_latents])
 
     return m_p, S_blocks
 

@@ -7,6 +7,7 @@ from ..gaussian import log_gaussian
 from ...batching import loop_or_batch
 from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
+from ..permutations import data_order_to_output_order
 
 from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
@@ -156,7 +157,6 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
     N = X.shape[0]
     P = Y.shape[1]
 
-    K_xs = prior.vec_var(XS)[:, 0]
     K_xx = prior.full_covar(X, X)
     K_xs_x = prior.full_covar(XS, X)
 
@@ -165,12 +165,10 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     # Permute so that the ordering between likelihood_var and Y is the same
     N = X.shape[0]
-    NS = likelihood_var.shape[0]
 
-    i = np.hstack([np.arange(i , NS, P) for i in range(P)])
-    permutaton = np.eye(NS)[i]
+    permutation = data_order_to_output_order(P, N)
 
-    lik_var = permutaton @ likelihood_var @ permutaton.T
+    lik_var = permutation @ likelihood_var @ permutation.T
 
     mean_x = prior.vec_mean(X)
     mean_xs = prior.vec_mean(XS)
@@ -179,12 +177,17 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     # gaussian_prediction(_*) support both lik_var being a scalar and a  matrix
     if diagonal:
+        K_xs = prior.vec_var(XS)[:, 0]
+
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+        mu = mu.reshape([P, Ns])
+        var = var.reshape([P, Ns])
     else:
+        K_xs = prior.full_covar(XS, XS)
+
         mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
-    mu = mu.reshape([P, Ns])
-    var = var.reshape([P, Ns])
 
     return mu, var
 
@@ -207,10 +210,8 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     N = X.shape[0]
     NS = likelihood_var.shape[0]
 
-    i = np.hstack([np.arange(i , NS, N) for i in range(N)])
-    permutaton = np.eye(NS)[i]
-
-    lik_var = permutaton @ likelihood_var @ permutaton.T
+    permutation = data_order_to_output_order(P, N)
+    lik_var = permutation @ likelihood_var @ permutation.T
 
     mean_x = prior.vec_mean(X)
     mean_xs = prior.vec_mean(XS)

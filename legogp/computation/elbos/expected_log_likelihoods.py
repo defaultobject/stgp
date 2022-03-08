@@ -33,7 +33,6 @@ def scalar_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np
 
     ell =  N*c1  -0.5*(err + np.sum(q_covar_diag))/noise
 
-
     chex.assert_rank(ell, 0)
     return ell
 
@@ -130,25 +129,4 @@ def scalar_poisson_expected_log_likelihood(X:np.ndarray, Y:np.ndarray,  binsize:
     chex.assert_rank(ell, 0)
     return ell
 
-
-@dispatch(object, object, GaussianApproximatePosterior, GPPrior, Gaussian, object, object)
-def precomputed_expected_log_likelihood(X, Y, approx_post, prior, likelihood, q_f_mean, q_f_var):
-    #TODO: chex
-    return gaussian_expected_log_likelihood(
-        X, 
-        Y, 
-        likelihood.variance, 
-        q_f_mean,
-        q_f_var
-    )
-
-@dispatch(object, object, MM_GaussianInnerLayerApproximatePosterior, GPPrior, Gaussian, object, object)
-def precomputed_expected_log_likelihood(X, Y, approx_post, prior, likelihood, q_f_mean, q_f_var):
-    #TODO: chex
-    K = add_jitter(q_f_var, likelihood.variance)
-    return log_gaussian(
-        Y,
-        np.zeros_like(Y),
-        K
-    )
 

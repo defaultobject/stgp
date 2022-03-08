@@ -258,6 +258,7 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     Y = Y[..., None]
     q_f_mu_arr = q_f_mu_arr[..., None]
 
+
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(
         full_gaussian_expected_log_likelihood,

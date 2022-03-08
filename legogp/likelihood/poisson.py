@@ -4,7 +4,6 @@ import jax.numpy as np
 from . import DiagonalLikelihood
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.general import log_poisson
-from ..batching import batch
 
 
 class Poisson(DiagonalLikelihood):

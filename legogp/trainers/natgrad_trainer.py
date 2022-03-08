@@ -165,7 +165,7 @@ class NatGradTrainer(Trainer):
 
             params = self.natgrad_fn(lr)
 
-            if np.any(np.isnan(params[0])):
+            if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
                 raise RuntimeError('NaN encountered whilst natgrad training!')
 
             update_vars(self.m, self.vars_to_update, params)
