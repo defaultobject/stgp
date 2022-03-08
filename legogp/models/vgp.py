@@ -136,8 +136,10 @@ class VGP(Posterior):
             self._likelihood = get_default_likelihood(self.output_dim)
 
         if self.approximate_posterior is None:
+            # Assume independent latents and that they have the same dimension
+            self.prior.latents[0].X.shape
             self.approximate_posterior = MeanFieldApproximatePosterior(
-                dim_list=[self.Y.shape[0]]*self.prior.num_latents
+                dim_list=[self.prior.latents[0].sparsity.Z.shape[0]]*self.prior.num_latents
             )
 
     def get_objective(self):

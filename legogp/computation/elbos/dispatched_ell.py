@@ -13,7 +13,6 @@ from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, g
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 
-
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
 

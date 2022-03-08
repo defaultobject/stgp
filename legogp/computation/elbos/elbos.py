@@ -62,7 +62,7 @@ def elbo(
     # Compute KL term
     # TODO: this should not have X
     KL = evoke('kullback_leibler', approximate_posterior, prior)(
-        X, approximate_posterior, prior
+        approximate_posterior, prior
     )
 
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference)

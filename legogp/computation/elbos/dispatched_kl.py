@@ -12,21 +12,22 @@ from ...settings import jitter
 
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior')
-def kullback_leibler(X, approximate_posterior, prior):
+def kullback_leibler(approximate_posterior, prior):
 
+    Z = prior.sparsity.Z
     # We need to index prior.(mean/covar) because they return a 3d array for consistency to multi-output priors
-    covar_2 = prior.covar(X, X)[0]
+    covar_2 = prior.covar(Z, Z)[0]
     covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
 
     return gaussian_cholesky_kl(
         approximate_posterior.m,
         approximate_posterior.S_chol,
-        prior.mean(X)[0],
+        prior.mean(Z)[0],
         covar_chol_2
     )
 
 @dispatch('MeanFieldApproximatePosterior', Independent)
-def kullback_leibler(X, approximate_posterior, prior):
+def kullback_leibler(approximate_posterior, prior):
 
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -35,8 +36,8 @@ def kullback_leibler(X, approximate_posterior, prior):
         evoke_name = 'kullback_leibler',
         evoke_params = [],
         module_arr = [approx_posteriors_arr, latents_arr],
-        fn_params = [X, approx_posteriors_arr, latents_arr],
-        fn_axes = [None, 0, 0],
+        fn_params = [approx_posteriors_arr, latents_arr],
+        fn_axes = [0, 0],
         dim = len(latents_arr),
         out_dim  = 1 
     )
@@ -47,16 +48,17 @@ def kullback_leibler(X, approximate_posterior, prior):
 
 
 @dispatch('MeanFieldApproximatePosterior', Transform)
-def kullback_leibler(X, approximate_posterior, prior):
+def kullback_leibler(approximate_posterior, prior):
 
     latents = prior.latent_obj
 
     return evoke('kullback_leibler', approximate_posterior, latents)(
-        X, approximate_posterior, latents
+        approximate_posterior, latents
     )
 
 @dispatch('FullGaussianApproximatePosterior', Transform)
-def kullback_leibler(X, approximate_posterior, prior):
+def kullback_leibler(approximate_posterior, prior):
+    raise NotImplementedError()
     # Get latents
     latent_obj = prior.latent_obj
 

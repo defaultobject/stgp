@@ -13,14 +13,24 @@ from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_
 from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
+from ...sparsity import FreeSparsity
 from ..permutations import data_order_to_output_order
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
     return approximate_posterior.m, diagonal_from_cholesky(approximate_posterior.S_chol)
 
+@dispatch('GaussianApproximatePosterior', 'GPPrior', 'FullSparsity')
+def marginal(X, approximate_posterior, prior, sparsity):
+    # TODO: this is a hack
+    fn = evoke('marginal', 'prediction', approximate_posterior, prior, sparsity)
 
-@dispatch('prediction', 'GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
+    return fn(
+        X, X, approximate_posterior, prior, sparsity
+    )
+
+
+@dispatch('prediction', 'GaussianApproximatePosterior', 'GPPrior', FreeSparsity)
 def marginal(XS, X, approximate_posterior, prior, sparsity):
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol

@@ -62,6 +62,8 @@ legogp.settings.jitter = 1e-5
 
 K = [lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1])) for q in range(Q)]
 
+sparsity = None
+
 if False:
     print('--------- CVI --------')
     if True:
@@ -83,6 +85,8 @@ else:
     if False:
         # Initialise the same as CVI
 
+
+
         # Construct CVI
         q = FullConjugateGaussian(
             X = X,
@@ -94,15 +98,27 @@ else:
         q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0], m = q_m[..., None], S= q_S+1e-5*np.eye(q_S.shape[0]))
 
     else:
+        Z = X[:5, :]
+
+        prior = lego.transforms.Independent([
+            lego.models.GP(
+                X=Z, 
+                sparsity=lego.sparsity.FullSparsity(Z=Z),
+                kernel=K[q]
+            ) for q in range(Q)
+        ])
+
         q = None # Mean field
+
+
 
 m = lego.models.GP(
     X,
     Y,
+    prior=prior,
     inference='Variational',
     whiten=False,
     minibatch_size=None,
-    kernel = K,
     likelihood = [lego.likelihood.Gaussian(0.1) for p in range(P)],
     approximate_posterior = q,
     ell_samples=100,
