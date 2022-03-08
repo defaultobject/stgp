@@ -4,7 +4,6 @@ from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, Di
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
-from ...batching import loop_or_batch
 from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 from ..permutations import data_order_to_output_order
@@ -15,7 +14,7 @@ from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal
-from ..model_ops import get_block_diag_gram_matrix, get_diagonal_gaussian_likelihood_variances, get_linear_multi_task_model_covariance, get_linear_multi_task_prior_covariance, get_linear_multi_task_prior_diag_covariance
+from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
 from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal
 

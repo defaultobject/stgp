@@ -11,7 +11,6 @@ from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior
 from ...dispatch import dispatch
 from ..gaussian import log_gaussian
-from ...batching import Batched
 from ... import utils
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, diagonal_from_cholesky
 

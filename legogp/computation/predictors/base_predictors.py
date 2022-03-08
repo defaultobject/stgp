@@ -4,7 +4,6 @@ from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
-from ...batching import loop_or_batch
 from ...transforms import Independent, LinearTransform
 
 from ...utils import utils
@@ -12,8 +11,6 @@ from ...utils.utils import can_batch, get_batch_type
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector, get_diag_mask
 
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
-from ..model_ops import get_block_diag_gram_matrix, get_diagonal_gaussian_likelihood_variances, get_linear_multi_task_model_covariance, get_linear_multi_task_prior_covariance, get_linear_multi_task_prior_diag_covariance
-
 
 import jax
 from jax import jit

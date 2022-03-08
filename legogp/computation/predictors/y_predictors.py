@@ -8,7 +8,7 @@ from ...dispatch import dispatch, evoke
 from ...utils.batch_utils import batch_over_module_types
 from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter
-from ..model_ops import get_diagonal_gaussian_likelihood_variances, get_vec_gaussian_likelihood_variances
+from ..model_ops import get_vec_gaussian_likelihood_variances
 
 # Gaussian Likelihoods
 @dispatch('BatchGP', 'Gaussian')

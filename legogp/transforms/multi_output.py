@@ -7,7 +7,6 @@ import jax.numpy as np
 import numpy as onp
 import objax
 import chex
-from ..batching import batch
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform
 from .. import Parameter
 

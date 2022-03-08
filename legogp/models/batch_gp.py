@@ -8,7 +8,6 @@ import chex
 from .. import settings
 from ..decorators import strict_mode_check, ensure_data
 from ..dispatch import dispatch
-from ..batching import loop_or_batch
 
 from ..core import Model, Posterior
 from . import GP
