@@ -60,11 +60,11 @@ def elbo(
     N = Y.shape[0]
 
     # Compute KL term
-    # TODO: this should not have X
     KL = evoke('kullback_leibler', approximate_posterior, prior)(
         approximate_posterior, prior
     )
 
+    # Compute expected log likelihood term
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference)
 
     return  ELL - KL

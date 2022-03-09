@@ -82,32 +82,37 @@ if False:
         )
 else: 
     print('--------- VI --------')
-    if False:
-        # Initialise the same as CVI
 
+    M = 5
+    Z = X[:M, :]
 
+    prior = lego.transforms.Independent([
+        lego.models.GP(
+            X=Z, 
+            sparsity=lego.sparsity.FullSparsity(Z=Z),
+            kernel=K[q]
+        ) for q in range(Q)
+    ])
 
-        # Construct CVI
-        q = FullConjugateGaussian(
-            X = X,
-            num_latents=Q,
-            surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
-        )
-        # Get q(f)
-        q_m, q_S = q.surrogate.predict_f(X, diagonal=False)
-        q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0], m = q_m[..., None], S= q_S+1e-5*np.eye(q_S.shape[0]))
+    if True:
+        print('--------- FP --------')
+        if False:
+            # Initialise the same as CVI
+
+            # Construct CVI
+            q = FullConjugateGaussian(
+                X = X,
+                num_latents=Q,
+                surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+            )
+            # Get q(f)
+            q_m, q_S = q.surrogate.predict_f(X, diagonal=False)
+            q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0], m = q_m[..., None], S= q_S+1e-5*np.eye(q_S.shape[0]))
+        else:
+            q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=Q * M)
 
     else:
-        Z = X[:5, :]
-
-        prior = lego.transforms.Independent([
-            lego.models.GP(
-                X=Z, 
-                sparsity=lego.sparsity.FullSparsity(Z=Z),
-                kernel=K[q]
-            ) for q in range(Q)
-        ])
-
+        print('--------- MF --------')
         q = None # Mean field
 
 

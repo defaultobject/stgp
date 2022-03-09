@@ -8,6 +8,7 @@ from ...transforms import Transform, Independent
 from ...utils.batch_utils import batch_over_module_types
 from ..matrix_ops import cholesky, add_jitter
 from ...settings import jitter
+from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_Z, prior_mean_X
 
 
 
@@ -58,18 +59,12 @@ def kullback_leibler(approximate_posterior, prior):
 
 @dispatch('FullGaussianApproximatePosterior', Transform)
 def kullback_leibler(approximate_posterior, prior):
-    raise NotImplementedError()
-    # Get latents
-    latent_obj = prior.latent_obj
-
-    mean_2 = latent_obj.mean(X)
-
     # Reshape mean_2 to have same shape as approxiamte posterior
-    Q = mean_2.shape[0]
-    N = mean_2.shape[1]
-    mean_2 = np.reshape(mean_2, [Q * N , 1])
+    mean_2_blocks = prior_mean_Z(prior)
+    covar_2_blocks = prior_covar_ZZ(prior)
 
-    covar_2 = jax.scipy.linalg.block_diag(*latent_obj.covar(X, X))
+    mean_2 = np.vstack(mean_2_blocks)
+    covar_2 = jax.scipy.linalg.block_diag(*covar_2_blocks)
     covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
 
     m = approximate_posterior.m

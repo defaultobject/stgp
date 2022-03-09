@@ -6,10 +6,10 @@ from ..parameter import Parameter
 class Sparsity(objax.Module):
     pass
 
-class FreeSparsity(objax.Module):
+class FreeSparsity(Sparsity):
     pass
 
-class StructuredSparsity(objax.Module):
+class StructuredSparsity(Sparsity):
     pass
 
 

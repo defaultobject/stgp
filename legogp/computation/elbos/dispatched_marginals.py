@@ -13,7 +13,7 @@ from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_
 from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
-from ...sparsity import FreeSparsity
+from ...sparsity import FreeSparsity, Sparsity
 from ..permutations import data_order_to_output_order
 
 @dispatch('GaussianApproximatePosterior', 'GPPrior', 'NoSparsity')
@@ -65,6 +65,15 @@ def marginal(X, approximate_posterior, prior, sparsity):
 def marginal(XS, X, approximate_posterior, prior, sparsity):
     return approximate_posterior.surrogate.predict_blocks(XS, diagonal=True)
 
+@dispatch('FullGaussianApproximatePosterior', Transform, FreeSparsity)
+def marginal(X, approximate_posterior, prior, sparsity):
+    fn = evoke('marginal', 'prediction', approximate_posterior, prior, sparsity[0])
+
+    mu, var =  fn(
+        X, X, approximate_posterior, prior, sparsity
+    )
+
+    return mu, var
 
 @dispatch('FullGaussianApproximatePosterior', Transform, 'NoSparsity')
 def marginal(X, approximate_posterior, prior, sparsity):
@@ -99,7 +108,7 @@ def marginal(X, approximate_posterior, prior, sparsity):
     return m_p, S_blocks
 
 
-@dispatch('prediction', 'FullGaussianApproximatePosterior', Transform, 'NoSparsity')
+@dispatch('prediction', 'FullGaussianApproximatePosterior', Transform, Sparsity)
 def marginal(XS, X, approximate_posterior, prior, sparsity):
     # Compute Kzz, Kxz, Kxs_diag, mean_x, mean_xs
     m = approximate_posterior.m
@@ -154,7 +163,6 @@ def marginal(X, approximate_posterior, prior):
     N = X.shape[0]
 
     # TODO: pre-compute Kzz and Kzx so that any kernel can be used in the latents and batching can still be used.
-
     # Compute q(f) for each output
     marginal_mu, marginal_var = batch_over_module_types(
         evoke_name = 'marginal',
@@ -220,22 +228,23 @@ def marginal(X, approximate_posterior, prior):
 
 @dispatch(FullGaussianApproximatePosterior, Transform)
 def marginal(X, approximate_posterior, prior):
-    # TODO: figure out how to handle sparsity here
-    fn = evoke('marginal', approximate_posterior, prior, 'NoSparsity')
+    # TODO: assuming that sparsity is the same across latents
+    sparsity_arr = prior.get_sparsity_list()
+
+    fn = evoke('marginal', approximate_posterior, prior, sparsity_arr[0])
 
     return fn(
-        X, approximate_posterior, prior, None
+        X, approximate_posterior, prior, sparsity_arr
     ) 
 
 
 @dispatch('prediction', FullGaussianApproximatePosterior, Transform)
 def marginal(XS, X, approximate_posterior, prior, inference):
-
     latents = prior.latent_obj
     sparsity_arr = latents.get_sparsity_list()
 
     # TODO: figure out how to handle sparsity here
-    fn = evoke('marginal', 'prediction', approximate_posterior, latents, 'NoSparsity')
+    fn = evoke('marginal', 'prediction', approximate_posterior, latents, sparsity_arr[0])
 
     latent_mu, latent_var =  fn(
         XS, X, approximate_posterior, latents, sparsity_arr
