@@ -145,3 +145,23 @@ def log_marginal_likelihood(
         k_xx_arr + ordered_likelihood_var
     )
 
+@dispatch(BatchGP, BlockDiagonalGaussian, 'Permutation')
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: LinearTransform
+):
+    # precompute prior covariance
+    k_xx_arr = prior.full_covar(X, X)
+    mean_arr = prior.vec_mean(X) 
+
+    # Ensure batched Y has rank 2
+    Y = Y[..., None]
+    Y_vec = vec_columns(Y)
+
+    likelihood_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+
+    return log_gaussian_with_nans(
+        Y_vec,
+        mean_arr,
+        k_xx_arr + likelihood_var
+    )
+

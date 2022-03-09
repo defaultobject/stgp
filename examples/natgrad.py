@@ -1,13 +1,15 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 
 import legogp
 import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior , MeanFieldConjugateGaussian, FullConjugateGaussian
+from legogp.transforms import Independent, Permutation
+from legogp.computation.permutations import data_order_to_output_order
 import objax
 import jax
 import jax.numpy as jnp
@@ -45,7 +47,7 @@ np.random.seed(0)
 P = 2
 Q = P
 
-N = 50
+N = 5
 
 XS = np.linspace(-1, 2, 1000)[:, None]
 x = np.linspace(0, 1, N)
@@ -62,11 +64,21 @@ legogp.settings.jitter = 1e-5
 
 K = [lego.kernels.ScaleKernel(lego.kernels.RBF(lengthscales=[0.1])) for q in range(Q)]
 
-sparsity = None
 
-if False:
+M = 5
+Z = X[:M, :]
+
+prior = lego.transforms.Independent([
+    lego.models.GP(
+        X=Z, 
+        sparsity=lego.sparsity.FullSparsity(Z=Z),
+        kernel=K[q]
+    ) for q in range(Q)
+])
+
+if True:
     print('--------- CVI --------')
-    if True:
+    if False:
         q = MeanFieldConjugateGaussian([
             legogp.approximate_posteriors.ConjugateGaussian(
                 X=X,
@@ -75,38 +87,34 @@ if False:
             for q in range(Q)
         ])
     else:
+        block_size = M * Q
         q = FullConjugateGaussian(
             X = X,
             num_latents=Q,
-            surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+            block_size=block_size,
+            surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, likelihood=likelihood, prior=Permutation(prior, permutation_fn=data_order_to_output_order)), # batch gp surrogate model
         )
+        #print(q.surrogate.get_objective())
+        #print(q.surrogate.predict_blocks(X))
+        #breakpoint()
 else: 
     print('--------- VI --------')
 
-    M = 5
-    Z = X[:M, :]
-
-    prior = lego.transforms.Independent([
-        lego.models.GP(
-            X=Z, 
-            sparsity=lego.sparsity.FullSparsity(Z=Z),
-            kernel=K[q]
-        ) for q in range(Q)
-    ])
-
     if True:
         print('--------- FP --------')
-        if False:
+        if True:
             # Initialise the same as CVI
 
             # Construct CVI
             q = FullConjugateGaussian(
                 X = X,
                 num_latents=Q,
-                surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, kernel=K, likelihood=likelihood) # batch gp surrogate model
+                surrogate_model = lambda X, Y, likelihood:  lego.models.GP(X, Y, likelihood=likelihood, prior=Permutation(prior, permutation_fn=data_order_to_output_order)) # batch gp surrogate model
             )
             # Get q(f)
             q_m, q_S = q.surrogate.predict_f(X, diagonal=False)
+            q_m = q.surrogate.prior.unpermute_vec(q_m)
+            q_S = q.surrogate.prior.unpermute_mat(q_S)
             q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=2 * X.shape[0], m = q_m[..., None], S= q_S+1e-5*np.eye(q_S.shape[0]))
         else:
             q = lego.approximate_posteriors.FullGaussianApproximatePosterior(dim=Q * M)
@@ -137,6 +145,7 @@ print(m.get_objective())
 
 if True:
     if True:
+        #TODO: implement sequential natgrad trainer
         natgrad_trainer = NatGradTrainer(m, schedule='linear')
         natgrad_trainer.train([0.01, 0.1], 10)
         natgrad_trainer.train([0.1, 0.1], 1)

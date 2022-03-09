@@ -102,9 +102,11 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
         ])
 
 class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior):
-    def __init__(self, X, num_latents: int, surrogate_model: 'Model' = None):
-        self.num_blocks = X.shape[0]
-        self.block_size = num_latents
+    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None):
+
+        self.block_size = block_size
+        self.num_latents = num_latents
+        self.num_blocks = int((self.num_latents*X.shape[0])/block_size)
 
         Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size])
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])

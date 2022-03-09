@@ -57,13 +57,15 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
     mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
     return mu[..., None], var[..., None]
 
-@dispatch('FullConjugateGaussian', Transform, 'NoSparsity')
+@dispatch('FullConjugateGaussian', Transform, Sparsity)
 def marginal(X, approximate_posterior, prior, sparsity):
+    breakpoint()
     return approximate_posterior.surrogate.predict_blocks(X, diagonal=True)
 
-@dispatch('prediction', 'FullConjugateGaussian', Transform, 'NoSparsity')
+@dispatch('prediction', 'FullConjugateGaussian', Transform, Sparsity)
 def marginal(XS, X, approximate_posterior, prior, sparsity):
     return approximate_posterior.surrogate.predict_blocks(XS, diagonal=True)
+
 
 @dispatch('FullGaussianApproximatePosterior', Transform, FreeSparsity)
 def marginal(X, approximate_posterior, prior, sparsity):
@@ -133,11 +135,8 @@ def marginal(XS, X, approximate_posterior, prior, sparsity):
     num_latents = prior.num_latents
     NS = XS.shape[0]
     N = m.shape[0]
+    P = data_order_to_output_order(num_latents, XS.shape[0])
 
-    i = np.hstack([np.arange(i,N, NS) for i in range(NS)])
-    P = np.eye(N)[i]
-
-    #P = np.eye(N)
     # Rearrange m and S
     m_p = P @ m
     S_p = P @ S @ P.T

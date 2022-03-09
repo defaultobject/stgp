@@ -112,7 +112,7 @@ def elbo(
     X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
     # Compute ELL
-    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
+    #ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
     ELL_surrogate = compute_expected_log_liklihood(

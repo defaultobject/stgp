@@ -10,7 +10,7 @@ from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector, get_diag_mask
 
-from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns
+from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, triangular_solve
 
 import jax
 from jax import jit
@@ -131,5 +131,28 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
     sig = sig[:, None]
 
     chex.assert_equal(mu.shape, sig.shape)
+
+    return mu, sig
+
+@jit
+def gaussian_prediction_blocks(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    # TODO: add means and missing data
+    block_size = K_xs.shape[1]
+
+    K = K_xx + lik_var
+    K_chol = cholesky(K)
+
+    A = triangular_solve(
+        K_chol, 
+        K_xs_x.T, 
+        lower=True
+    )
+
+    A1 = np.reshape(A, [-1, block_size, A.shape[0]])
+    B = A1 @ np.transpose(A1, [0, 2, 1])
+    sig = K_xs - B
+
+    mu = triangular_solve(K_chol.T, A, lower=False).T @ Y
+    mu = np.reshape(mu, [-1, block_size])
 
     return mu, sig

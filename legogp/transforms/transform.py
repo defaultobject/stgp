@@ -168,9 +168,7 @@ class Independent(LinearTransform):
 
 
         self._latents_arr = ensure_module_list(latents)
-
         self._num_outputs = self.num_latents
-
 
     def forward(self, x):
         """Compute f=T(x)."""
@@ -245,8 +243,6 @@ class Independent(LinearTransform):
         )
 
         return var
-
-
 
     def full_var(self, X1: np.ndarray) -> np.ndarray:
         return self.covar(X1, X1)

@@ -16,7 +16,7 @@ from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal
 from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
-from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal
+from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks
 
 import jax
 from jax import jit
@@ -221,7 +221,6 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
     # Compute full matrix
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
-
     NS = var.shape[0]
     N = XS.shape[0]
     i = np.hstack([np.arange(i , NS, N) for i in range(N)])
@@ -235,6 +234,49 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
+@dispatch('BatchGP', BlockDiagonalGaussian, 'Permutation')
+def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+    if diagonal:
+        raise NotImplementedError()
+    else:
+        K_xs = prior.full_covar(XS, XS)
+
+    K_xx = prior.full_covar(X, X)
+    K_xs_x = prior.full_covar(XS, X)
+
+    # Get liklihood
+    lik_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+
+    mean_x = prior.vec_mean(X)
+    mean_xs = prior.vec_mean(XS)
+
+    Y_vec = vec_columns(Y)
+    
+    if diagonal:
+        pass
+    else:
+        mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    return mu, var
+
+@dispatch('BatchGP', BlockDiagonalGaussian, 'Permutation')
+def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
+
+    K_xs = prior.blocks_var(XS)
+    K_xx = prior.full_covar(X, X)
+    K_xs_x = prior.full_covar(XS, X)
+
+    # Get liklihood
+    lik_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+
+    mean_x = prior.vec_mean(X)
+    mean_xs = prior.vec_mean(XS)
+
+    Y_vec = vec_columns(Y)
+    
+    mu, var = gaussian_prediction_blocks(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    return mu, var
 
 @dispatch(Likelihood, Transform, ApproximatePosterior)
 def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
