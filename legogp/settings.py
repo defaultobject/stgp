@@ -10,11 +10,7 @@ use_loop_mode = False
 force_black_box = False
 
 jitter = 1e-5
-
-monte_carlo_training_samples = 100
-monte_carlo_prediction_samples = 1000
-
-integral_approximator='quadrature'
+ng_jitter = 1e-5
 
 
 class strict_mode:

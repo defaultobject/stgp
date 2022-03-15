@@ -8,24 +8,52 @@ from . import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianAppro
 from ..likelihood import DiagonalGaussian, ProductLikelihood, BlockDiagonalGaussian
 from ..utils.utils import get_batch_type
 
+import numpy as onp
+
 
 class ConjugateApproximatePosterior(ApproximatePosterior):
     pass
 
 class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePosterior):
-    def __init__(self, X, surrogate_model: 'Model' = None):
+    def __init__(self, X, block_size: int, surrogate_model: 'Model' = None):
+        """
+        A conjugate gaussian represents the approximate posterior as:
+            q(u) \propto N(Y_tilde | u, V_tilde) p(u)
+        For computational reasons it is generally more efficient to store V_tilde latent-data format. 
+        For consistency we also store Y_tilde in the same way.
+        """
 
         if X is None :
             raise RuntimeError('X must be passed')
 
         self.dim = X.shape[0]
 
-        Y_tilde = 1e-5*np.ones([self.dim, 1])
-        V_tilde = np.ones([self.dim, 1])
+        self.block_size = block_size
+        self.num_blocks = int(self.dim/self.block_size)
 
-        surrogate_likelihood = DiagonalGaussian(
-            V_tilde
-        )
+        if False:
+            Y_tilde = 1e-5*np.ones([self.dim, 1])
+            V_tilde = np.ones([self.dim, 1])
+
+            surrogate_likelihood = DiagonalGaussian(
+                V_tilde
+            )
+
+        else:
+            Y_tilde = np.ones([self.num_blocks*self.block_size, 1])
+            V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+            if True:
+                V_tilde = np.tile(
+                    np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
+                    [self.num_blocks, 1, 1]
+                )
+
+            surrogate_likelihood = [BlockDiagonalGaussian(
+                block_size=self.block_size,
+                num_blocks = self.num_blocks,
+                variance=V_tilde
+            )]
 
         self.surrogate = surrogate_model(
             X = X,
@@ -103,15 +131,34 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
 
 class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior):
     def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None):
+        """
+        A conjugate gaussian represents the approximate posterior as:
+
+            q(U) \propto N(Y_tilde | U, V_tilde) p(U)
+
+        For computational reasons it is generally more efficient to store V_tilde data-latent format. 
+        For consistency we also store Y_tilde in the same way.
+
+        There are three main use cases:
+            1) No Sparsity 
+            2) Full Sparsity
+            3) Spatial Sparsity
+
+        In the case of no sparsity the approximate likelihood will be block diagonal. There will be N blocks each of size Q x Q, which captures the correlation between latent processes.
+
+        In the case of full sparsity the approximate likelihood will be dense.
+        """
 
         self.block_size = block_size
         self.num_latents = num_latents
-        self.num_blocks = int((self.num_latents*X.shape[0])/block_size)
+        self.num_blocks = int((self.num_latents*X.shape[1])/block_size)
+        self.M = X.shape[1]
 
-        Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size])
+        # Store in data-latent format
+        Y_tilde = 1e-5*np.ones([self.M, self.num_latents])*onp.random.rand(self.M, self.num_latents)
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
-        if True:
+        if False:
             V_tilde = np.tile(
                 np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
                 [self.num_blocks, 1, 1]

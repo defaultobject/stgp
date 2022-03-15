@@ -44,6 +44,30 @@ def diagonal_from_cholesky(L):
 
     return diag
 
+
+@partial(jit, static_argnums=(1))
+def block_diagonal_from_cholesky(L, block_size):
+    """
+    Extracts block diagonals from L L^T
+    """
+
+    L1 = np.reshape(
+        L, 
+        [-1, block_size, L.shape[-1]]
+    )
+
+    B = L1 @ np.transpose(L1, [0, 2, 1])
+
+    return B
+
+@partial(jit, static_argnums=(1))
+def block_from_vec(x, block_size):
+    return np.reshape(x, [-1, block_size])
+
+@partial(jit, static_argnums=(1))
+def block_from_mat(X, block_size):
+    return np.reshape(X, [-1, block_size, X.shape[1]])
+
 @jit
 def log_chol_matrix_det(chol):
     # ensure square matrix
@@ -69,12 +93,8 @@ def cholesky_solve(chol, X):
 
 @jit
 def cholesky(A):
-    # ensure square matrix
-    chex.assert_rank(A, 2)
-    chex.assert_equal(A.shape[0], A.shape[1])
-
     # return lower triangular cholesky factor
-    return jax.scipy.linalg.cholesky(A, lower=True)
+    return np.linalg.cholesky(A)
 
 @partial(jit, static_argnums=(2))
 def _triangular_solve(chol, X, lower):
@@ -122,5 +142,49 @@ def vectorized_lower_triangular(val:np.ndarray, N) -> np.ndarray:
     )(val)
 
 @jit
-def vec_columns(A):
+def stack_columns(A):
+    """
+    Stacks columns of A:
+
+                    [0]
+        [0, 1]  ->  [2]
+        [2, 3]      [1]
+                    [3]
+    """ 
+    chex.assert_rank(A, 2)
     return A.T.reshape(A.shape[0]*A.shape[1], 1)
+
+vec_columns = stack_columns
+
+@jit 
+def stack_rows(A):
+    """
+    Stacks rows of A:
+
+                    [0]
+        [0, 1]  ->  [1]
+        [2, 3]      [2]
+                    [3]
+    """ 
+    chex.assert_rank(A, 2)
+    return np.vstack(A[..., None])
+
+@partial(jit, static_argnums=(1, 2))
+def p_get_block_diagonal(A, b_size, A_dim):
+    chex.assert_rank(A, 2)
+
+    if b_size == 1:
+        return np.diagonal(A)[:, None]
+
+    if b_size == A_dim:
+        return A
+
+    raise NotImplementedError()
+
+@partial(jit, static_argnums=(1, 2))
+def v_get_block_diagonal(A, b_size, A_dim):
+    return jax.vmap(
+        p_get_block_diagonal, 
+        (0, None, None),
+        0
+    )(A, b_size, A_dim)

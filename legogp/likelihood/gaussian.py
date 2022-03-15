@@ -1,5 +1,6 @@
 """Gaussian likelihood."""
 import objax
+import jax
 import jax.numpy as np
 from . import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 
@@ -53,6 +54,10 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
         var_chol =  self.variance_param.value
         # Compute LL^T for each block
         return var_chol @ np.transpose(var_chol, [0, 2, 1])
+
+    @property
+    def full_variance(self) -> np.ndarray:
+        return jax.scipy.linalg.block_diag(*self.variance)
 
 class DiagonalGaussian(DiagonalLikelihood):
     """Gaussian likelihood."""

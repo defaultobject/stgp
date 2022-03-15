@@ -21,10 +21,10 @@ class Batch(Inference):
 
         return pred_mu, pred_var
 
-    def predict_f_blocks(self, XS, X, Y, gp, likelihood, prior, diagonal: bool):
+    def predict_f_blocks(self, XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal: bool):
 
         pred_mu, pred_var = evoke('predict_blocks', gp, likelihood, prior)(
-            XS, X, Y, gp, likelihood, prior, diagonal
+            XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal
         )
 
         return pred_mu, pred_var

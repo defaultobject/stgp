@@ -13,6 +13,8 @@ from ...dispatch import dispatch, evoke
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
+# TODO: this needs to be written as a function of q_z_mu, q_z_var
+# Just to make it easier to compute gradients wrt to them :) 
 def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference):
     N = Y.shape[0]
 
@@ -41,8 +43,8 @@ def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterio
     else:
         minibatch_size = N
 
-        q_f_mu, q_f_var = evoke('marginal', approximate_posterior, prior)(
-            X, approximate_posterior, prior
+        q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior)(
+            X, approximate_posterior, likelihood, prior
         )
 
 
@@ -78,6 +80,7 @@ def elbo(
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
+    # TODO: this needs to be generalised to map across all X
     ELL_surrogate = compute_expected_log_liklihood(
         q.X[0], # ALL X has to be the same so this makes no difference
         q.Y, 
@@ -111,8 +114,12 @@ def elbo(
 def elbo(
     X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
+    Q = prior.num_latents
+
+    X = np.tile(X, [Q, 1, 1])
+
     # Compute ELL
-    #ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
+    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
     ELL_surrogate = compute_expected_log_liklihood(

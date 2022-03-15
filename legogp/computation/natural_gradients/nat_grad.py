@@ -1,22 +1,24 @@
-from ...settings import jitter
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle
+from ...settings import ng_jitter
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ...dispatch import dispatch, evoke
-from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian
+from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior
+
+from ..elbos.prior_ops import prior_Z
+
+from ..elbos.elbos import compute_expected_log_liklihood
 
 import chex
 from batchjax import batch_or_loop, BatchType
 import jax
 import jax.numpy as np
-from jax import grad, jit
+from jax import grad, jit, jacfwd
 from jax import vjp
 
 import objax
 
 from typing import List
 
-# TODO: this is a hack to get the natural gradients to match CVI updates
-jitter = 1e-8
 
 @jit
 def xi_to_theta(xi1, xi2):
@@ -25,7 +27,7 @@ def xi_to_theta(xi1, xi2):
 @jit
 def theta_to_xi(theta_1, theta_2):
     M = theta_1.shape[0]
-    jit = jitter * np.eye(M) 
+    jit = ng_jitter * np.eye(M) 
 
     xi1 = theta_1
     xi2 = cholesky(theta_2+jit)
@@ -35,7 +37,7 @@ def theta_to_xi(theta_1, theta_2):
 @jit
 def theta_to_lambda(theta_1, theta_2):
     M = theta_1.shape[0]
-    jit = jitter * np.eye(M) 
+    jit = ng_jitter * np.eye(M) 
 
     theta_2_chol = cholesky(theta_2+jit)
 
@@ -63,14 +65,14 @@ def lambda_to_theta_diagonal(lambda_1, lambda_2):
 @jit
 def lambda_to_theta(lambda_1, lambda_2):
     M = lambda_1.shape[0]
-    jit = jitter * np.eye(M) 
+    jit = ng_jitter * np.eye(M) 
 
     lambda_2_chol = cholesky(-2*lambda_2+jit)
 
-    lambda_2_chol_inv = triangular_solve(lambda_2_chol, np.eye(M), lower=True)
+    theta_2 =  cholesky_solve(lambda_2_chol, np.eye(M))
+    theta_1 =  theta_2 @ lambda_1
 
-    theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
-    theta_2 =  lambda_2_chol_inv.T @ lambda_2_chol_inv
+    #theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
 
     return theta_1, theta_2
 
@@ -92,7 +94,7 @@ def xi_to_expectation(xi1, xi2):
 @jit
 def expectation_to_xi(mu1, mu2):
     M = mu1.shape[0]
-    jit = jitter * np.eye(M) 
+    jit = ng_jitter * np.eye(M) 
 
     xi2 = cholesky(mu2 - mu1 @ mu1.T + jit)
 
@@ -226,6 +228,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         batch_type = get_batch_type(approx_posteriors)
     )
 
+
     return xi1_arr, xi2_arr
 
 @dispatch('VGP', 'FullGaussianApproximatePosterior')
@@ -240,7 +243,6 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     approx_posterior_vars = [m_name, S_chol_name]
 
-    #calculate ∂L/∂ξ 
     vc = model.vars()
 
     # Extract only the approximate posterior variables to compute grads with
@@ -294,6 +296,19 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
 
     return theta_1, theta_2
 
+@jit
+def reparametise_cholesky_grad(s, s_chol_grad):
+    #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
+    x, u = vjp(cholesky, add_jitter(s, ng_jitter))
+    s_grad = u(s_chol_grad)[0]
+
+    # Symmetrize gradient (in case jax.scipy.linalg.cholesky is used)
+    s_grad = s_grad/2 
+    s_grad = s_grad + s_grad.T
+
+    return s_grad
+
+
 @dispatch('VGP', ConjugateApproximatePosterior)
 def natural_gradients(model, beta: float) -> np.ndarray:
     """
@@ -305,7 +320,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = batch_or_loop(
-        lambda q: (q.surrogate.Y, q.surrogate.likelihood.likelihood_arr[0].variance),
+        lambda q: (q.surrogate.Y, q.surrogate.likelihood.likelihood_arr[0].variance[0]),
         [q_list],
         [0],
         dim=len(q_list),
@@ -313,59 +328,63 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         batch_type = get_batch_type(q_list)
     )
 
-    # Fix shapes
-    V_tilde_arr = V_tilde_arr[..., None]
+    Z_tiled = prior_Z(model.prior)
 
-    # Compute approx posterior mean and var
-
-    mu_arr, var_arr = evoke('marginal', model.approximate_posterior, model.prior)(
-        model.X, model.approximate_posterior, model.prior
+    # Compute q_m_z, q_S_z
+    mu_arr, var_arr = batch_or_loop(
+        lambda q, z: q.surrogate.predict_f(z, diagonal=False),
+        [q_list, Z_tiled],
+        [0, 0],
+        dim = Q,
+        out_dim=2,
+        batch_type = get_batch_type(q_list)
     )
 
-    # Get ELL function
-    ell_fn = evoke(
-        'expected_log_likelihood', 
-        model.likelihood, 
-        model.prior,
-        model.approximate_posterior,
-    )
+    mu_arr = mu_arr[..., None]
 
-    # TODO: check if there is a better way to do this
-    def partial_ell(mu, var):
-        return ell_fn(
-            model.X, 
-            model.Y, 
-            mu,
-            var, 
-            model.likelihood, 
-            model.prior, 
-            model.approximate_posterior,
-            model.inference
+    def partial_ell(m, q_m, q_S):
+        q = MeanFieldApproximatePosterior(approximate_posteriors=[
+            GaussianApproximatePosterior(m=q_m[q], S_inv=q_S[q], train=False)
+            for q in range(q_m.shape[0])
+        ])
+
+        return compute_expected_log_liklihood(
+            m.X, 
+            m.Y, 
+            m.likelihood, 
+            m.prior,
+            q,
+            m.inference
         )
 
-    # Compute gradients
-    mu_grads, var_grads = jax.grad(partial_ell, (0, 1))(mu_arr, var_arr)
+    mu_grads, var_chol_grads = jax.grad(partial_ell, (1, 2))(model, mu_arr, vectorized_lower_triangular_cholesky(var_arr))
+    var_chol_grads = vectorized_lower_triangular(var_chol_grads, N=mu_grads[0].shape[0])
 
     # Make sure shapes are correct
     chex.assert_shape(Y_tilde_arr, mu_grads.shape)
     chex.assert_shape(Y_tilde_arr, mu_arr.shape)
-    chex.assert_shape(V_tilde_arr, var_grads.shape)
+    chex.assert_shape(V_tilde_arr, var_chol_grads.shape)
     chex.assert_shape(V_tilde_arr, var_arr.shape)
 
     # Update natural parameters
     new_Y_tilde, new_V_tilde = jax.vmap(
-        cvi_diagonal_update,
+        cvi_block_update,
         [0, 0, 0, 0, 0, 0, None],
         0
     )(
-        Y_tilde_arr[..., 0], 
-        V_tilde_arr[..., 0], 
-        mu_arr[..., 0], 
-        var_arr[..., 0],
-        mu_grads[..., 0], 
-        var_grads[..., 0], 
+        Y_tilde_arr, 
+        V_tilde_arr, 
+        mu_arr, 
+        var_arr,
+        mu_grads, 
+        var_chol_grads, 
         beta
     )
+
+    chex.assert_shape(Y_tilde_arr, new_Y_tilde.shape)
+    chex.assert_shape(V_tilde_arr, new_V_tilde.shape)
+
+    new_V_tilde = new_V_tilde[:, None, ...]
 
     return new_Y_tilde, new_V_tilde
 
@@ -378,40 +397,58 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
 
-    # Compute approx posterior mean and var
-    mu_arr, var_arr = evoke('marginal', model.approximate_posterior, model.prior)(
-        model.X, model.approximate_posterior, model.prior
-    )
+    Z_tiled = prior_Z(model.prior)
+    Z = np.vstack(Z_tiled)
 
-    # Get ELL function
-    ell_fn = evoke(
-        'expected_log_likelihood', 
-        model.likelihood, 
-        model.prior,
-        model.approximate_posterior,
-    )
+    M = Z_tiled[0].shape[0]
+    Q = Z_tiled.shape[0]
 
-    # TODO: check if there is a better way to do this
-    def partial_ell(mu, var):
-        return ell_fn(
-            model.X, 
-            model.Y, 
-            mu,
-            var, 
-            model.likelihood, 
-            model.prior, 
-            model.approximate_posterior,
-            model.inference
+    # These are in data-latent order
+    Y_tilde_arr = np.reshape(Y_tilde_arr, [M*Q, 1])
+    V_tilde_arr = V_tilde_arr[0]
+
+    # Predict in data-latent order
+    q_mu_z, q_var_z = q.surrogate.predict_blocks(Z_tiled, M, M*Q, diagonal=False)
+    q_mu_z, q_var_z = q_mu_z[0][..., None], q_var_z[0]
+
+    prior = q.surrogate.prior
+
+    # FullGaussianApproximatePosterior is meant to be used in latent-data order
+    q_mu_z_permuted = prior.unpermute_vec(q_mu_z)
+    q_var_z_permuted = prior.unpermute_mat(q_var_z)
+
+    def partial_ell(m, q_m, q_S):
+        q = FullGaussianApproximatePosterior(
+            m=q_m, S_inv=q_S, train=False
         )
 
-    # Compute gradients
-    mu_grads, var_grads = jax.grad(partial_ell, (0, 1))(mu_arr, var_arr)
+        return compute_expected_log_liklihood(
+            m.X, 
+            m.Y, 
+            m.likelihood, 
+            m.prior,
+            q,
+            m.inference
+        )
 
-    new_Y_tilde, new_V_tilde = jax.vmap(
-        cvi_block_update,
-        [0, 0, 0, 0, 0, 0, None],
-        0
-    )(Y_tilde_arr, V_tilde_arr, mu_arr, var_arr, mu_grads, var_grads, beta)
+    mu_grads, var_chol_grads = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z_permuted, lower_triangular_cholesky(add_jitter(q_var_z_permuted, ng_jitter))
+    )
+    var_chol_grads = lower_triangle(var_chol_grads, N=mu_grads.shape[0])
+
+    s_grad = reparametise_cholesky_grad(q_var_z_permuted, var_chol_grads)
+
+    # fix grad ordering
+    mu_grads_permuted = prior.permute_vec(mu_grads)
+    s_grad_permuted = prior.permute_mat(s_grad)
+
+    new_Y_tilde, new_V_tilde = cvi_block_update(
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads_permuted, s_grad_permuted, beta
+    )
+    # Fix dimensions and order
+    new_Y_tilde = np.reshape(new_Y_tilde, q.surrogate.Y.shape)
+    new_V_tilde = new_V_tilde[None, ...]
+
 
     return new_Y_tilde, new_V_tilde
 

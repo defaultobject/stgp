@@ -1,7 +1,10 @@
 import jax
 import jax.numpy as np
+from batchjax import batch_or_loop, BatchType
 
 from . import Transform
+from ..computation.matrix_ops import block_from_mat, v_get_block_diagonal
+from ..utils.utils import ensure_module_list, get_batch_type
 
 class Permutation(Transform):
     def __init__(self, latents, permutation_fn=None):
@@ -66,13 +69,32 @@ class Permutation(Transform):
 
 
     def vec_mean(self, X1: np.ndarray) -> np.ndarray:
-        m = self.latent_obj.mean(X1)
+        m = batch_or_loop(
+            lambda x1, latent: latent.mean(x1)[0],
+            [X1, self.latent_obj.latents],
+            [0, 0],
+            dim = self.latent_obj.num_latents,
+            out_dim=1,
+            batch_type = get_batch_type(self.latent_obj.latents)
+        )
         m = np.vstack(m)
 
         return self.permute_vec(m)
 
     def full_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
-        K = self.latent_obj.covar(X1, X2)
+        """
+        X1 and X2 are grouped, one per latent function
+        """
+
+        K = batch_or_loop(
+            lambda x1, x2, latent: latent.covar(x1, x2)[0],
+            [X1, X2, self.latent_obj.latents],
+            [0, 0, 0],
+            dim = self.latent_obj.num_latents,
+            out_dim=1,
+            batch_type = get_batch_type(self.latent_obj.latents)
+        )
+
         K = jax.scipy.linalg.block_diag(*K)
 
         return self.permute_mat(K)
@@ -86,12 +108,36 @@ class Permutation(Transform):
     def full_var(self, X1: np.ndarray) -> np.ndarray:
         return self.covar(X1, X1)
 
-    def blocks_var(self, X1: np.ndarray) -> np.ndarray:
+    def blocks_var(self, X: np.ndarray, group_size, block_size) -> np.ndarray:
+        """
+        X is a grouped input matrix:
+            [N_g, S_g, D]
+        group_size is required data_grouping
+        block_size is the size variance for the corresponding groups
+        """
+        # Group data
+
+        #X = np.hstack(X)
+        X = jax.vmap(
+            block_from_mat,
+            [0, None],
+            0
+        )(X, group_size)
+
+        X = np.transpose(X, [1, 0, 2, 3])
+
+
+        # For each group collect blocks
         K_blocks = jax.vmap(
-            lambda m, x: m.full_covar(x[:, None], x[:, None]),
+            lambda m, x: m.full_covar(x, x),
             [None, 0],
             0
-        )(self, X1)
+        )(self, X)
+
+        K_blocks = v_get_block_diagonal(
+            K_blocks,
+            block_size,
+            K_blocks.shape[1]
+        )
 
         return K_blocks
-

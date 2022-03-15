@@ -13,7 +13,7 @@ from ...utils.utils import can_batch, get_batch_type
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
-from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal
+from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal, stack_rows
 from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
 from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks
@@ -33,16 +33,21 @@ def predict(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
     chex.assert_equal(K_xs_x.shape, (XS.shape[0], X.shape[0]))
     chex.assert_equal(K_xs.shape, (XS.shape[0], XS.shape[0]))
 
-    return gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
+    lik_var = np.eye(K_xx.shape[0]) * likelihood.variance
+
+    return gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
 @dispatch('BatchGP', DiagonalGaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
-    # Supports likelihood.variance being scalar or a vector
-    return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, likelihood.variance)
+    lik_var = np.eye(K_xx.shape[0]) * likelihood.variance
+
+    return  gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
 @dispatch('BatchGP', Gaussian)
 def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
-    return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, likelihood.variance)
+    lik_var = np.eye(K_xx.shape[0]) * likelihood.variance
+
+    return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
 
 
 @dispatch('BatchGP', ProductLikelihood, Independent)
@@ -139,7 +144,6 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     Y_vec = vec_columns(Y)
 
-    # gaussian_prediction(_*) support both lik_var being a scalar and a diagonal matrix
     if diagonal:
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
     else:
@@ -174,7 +178,6 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     Y_vec = vec_columns(Y)
 
-    # gaussian_prediction(_*) support both lik_var being a scalar and a  matrix
     if diagonal:
         K_xs = prior.vec_var(XS)[:, 0]
 
@@ -234,10 +237,12 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', BlockDiagonalGaussian, 'Permutation')
+@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'Permutation')
 def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+    likelihood = likelihood.likelihood_arr[0]
+
     if diagonal:
-        raise NotImplementedError()
+        K_xs = prior.vec_var(XS)[0]
     else:
         K_xs = prior.full_covar(XS, XS)
 
@@ -253,34 +258,67 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
     Y_vec = vec_columns(Y)
     
     if diagonal:
-        pass
+        mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
     else:
         mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     return mu, var
 
-@dispatch('BatchGP', BlockDiagonalGaussian, 'Permutation')
-def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
+@dispatch('BatchGP', 'BlockDiagonalGaussian', 'Permutation')
+def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
 
-    K_xs = prior.blocks_var(XS)
+    if diagonal:
+        raise NotImplementedError()
+    else:
+        K_xs = prior.blocks_var(XS,  group_size, block_size)
+
+
     K_xx = prior.full_covar(X, X)
     K_xs_x = prior.full_covar(XS, X)
 
-    # Get liklihood
-    lik_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+    lik_var = likelihood.full_variance 
 
     mean_x = prior.vec_mean(X)
     mean_xs = prior.vec_mean(XS)
 
-    Y_vec = vec_columns(Y)
-    
-    mu, var = gaussian_prediction_blocks(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+    Y_vec = stack_rows(Y)
+
+    mu, var = gaussian_prediction_blocks(group_size, block_size, Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+
+    return mu, var
+
+
+@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'Permutation')
+def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
+
+    if diagonal:
+        raise NotImplementedError()
+    else:
+        K_xs = prior.blocks_var(XS,  group_size, block_size)
+
+
+    K_xx = prior.full_covar(X, X)
+    K_xs_x = prior.full_covar(XS, X)
+
+    # Get liklihood
+    # TODO: fix this
+    lik_var = jax.scipy.linalg.block_diag(
+        *likelihood.likelihood_arr[0].variance
+    )
+
+    mean_x = prior.vec_mean(X)
+    mean_xs = prior.vec_mean(XS)
+
+    Y_vec = stack_rows(Y)
+
+    mu, var = gaussian_prediction_blocks(group_size, block_size, Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     return mu, var
 
 @dispatch(Likelihood, Transform, ApproximatePosterior)
 def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
 
-    return  evoke('marginal', 'prediction', approximate_posterior, prior)(
-        XS, X, approximate_posterior, prior, inference
+    return  evoke('marginal', 'prediction', approximate_posterior, likelihood, prior)(
+        XS, X, approximate_posterior, likelihood, prior, inference, diagonal
     )

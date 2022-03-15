@@ -99,7 +99,6 @@ class BatchGP(Posterior):
                 self._likelihood = get_product_likelihood([self.likelihood])
 
 
-
     def log_marginal_likelihood(self, X=None, Y=None):
 
         if X is None:
@@ -162,12 +161,12 @@ class BatchGP(Posterior):
 
         return mu_arr, var_arr
 
-    def predict_blocks(self, XS, diagonal=True, squeeze=False):
+    def predict_blocks(self, XS, group_size: int, block_size: int, diagonal=True, squeeze=False):
         """ Returns predictions with the same block size as the likelihood. """ 
         X, Y = self.X, self.Y
 
         mu_arr, var_arr =  self.inference.predict_f_blocks(
-            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, group_size, block_size, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
         )
 
         if squeeze:

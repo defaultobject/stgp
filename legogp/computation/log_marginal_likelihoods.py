@@ -4,7 +4,7 @@ from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform
 from .model_ops import get_diagonal_gaussian_likelihood_variances
-from .matrix_ops import vec_columns
+from .matrix_ops import vec_columns, stack_rows
 from ..models import BatchGP
 from ..utils import utils
 from ..utils.utils import get_batch_type
@@ -147,8 +147,35 @@ def log_marginal_likelihood(
 
 @dispatch(BatchGP, BlockDiagonalGaussian, 'Permutation')
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: LinearTransform
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'Permutation'
 ):
+    # precompute prior covariance
+    # X is latent-data order. prior will permute this so that the output is in data-latent order.
+    k_xx_arr = prior.full_covar(X, X)
+    mean_arr = prior.vec_mean(X) 
+
+    # Y is ordered by data x latent. To ensure data-latent order, 
+    #   we want stack rows (ie Y that correspond to the same data point
+    #   are next to each other).
+    Y_vec = stack_rows(Y)
+
+    # Likelihood is defined in data-latent order
+    likelihood_var = likelihood.full_variance
+
+    return log_gaussian_with_nans(
+        Y_vec,
+        mean_arr,
+        k_xx_arr + likelihood_var
+    )
+
+
+@dispatch(BatchGP, 'BlockGaussianProductLikelihood', 'Permutation')
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'Permutation'
+):
+    # TODO: needs to generalise
+    likelihood = likelihood.likelihood_arr[0]
+
     # precompute prior covariance
     k_xx_arr = prior.full_covar(X, X)
     mean_arr = prior.vec_mean(X) 

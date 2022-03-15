@@ -4,6 +4,8 @@ import jax.numpy as np
 import objax
 
 from ...dispatch import dispatch, evoke
+from ..matrix_ops import block_from_vec, block_from_mat, stack_rows
+
 from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
@@ -46,6 +48,32 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     chex.assert_shape(res, [num_quad_points])
     
     return np.sum(w * const*res)
+
+@dispatch("BlockDiagonalGaussian", GaussianApproximatePosterior)
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    # TODO: adding missing data masking
+    block_size = likelihood.block_size
+
+    #Reshape Y to match q_f_mu
+    Y_blocks = block_from_vec(Y, block_size)
+    X_blocks = block_from_mat(X, block_size)
+
+    # Ensure correct shapes after vmap
+    Y_blocks = Y_blocks[..., None]
+    #q_f_mu = q_f_mu[..., None]
+
+    lik_var = likelihood.variance
+
+    ell_arr = jax.vmap(
+        full_gaussian_expected_log_likelihood,
+        [0, 0, 0, 0, 0],
+        0
+    )(X_blocks, Y_blocks, lik_var, q_f_mu, q_f_var)
+
+    ell = np.sum(ell_arr)
+
+    return ell
+
 
 @dispatch("DiagonalGaussian", GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
@@ -225,6 +253,13 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         ELL is approximated using monte-carlo
     """
 
+    Q = prior.num_latents
+    N = Y.shape[0]
+
+    chex.assert_rank(q_f_var_arr, 3)
+    chex.assert_shape(q_f_mu_arr, [N, Q])
+    chex.assert_shape(q_f_var_arr, [N, Q, Q])
+
     likelihood_arr = likelihood.likelihood_arr
 
     num_likelihoods = len(likelihood_arr)
@@ -249,14 +284,19 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     variance = likelihood.variance
 
-    # q_f_var and variance blocks should be the same dimension
-    chex.assert_shape(variance, q_f_var_arr.shape)
-    chex.assert_shape(Y, q_f_mu_arr.shape)
+    num_blocks = likelihood.num_blocks
+    block_size = likelihood.block_size
 
-    X = X[..., None]
-    Y = Y[..., None]
+    Y_vec = stack_rows(Y)
+    Y = block_from_vec(Y_vec, block_size)
+
+    # X is in latent-data order. First we transpose to convert to data-latent order and then
+    # stack the rows through the reshape
+    X = np.reshape(np.transpose(X, [1, 0, 2]), [num_blocks, -1, X.shape[-1]])
+
+    # Ensure correct dimensions after batching
     q_f_mu_arr = q_f_mu_arr[..., None]
-
+    Y = Y[..., None]
 
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(
@@ -265,7 +305,7 @@ def expected_log_likelihood(X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         0
     )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
 
-    chex.assert_shape(ell_blocks, [N])
+    chex.assert_shape(ell_blocks, [num_blocks])
 
     return np.sum(ell_blocks)
 

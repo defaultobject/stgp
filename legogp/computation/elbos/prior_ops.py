@@ -16,6 +16,12 @@ def _batch_over_prior(prior, fn):
         batch_type = get_batch_type(prior.latents)
     )
 
+def prior_Z(prior):
+    return _batch_over_prior(
+        prior,
+        lambda prior: prior.sparsity.Z,
+    )
+
 def prior_mean_X(prior, X):
     N = X.shape[0]
     Q = prior.num_latents
