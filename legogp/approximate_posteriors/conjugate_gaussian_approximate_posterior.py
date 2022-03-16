@@ -158,7 +158,7 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         Y_tilde = 1e-5*np.ones([self.M, self.num_latents])*onp.random.rand(self.M, self.num_latents)
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
-        if False:
+        if True:
             V_tilde = np.tile(
                 np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
                 [self.num_blocks, 1, 1]

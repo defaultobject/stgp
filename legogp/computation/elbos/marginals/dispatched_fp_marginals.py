@@ -5,8 +5,8 @@ from jax.scipy.linalg import block_diag
 
 from ....dispatch import dispatch, evoke
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_blocks
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, stack_rows, cholesky_solve
 from ..prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_X, prior_covar_X
 from ...permutations import data_order_to_output_order
 from ...integrals.approximators import mv_block_monte_carlo
@@ -16,54 +16,59 @@ from ....transforms import Transform, LinearTransform, Independent, NonLinearTra
 from ....approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
-
+from ....transforms import DataLatentPermutation
 
 
 @dispatch('prediction', 'FullGaussianApproximatePosterior', Likelihood, Transform, Sparsity)
 def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):
+    Q = prior.num_latents
 
-    # Compute Kzz, Kxz, Kxs_diag, mean_x, mean_xs
+    # Get variational parameters in latent-data format
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol
 
-    fix_shape = lambda v: np.reshape(v, [v.shape[0]*v.shape[1], 1])
+    # Get all Z in latent-data format
+    Z_all = prior.get_Z()
 
-    # Compute q(F) = \int p(F | U) q(U) dU
-    m, S =  gaussian_conditional(
-        XS, 
-        X, 
-        block_diag(*prior_covar_ZZ(prior)), 
-        block_diag(*prior_covar_XZ(prior, XS)), 
-        block_diag(*prior_covar_X(prior, XS)), 
-        m,
-        S_chol,
-        fix_shape(prior_mean_Z(prior)),
-        fix_shape(prior_mean_X(prior, XS)),
+    # Convert XS to latent_data format
+    XS_tiled = np.tile(XS, [Q, 1, 1])
+
+    # Z does not need to be ordered, only X
+    K_zz = prior.np_full_covar(Z_all, Z_all)
+
+    # Compute Kxz with x permutated into data-latent format
+    Kxz_p = prior.lp_ls_full_covar(XS, Z_all)
+
+    # Compute the block diagonals of the permutated Kxx
+    # TODO: stop tiling XS here
+    K_xx_p = prior.blocks_var(
+        XS_tiled,
+        1,
+        Q
     )
 
-    # Create permutation matrix
-    num_latents = prior.num_latents
-    NS = XS.shape[0]
-    N = m.shape[0]
-    P = data_order_to_output_order(num_latents, XS.shape[0])
+    mean_Z = prior.mean(Z_all)
+    mean_XS = prior.s_mean(XS)
 
-    # Rearrange m and S
-    m_p = P @ m
-    S_p = P @ S @ P.T
+    # Compute q(F) = \int p(F | U) q(U) dU
+    # Comput blocks of
+    #val = K_xx - Kxz_p @ cholesky_solve(K_chol, Kxz_p.T)
+    # TODO: assuming mean is zero
+    _m, _S =  gaussian_conditional_blocks(
+        1, 
+        Q, 
+        XS, 
+        X, 
+        K_zz, 
+        Kxz_p, 
+        K_xx_p, 
+        m,
+        S_chol,
+        mean_Z,
+        mean_XS,
+    )
 
-    m_p = np.reshape(m_p, [-1, num_latents])
-
-    # Extract block diagonals
-    S_blocks = get_block_diagonal(S_p, num_latents)
-
-    # Assert shapes are correct
-    chex.assert_shape(m_p, [N/num_latents, num_latents])
-    chex.assert_shape(S_blocks, [N/num_latents, num_latents, num_latents])
-    
-
-    return m_p, S_blocks
-
-
+    return _m, _S
 
 @dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, FreeSparsity)
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
@@ -95,14 +100,13 @@ def marginal(XS, X, approximate_posterior, likelihood, prior, inference, diagona
     if diagonal is False:
         raise NotImplementedError()
 
-    latents = prior.latent_obj
-    sparsity_arr = latents.get_sparsity_list()
+    sparsity_arr = prior.get_sparsity_list()
 
     # TODO: generalize sparsity?
-    fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, latents, sparsity_arr[0])
+    fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
     latent_mu, latent_var =  fn(
-        XS, X, approximate_posterior, likelihood, latents, sparsity_arr
+        XS, X, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)

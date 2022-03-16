@@ -59,14 +59,16 @@ def kullback_leibler(approximate_posterior, prior):
 
 @dispatch('FullGaussianApproximatePosterior', Transform)
 def kullback_leibler(approximate_posterior, prior):
-    # Reshape mean_2 to have same shape as approxiamte posterior
-    mean_2_blocks = prior_mean_Z(prior)
-    covar_2_blocks = prior_covar_ZZ(prior)
-
-    mean_2 = np.vstack(mean_2_blocks)
-    covar_2 = jax.scipy.linalg.block_diag(*covar_2_blocks)
+    """
+    Both the prior and the approximate psoterior are defined in latent-data format.
+    """
+    # Get prior in data-latent format
+    Z = prior.get_Z()
+    mean_2 = prior.np_mean(Z)
+    covar_2 = prior.np_full_covar(Z, Z)
     covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
 
+    # Approx is already in data-latent format
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol
 

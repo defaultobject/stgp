@@ -1,5 +1,5 @@
 """Base transform class."""
-from ..utils.utils import ensure_module_list, can_batch
+from ..utils.utils import ensure_module_list, can_batch, get_batch_type
 from batchjax import batch_or_loop, BatchType
 
 import jax
@@ -30,11 +30,11 @@ class Transform(objax.Module):
 
     def forward(self, x):
         """Compute f=T(x)."""
-        pass
+        raise NotImplementedError()
 
     def inverse(self, f):
         """Compute x=T^{-1}(f)."""
-        pass
+        raise NotImplementedError()
 
     @property
     def num_outputs(self):
@@ -177,6 +177,18 @@ class Independent(LinearTransform):
     def inverse(self, f):
         """Compute x=T^{-1}(f)."""
         return f
+
+    def get_Z(self):
+        Z_arr = batch_or_loop(
+            lambda latent:  latent.sparsity.Z,
+            [self.latents],
+            [0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_type = get_batch_type(self.latents)
+        )
+
+        return Z_arr
 
     @property
     def latent_obj(self):

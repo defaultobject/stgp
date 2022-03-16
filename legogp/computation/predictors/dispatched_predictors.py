@@ -5,7 +5,6 @@ from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApp
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform
-from ..marginals import gaussian_conditional_diagional, gaussian_conditional_covar
 from ..permutations import data_order_to_output_order
 
 from ...utils import utils
@@ -237,7 +236,7 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'Permutation')
+@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
 def predict(XS, X, Y, gp, likelihood, prior, diagonal):
     likelihood = likelihood.likelihood_arr[0]
 
@@ -264,7 +263,7 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', 'BlockDiagonalGaussian', 'Permutation')
+@dispatch('BatchGP', 'BlockDiagonalGaussian', 'DataLatentPermutation')
 def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
 
     if diagonal:
@@ -289,7 +288,7 @@ def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diag
     return mu, var
 
 
-@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'Permutation')
+@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
 def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
 
     if diagonal:

@@ -70,6 +70,7 @@ def elbo(
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference)
 
     return  ELL - KL
+    #return  ELL
 
 
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
@@ -133,6 +134,7 @@ def elbo(
     ML_surrogate = - q.surrogate.get_objective()
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
+    #elbo =  ELL 
 
     return elbo
 

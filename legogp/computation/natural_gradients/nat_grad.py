@@ -1,4 +1,4 @@
-from ...settings import ng_jitter
+from ... import settings
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ...dispatch import dispatch, evoke
@@ -27,7 +27,7 @@ def xi_to_theta(xi1, xi2):
 @jit
 def theta_to_xi(theta_1, theta_2):
     M = theta_1.shape[0]
-    jit = ng_jitter * np.eye(M) 
+    jit = settings.ng_jitter * np.eye(M) 
 
     xi1 = theta_1
     xi2 = cholesky(theta_2+jit)
@@ -37,7 +37,7 @@ def theta_to_xi(theta_1, theta_2):
 @jit
 def theta_to_lambda(theta_1, theta_2):
     M = theta_1.shape[0]
-    jit = ng_jitter * np.eye(M) 
+    jit = settings.ng_jitter * np.eye(M) 
 
     theta_2_chol = cholesky(theta_2+jit)
 
@@ -65,7 +65,7 @@ def lambda_to_theta_diagonal(lambda_1, lambda_2):
 @jit
 def lambda_to_theta(lambda_1, lambda_2):
     M = lambda_1.shape[0]
-    jit = ng_jitter * np.eye(M) 
+    jit = settings.ng_jitter * np.eye(M) 
 
     lambda_2_chol = cholesky(-2*lambda_2+jit)
 
@@ -94,7 +94,7 @@ def xi_to_expectation(xi1, xi2):
 @jit
 def expectation_to_xi(mu1, mu2):
     M = mu1.shape[0]
-    jit = ng_jitter * np.eye(M) 
+    jit = settings.ng_jitter * np.eye(M) 
 
     xi2 = cholesky(mu2 - mu1 @ mu1.T + jit)
 
@@ -297,9 +297,12 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
     return theta_1, theta_2
 
 @jit
-def reparametise_cholesky_grad(s, s_chol_grad):
+def reparametise_cholesky_grad(s, s_chol_grad, prior):
     #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
-    x, u = vjp(cholesky, add_jitter(s, ng_jitter))
+    x, u = vjp(
+        lambda A: cholesky(add_jitter(prior.unpermute_mat(A), settings.ng_jitter)), 
+        s
+    )
     s_grad = u(s_chol_grad)[0]
 
     # Symmetrize gradient (in case jax.scipy.linalg.cholesky is used)
@@ -307,6 +310,17 @@ def reparametise_cholesky_grad(s, s_chol_grad):
     s_grad = s_grad + s_grad.T
 
     return s_grad
+
+@jit
+def reparametise_vec_grad(m, m_grad, prior):
+    #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
+    x, u = vjp(
+        lambda v: prior.unpermute_vec(v), 
+        m
+    )
+    m_grad = u(m_grad)[0]
+
+    return m_grad
 
 
 @dispatch('VGP', ConjugateApproximatePosterior)
@@ -391,6 +405,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
 @dispatch('VGP', FullConjugateGaussian)
 def natural_gradients(model, beta: float) -> np.ndarray:
+    print('ng_jitter: ', settings.ng_jitter)
     # Get natural parameters
     q = model.approximate_posterior
 
@@ -432,15 +447,13 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         )
 
     mu_grads, var_chol_grads = jax.grad(partial_ell, (1, 2))(
-        model, q_mu_z_permuted, lower_triangular_cholesky(add_jitter(q_var_z_permuted, ng_jitter))
+        model, q_mu_z_permuted, lower_triangular_cholesky(add_jitter(q_var_z_permuted, settings.ng_jitter))
     )
     var_chol_grads = lower_triangle(var_chol_grads, N=mu_grads.shape[0])
 
-    s_grad = reparametise_cholesky_grad(q_var_z_permuted, var_chol_grads)
-
-    # fix grad ordering
-    mu_grads_permuted = prior.permute_vec(mu_grads)
-    s_grad_permuted = prior.permute_mat(s_grad)
+    # Reparameterise gradients
+    s_grad_permuted = reparametise_cholesky_grad(q_var_z, var_chol_grads, prior)
+    mu_grads_permuted = reparametise_vec_grad(q_mu_z, mu_grads, prior)
 
     new_Y_tilde, new_V_tilde = cvi_block_update(
         Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads_permuted, s_grad_permuted, beta

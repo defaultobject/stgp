@@ -145,9 +145,9 @@ def log_marginal_likelihood(
         k_xx_arr + ordered_likelihood_var
     )
 
-@dispatch(BatchGP, BlockDiagonalGaussian, 'Permutation')
+@dispatch(BatchGP, BlockDiagonalGaussian, 'DataLatentPermutation')
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'Permutation'
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
 ):
     # precompute prior covariance
     # X is latent-data order. prior will permute this so that the output is in data-latent order.
@@ -169,9 +169,9 @@ def log_marginal_likelihood(
     )
 
 
-@dispatch(BatchGP, 'BlockGaussianProductLikelihood', 'Permutation')
+@dispatch(BatchGP, 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'Permutation'
+        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
 ):
     # TODO: needs to generalise
     likelihood = likelihood.likelihood_arr[0]
