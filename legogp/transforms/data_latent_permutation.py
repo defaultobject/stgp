@@ -28,6 +28,10 @@ class DataLatentPermutation(Transform):
     def forward(self, *args, **kwargs):
         return self.latent_obj.forward(*args, **kwargs)
 
+    @property
+    def _latents_arr(self):
+        return self.latent_obj.latents
+
     def _mean_blocks(self, X):
         return batch_or_loop(
             lambda  x, latent: latent.mean(x)[0],
