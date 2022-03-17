@@ -61,7 +61,6 @@ class DataLatentPermutation(Transform):
     def np_mean(self, X):
         return np.vstack(self._mean_blocks(X))
 
-
     def permute_vec(self, v):
         P = self.permutation_fn(
             self.num_latents,

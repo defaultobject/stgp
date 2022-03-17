@@ -1,6 +1,7 @@
 import chex
 import jax
 import jax.numpy as np
+import chex
 
 from ....dispatch import dispatch, evoke
 from ....utils.batch_utils import batch_over_module_types
@@ -11,7 +12,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform
 from ....approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood, BlockDiagonalGaussian
-from ....sparsity import FreeSparsity, Sparsity
+from ....sparsity import FreeSparsity, Sparsity, NoSparsity
 
 @dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', Sparsity)
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
@@ -27,8 +28,15 @@ def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity)
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
     block_size = likelihood.block_size
-    mu, var = approximate_posterior.surrogate.predict_blocks(X, block_size, diagonal=False)
-    return mu[..., None], var
+    N = X.shape[0]
+    mu, var = approximate_posterior.surrogate.predict_blocks(X, 1, block_size, diagonal=False)
+
+    mu = mu[..., None]
+
+    #chex.assert_shape(mu, [1, block_size, 1])
+    #chex.assert_shape(var, [1, block_size, block_size])
+
+    return mu, var
 
 @dispatch('FullConjugateGaussian', Likelihood, Transform, Sparsity)
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
@@ -38,7 +46,18 @@ def marginal(X, approximate_posterior, likelihood, prior, sparsity):
     )
     return mu, var
 
-@dispatch('FullConjugateGaussian', BlockDiagonalGaussian, Transform, Sparsity)
+@dispatch('FullConjugateGaussian', BlockDiagonalGaussian, Transform, NoSparsity)
+def marginal(X, approximate_posterior, likelihood, prior, sparsity):
+    Q = prior.num_latents
+    num_blocks = likelihood.num_blocks
+    block_size = likelihood.block_size
+
+    mu, var = approximate_posterior.surrogate.predict_blocks(
+        X, 1, Q, diagonal=False
+    )
+    return mu, var
+
+@dispatch('FullConjugateGaussian', BlockDiagonalGaussian, Transform, FreeSparsity)
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
     Q = prior.num_latents
     num_blocks = likelihood.num_blocks

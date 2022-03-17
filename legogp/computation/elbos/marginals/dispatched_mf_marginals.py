@@ -17,6 +17,11 @@ from ....sparsity import FreeSparsity, Sparsity
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
     return approximate_posterior.m, diagonal_from_cholesky(approximate_posterior.S_chol)
 
+@dispatch('DiagonalGaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity')
+def marginal(X, approximate_posterior, likelihood, prior, sparsity):
+    mu, var =  approximate_posterior.m, approximate_posterior.S_diag
+    return mu, var[:, None]
+
 @dispatch('GaussianApproximatePosterior', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity')
 def marginal(X, approximate_posterior, likelihood, prior, sparsity):
     block_size = likelihood.block_size

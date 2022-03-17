@@ -94,6 +94,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     lik_var = likelihood.variance
     chex.assert_shape(lik_var, [N])
 
+
     ell_arr = jax.vmap(
         scalar_gaussian_expected_log_likelihood,
         [0, 0, 0, 0, 0],

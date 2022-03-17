@@ -18,6 +18,10 @@ from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, Bl
 from ....sparsity import FreeSparsity, Sparsity
 from ....transforms import DataLatentPermutation
 
+@dispatch('DataLatentBlockDiagonalApproximatePosterior', Likelihood, Transform)
+def marginal(X, approximate_posterior, likelihood, prior):
+    """ tbd. """
+    return approximate_posterior.m, approximate_posterior.S_blocks
 
 @dispatch('prediction', 'FullGaussianApproximatePosterior', Likelihood, Transform, Sparsity)
 def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):

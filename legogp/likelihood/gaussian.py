@@ -78,6 +78,10 @@ class DiagonalGaussian(DiagonalLikelihood):
     def variance(self) -> np.ndarray:
         return np.squeeze(self.variance_param.value)
 
+    @property
+    def full_variance(self) -> np.ndarray:
+        return self.variance
+
     def conditional_var(self, f):
         return self.variance
 
@@ -102,6 +106,10 @@ class Gaussian(DiagonalGaussian):
     @property
     def variance(self) -> np.ndarray:
         return self.variance_param.value
+
+    @property
+    def full_variance(self) -> np.ndarray:
+        return self.variance
 
     def log_likelihood_scalar(self, y, f):
         ll = log_gaussian_scalar(y, f, self.variance)

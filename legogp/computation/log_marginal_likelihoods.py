@@ -43,7 +43,7 @@ def gaussian_log_marginal_likelihood(
     chex.assert_shape(mean, [N, 1])
     chex.assert_shape(K, [N, N])
 
-    lik_noise = likelihood.variance
+    lik_noise = likelihood.full_variance
 
     k = K + lik_noise * np.eye(N)
 

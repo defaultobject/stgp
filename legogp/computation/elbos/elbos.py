@@ -47,7 +47,6 @@ def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterio
             X, approximate_posterior, likelihood, prior
         )
 
-
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', likelihood, prior, approximate_posterior)(
         X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
@@ -80,6 +79,7 @@ def elbo(
     # Compute ELL
     ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
 
+
     # Compute surrogate ELL
     # TODO: this needs to be generalised to map across all X
     ELL_surrogate = compute_expected_log_liklihood(
@@ -94,6 +94,7 @@ def elbo(
     # Compute surrogate marginal likelihood
     # TODO: assuming a mean-field approx posterior
     q_list = q.approx_posteriors
+    
 
     # get_ojective returns the negative log liklihood
     # We require the (postive) log liklihood

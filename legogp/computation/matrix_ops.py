@@ -29,8 +29,20 @@ def get_block_diagonal(A, block_size):
 def cartesian_product(X, Y):
     return np.vstack([np.tile(X, Y.shape[0]), np.repeat(Y, X.shape[0])])
 
+@jit
 def add_jitter(A, jit):
+    chex.assert_rank(A, 2)
     return A + jit*np.eye(A.shape[0])
+
+@jit
+def vec_add_jitter(A, jit):
+    chex.assert_rank(A, 3)
+
+    return jax.vmap(
+        add_jitter,
+        (0, None),
+        0
+    )(A, jit)
 
 @jit
 def diagonal_from_cholesky(L):

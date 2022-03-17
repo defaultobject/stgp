@@ -86,8 +86,17 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     def S_diag(self):
         return self._S_diag.value
 
-class BlockDiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S_blocks=None, train=True):
+
+
+class FullGaussianApproximatePosterior(GaussianApproximatePosterior):
+    pass
+
+class DataLatentBlockDiagonalApproximatePosterior(FullGaussianApproximatePosterior):
+    """ 
+    Block diagonal approximate posterior that is parameterised in data-latent order.
+    This inherits FullGaussianApproximatePosterior as it is used by CVI in the FullGaussianApproximatePosterior
+    """
+    def __init__(self,  m=None, S_blocks=None, train=True):
         self._m = Parameter(
             m,
             constraint=None,
@@ -109,6 +118,3 @@ class BlockDiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     @property
     def S_blocks(self):
         return self._S_blocks.value
-
-class FullGaussianApproximatePosterior(GaussianApproximatePosterior):
-    pass
