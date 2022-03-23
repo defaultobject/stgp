@@ -12,17 +12,15 @@ from ..core import Model, Posterior
 from . import GP, BatchGP
 from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
 from ..defaults import get_default_likelihood
+from ..data import TemporalData, SpatioTemporalData
 
-from ..data.sequential import order_sequentially, pad_with_nan_to_make_grid
-
-@dispatch(Model, 'Markov', 'NoSparsity')
+@dispatch(Model, 'Sequential')
 class SDE_GP(Posterior):
     def __init__(
         self, 
-        X=None, 
-        Y=None, 
+        data = None,
         Z = None,
-        inference: 'Markov'=None, 
+        inference: 'Sequential'=None, 
         likelihood: 'Likelihood'=None, 
         kernel: 'Kernel'=None, 
         prior: 'Transform'=None, 
@@ -30,22 +28,9 @@ class SDE_GP(Posterior):
         fix_input=True,
         **kwargs
     ):
-        self.raw_X = X
-        self.raw_Y = Y
-        self.raw_N = Y.shape[0]
-
-        if fix_input:
-            unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially(X, Y)
-        else:
-            unique_idx, sort_idx, X_sorted, Y_sorted = None, None, X, Y
-
-        self.raw_N_time = Y_sorted.shape[0]
-
         # Use the sorted X and Y to construct the model on
-        super(SDE_GP, self).__init__(X_sorted, Y_sorted)
+        super(SDE_GP, self).__init__(data=data)
 
-        self.sort_idx = sort_idx
-        self.unique_idx = unique_idx
         self._likelihood = likelihood
         self.kernel = kernel
 
@@ -60,6 +45,17 @@ class SDE_GP(Posterior):
     @property
     def output_dim(self): return 1
 
+    @property
+    def X(self): return self.data.X_sorted 
+
+    @property
+    def Y(self): return self.data.Y_sorted 
+
+    @property
+    def Nt(self): 
+        """ Return the number of temporal points. """
+        return self.data.Nt 
+
     def set_defaults(self):
         """ Replace missing options with defaults """
 
@@ -68,21 +64,19 @@ class SDE_GP(Posterior):
             warnings.warn('Using default Matern32 kernel with lengthscale 1.o')
             self.kernel = Matern32(lengthscales=[1.0])
 
-
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
 
-    def log_marginal_likelihood(self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
+    def log_marginal_likelihood(self):
         return sequential_kalman_filter(
-            self.X,
-            self.Y,
+            self.data,
             self.kernel,
             self.likelihood,
-            N = self.raw_N_time
+            N = self.Nt
         )
 
-    def get_objective(self, X=None, Y=None):
-        return -self.log_marginal_likelihood(X, Y)
+    def get_objective(self):
+        return -self.log_marginal_likelihood()
 
     def mean(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
@@ -99,6 +93,7 @@ class SDE_GP(Posterior):
         """
         Due to the sorting required to into a spatio-temporal grid we require a separate prediction function that passes through the indexes required to sort.
         """
+        raise NotImplementedError()
         X = self.raw_X
         Y = self.raw_Y
         X_stacked = np.vstack([X, XS, nan_grid_X])
@@ -124,11 +119,52 @@ class SDE_GP(Posterior):
 
         return mu, var
 
-    def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
-        NS = XS.shape[0]
+    def posterior_blocks(self):
+        _, mu, var = filter_and_smooth(
+            self.data,
+            self.kernel,
+            self.likelihood,
+            N = self.data.Nt
+        )
+        return mu, var
 
-        X = self.raw_X
-        Y = self.raw_Y
+    def posterior(self, diagonal=True):
+        _, mu, var = filter_and_smooth(
+            self.data,
+            self.kernel,
+            self.likelihood,
+            N = self.data.Nt
+        )
+
+
+        # mu, var are in time - space format
+        # Therefore we just need to stack them
+        mu = np.reshape(mu, [-1, 1])
+
+        # only keep diagonals
+        if diagonal:
+            var_diag = np.diagonal(var, axis1=1, axis2=2)
+            var_diag = np.reshape(var_diag, [-1, 1])
+
+            return mu, var_diag
+
+        return mu, var
+
+    def predict_blocks(self, XS, group_size, block_size, diagonal=False):
+        chex.assert_equal(group_size, 1)
+
+        return self.posterior_blocks()
+
+    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
+
+        if diagonal is False:
+            raise NotImplementedError()
+
+        NS = XS.shape[0]
+        chex.assert_equal(XS.shape[1], self.data.D)
+
+        X = onp.array(self.data.X)
+        Y = onp.reshape(self.data.Y, [-1, 1])
 
         # Stack X first so that training data does not get removed when sorting data
         X_stacked = onp.vstack([X, XS])
@@ -136,33 +172,50 @@ class SDE_GP(Posterior):
         Y_nans = onp.NaN * onp.ones([NS, 1])
         Y_stacked = onp.vstack([Y, Y_nans])
 
-        breakpoint()
-        X_stacked, Y_stacked = pad_with_nan_to_make_grid(X_stacked, Y_stacked)
+        if self.data.D == 1:
+            test_data = TemporalData(
+                X_stacked,
+                Y_stacked,
+                sort=True
+            )
 
-        unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially(X_stacked, Y_stacked)
+        else:
+            test_data = SpatioTemporalData(
+                X=X_stacked,
+                Y=Y_stacked,
+                sort=True
+            )
 
-        N = X_sorted.shape[0]
-
-        X_sorted = objax.StateVar(np.array(X_sorted))
-        Y_sorted = objax.StateVar(np.array(Y_sorted))
 
         _, mu, var = filter_and_smooth(
-            X_sorted.value,
-            Y_sorted.value,
+            test_data,
             self.kernel,
             self.likelihood,
-            N = N
+            N = test_data.Nt
         )
 
-        mu = mu.reshape([-1, 1])
-        var = var.reshape([-1, 1])
+        # mu, var are in time - space format
+        # Therefore we just need to stack them
+        mu = np.reshape(mu, [-1, 1])
 
-        # unsort
-        mu = mu[sort_idx][unique_idx][self.raw_N:]
-        var = var[sort_idx][unique_idx][self.raw_N:]
+        # only keep diagonals
+        var_diag = np.diagonal(var, axis1=1, axis2=2)
+        var_diag = np.reshape(var_diag, [-1, 1])
 
-        return mu, var
+        # Unsort data and remove the training data
+        mu = test_data.unsort(mu)[self.data.N:]
+        var_diag = test_data.unsort(var_diag)[self.data.N:]
 
-    def predict_y(self, XS):
-        raise NotImplementedError()
+        return mu, var_diag
+
+    def predict_y(self, XS, squeeze=True):
+        pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
+
+        # TODO: fix the hack
+        pred_y_mu, pred_y_var = evoke('predict_y_diagonal', 'BatchGP', self.likelihood)(
+            XS,  self.likelihood, pred_mu, pred_var
+        )
+
+        return pred_y_mu, pred_y_var
+
 

@@ -24,25 +24,17 @@ def get_default_likelihood(num_outputs: int) -> List['Likelihood']:
         for p in range(num_outputs)
     ])
 
-def get_default_independent_prior(X, input_dim: int, num_latents: int, kernel_list: Optional['Kernel'] = None, Z: Optional['np.ndarray'] = None) -> 'Prior':
+def get_default_independent_prior(sparsity, input_dim: int, num_latents: int, kernel_list: Optional['Kernel'] = None, Z: Optional['np.ndarray'] = None) -> 'Prior':
     warnings.warn('Using default Independent prior')
 
     if kernel_list is None:
         kernel_list = get_default_kernel(input_dim, num_latents)
 
-    if Z is None:
-        sparsity_arr = [NoSparsity(X) for q in range(num_latents)]
-    elif type(Z) is list:
-        sparsity_arr = [FullSparsity(Z[q]) for q in range(num_latents)]
-    else:
-        sparsity_arr = [FullSparsity(Z) for q in range(num_latents)]
-
     return Independent(
         latents = [
             GP(
-                X = X,
                 kernel = kernel_list[q],
-                sparsity = sparsity_arr[q]
+                sparsity = sparsity[q]
             )
             for q in range(num_latents)
         ],

@@ -63,13 +63,27 @@ class Transform(objax.Module):
 class NonLinearTransform(Transform):
     @property
     def num_latents(self):
-        return len(self.latent_obj.latents)
+        return len(self.latents)
+
+    def get_sparsity_list(self):
+        return [p.sparsity for p in self.latents]
+
+    @property
+    def latents(self):
+        return self.latent_obj._latents_arr
 
 
 class LinearTransform(Transform):
     """
     All linear transforms support .W returns the mixing matrix
     """
+
+    def get_sparsity_list(self):
+        return [p.sparsity for p in self.latents]
+
+    @property
+    def latents(self):
+        return self.latent_obj._latents_arr
 
     @property
     def num_latents(self):
@@ -198,9 +212,6 @@ class Independent(LinearTransform):
     @property
     def num_latents(self):
         return len(self.latents)
-
-    def get_sparsity_list(self):
-        return [p.sparsity for p in self.latents]
 
 
     def mean(self, X1: np.ndarray) -> np.ndarray:

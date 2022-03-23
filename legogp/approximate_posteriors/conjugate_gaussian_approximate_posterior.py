@@ -23,7 +23,7 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         For consistency we also store Y_tilde in the same way.
         """
 
-        if X is None :
+        if X is None:
             raise RuntimeError('X must be passed')
 
         self.dim = X.shape[0]
@@ -31,29 +31,21 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         self.block_size = block_size
         self.num_blocks = int(self.dim/self.block_size)
 
-        if False:
-            Y_tilde = 1e-5*np.ones([self.dim, 1])
-            V_tilde = np.ones([self.dim, 1])
+        Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size, 1])
+        V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
-            surrogate_likelihood = DiagonalGaussian(
-                V_tilde
+        if False:
+            Y_tilde = np.ones([self.num_blocks, self.block_size, 1])
+            V_tilde = np.tile(
+                np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
+                [self.num_blocks, 1, 1]
             )
 
-        else:
-            Y_tilde = np.ones([self.num_blocks*self.block_size, 1])
-            V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
-
-            if True:
-                V_tilde = np.tile(
-                    np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
-                    [self.num_blocks, 1, 1]
-                )
-
-            surrogate_likelihood = [BlockDiagonalGaussian(
-                block_size=self.block_size,
-                num_blocks = self.num_blocks,
-                variance=V_tilde
-            )]
+        surrogate_likelihood = [BlockDiagonalGaussian(
+            block_size=self.block_size,
+            num_blocks = self.num_blocks,
+            variance=V_tilde
+        )]
 
         self.surrogate = surrogate_model(
             X = X,

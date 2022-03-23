@@ -19,12 +19,12 @@ from ....sparsity import FreeSparsity, Sparsity
 from ....transforms import DataLatentPermutation
 
 @dispatch('DataLatentBlockDiagonalApproximatePosterior', Likelihood, Transform)
-def marginal(X, approximate_posterior, likelihood, prior):
+def marginal(data, approximate_posterior, likelihood, prior):
     """ tbd. """
     return approximate_posterior.m, approximate_posterior.S_blocks
 
 @dispatch('prediction', 'FullGaussianApproximatePosterior', Likelihood, Transform, Sparsity)
-def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):
+def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
     Q = prior.num_latents
 
     # Get variational parameters in latent-data format
@@ -62,7 +62,7 @@ def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):
         1, 
         Q, 
         XS, 
-        X, 
+        data.X, 
         K_zz, 
         Kxz_p, 
         K_xx_p, 
@@ -75,18 +75,18 @@ def marginal(XS, X, approximate_posterior, likelihood, prior, sparsity):
     return _m, _S
 
 @dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, FreeSparsity)
-def marginal(X, approximate_posterior, likelihood, prior, sparsity):
+def marginal(data, approximate_posterior, likelihood, prior, sparsity):
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity[0])
 
     mu, var =  fn(
-        X, X, approximate_posterior, likelihood, prior, sparsity
+        data.X, data, approximate_posterior, likelihood, prior, sparsity
     )
 
     return mu, var
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(X, approximate_posterior, likelihood, prior):
+def marginal(data, approximate_posterior, likelihood, prior):
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.get_sparsity_list()
@@ -94,12 +94,12 @@ def marginal(X, approximate_posterior, likelihood, prior):
     fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
     return fn(
-        X, approximate_posterior, likelihood, prior, sparsity_arr
+        data, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
 
 @dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(XS, X, approximate_posterior, likelihood, prior, inference, diagonal):
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
 
     if diagonal is False:
         raise NotImplementedError()
@@ -110,7 +110,7 @@ def marginal(XS, X, approximate_posterior, likelihood, prior, inference, diagona
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
     latent_mu, latent_var =  fn(
-        XS, X, approximate_posterior, likelihood, prior, sparsity_arr
+        XS, data, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)

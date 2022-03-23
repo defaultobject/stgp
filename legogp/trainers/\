@@ -51,6 +51,8 @@ def get_vars_to_update(model, vc):
 
             m_name_list.append(Y_name)
             S_chol_name_list.append(V_chol_name)
+        breakpoint()
+
 
     elif q_type == 'FullConjugateGaussian':
         q = approx_posterior
@@ -88,7 +90,7 @@ def update_vars(model, vars_to_update, params):
         new_params = []
         for q in range(len(q_arr)):
 
-            lik_var = q_arr[q].surrogate.likelihood.variance_param
+            lik_var = q_arr[q].surrogate.likelihood.likelihood_arr[0].variance_param
 
             new_params += [params[0][q], lik_var.inv_transform(params[1][q])]
 

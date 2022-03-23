@@ -99,7 +99,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = batch_or_loop(
-        lambda q: (q.surrogate.Y, q.surrogate.likelihood.likelihood_arr[0].variance),
+        lambda q: (q.surrogate.data.Y, q.surrogate.likelihood.variance),
         [q_list],
         [0],
         dim=len(q_list),
@@ -107,29 +107,27 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         batch_type = get_batch_type(q_list)
     )
 
-    Z_tiled = prior.get_Z()
+    Z_tiled = prior.latent_obj.get_Z()
 
     # Compute q_m_z, q_S_z
     mu_arr, var_arr = batch_or_loop(
-        lambda q, z: q.surrogate.predict_f(z, diagonal=True),
+        lambda q, z: q.surrogate.posterior(diagonal=True),
         [q_list, Z_tiled],
         [0, 0],
         dim = Q,
         out_dim=2,
         batch_type = get_batch_type(q_list)
     )
-
-    mu_arr = mu_arr[..., None]
+    #mu_arr = mu_arr[..., None]
 
     def partial_ell(m, q_m, q_S):
         q = MeanFieldApproximatePosterior(approximate_posteriors=[
-            DiagonalGaussianApproximatePosterior(m=q_m[q], S_diag=q_S[q], train=False)
+            DiagonalGaussianApproximatePosterior(m=q_m[q], S_diag=q_S[q][..., 0], train=False)
             for q in range(q_m.shape[0])
         ])
 
         return compute_expected_log_liklihood(
-            m.X, 
-            m.Y, 
+            m.data, 
             m.likelihood, 
             m.prior,
             q,
@@ -138,10 +136,8 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(model, mu_arr, var_arr)
 
-    # The approximate posterior is diagonal
+    Y_tilde_arr = Y_tilde_arr[..., 0]
     V_tilde_arr = V_tilde_arr[..., 0]
-    var_grads = var_grads[..., None]
-    var_arr = var_arr[..., None]
 
     # Make sure shapes are correct
     chex.assert_shape(Y_tilde_arr, mu_grads.shape)
@@ -167,7 +163,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     chex.assert_shape(Y_tilde_arr, new_Y_tilde.shape)
     chex.assert_shape(V_tilde_arr, new_V_tilde.shape)
 
-    return new_Y_tilde, new_V_tilde[..., None]
+    return new_Y_tilde[..., None], new_V_tilde[..., None]
 
 
 @dispatch('VGP', ConjugateApproximatePosterior, FreeSparsity)
@@ -376,7 +372,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 def natural_gradients(model, beta: float) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
-    sparsity_arr = prior.get_sparsity_list()
+    sparsity_arr = prior.latent_obj.get_sparsity_list()
 
     # TODO: assuming sparsity is constant across all latents
     return evoke('natural_gradients', model, q, sparsity_arr[0])(

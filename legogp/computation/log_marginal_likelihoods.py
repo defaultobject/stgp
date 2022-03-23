@@ -1,3 +1,5 @@
+# Import Types
+from ..data import Data
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
 from ..dispatch import dispatch, evoke
@@ -50,9 +52,9 @@ def gaussian_log_marginal_likelihood(
     return log_gaussian_with_nans(Y, mean, k) 
 
 
-@dispatch(BatchGP, ProductLikelihood, LinearTransform)
+@dispatch(Data, BatchGP, ProductLikelihood, LinearTransform)
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: ProductLikelihood, prior: LinearTransform
+        data, gp: 'Posterior', likelihood: ProductLikelihood, prior: LinearTransform
 ):
     """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
@@ -73,13 +75,15 @@ def log_marginal_likelihood(
     return log_gaussian_with_nans(Y_vec, mean, sigma) 
 
 
-@dispatch(BatchGP, ProductLikelihood, Independent)
+@dispatch(Data, BatchGP, ProductLikelihood, Independent)
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
+        data, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
 ):
     """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
-    # Assume that are likelihoods are the same such that they can be batched over
+    
+    X = data.X
+    Y = data.Y
 
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs

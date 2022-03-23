@@ -32,6 +32,7 @@ class VGP(Posterior):
         X=None, 
         Y=None, 
         Z = None,
+        data = None,
         inference: 'Variational'=None, 
         approximate_posterior: 'Posterior'=None, 
         likelihood: 'Likelihood'=None, 
@@ -45,7 +46,7 @@ class VGP(Posterior):
     ):
 
         # will save X, Y as a property
-        super(VGP, self).__init__(X, Y, **kwargs)
+        super(VGP, self).__init__(X, Y, data, **kwargs)
 
         self.inference = inference
         self._likelihood = likelihood
@@ -78,18 +79,6 @@ class VGP(Posterior):
 
     @property
     def prior(self): return self._prior
-
-    def setup_data(self):
-        """ Ensure input data is valid """
-
-        if self.X is None:
-            raise RuntimeError('X must be passed')
-
-        if self.Y is None:
-            raise RuntimeError('Y must be passed')
-
-        self.X = np.array(self.X)
-        self.Y = np.array(self.Y)
 
     def fix_inputs(self):
         """ Convert all inputs into a consistent format """
@@ -137,7 +126,6 @@ class VGP(Posterior):
 
         if self.approximate_posterior is None:
             # Assume independent latents and that they have the same dimension
-            self.prior.latents[0].X.shape
             self.approximate_posterior = MeanFieldApproximatePosterior(
                 dim_list=[self.prior.latents[0].sparsity.Z.shape[0]]*self.prior.num_latents
             )
@@ -145,8 +133,7 @@ class VGP(Posterior):
     def get_objective(self):
 
         elbo = self.inference.ELBO(
-            self.X,
-            self.Y,
+            self.data,
             self.likelihood,
             self.prior,
             self.approximate_posterior
@@ -170,8 +157,7 @@ class VGP(Posterior):
         var_arr =  self.inference.predictive_covar(
             XS_1, 
             XS_2, 
-            self.X, 
-            self.Y, 
+            self.data, 
             self.likelihood, 
             self.prior,
             self.approximate_posterior
@@ -183,8 +169,7 @@ class VGP(Posterior):
     def predict_latents(self, XS, diagonal=True, squeeze=True):
         mean, var = self.inference.predict_latents(
             XS, 
-            self.X, 
-            self.Y, 
+            self.data, 
             self.likelihood, 
             self.prior,
             self.approximate_posterior,
@@ -200,8 +185,7 @@ class VGP(Posterior):
 
         mean, var = self.inference.predict_f(
             XS, 
-            self.X, 
-            self.Y, 
+            self.data, 
             self.likelihood, 
             self.prior,
             self.approximate_posterior,
@@ -214,12 +198,9 @@ class VGP(Posterior):
         return mean, var
 
     def predict_y(self, XS, diagonal=True, squeeze=True):
-        X, Y = self.X, self.Y
-
         mu_arr, var_arr =  self.inference.predict_y(
             XS, 
-            self.X, 
-            self.Y, 
+            self.data, 
             self.likelihood, 
             self.prior,
             self.approximate_posterior,

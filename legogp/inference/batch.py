@@ -6,17 +6,17 @@ from ..dispatch import evoke
 class Batch(Inference):
     """Batch inference class."""
 
-    def neg_log_marginal_likelihood(self, X, Y, gp, likelihood, prior):
-        lml = evoke('log_marginal_likelihood', gp, likelihood, prior)(
-            X, Y, gp, likelihood, prior
+    def neg_log_marginal_likelihood(self, data, gp, likelihood, prior):
+        lml = evoke('log_marginal_likelihood', data, gp, likelihood, prior)(
+            data, gp, likelihood, prior
         )
 
         return - lml
 
-    def predict_f(self, XS, X, Y, gp, likelihood, prior, diagonal: bool):
+    def predict_f(self, XS, data, gp, likelihood, prior, diagonal: bool):
 
-        pred_mu, pred_var = evoke('predict', gp, likelihood, prior)(
-            XS, X, Y, gp, likelihood, prior, diagonal
+        pred_mu, pred_var = evoke('predict', data, gp, likelihood, prior)(
+            XS, data, gp, likelihood, prior, diagonal
         )
 
         return pred_mu, pred_var
@@ -29,9 +29,9 @@ class Batch(Inference):
 
         return pred_mu, pred_var
 
-    def predict_y(self, XS, X, Y, gp, likelihood, prior, diagonal: bool):
+    def predict_y(self, XS, data, gp, likelihood, prior, diagonal: bool):
 
-        pred_mu, pred_var = self.predict_f(XS, X, Y, gp, likelihood, prior, diagonal)
+        pred_mu, pred_var = self.predict_f(XS, data, gp, likelihood, prior, diagonal)
 
         pred_y_mu, pred_y_var = evoke('predict_y', gp, likelihood, prior)(
             XS, gp, likelihood, pred_mu, pred_var, diagonal

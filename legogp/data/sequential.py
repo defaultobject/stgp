@@ -6,6 +6,9 @@ from functools import partial
 import chex
 
 def pad_with_nan_to_make_grid(X, Y):
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 2)
+    chex.assert_equal(X.shape[0], Y.shape[0])
     #converts data into grid
 
     N = X.shape[0]
@@ -16,8 +19,6 @@ def pad_with_nan_to_make_grid(X, Y):
 
     Nt = unique_time.shape[0]
     Ns = unique_space.shape[0]
-
-    print('grid size:', N, Nt, Ns, Nt*Ns)
 
     X_tmp = onp.tile(onp.expand_dims(unique_space, 0), [Nt, 1, 1])
 
@@ -36,7 +37,6 @@ def pad_with_nan_to_make_grid(X, Y):
 
     _, idx = onp.unique(_X, return_index=True, axis=0)
     idx = idx[idx>=N]
-    print('unique points: ', idx.shape)
 
     X_to_add = _X[idx, :]
     Y_to_add = _Y[idx, :]
@@ -44,12 +44,7 @@ def pad_with_nan_to_make_grid(X, Y):
     X_grid = onp.vstack([X, X_to_add])
     Y_grid = onp.vstack([Y, Y_to_add])
 
-    #sort for good measure
-    _X = onp.roll(X_grid, -1, axis=1)
-    #sort by time points first
-    idx = onp.lexsort(_X.T)
-
-    return X_grid[idx], Y_grid[idx]
+    return X_to_add.shape[0], X_grid, Y_grid
 
 def order_sequentially_np(X, Y = None):
     """
@@ -101,56 +96,9 @@ def order_sequentially_np(X, Y = None):
     #reshape for grid structure
     X = onp.reshape(X, [time_points, grid_size, X.shape[1]])
 
-
     if Y is not None:
         Y = onp.reshape(Y, [time_points, grid_size, 1])
 
         return reverse_idx, idx, X, Y
 
     return reverse_idx, idx, X
-
-@partial(jit, static_argnums=(1, 2, 3))
-def order_sequentially(X, Y, num_time_points, num_spatial_points):
-    """
-        lexsort uses the final column as the primary sort key and then sorts by each column from the last
-            1 -  roll the columns so the time is the last column
-            2 - get idx of new ordering
-            3 - roll X so that time is the first axis again
-
-        NOTE: assumes that X can be represented as a spatio-temporal grid
-    """
-    chex.assert_rank(X, 2)
-
-    if Y is not None:
-        chex.assert_equal(X.shape[0], Y.shape[0])
-
-    # Assume that X is unique
-
-    # Get index to sort by time points and then spatial points
-    #   we need the index so that we can undo the sort later
-    # required so that all spatial points are consistenly organised
-
-    # Put time axis as last axis os that this is sorted first
-    #  it does not matter the order that the spatial dimensions get sorted
-    X = np.roll(X, -1, axis=1)
-
-    # Sort in space and time
-    idx = np.lexsort(X.T)
-
-    X = X[idx]
-
-    if Y is not None:
-        Y = Y[idx]
-
-    #reset time axis
-    X = np.roll(X, 1, axis=1)
-
-    #reshape for grid structure
-    X = np.reshape(X, [num_time_points, num_spatial_points, X.shape[1]])
-
-    if Y is not None:
-        Y = np.reshape(Y, [num_time_points, num_spatial_points, 1])
-
-        return idx, X, Y
-
-    return idx, X

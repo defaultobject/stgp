@@ -1,4 +1,7 @@
 from ...settings import jitter
+
+# Import Types
+from ...data import Data
 from ...kernels import Kernel, RBF
 from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, DiagonalGaussian, Likelihood, BlockDiagonalGaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
@@ -69,10 +72,11 @@ def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean
     return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
 
 
+@dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
+def predict(XS, data, gp, likelihood, prior, diagonal: bool):
+    X = data.X
+    Y = data.Y
 
-
-@dispatch('BatchGP', ProductLikelihood, Independent)
-def predict(XS, X, Y, gp, likelihood, prior, diagonal: bool):
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs
 
@@ -368,8 +372,8 @@ def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diag
     return mu, var
 
 @dispatch(Likelihood, Transform, ApproximatePosterior)
-def predict(XS, X, Y, likelihood, prior, approximate_posterior, inference, diagonal):
+def predict(XS, data, likelihood, prior, approximate_posterior, inference, diagonal):
 
     return  evoke('marginal', 'prediction', approximate_posterior, likelihood, prior)(
-        XS, X, approximate_posterior, likelihood, prior, inference, diagonal
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
     )

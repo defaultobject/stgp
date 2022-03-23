@@ -37,6 +37,8 @@ class GPRN(GPRN_Base):
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
 
+        latent_f = np.reshape(latent_f, [self.input_dim, 1])
+
         # W is in row-major ordering
         latent_W = latent_W.reshape(
             self.output_dim,
@@ -44,7 +46,7 @@ class GPRN(GPRN_Base):
             order='C'
         )
 
-        return latent_W @ latent_f
+        return (latent_W @ latent_f)[:, 0]
 
 class GPRN_Exp(GPRN_Base):
     def forward(self, f):
@@ -59,8 +61,10 @@ class GPRN_Exp(GPRN_Base):
             order='C'
         )
 
+        latent_f = np.reshape(latent_f, [self.input_dim, 1])
+
         # Element wise exponential to force W to be positive
-        return np.exp(latent_W) @ latent_f
+        return (np.exp(latent_W) @ latent_f)[:, 0]
 
 class GPRN_LDL(GPRN_Base):
 
@@ -82,13 +86,17 @@ class GPRN_LDL(GPRN_Base):
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
 
+
         P = self.output_dim
         Q = self.input_dim
         tri = np.eye(P, Q)
-        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W[:, 0])
 
-        # Element wise exponential to force W to be positive
-        return mixing_matrix @ latent_f
+        latent_W = np.reshape(latent_W, [self.num_latents - self.input_dim])
+        latent_f = np.reshape(latent_f, [self.input_dim, 1])
+
+        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W)
+
+        return (mixing_matrix @ latent_f)[:, 0]
 
 class GPRN_DRD(GPRN_Base):
 
@@ -125,8 +133,11 @@ class GPRN_DRD(GPRN_Base):
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
 
+        latent_f = np.reshape(latent_f, [self.input_dim, 1])
+        latent_W = np.reshape(latent_W, [self.num_latents - self.input_dim])
+
         correlation_cholesky =  get_correlation_cholesky(
-            correlation_transform(latent_W[:, 0], self.a), 
+            correlation_transform(latent_W, self.a), 
             self.P, 
             self.Q
         )
@@ -134,7 +145,7 @@ class GPRN_DRD(GPRN_Base):
         var_diag = np.diag(self.variances.value)
 
 
-        return var_diag @ correlation_cholesky @ latent_f
+        return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
 
 class LMC_Base(LinearTransform):
     """

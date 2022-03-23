@@ -13,23 +13,20 @@ import chex
 class GPPrior(Prior):
     def __init__(
         self, 
-        X: np.ndarray, 
+        X: np.ndarray = None, 
         kernel: Optional['Kernel'] = None,
         sparsity: Optional['Sparsity'] = None,
         **kwargs
     ):
         super(GPPrior, self).__init__()
 
-        self._X = objax.StateVar(np.array(X))
-
         self._kernel = kernel
-
         self.sparsity = sparsity
-
         self.set_defaults()
 
     def set_defaults(self):
         if self.kernel is None:
+            raise NotImplementedError()
             warnings.warn(f'Using default ARD RBF kernel with input dim {self.input_dim} ')
             self._kernel = RBF(
                 lengthscales=[1.0 for d in range(self.input_dim)],
@@ -37,7 +34,12 @@ class GPPrior(Prior):
             )
 
         if self.sparsity is None:
+            raise NotImplementedError()
             self.sparsity = NoSparsity(self.X)
+
+    @property
+    def latent_obj(self):
+        return self
 
     @property
     def X(self): return self._X.value

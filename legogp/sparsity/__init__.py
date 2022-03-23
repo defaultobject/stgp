@@ -1,9 +1,10 @@
-from .sparsity import Sparsity, FreeSparsity, StructuredSparsity, NoSparsity, FullSparsity
+from .sparsity import Sparsity, FreeSparsity, StructuredSparsity, NoSparsity, FullSparsity, SpatialSparsity
 
 __all__ = [
     'Sparsity', 
     'FreeSparsity', 
     'StructuredSparsity', 
     'NoSparsity', 
-    'FullSparsity'
+    'FullSparsity',
+    'SpatialSparsity'
 ]

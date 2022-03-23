@@ -13,10 +13,8 @@ from ...dispatch import dispatch, evoke
 
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
-# TODO: this needs to be written as a function of q_z_mu, q_z_var
-# Just to make it easier to compute gradients wrt to them :) 
-def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference):
-    N = Y.shape[0]
+def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likelihood, prior, approximate_posterior, inference):
+    N = data.N
 
     # Minibatching across all outputs
     minibatch = False
@@ -24,6 +22,7 @@ def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterio
         minibatch = True
 
     if minibatch:
+        raise NotImplementedError()
         #minibatch
         minibatch_size = inference.minibatch_size
 
@@ -44,19 +43,32 @@ def compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterio
         minibatch_size = N
 
         q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior)(
-            X, approximate_posterior, likelihood, prior
+            data, q_m, q_S, approximate_posterior, likelihood, prior
         )
 
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', likelihood, prior, approximate_posterior)(
-        X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
+        data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
     return (N/minibatch_size) * ELL
 
+
+def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
+
+    # We use the latent_obj because we want to get the latent prior, not the transformed ones
+    q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.latent_obj)(
+        data, approximate_posterior, likelihood, prior
+    )
+
+    return compute_expected_log_liklihood_with_variational_params(
+        data, q_m, q_S, likelihood, prior, approximate_posterior, inference
+    )
+
+
 @dispatch(Likelihood, Transform, ApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
+    data, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
     N = Y.shape[0]
 
@@ -66,7 +78,7 @@ def elbo(
     )
 
     # Compute expected log likelihood term
-    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, approximate_posterior, inference)
+    ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
     return  ELL - KL
     #return  ELL
@@ -74,27 +86,28 @@ def elbo(
 
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
+    data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
     # Compute ELL
-    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
-
+    ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
     # TODO: this needs to be generalised to map across all X
-    ELL_surrogate = compute_expected_log_liklihood(
-        q.X[0], # ALL X has to be the same so this makes no difference
-        q.Y, 
-        q.likelihood, 
-        prior, 
-        q, 
-        inference
+    surrogate_ell_fn = lambda q, q_p, inf: compute_expected_log_liklihood(q.surrogate.data, q.surrogate.likelihood, q_p, q, inf)
+
+    q_list = q.approx_posteriors
+
+    ELL_surrogate =  batch_or_loop(
+        surrogate_ell_fn,
+        [q_list, prior.latent_obj.latents, inference],
+        [0, 0, None],
+        dim=len(q.approx_posteriors),
+        out_dim=1,
+        batch_type = get_batch_type(q_list)
     )
 
-    # Compute surrogate marginal likelihood
-    # TODO: assuming a mean-field approx posterior
-    q_list = q.approx_posteriors
-    
+    ELL_surrogate = np.sum(ELL_surrogate)
+
 
     # get_ojective returns the negative log liklihood
     # We require the (postive) log liklihood
@@ -109,24 +122,24 @@ def elbo(
 
     ML_surrogate = np.sum(ML_arr)
 
+
     return ELL - ELL_surrogate + ML_surrogate
 
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(
-    X: np.ndarray, Y: np.ndarray, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
+    data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
     Q = prior.num_latents
 
     X = np.tile(X, [Q, 1, 1])
 
     # Compute ELL
-    ELL = compute_expected_log_liklihood(X, Y, likelihood, prior, q, inference)
+    ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
     ELL_surrogate = compute_expected_log_liklihood(
-        q.X, 
-        q.Y, 
+        q.data, 
         q.likelihood, 
         prior, 
         q, 

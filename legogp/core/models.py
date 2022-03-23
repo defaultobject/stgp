@@ -8,7 +8,7 @@ import jax.numpy as np
 import numpy as onp
 from typing import Optional, Tuple
 from ..utils import utils
-from .. import Parameter
+from ..data import Data
 
 class Model(objax.Module, ABC):
     def __init__(self, **kwargs):
@@ -77,37 +77,40 @@ class Prior(Model):
         pass
 
 class Posterior(Model):
-    def __init__(self, X=None, Y=None, latent_y=False, latent_x=False, **kwargs):
-        self._Y = Parameter(np.array(Y), train=latent_y, name='Y')
-        self._X = Parameter(np.array(X), train=latent_x, name='X')
+    def __init__(self, X=None, Y=None, data=None, latent_y=False, latent_x=False, **kwargs):
+        if X is not None and Y is not None:
+            if data is None:
+                data = Data(X, Y)
+
+        self.data = data
 
     @property
     def X(self):
-        return self._X.value
+        raise NotImplementedError()
 
     @property
     def Y(self):
-        return self._Y.value
+        raise NotImplementedError()
 
     #@abstractmethod
     def log_marginal_likelihood(self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
-        pass
+        raise NotImplementedError()
 
     @property
     #@abstractmethod
     def prior(self):
-        pass
+        raise NotImplementedError()
 
     @property
     #@abstractmethod
     def likelihood(self):
-        pass
+        raise NotImplementedError()
 
     #@abstractmethod
     def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
-        pass
+        raise NotImplementedError()
 
     #@abstractmethod
     def predict_y(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
-        pass
+        raise NotImplementedError()
 

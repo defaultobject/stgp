@@ -6,6 +6,7 @@ from .kernels import Kernel
 from .likelihood import Likelihood
 from .models import BatchGP, VGP
 from .trainers import Trainer
+from .data import Data
 
 from .computation.log_marginal_likelihoods import *
 from .computation.marginals import *

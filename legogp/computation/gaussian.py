@@ -40,6 +40,7 @@ def log_gaussian_with_mask(Y, mu, sigma, mask):
     chex.assert_rank(mu, 2)
     chex.assert_rank(Y, 2)
     chex.assert_rank(sigma, 2)
+    chex.assert_rank(mask, 1)
 
 
     # ensure square matrix

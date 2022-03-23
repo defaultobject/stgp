@@ -25,22 +25,24 @@ import warnings
 
 @dispatch('Model', 'Batch')
 class BatchGP(Posterior):
-    def __init__(self, X=None, Y=None, inference: 'Batch'=None, likelihood: 'Likelihood'=None, kernel: 'Kernel'=None, prior: 'Transform' = None, **kwargs):
-
-        if X is None:
-            raise RuntimeError('X must be passed')
-
-        if Y is None:
-            raise RuntimeError('Y must be passed')
-
+    def __init__(
+        self, 
+        X=None, 
+        Y=None, 
+        data=None, 
+        inference: 'Batch'=None, 
+        likelihood: 'Likelihood'=None, 
+        kernel: 'Kernel'=None, 
+        prior: 'Transform' = None, 
+        **kwargs
+    ):
         # will save X, Y as a property
-        super(BatchGP, self).__init__(X, Y, **kwargs)
+        super(BatchGP, self).__init__(X, Y, data, **kwargs)
 
         self.inference = inference
         self._likelihood = likelihood
         self.kernel = kernel
         self._prior = prior
-        self.sparsity = NoSparsity(self.X) # Sparsity for batch GPs is not supported
 
         self.set_defaults()
 
@@ -51,10 +53,10 @@ class BatchGP(Posterior):
     def prior(self): return self._prior
 
     @property
-    def input_space_dim(self): return self.X.shape[1]
+    def input_space_dim(self): return self.data.X.shape[1]
 
     @property
-    def output_dim(self): return self.Y.shape[1]
+    def output_dim(self): return self.data.Y.shape[1]
 
     @property
     def input_dim(self): return self.output_dim
@@ -77,10 +79,16 @@ class BatchGP(Posterior):
                 if type(self.kernel) is not list:
                     self.kernel = [self.kernel]
 
-            # Construct independent prior
+            # Pass object to avoid storing multiple copies of X
+            X_ref = self.data._X
+            sparsity = [
+                NoSparsity(Z_ref = X_ref) 
+                for q in range(self.output_dim)
+            ]
 
+            # Construct independent prior
             self._prior = get_default_independent_prior(
-                self.X,
+                sparsity,
                 self.input_space_dim, 
                 self.output_dim, 
                 kernel_list=self.kernel
@@ -99,14 +107,9 @@ class BatchGP(Posterior):
                 self._likelihood = get_product_likelihood([self.likelihood])
 
 
-    def log_marginal_likelihood(self, X=None, Y=None):
-
-        if X is None:
-            X, Y = self.X, self.Y
-
+    def log_marginal_likelihood(self):
         nlml = self.inference.neg_log_marginal_likelihood(
-            X,
-            Y,
+            self.data,
             self, 
             self.likelihood,
             self.prior
@@ -116,8 +119,8 @@ class BatchGP(Posterior):
 
         return nlml
 
-    def get_objective(self, X=None, Y=None):
-        return self.log_marginal_likelihood(X, Y)
+    def get_objective(self):
+        return self.log_marginal_likelihood()
 
     def mean(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
@@ -137,11 +140,8 @@ class BatchGP(Posterior):
         return var_arr
 
     def predict_f(self, XS,  X=None, Y=None, diagonal=True, squeeze=True):
-        if X is None:
-            X, Y = self.X, self.Y
-
         mu_arr, var_arr =  self.inference.predict_f(
-            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
         )
 
         if squeeze:
@@ -150,10 +150,8 @@ class BatchGP(Posterior):
         return mu_arr, var_arr
 
     def predict_y(self, XS, diagonal=True, squeeze=True):
-        X, Y = self.X, self.Y
-
         mu_arr, var_arr =  self.inference.predict_y(
-            XS, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
         )
 
         if squeeze:
