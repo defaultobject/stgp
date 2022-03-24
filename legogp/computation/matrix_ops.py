@@ -6,6 +6,9 @@ from jax import jit
 from functools import partial
 import chex
 
+def to_block_diag(A):
+    return jax.scipy.linalg.block_diag(*A)
+
 @partial(jit, static_argnums=(1))
 def get_block_diagonal(A, block_size):
     N = A.shape[0]

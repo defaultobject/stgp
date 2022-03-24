@@ -1,6 +1,7 @@
 """Base transform class."""
 from ..utils.utils import ensure_module_list, can_batch, get_batch_type
 from batchjax import batch_or_loop, BatchType
+from ..computation.matrix_ops import to_block_diag
 
 import jax
 import jax.numpy as np
@@ -221,7 +222,7 @@ class Independent(LinearTransform):
             [None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_type = BatchType.LOOP
+            batch_type = get_batch_type(self.latents)
         )
 
         mean = np.reshape(
@@ -239,7 +240,7 @@ class Independent(LinearTransform):
             [None, None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_type = BatchType.LOOP
+            batch_type = get_batch_type(self.latents)
         )
 
         k_arr = np.reshape(
@@ -257,7 +258,7 @@ class Independent(LinearTransform):
             [None, 0],
             dim = self.num_latents,
             out_dim = 1,
-            batch_type = BatchType.LOOP
+            batch_type = get_batch_type(self.latents)
         )
 
         var = np.reshape(
@@ -269,6 +270,41 @@ class Independent(LinearTransform):
 
     def full_var(self, X1: np.ndarray) -> np.ndarray:
         return self.covar(X1, X1)
+
+    def state_space_representation(self, X_s):
+        F_blocks, L_blocks, Qc_blocks, H_blocks, P_inf_blocks = batch_or_loop(
+            lambda x_s, latent:  latent.kernel.to_ss(x_s),
+            [X_s, self.latents],
+            [None, 0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_type = get_batch_type(self.latents)
+        )
+
+        F = to_block_diag(F_blocks)
+        L = to_block_diag(L_blocks)
+        Qc = to_block_diag(Qc_blocks)
+        P_inf = to_block_diag(P_inf_blocks)
+        #H = np.hstack(H_blocks)
+        H = to_block_diag(H_blocks)
+
+        return F, L, Qc, H, P_inf
+
+
+    def expm(self, dt, X_s):
+        A_blocks = batch_or_loop(
+            lambda d, x_s, latent:  latent.kernel.expm(dt, x_s),
+            [dt, X_s, self.latents],
+            [None, None, 0],
+            dim = self.num_latents,
+            out_dim = 1,
+            batch_type = get_batch_type(self.latents)
+        )
+
+        return to_block_diag(A_blocks)
+
+
+        
 
 class SumTransform(LinearTransform):
     def __init__(self, t1: Transform, t2: Transform):

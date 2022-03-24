@@ -47,6 +47,7 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
             variance=V_tilde
         )]
 
+
         self.surrogate = surrogate_model(
             X = X,
             Y = Y_tilde,
@@ -155,6 +156,7 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
                 np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
                 [self.num_blocks, 1, 1]
             )
+
 
         surrogate_likelihood = BlockDiagonalGaussian(
             block_size=self.block_size,

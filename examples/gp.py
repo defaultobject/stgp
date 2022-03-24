@@ -1,3 +1,4 @@
+""" Single GP regression """
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
@@ -7,6 +8,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import RBF, ScaleKernel, BiasKernel
+from legogp.likelihood import Gaussian
 
 import objax
 import jax
@@ -20,65 +22,53 @@ from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-checkpoint_folder = Path('checkpoints')
-checkpoint_folder.mkdir(exist_ok=True)
+# Fix randomness
+np.random.seed(0)
 
-# generate data
-P = 10
+# Generate Data
+N = 100
 
-N = 50
-
-XS1 = np.linspace(-0.5, 1.5, 20)[:, None]
-XS2 = np.linspace(0, 1.5, 20)[:, None]
-XS_stacked = np.vstack([XS1, XS2])
-
-
-XS = np.linspace(-0.5, 1.5, 1000)[:, None]
 x = np.linspace(0, 1, N)
-y1 = np.sin(x*10)+0.01*np.random.randn(N)+2.0
-y2 = -np.sin(x*8)+0.01*np.random.randn(N)-1.0
-
+y = np.sin(x*10) + 0.1*np.random.randn(N)
 X = x[:, None]
-Y1 = y1[:, None]
-Y2 = y2[:, None]
+Y = y[:, None]
 
+XS = np.linspace(-1, 2, 1000)[:, None]
 
-m1 = lego.models.GP(X, Y1, kernel=ScaleKernel(RBF(lengthscales=[0.1]))+ScaleKernel(BiasKernel()))
-m2 = lego.models.GP(X, Y2, kernel=lego.kernels.deep_kernels.DeepRBF(m1))
+# Create Model
+m = lego.models.GP(
+    X, 
+    Y, 
+    kernel=ScaleKernel(RBF(lengthscales=[0.1])),
+    likelihood = Gaussian(variance=0.1)
+)
 
-model_list = [m2, m1]
+print(m.get_objective())
 
-epochs = 5000
-
-restore = False
-
-if restore:
-    m2.load_from_checkpoint(str(checkpoint_folder / 'mf'))
-else:
+if True:
+    # Train
+    epochs = 200
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
-        model_list, 
+        m, 
         objax.optimizer.Adam,
         0.01,
         epochs,
         callback = callback
     )
-    m2.checkpoint(str(checkpoint_folder / 'mf'))
 
+    # Plot learning curve
     plt.plot(learning_curve)
     plt.show()
 
-mu1, var1 = m1.predict_f(XS)
-mu2, var2 = m2.predict_f(XS)
+# Predict
+pred_mu, pred_var = m.predict_y(XS, squeeze=True)
 
-fig, axes = plt.subplots(2, 1)
+# Plot results
+fig = plt.figure(figsize=(10, 5))
+ax = plt.gca()
 
-axes[0].fill_between(np.squeeze(XS), np.squeeze(mu1 - 2*np.sqrt(var1)), np.squeeze(mu1 + 2*np.sqrt(var1)), alpha=0.4)
-axes[0].plot(XS, mu1)
-axes[0].scatter(X, Y1)
-
-axes[1].fill_between(np.squeeze(XS), np.squeeze(mu2 - 2*np.sqrt(var2)), np.squeeze(mu2 + 2*np.sqrt(var2)), alpha=0.4)
-axes[1].plot(XS, mu2)
-axes[1].scatter(X, Y2)
-
+ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 2*np.sqrt(pred_var)), np.squeeze(pred_mu + 2*np.sqrt(pred_var)), alpha=0.4)
+ax.plot(XS, pred_mu)
+ax.scatter(X, Y)
 plt.show()

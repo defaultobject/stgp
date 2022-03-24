@@ -8,7 +8,13 @@ from .. import Parameter
 
 class Input(objax.Module):
     def __init__(self, X, train=False):
-        self._X = Parameter(np.array(X), train=train, name='X')
+
+        if isinstance(X, Input):
+            self._X_ref = X # Store reference
+            self._X = None
+        else:
+            self._X = Parameter(np.array(X), train=train, name='X')
+            self._X_ref = None
 
     @property
     def shape(self):
@@ -19,17 +25,16 @@ class Input(objax.Module):
 
     @property
     def X(self):
-        return self._X.value
+        if self._X is not None:
+            return self._X.value
+
+        return self._X_ref.X
 
 class Data(objax.Module):
     def __init__(self, X, Y):
-        """
-            X: NxD
-            Y: NxP
-        """
-        chex.assert_rank(X, 2)
-        chex.assert_rank(Y, 2)
-        chex.assert_equal(X.shape[0], Y.shape[0])
+        #chex.assert_rank(X, 2)
+        #chex.assert_rank(Y, 2)
+        #chex.assert_equal(X.shape[0], Y.shape[0])
 
         self._Y = Parameter(np.array(Y), train=False, name='Y')
         self._X = Input(X, train=False)
@@ -186,9 +191,9 @@ class TemporalData(SequentialData):
 
         # Store data as objax parameters so that they can be used on GPUs etc
         if isinstance(X_time, Input):
-            self._X_time = X_time # Store as reference
+            self._X = X_time # Store as reference
         else:
-            self._X_time = Input(np.array(X_sorted), train=False)
+            self._X = Input(np.array(X_sorted), train=False)
 
         self._Y = Parameter(np.array(Y_sorted), train=False, name='Y')
 
@@ -206,7 +211,7 @@ class TemporalData(SequentialData):
 
     @property
     def X_time(self):
-        return self._X_time.X[:, 0]
+        return self._X.X[:, 0]
 
     @property
     def X_space(self):
@@ -214,7 +219,7 @@ class TemporalData(SequentialData):
 
     @property
     def X(self):
-        return self._X_time.X
+        return self._X.X
 
     @property
     def Y(self):

@@ -3,6 +3,8 @@ Sparsity excepts with a numpy array or a parameter object.
 """
 import objax
 import jax.numpy as np
+from batchjax import batch_or_loop
+from ..utils.utils import get_batch_type
 
 from ..data import Input
 from ..parameter import Parameter
@@ -55,4 +57,21 @@ class SpatialSparsity(StructuredSparsity):
     def Z(self):
         return self.raw_Z.value
 
+class StackedSparsity(Sparsity):
+    def __init__(self, sparsity_arr):
+        self.sparsity_arr = objax.ModuleList(sparsity_arr)
 
+    @property
+    def Z(self):
+        return batch_or_loop(
+            lambda Z: Z.Z,
+            [self.sparsity_arr],
+            [0],
+            dim=len(self.sparsity_arr),
+            out_dim=1,
+            batch_type = get_batch_type(self.sparsity_arr)
+        )
+
+
+class StackedNoSparsity(StackedSparsity, NoSparsity):
+    pass

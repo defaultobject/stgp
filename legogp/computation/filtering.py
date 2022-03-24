@@ -16,11 +16,13 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
+
     # Construct spatial mask
     M = np.multiply(
-        np.tile(H_k @ mask_k, [1, Y_k.shape[0]]),
+        np.tile(mask_k, [1, Y_k.shape[0]]),
         np.eye(Y_k.shape[0])
     )
+
 
     # -- KALMAN UPDATE --
     mu = M @ H_k @ m_
@@ -41,25 +43,24 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
 
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(
-            log_gaussian_with_mask(Y_k, mu, S, (H_k @ mask_k)[:, 0])
+        log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
 
     return m_k, P_k, log_Z_k
 
-def sequential_kalman_filter(data: 'SequentialData', kernel: 'Kernel', likelihood: 'Likelihood', N: int, store_intermediate: bool = False):
-
+def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood: 'Likelihood', N: int, store_intermediate: bool = False):
     x_t = data.X_time
     X_s = data.X_space
     Y = data.Y
+
+    # Get Filter parameters for corresponding prior
+    F, L, Qc, H, P_inf  = prior.state_space_representation(X_s)
 
     # Dont chex X_s shape as it might be None in temporal setting
     chex.assert_rank(x_t, 1)
     chex.assert_rank(Y, 3)
 
-    # Get Filter parameters for corresponding prior
-    F, L, Qc, H, P_inf = kernel.to_ss(X_s)
-
-    state_size = kernel.state_size()
+    state_size = H.shape[0]
     latent_size = P_inf.shape[0]
 
     m_inf = np.zeros([latent_size, 1])
@@ -72,7 +73,6 @@ def sequential_kalman_filter(data: 'SequentialData', kernel: 'Kernel', likelihoo
     # nan masking
     # construct mask so we can track where nans are
     mask_y = get_same_shape_mask(Y)
-    mask = np.repeat(mask_y, state_size, axis=1)
 
     # replace nans with zero to avoid nans in code
     Y = np.nan_to_num(Y, nan=0.0)
@@ -86,12 +86,12 @@ def sequential_kalman_filter(data: 'SequentialData', kernel: 'Kernel', likelihoo
         for k in s.range(N):
             Y_k = Y[k]
             dt_k = dt[k]
-            A_k = kernel.expm(dt_k, X_s)
+            A_k = prior.expm(dt_k, X_s)
             Q_k = P_inf - A_k @  P_inf @ A_k.T
             R_k = R[k]
 
             m_k, P_k, log_marg_lik_k = kalman_step(
-                Y_k, A_k, H, s.m, s.P, Q_k, R_k, mask[k]
+                Y_k, A_k, H, s.m, s.P, Q_k, R_k, mask_y[k]
             )
 
             s.m = m_k
@@ -126,14 +126,14 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, Q_k):
 
     return m, P, G
 
-def sequential_rts_smoother(data, m_filtered, P_filtered, kernel: 'Kernel', likelihood: 'Likelihood', N: int):
+def sequential_rts_smoother(data, m_filtered, P_filtered, prior: 'Prior', likelihood: 'Likelihood', N: int):
     x_t =  data.X_time
     X_s =  data.X_space
 
     N_t = data.Nt
     N_s = data.Ns
 
-    F, L, Qc, H, P_inf = kernel.to_ss(X_s)
+    F, L, Qc, H, P_inf  = prior.state_space_representation(X_s)
 
     state_size = P_inf.shape[0]
 
@@ -150,7 +150,7 @@ def sequential_rts_smoother(data, m_filtered, P_filtered, kernel: 'Kernel', like
         for k in s.range(N-2, -1, -1):
             dt_k = dt[k]
 
-            A_k = kernel.expm(dt_k, X_s)
+            A_k = prior.expm(dt_k, X_s)
             Q_k = P_inf - A_k @  P_inf @ A_k.T
 
             m_filtered_k = m_filtered[k, ...]
@@ -193,22 +193,21 @@ def sequential_rts_smoother(data, m_filtered, P_filtered, kernel: 'Kernel', like
 
         return s.smoothed_mean, s.smoothed_var
 
-def filter_to_obvs(filtered_m, filtered_P, kernel: 'Kernel'):
-    _, _, _, H, _ = kernel.to_ss()
+def filter_to_obvs(filtered_m, filtered_P, prior: 'Prior'):
+    _, _, _, H, _ = prior.state_space_representation()
     m =  ((H @ filtered_m.T).T)[..., 0]
     P = ((H @ (filtered_P @ H.T).T).T)[..., 0]
 
     return m, P
 
-def filter_and_smooth(data: 'SequentialData', kernel: 'Kernel', likelihood: 'Likelihood', N: int):
+def filter_and_smooth(data: 'SequentialData', prior: 'Prior', likelihood: 'Likelihood', N: int):
     log_marginal_lik, filtered_m, filtered_P = sequential_kalman_filter(
-            data, kernel, likelihood, N = N, store_intermediate=True
+            data, prior, likelihood, N = N, store_intermediate=True
     )
 
     smoothed_m, smoothed_P = sequential_rts_smoother(
-        data, filtered_m, filtered_P,  kernel, likelihood, N = N
+        data, filtered_m, filtered_P,  prior, likelihood, N = N
     )
-
 
     return log_marginal_lik, smoothed_m, smoothed_P
 

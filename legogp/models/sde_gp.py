@@ -13,6 +13,11 @@ from . import GP, BatchGP
 from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
 from ..defaults import get_default_likelihood
 from ..data import TemporalData, SpatioTemporalData
+from ..kernels import Matern32
+from ..likelihood import get_product_likelihood
+
+from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
+from ..sparsity import NoSparsity
 
 @dispatch(Model, 'Sequential')
 class SDE_GP(Posterior):
@@ -33,6 +38,7 @@ class SDE_GP(Posterior):
 
         self._likelihood = likelihood
         self.kernel = kernel
+        self._prior = prior
 
         self.set_defaults()
 
@@ -40,16 +46,20 @@ class SDE_GP(Posterior):
     def likelihood(self): return self._likelihood 
 
     @property
-    def input_space_dim(self): return self.X.shape[1]
+    def input_space_dim(self): return self.data.X.shape[1]
 
     @property
-    def output_dim(self): return 1
+    def output_dim(self): return self.data.Y.shape[1]
 
     @property
     def X(self): return self.data.X_sorted 
 
     @property
     def Y(self): return self.data.Y_sorted 
+
+    @property
+    def prior(self): return self._prior
+
 
     @property
     def Nt(self): 
@@ -59,18 +69,42 @@ class SDE_GP(Posterior):
     def set_defaults(self):
         """ Replace missing options with defaults """
 
-        # Only set a default kernel if we are in kernel mode and one has not been passed
-        if self.kernel is None:
-            warnings.warn('Using default Matern32 kernel with lengthscale 1.o')
-            self.kernel = Matern32(lengthscales=[1.0])
+        if (self.kernel is not None) and (self.prior is not None):
+            raise RuntimeError('Only kernel or a prior must be passed')
+
+        if self.prior is None:
+
+            # Only set a default kernel if we are in kernel mode and one has not been passed
+            warnings.warn('Using default Matern32 kernel with lengthscale 1.0')
+            self.kernel = [Matern32(lengthscales=[1.0]) for q in range(self.output_dim)]
+
+
+            # Pass object to avoid storing multiple copies of X
+            X_ref = self.data._X
+            sparsity = [
+                NoSparsity(Z_ref = X_ref) 
+                for q in range(self.output_dim)
+            ]
+
+            # Construct independent prior
+            self._prior = get_default_independent_prior(
+                sparsity,
+                self.input_space_dim, 
+                self.output_dim, 
+                kernel_list=self.kernel
+            )
 
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
 
+        if type(self.likelihood) == list:
+            self._likelihood = get_product_likelihood(self._likelihood)
+
+
     def log_marginal_likelihood(self):
         return sequential_kalman_filter(
             self.data,
-            self.kernel,
+            self.prior,
             self.likelihood,
             N = self.Nt
         )
