@@ -95,4 +95,19 @@ def single_output_spatial_data(N_time, N_space, NS_time, NS_space, seed=0):
 
     return XS, X, Y
 
+def multi_output_spatial_data(P, N_time, N_space, NS_time, NS_space, seed=0):
+    np.random.seed(seed)
+
+    X = create_grid(-1, 1, -1, 1, N_time, N_space)
+    N = X.shape[0]
+
+    y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
+    Y = y[:, None]
+
+    Y = np.hstack([Y for p in range(P)])
+
+    XS = create_grid(-1, 1, -1, 1, NS_time, NS_space)
+
+    return XS, X, Y
+
 

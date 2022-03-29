@@ -23,19 +23,21 @@ def marginal(data, approximate_posterior, likelihood, prior):
     """ tbd. """
     return approximate_posterior.m, approximate_posterior.S_blocks
 
-@dispatch('prediction', 'FullGaussianApproximatePosterior', Likelihood, Transform, Sparsity)
-def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity)
+def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
     Q = prior.num_latents
 
-    # Get variational parameters in latent-data format
-    m = approximate_posterior.m
-    S_chol = approximate_posterior.S_chol
+    # Variational parameters are in latent-data format
+    chex.assert_rank(q_m, 2)
+    chex.assert_rank(q_S, 3)
 
     # Get all Z in latent-data format
     Z_all = prior.get_Z()
 
     # Convert XS to latent_data format
     XS_tiled = np.tile(XS, [Q, 1, 1])
+
+    breakpoint()
 
     # Z does not need to be ordered, only X
     K_zz = prior.np_full_covar(Z_all, Z_all)
@@ -74,6 +76,11 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
 
     return _m, _S
 
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity')
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+    return q_m, q_S
+
+
 @dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, FreeSparsity)
 def marginal(data, approximate_posterior, likelihood, prior, sparsity):
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity[0])
@@ -84,17 +91,16 @@ def marginal(data, approximate_posterior, likelihood, prior, sparsity):
 
     return mu, var
 
-
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(data, approximate_posterior, likelihood, prior):
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.get_sparsity_list()
-    
+
     fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
     return fn(
-        data, approximate_posterior, likelihood, prior, sparsity_arr
+        data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
 
@@ -106,6 +112,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     sparsity_arr = prior.get_sparsity_list()
 
+
     # TODO: generalize sparsity?
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
@@ -113,6 +120,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
         XS, data, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
+    # Compute transformed q(f)
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)
 
     mu = mv_block_monte_carlo(

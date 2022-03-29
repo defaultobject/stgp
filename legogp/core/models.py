@@ -92,25 +92,26 @@ class Posterior(Model):
     def Y(self):
         raise NotImplementedError()
 
-    #@abstractmethod
     def log_marginal_likelihood(self, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
         raise NotImplementedError()
 
     @property
-    #@abstractmethod
     def prior(self):
         raise NotImplementedError()
 
     @property
-    #@abstractmethod
     def likelihood(self):
         raise NotImplementedError()
 
-    #@abstractmethod
-    def predict_f(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
+    def predict_f(self, XS: np.ndarray, *args, **kwargs):
         raise NotImplementedError()
 
-    #@abstractmethod
-    def predict_y(self, XS: np.ndarray, X: Optional[np.ndarray] = None, Y: Optional[np.ndarray] = None):
+    def predict_y(self, XS: np.ndarray, *args, **kwargs):
+        raise NotImplementedError()
+
+    def posterior_blocks(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def posterior(self, *args, **kwargs):
         raise NotImplementedError()
 

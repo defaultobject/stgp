@@ -112,13 +112,19 @@ def log_marginal_likelihood(
 
     return lml
 
-@dispatch(BatchGP, BlockDiagonalGaussian, LinearTransform)
+@dispatch(Data, BatchGP, BlockDiagonalGaussian, LinearTransform)
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: LinearTransform
+        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: LinearTransform
 ):
     """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
 
-    # Assume that are likelihoods are the same such that they can be batched over
+    X = data.X
+    Y = data.Y
+
+    chex.assert_rank(Y, 2)
+
+    Y_vec = vec_columns(Y)
+
 
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs
@@ -128,12 +134,7 @@ def log_marginal_likelihood(
     mean_arr = prior.vec_mean(X) 
 
 
-    # Ensure batched Y has rank 2
-    Y = Y[..., None]
-
-    Y_vec = vec_columns(Y)
-
-    likelihood_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+    likelihood_var = likelihood.full_variance
 
     # Permute so that the ordering between likelihood_var and Y is the same
     N = X.shape[0]
@@ -149,10 +150,14 @@ def log_marginal_likelihood(
         k_xx_arr + ordered_likelihood_var
     )
 
-@dispatch(BatchGP, BlockDiagonalGaussian, 'DataLatentPermutation')
+@dispatch(Data, BatchGP, BlockDiagonalGaussian, 'DataLatentPermutation')
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
+        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
 ):
+
+    X = data.X
+    Y = data.Y
+
     # precompute prior covariance
     # X is latent-data order. prior will permute this so that the output is in data-latent order.
     k_xx_arr = prior.full_covar(X, X)
@@ -173,10 +178,13 @@ def log_marginal_likelihood(
     )
 
 
-@dispatch(BatchGP, 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
+@dispatch(Data, BatchGP, 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
+        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: 'DataLatentPermutation'
 ):
+
+    X = data.X
+    Y = data.Y
     # TODO: needs to generalise
     likelihood = likelihood.likelihood_arr[0]
 

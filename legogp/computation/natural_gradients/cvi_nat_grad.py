@@ -8,12 +8,12 @@ from functools import partial
 from ... import settings
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
-from ..elbos.elbos import compute_expected_log_liklihood
+from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior
-from ...sparsity import NoSparsity, FreeSparsity
+from ...sparsity import NoSparsity, FreeSparsity, Sparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal
 
@@ -38,6 +38,12 @@ def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
 
 @jit
 def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
+     # Ensure matrix input
+    chex.assert_rank(
+        [Y_tilde, V_tilde, m, s, m_grad, s_grad],
+        [2, 2, 2, 2, 2, 2]
+    )
+
     # Get natural parameters for approximate likelihood
     lambda_1, lambda_2 = theta_to_lambda(Y_tilde, V_tilde)
 
@@ -89,9 +95,9 @@ def reparametise_vec_grad(m, m_grad, prior):
 
     return m_grad
 
-@dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
-    prior = model.prior
+def _get_mf_params(model):
+    """ Helper function to wrap up batching over the latent GPs to collect variational parameters"""
+    q = model.approximate_posterior
 
     # Get natural parameters
     q_list = model.approximate_posterior.approx_posteriors
@@ -107,63 +113,73 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         batch_type = get_batch_type(q_list)
     )
 
-    Z_tiled = prior.latent_obj.get_Z()
-
     # Compute q_m_z, q_S_z
-    mu_arr, var_arr = batch_or_loop(
-        lambda q, z: q.surrogate.posterior(diagonal=True),
-        [q_list, Z_tiled],
+    q_mu_z, q_var_z = batch_or_loop(
+        lambda q: q.surrogate.posterior(diagonal=True),
+        [q_list],
         [0, 0],
         dim = Q,
         out_dim=2,
         batch_type = get_batch_type(q_list)
     )
-    #mu_arr = mu_arr[..., None]
 
-    def partial_ell(m, q_m, q_S):
-        q = MeanFieldApproximatePosterior(approximate_posteriors=[
-            DiagonalGaussianApproximatePosterior(m=q_m[q], S_diag=q_S[q][..., 0], train=False)
-            for q in range(q_m.shape[0])
-        ])
+    return Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z
 
-        return compute_expected_log_liklihood(
-            m.data, 
-            m.likelihood, 
-            m.prior,
-            q,
-            m.inference
-        )
-
-    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(model, mu_arr, var_arr)
-
-    Y_tilde_arr = Y_tilde_arr[..., 0]
-    V_tilde_arr = V_tilde_arr[..., 0]
-
-    # Make sure shapes are correct
-    chex.assert_shape(Y_tilde_arr, mu_grads.shape)
-    chex.assert_shape(Y_tilde_arr, mu_arr.shape)
-    chex.assert_shape(V_tilde_arr, var_grads.shape)
-    chex.assert_shape(V_tilde_arr, var_arr.shape)
-
-    # Update natural parameters
-    new_Y_tilde, new_V_tilde = jax.vmap(
-        cvi_diagonal_update,
-        [0, 0, 0, 0, 0, 0, None],
-        0
-    )(
-        Y_tilde_arr, 
-        V_tilde_arr, 
-        mu_arr, 
-        var_arr,
-        mu_grads, 
-        var_grads, 
-        beta
+def partial_ell(m, q_m, q_S):
+    """ Helper function to compute the expected log likelihood using the variational paramters q_m, q_S"""
+    return compute_expected_log_liklihood_with_variational_params(
+        m.data,
+        q_m,
+        q_S,
+        m.likelihood, 
+        m.prior,
+        m.approximate_posterior,
+        m.inference
     )
 
-    chex.assert_shape(Y_tilde_arr, new_Y_tilde.shape)
-    chex.assert_shape(V_tilde_arr, new_V_tilde.shape)
 
-    return new_Y_tilde[..., None], new_V_tilde[..., None]
+@dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
+def natural_gradients(model, beta: float) -> np.ndarray:
+    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model)
+
+    # Different models store Y with different dimensions so we store it here so can 
+    #   match the shape in the output
+    Y_shape = Y_tilde_arr.shape
+
+    Q, N, B, _ = V_tilde_arr.shape
+
+    # Fix shapes for ELL
+    q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
+    q_var_z = np.reshape(q_var_z, [Q, N, 1])
+
+    # Compute dELL/dm, dEll/dS
+    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
+
+    # Fix shapes for Natgrads
+    Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
+    V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
+
+    q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
+    q_var_z = np.reshape(q_var_z, [Q, N, B, B])
+
+    mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
+    var_grads = np.reshape(var_grads, [Q, N, B, B])
+
+    # vmap over Q and N
+    new_Y_tilde, new_V_tilde = jax.vmap(
+        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None]),
+        [0, 0, 0, 0, 0, 0, None]
+    )(
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta
+    )
+
+    # Fix shapes for output
+    new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
+
+    return new_Y_tilde, new_V_tilde
+
 
 
 @dispatch('VGP', ConjugateApproximatePosterior, FreeSparsity)
@@ -171,6 +187,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     """
     Block CVI Natural Gradients
     """
+    breakpoint()
     prior = model.prior
 
     # Get natural parameters
@@ -254,55 +271,6 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-@dispatch('VGP', FullConjugateGaussian, NoSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
-    q = model.approximate_posterior
-    prior = model.prior
-    sparsity_arr = prior.get_sparsity_list()
-    surrogate_prior = q.surrogate.prior
-
-    # Collect CVI parameters
-    Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
-
-    Z_tiled = prior.get_Z()
-    Z = np.vstack(Z_tiled)
-
-    M = Z_tiled[0].shape[0]
-    Q = Z_tiled.shape[0]
-
-    # Predict in data-latent order
-    q_mu_z, q_var_z = q.surrogate.predict_blocks(Z_tiled, 1, Q, diagonal=False)
-
-    def partial_ell(m, q_m, q_S):
-        q = DataLatentBlockDiagonalApproximatePosterior(
-            m=q_m, S_blocks=q_S, train=False
-        )
-
-        return compute_expected_log_liklihood(
-            m.X, 
-            m.Y, 
-            m.likelihood, 
-            m.prior,
-            q,
-            m.inference
-        )
-
-    # TODO: symmetrize?
-    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
-        model, q_mu_z, q_var_z
-    )
-
-    new_Y_tilde, new_V_tilde = jax.vmap(
-        cvi_block_update,
-        [0, 0, 0, 0, 0, 0, None]
-    )(
-        Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta
-    )
-
-    # Fix shapes
-    new_Y_tilde = new_Y_tilde[..., 0]
-
-    return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', FullConjugateGaussian, FreeSparsity)
 def natural_gradients(model, beta: float) -> np.ndarray:
@@ -367,6 +335,42 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
+@dispatch('VGP', FullConjugateGaussian, NoSparsity)
+def natural_gradients(model, beta: float) -> np.ndarray:
+    q = model.approximate_posterior
+    prior = model.prior
+    sparsity_arr = prior.latent_obj.get_sparsity_list()
+
+    # Collect CVI parameters
+    Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
+
+    # Predict in data-latent order
+    q_mu_z, q_var_z = q.surrogate.posterior_blocks()
+
+    def partial_ell(m, q_m, q_S):
+        return compute_expected_log_liklihood_with_variational_params(
+            m.data,
+            q_m,
+            q_S,
+            m.likelihood, 
+            m.prior,
+            m.approximate_posterior,
+            m.inference
+        )
+
+    # TODO: symmetrize?
+    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
+
+    new_Y_tilde, new_V_tilde = jax.vmap(
+        cvi_block_update,
+        [0, 0, 0, 0, 0, 0, None]
+    )(
+        Y_tilde_arr, V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta
+    )
+
+    return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', ApproximatePosterior)
 def natural_gradients(model, beta: float) -> np.ndarray:
@@ -378,3 +382,6 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     return evoke('natural_gradients', model, q, sparsity_arr[0])(
         model, beta
     )
+
+
+

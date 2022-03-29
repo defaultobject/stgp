@@ -21,10 +21,10 @@ class Batch(Inference):
 
         return pred_mu, pred_var
 
-    def predict_f_blocks(self, XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal: bool):
+    def predict_f_blocks(self, XS, data, group_size, block_size, gp, likelihood, prior, diagonal: bool):
 
-        pred_mu, pred_var = evoke('predict_blocks', gp, likelihood, prior)(
-            XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal
+        pred_mu, pred_var = evoke('predict_blocks', data, gp, likelihood, prior)(
+            XS, data, group_size, block_size, gp, likelihood, prior, diagonal
         )
 
         return pred_mu, pred_var
@@ -39,10 +39,10 @@ class Batch(Inference):
 
         return pred_y_mu, pred_y_var
 
-    def predictive_covar(self, XS_1, XS_2, X, Y, gp, likelihood, prior):
+    def predictive_covar(self, XS_1, XS_2, data, gp, likelihood, prior):
 
-        pred_var = evoke('predict_covar', gp, likelihood, prior)(
-            XS_1, XS_2, X, Y, gp, likelihood, prior
+        pred_var = evoke('predict_covar', data, gp, likelihood, prior)(
+            XS_1, XS_2, data, gp, likelihood, prior
         )
 
         return pred_var

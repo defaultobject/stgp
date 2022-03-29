@@ -73,6 +73,9 @@ class NonLinearTransform(Transform):
     def latents(self):
         return self.latent_obj._latents_arr
 
+    def get_Z(self):
+        return self.latent_obj.get_Z()
+
 
 class LinearTransform(Transform):
     """
@@ -89,6 +92,10 @@ class LinearTransform(Transform):
     @property
     def num_latents(self):
         return len(self.latent_obj.latents)
+
+
+    def get_Z(self):
+        return self.latent_obj.get_Z()
 
     def transform_diagonal(self, mu, var):
         W = self.W

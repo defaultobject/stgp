@@ -32,6 +32,7 @@ from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_mon
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+    """ Catch all for single latent functions """
     return q_m, q_S
 
 @dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'FullSparsity')

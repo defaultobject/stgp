@@ -29,6 +29,7 @@ from objax import ModuleList
 from batchjax import batch_or_loop, BatchType
 
 
+# =========================== Likelihood specific GPR prediction equations ===========================
 @dispatch('BatchGP', Gaussian)
 def predict(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs):
     chex.assert_equal(K_xx.shape, (X.shape[0], X.shape[0]))
@@ -71,6 +72,7 @@ def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean
 
     return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
 
+# =========================== Model Specific prediction equations ===========================
 
 @dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
 def predict(XS, data, gp, likelihood, prior, diagonal: bool):
@@ -120,8 +122,11 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool):
 
     return mu_arr, var_arr
 
-@dispatch('BatchGP', ProductLikelihood, Independent)
-def predict_covar(XS_1, XS_2, X, Y, gp, likelihood, prior):
+@dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
+def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
+    X = data.X
+    Y = data.Y
+
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs
 
@@ -155,8 +160,11 @@ def predict_covar(XS_1, XS_2, X, Y, gp, likelihood, prior):
     return var_arr
 
 
-@dispatch('BatchGP', ProductLikelihood, LinearTransform)
-def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', ProductLikelihood, LinearTransform)
+def predict(XS, data, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
+
     Ns = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
@@ -182,8 +190,11 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', BlockDiagonalGaussian, LinearTransform)
-def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
+def predict(XS, data, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
+
     Ns = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
@@ -221,20 +232,21 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', BlockDiagonalGaussian, LinearTransform)
-def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
+def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
 
     Ns = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
-
 
     K_xs = prior.full_covar(XS, XS)
     K_xx = prior.full_covar(X, X)
     K_xs_x = prior.full_covar(XS, X)
 
     # Get liklihood
-    likelihood_var = jax.scipy.linalg.block_diag(*likelihood.variance)
+    likelihood_var = likelihood.full_variance
 
     # Permute so that the ordering between likelihood_var and Y is the same
     N = X.shape[0]
@@ -265,8 +277,11 @@ def predict_blocks(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
-def predict(XS, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
+def predict(XS, data, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
+
     likelihood = likelihood.likelihood_arr[0]
 
     if diagonal:
@@ -292,8 +307,10 @@ def predict(XS, X, Y, gp, likelihood, prior, diagonal):
 
     return mu, var
 
-@dispatch('BatchGP', 'BlockDiagonalGaussian', 'DataLatentPermutation')
-def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', 'BlockDiagonalGaussian', 'DataLatentPermutation')
+def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
 
     if diagonal:
         raise NotImplementedError()
@@ -317,8 +334,10 @@ def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diag
     return mu, var
 
 
-@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
-def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', 'BlockGaussianProductLikelihood', 'DataLatentPermutation')
+def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
 
     if diagonal:
         raise NotImplementedError()
@@ -344,8 +363,10 @@ def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diag
 
     return mu, var
 
-@dispatch('BatchGP', 'BlockGaussianProductLikelihood', 'Independent')
-def predict_blocks(XS, group_size, block_size, X, Y, gp, likelihood, prior, diagonal):
+@dispatch(Data, 'BatchGP', 'BlockGaussianProductLikelihood', 'Independent')
+def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diagonal):
+    X = data.X
+    Y = data.Y
 
     if diagonal:
         raise NotImplementedError()

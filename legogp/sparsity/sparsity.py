@@ -20,7 +20,7 @@ class FreeSparsity(Sparsity):
 class StructuredSparsity(Sparsity):
     pass
 
-class NoSparsity(FreeSparsity):
+class NoSparsity(Sparsity):
     def __init__(self, Z: np.ndarray = None, Z_ref: Parameter = None):
 
         if Z is not None:

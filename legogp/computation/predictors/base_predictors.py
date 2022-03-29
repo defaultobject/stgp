@@ -110,7 +110,7 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
 
     return mu, sig
 
-@partial(jit, static_argnums=(0))
+@partial(jit, static_argnums=(0, 1))
 def gaussian_prediction_blocks(group_size, block_size, Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     chex.assert_shape(K_xx, lik_var.shape)
 

@@ -6,12 +6,23 @@ from functools import partial
 import chex
 
 def pad_with_nan_to_make_grid(X, Y):
+    """
+    Adds additional missing obersations to X and Y to ensure that they are defined on a grid.
+
+    In:
+        X: N x D
+        Y: N x P
+    Out:
+        X: N_grid x D
+        Y: N_grid x P
+    """
+    # Ensure correct format
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
     chex.assert_equal(X.shape[0], Y.shape[0])
-    #converts data into grid
 
     N = X.shape[0]
+    P = Y.shape[1]
 
     #construct target grid
     unique_time = onp.unique(X[:, 0])
@@ -33,7 +44,7 @@ def pad_with_nan_to_make_grid(X, Y):
 
     #Find the indexes in X_tmp that we need to add to X to make a full grid
     _X = onp.vstack([X,  X_tmp])
-    _Y = onp.nan*onp.zeros([_X.shape[0], 1])
+    _Y = onp.nan*onp.zeros([_X.shape[0], P])
 
     _, idx = onp.unique(_X, return_index=True, axis=0)
     idx = idx[idx>=N]
@@ -48,18 +59,30 @@ def pad_with_nan_to_make_grid(X, Y):
 
 def order_sequentially_np(X, Y = None):
     """
-        lexsort uses the final column as the primary sort key and then sorts by each column from the last
-            1 -  roll the columns so the time is the last column
-            2 - get idx of new ordering
-            3 - roll X so that time is the first axis again
+    lexsort uses the final column as the primary sort key and then sorts by each column from the last
+        1 -  roll the columns so the time is the last column
+        2 - get idx of new ordering
+        3 - roll X so that time is the first axis again
 
-        NOTE: assumes that X can be represented as a spatio-temporal grid
+    NOTE: assumes that X can be represented as a spatio-temporal grid
+
+    In:
+        X: N x D
+        (optional) Y: N x P
+
+    Out:
+        X: Nt x Ns x D
+        (optional) Y: Nt x Nd x P
     """
-    assert len(X.shape) == 2
+    chex.assert_rank(X, 2)
 
     if Y is not None:
-        assert X.shape[0] == Y.shape[0]
+        chex.assert_equal(X.shape[0], Y.shape[0])
+        chex.assert_rank(Y, 2)
+        P = Y.shape[1]
 
+    # X is on a space time grid so can choose any time index to find out how many
+    #  spatial points there are
     time_zero = X[0, 0]
 
     # Get unique rows (time, space, features) to remove duplicates
@@ -97,8 +120,8 @@ def order_sequentially_np(X, Y = None):
     X = onp.reshape(X, [time_points, grid_size, X.shape[1]])
 
     if Y is not None:
-        Y = onp.reshape(Y, [time_points, grid_size, 1])
+        Y = onp.reshape(Y, [time_points, grid_size, P])
 
-        return reverse_idx, idx, X, Y
+        return unique_idx, reverse_idx, idx, X, Y
 
-    return reverse_idx, idx, X
+    return unique_idx, reverse_idx, idx, X

@@ -308,33 +308,32 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 # ================================= Special Cases =================================
 @dispatch(BlockDiagonalGaussian, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    """
-    Samples from the approximate posteriors need to be transformed through the prior and then the 
-        ELL is approximated using monte-carlo
-    """
     X, Y = data.X, data.Y
-    N, P = Y.shape
+
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 3)
+
+    N, P, _ = Y.shape
 
     variance = likelihood.variance
 
     num_blocks = likelihood.num_blocks
     block_size = likelihood.block_size
 
-    Y_vec = stack_rows(Y)
-    Y = block_from_vec(Y_vec, block_size)
+    #Y_vec = stack_rows(Y)
+    #Y = block_from_vec(Y_vec, block_size)
 
     # X is in latent-data order. First we transpose to convert to data-latent order and then
     # stack the rows through the reshape
-    X = np.reshape(np.transpose(X, [1, 0, 2]), [num_blocks, -1, X.shape[-1]])
+    #X = np.reshape(np.transpose(X, [1, 0, 2]), [num_blocks, -1, X.shape[-1]])
 
     # Ensure correct dimensions after batching
     q_f_mu_arr = q_f_mu_arr[..., None]
-    Y = Y[..., None]
 
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(
         full_gaussian_expected_log_likelihood,
-        [0, 0, 0, 0, 0],
+        [None, 0, 0, 0, 0],
         0
     )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
 

@@ -47,6 +47,14 @@ class BatchGP(Posterior):
         self.set_defaults()
 
     @property
+    def X(self):
+        return self.data.X
+
+    @property
+    def Y(self):
+        return self.data.Y
+
+    @property
     def likelihood(self): return self._likelihood
 
     @property
@@ -139,7 +147,9 @@ class BatchGP(Posterior):
         )
         return var_arr
 
-    def predict_f(self, XS,  X=None, Y=None, diagonal=True, squeeze=True):
+
+
+    def predict_f(self, XS,  diagonal=True, squeeze=True):
         mu_arr, var_arr =  self.inference.predict_f(
             XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
         )
@@ -164,10 +174,28 @@ class BatchGP(Posterior):
         X, Y = self.X, self.Y
 
         mu_arr, var_arr =  self.inference.predict_f_blocks(
-            XS, group_size, block_size, X, Y, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, 
+            self.data,
+            group_size, 
+            block_size, 
+            self, 
+            self.likelihood, 
+            self.prior, 
+            diagonal=diagonal
         )
 
         if squeeze:
             mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
 
         return mu_arr, var_arr
+
+    def posterior_blocks(self):
+        return self.predict_blocks(
+            self.data.X, 
+            group_size=1, 
+            block_size=self.likelihood.block_size,
+            diagonal=False
+        )
+
+    def posterior(self, diagonal=True):
+        return self.predict_f(self.data.X, diagonal=diagonal)

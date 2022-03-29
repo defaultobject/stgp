@@ -223,6 +223,10 @@ class LMC_Base(LinearTransform):
 
         return covar
 
+    def forward(self, f):
+        f = np.reshape(f, [-1, 1])
+        return (self.W @ f)[:, 0]
+
 # TODO: implement ICM
 
 class LMC(LMC_Base):

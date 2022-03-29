@@ -12,9 +12,10 @@ from ..core import Model, Posterior
 from . import GP, BatchGP
 from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
 from ..defaults import get_default_likelihood
-from ..data import TemporalData, SpatioTemporalData
+from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
 from ..kernels import Matern32
 from ..likelihood import get_product_likelihood
+from ..transforms import Independent
 
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 from ..sparsity import NoSparsity
@@ -49,13 +50,13 @@ class SDE_GP(Posterior):
     def input_space_dim(self): return self.data.X.shape[1]
 
     @property
-    def output_dim(self): return self.data.Y.shape[1]
+    def output_dim(self): return self.data.Y.shape[-1]
 
     @property
-    def X(self): return self.data.X_sorted 
+    def X(self): return self.data.X 
 
     @property
-    def Y(self): return self.data.Y_sorted 
+    def Y(self): return self.data.Y 
 
     @property
     def prior(self): return self._prior
@@ -93,6 +94,9 @@ class SDE_GP(Posterior):
                 self.output_dim, 
                 kernel_list=self.kernel
             )
+
+        if type(self.prior) != Independent:
+            self._prior = Independent([self._prior])
 
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
@@ -156,7 +160,7 @@ class SDE_GP(Posterior):
     def posterior_blocks(self):
         _, mu, var = filter_and_smooth(
             self.data,
-            self.kernel,
+            self.prior,
             self.likelihood,
             N = self.data.Nt
         )
@@ -165,7 +169,7 @@ class SDE_GP(Posterior):
     def posterior(self, diagonal=True):
         _, mu, var = filter_and_smooth(
             self.data,
-            self.kernel,
+            self.prior,
             self.likelihood,
             N = self.data.Nt
         )
@@ -187,7 +191,42 @@ class SDE_GP(Posterior):
     def predict_blocks(self, XS, group_size, block_size, diagonal=False):
         chex.assert_equal(group_size, 1)
 
-        return self.posterior_blocks()
+        NS = XS.shape[0]
+        chex.assert_equal(XS.shape[1], self.data.D)
+
+        X = onp.array(self.data.X)
+        Y = onp.reshape(self.data.Y, [-1, self.output_dim])
+
+        # Stack X first so that training data does not get removed when sorting data
+        X_stacked = onp.vstack([X, XS])
+
+        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
+        Y_stacked = onp.vstack([Y, Y_nans])
+
+        test_data = get_sequential_data_obj(
+            X_stacked,
+            Y_stacked,
+            sort=True 
+        )
+
+        _, mu, var = filter_and_smooth(
+            test_data,
+            self.prior,
+            self.likelihood,
+            N = test_data.Nt
+        )
+
+        # mu, var are in time - space format
+        # Therefore we just need to stack them
+        mu = np.reshape(mu, [-1, self.output_dim])
+        var = np.reshape(var, [-1, self.output_dim, self.output_dim])
+
+        # Unsort data and remove the training data
+        mu = test_data.unsort(mu)[self.data.N:]
+        var = test_data.unsort(var)[self.data.N:]
+
+        return mu, var
+
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
 
@@ -198,43 +237,36 @@ class SDE_GP(Posterior):
         chex.assert_equal(XS.shape[1], self.data.D)
 
         X = onp.array(self.data.X)
-        Y = onp.reshape(self.data.Y, [-1, 1])
+        Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
 
         # Stack X first so that training data does not get removed when sorting data
         X_stacked = onp.vstack([X, XS])
 
-        Y_nans = onp.NaN * onp.ones([NS, 1])
+        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
         Y_stacked = onp.vstack([Y, Y_nans])
 
-        if self.data.D == 1:
-            test_data = TemporalData(
-                X_stacked,
-                Y_stacked,
-                sort=True
-            )
 
-        else:
-            test_data = SpatioTemporalData(
-                X=X_stacked,
-                Y=Y_stacked,
-                sort=True
-            )
+        test_data = get_sequential_data_obj(
+            X_stacked,
+            Y_stacked,
+            sort=True 
+        )
 
 
         _, mu, var = filter_and_smooth(
             test_data,
-            self.kernel,
+            self.prior,
             self.likelihood,
             N = test_data.Nt
         )
 
         # mu, var are in time - space format
         # Therefore we just need to stack them
-        mu = np.reshape(mu, [-1, 1])
+        mu = np.reshape(mu, [-1, self.output_dim])
 
         # only keep diagonals
         var_diag = np.diagonal(var, axis1=1, axis2=2)
-        var_diag = np.reshape(var_diag, [-1, 1])
+        var_diag = np.reshape(var_diag, [-1, self.output_dim])
 
         # Unsort data and remove the training data
         mu = test_data.unsort(mu)[self.data.N:]

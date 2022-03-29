@@ -12,22 +12,25 @@ from ..utils.nan_utils import get_same_shape_mask
 
 @jit
 def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
+    """
+    """
     # -- KALMAN PREDICT --
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-
     # Construct spatial mask
+    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
+
     M = np.multiply(
-        np.tile(mask_k, [1, Y_k.shape[0]]),
+        m_vec,
         np.eye(Y_k.shape[0])
     )
-
 
     # -- KALMAN UPDATE --
     mu = M @ H_k @ m_
     var = M @ H_k @ P_ @ H_k.T @ M.T
 
+    #R_k = m_vec @ R_k @ m_vec.T
     #inovation mean and variance
     v = Y_k - mu
     S = var + R_k
@@ -53,6 +56,15 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     X_s = data.X_space
     Y = data.Y
 
+    # TODO: check this
+    # Stack outputs of Y vertically in latent-data format
+    Nt = x_t.shape[0]
+
+    Y = np.reshape(
+        Y,
+        [Nt, -1, 1]
+    )
+
     # Get Filter parameters for corresponding prior
     F, L, Qc, H, P_inf  = prior.state_space_representation(X_s)
 
@@ -67,8 +79,17 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
 
     dt = np.diff(x_t)
 
-    # TODO: this wont work for the normal gaussian
     R = likelihood.variance
+    out_dim = R.shape[-1]
+
+
+
+    # TODO: will not work for normal gaussian
+    # padding missing likelihood entries
+    points_added = Y.shape[0]-R.shape[0] 
+    R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
+    R = np.vstack([R, R_tmp])
+    R = R[data.unique_idx][data.sort_idx]
 
     # nan masking
     # construct mask so we can track where nans are
@@ -132,6 +153,9 @@ def sequential_rts_smoother(data, m_filtered, P_filtered, prior: 'Prior', likeli
 
     N_t = data.Nt
     N_s = data.Ns
+    P = data.P
+
+    out_dim = N_s * P
 
     F, L, Qc, H, P_inf  = prior.state_space_representation(X_s)
 
@@ -142,8 +166,8 @@ def sequential_rts_smoother(data, m_filtered, P_filtered, prior: 'Prior', likeli
     with loops.Scope() as s:
         s.m, s.P = m_filtered[-1, ...], P_filtered[-1, ...]
 
-        s.smoothed_mean = np.zeros([N_t, N_s])
-        s.smoothed_var = np.zeros([N_t, N_s, N_s])
+        s.smoothed_mean = np.zeros([N_t, out_dim])
+        s.smoothed_var = np.zeros([N_t, out_dim, out_dim])
         s.Gs = np.zeros([N_t, state_size, state_size])
         s.Ps = np.zeros([N_t, state_size, state_size])
 

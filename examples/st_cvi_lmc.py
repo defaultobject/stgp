@@ -6,7 +6,7 @@ jax_config.update('jax_disable_jit', False)
 import legogp as lego
 from legogp.trainers import SimpleTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32
+from legogp.kernels import Matern32, SpatioTemporalSeperableKernel
 from legogp.likelihood import Gaussian, BlockDiagonalGaussian
 from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj
 from legogp.sparsity import NoSparsity, StackedNoSparsity
@@ -27,7 +27,7 @@ from pathlib import Path
 import stdata
 import pandas as pd
 
-from data_zoo import multi_output_timeseries
+from data_zoo import multi_output_spatial_data
 
 import argparse
 
@@ -50,13 +50,25 @@ Q = 3
 P = 3
 N = 50
 
-XS, X, Y = multi_output_timeseries(P, N, 500, seed=0)
+Nt = 20
+Ns = 20
+
+XS, X, Y = multi_output_spatial_data(P, 20, 20, 200, 200, seed=0)
+
 
 Z = [NoSparsity(X) for q in range(Q)]
+
 Z_all = StackedNoSparsity(Z)
 
 # Construct Latent GPs
-latent_kernels = [Matern32(lengthscales=[0.1]) for q in range(Q)]
+latent_kernels = [
+    SpatioTemporalSeperableKernel(
+        Matern32(input_dim=1, lengthscales=[0.1]),
+        Matern32(input_dim=1, lengthscales=[0.1])
+    )
+    for q in range(Q)
+]
+
 latent_gps = [
     lego.models.GP(sparsity=Z[q], kernel=latent_kernels[q]) for q in range(Q)
 ] 
@@ -64,17 +76,19 @@ prior = lego.transforms.multi_output.LMC(latent_gps, output_dim = P)
 
 if True:
     sde_gp = lego.models.GP(
-        data=get_sequential_data_obj(X, Y, sort=True), 
-        likelihood=BlockDiagonalGaussian(block_size=Q, num_blocks=N),
+            data=get_sequential_data_obj(X=X, Y=Y[:, 0][:, None], sort=True), 
+        likelihood=BlockDiagonalGaussian(block_size=Ns, num_blocks=Nt),
         inference='Sequential',
         prior=prior.latent_obj
     )
     print(sde_gp.get_objective())
-    sde_mu, sde_var = sde_gp.predict_f(XS)
-
-    plt.plot(sde_mu)
+    sde_mu, sde_var = sde_gp.predict_f(X)
+    plt.imshow(np.reshape(Y[:, 0], [20, 20]));
     plt.show()
-    breakpoint()
+
+    plt.imshow(np.reshape(sde_mu[:, 0], [20, 20]));
+    plt.show()
+    exit()
 
 # Construct Approximate Posterior
 
