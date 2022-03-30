@@ -101,13 +101,48 @@ def multi_output_spatial_data(P, N_time, N_space, NS_time, NS_space, seed=0):
     X = create_grid(-1, 1, -1, 1, N_time, N_space)
     N = X.shape[0]
 
-    y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
-    Y = y[:, None]
+    Q = int(P*(P-1)/2)
+    z = correlation_transform(np.random.randn(Q)*1.0, 1.0)
 
-    Y = np.hstack([Y for p in range(P)])
+    # Random correlation cholesky
+    L = np.array(get_correlation_cholesky(z, P, Q))
+    R = L @ L.T
+
+    # Random (postive) variances
+    V = np.exp(np.random.uniform(0, 1, P))
+
+    # Get random covariance cholesky
+    W = np.diag(V) @ L
+
+    # Random lengthscales for latent functions
+    lengthscales = [0.5*np.random.random(2) for p in range(P)]
+
+    # Random output noise for each output
+    lik_noise = np.random.random(P)*0.1
+
+    #Get P samples from GPs with unit variance
+    latent_fn = []
+    for i in range(P):
+        K= lego.kernels.RBF(
+            input_dim=2,
+            lengthscales=np.array(lengthscales[i]), 
+        )
+        K_xx = K.K(X, X) + np.eye(N)*1e-7
+        latent = np.random.multivariate_normal(np.zeros(N), K_xx)
+        latent_fn.append(latent[:, None])
+
+    latents = np.concatenate(latent_fn, axis=1)
+
+    #Create correlatation between the P samples
+    correlated_latents = (W @ latents.T).T
+   
+    #Add output specific noise
+    for i in range(P):
+        correlated_latents[:, i] = correlated_latents[:, i] + lik_noise[i]*np.random.randn(N)
+
 
     XS = create_grid(-1, 1, -1, 1, NS_time, NS_space)
 
-    return XS, X, Y
+    return XS, X, correlated_latents
 
 

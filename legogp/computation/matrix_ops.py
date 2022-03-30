@@ -11,6 +11,8 @@ def to_block_diag(A):
 
 @partial(jit, static_argnums=(1))
 def get_block_diagonal(A, block_size):
+    chex.assert_rank(A, 2)
+
     N = A.shape[0]
 
     num_blocks = N / block_size
@@ -27,6 +29,11 @@ def get_block_diagonal(A, block_size):
     chex.assert_shape(blocks, [num_blocks, block_size, block_size])
 
     return blocks
+
+@partial(jit, static_argnums=(1))
+def batched_block_diagional(A, block_size):
+    chex.assert_rank(A, 3)
+    return jax.vmap(get_block_diagonal, [0, None])(A, block_size)
 
 @jit
 def cartesian_product(X, Y):

@@ -17,13 +17,12 @@ from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_ch
 
 from .predictors.base_predictors import gaussian_prediction_blocks
 
-
 @jit
 def gaussian_spatial_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, Ktt, m, S_chol, mean_x, mean_xs):
     """
     Computes:
-        mu = [ I ⊗ Ksz Kzz⁻¹ ] m
-        var = diag[ Ktt ] ⊗ diag[ Kss - Ksz Kzz⁻¹ Kss] - diag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
+        mu =  Ksz Kzz⁻¹ m
+        var =  Ktt * diag[ Kss - Ksz Kzz⁻¹ Kss] + diag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
     """
 
     Kxsxs_diag = np.squeeze(Kxsxs_diag)
@@ -89,7 +88,6 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
     sig = np.reshape(sig, [N, N])
 
     return mu, sig
-
 
 @jit
 def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:

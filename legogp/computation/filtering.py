@@ -56,14 +56,9 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     X_s = data.X_space
     Y = data.Y
 
-    # TODO: check this
-    # Stack outputs of Y vertically in latent-data format
     Nt = x_t.shape[0]
-
-    Y = np.reshape(
-        Y,
-        [Nt, -1, 1]
-    )
+    Ns = X_s.shape[0]
+    P = Y.shape[-1]
 
     # Get Filter parameters for corresponding prior
     F, L, Qc, H, P_inf  = prior.state_space_representation(X_s)
@@ -81,6 +76,14 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
 
     R = likelihood.variance
     out_dim = R.shape[-1]
+
+    # Y has shape Nt x Ns x P
+    # At each timestep we need latent-data order because of how the state space is representated
+    # To convert to latent-data order we just need to stack each spatials observations
+    Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, Ns*P])
+
+    # Ensure rank 2 at each time step
+    Y = Y[..., None]
 
 
     # TODO: will not work for normal gaussian

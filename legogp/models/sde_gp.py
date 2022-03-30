@@ -266,7 +266,6 @@ class SDE_GP(Posterior):
             sort=True
         )
 
-
         X = onp.array(self.data.X)
         Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
 
@@ -290,21 +289,27 @@ class SDE_GP(Posterior):
             N = test_data.Nt
         )
 
-        # 
         mu, var_diag = evoke('spatial_conditional', XS_data, test_data, self, self.prior)(
             XS_data, test_data, mu, var, self, True
         )
 
+        # mu/var is in latent-temporal-spatial format
+        # Convert to temporal-spatial-latent format
+
+        mu = np.transpose(mu, [1, 2, 0, 3])
+        var_diag = np.transpose(var_diag, [1, 2, 0, 3])
+
         # Unsort data and remove the training data
-        mu = all_temporal_data.unsort(mu[0])[self.data.Nt:]
-        var_diag = all_temporal_data.unsort(var_diag[0])[self.data.Nt:]
+        mu = all_temporal_data.unsort(mu)[self.data.Nt:]
+        var_diag = all_temporal_data.unsort(var_diag)[self.data.Nt:]
+
 
         # mu, var are in time - space format
         # Therefore we just need to stack them
         mu = np.reshape(mu, [-1, self.output_dim])
         var_diag = np.reshape(var_diag, [-1, self.output_dim])
 
-        return mu, var_diag
+        return mu.T, var_diag.T
 
     def predict_y(self, XS, squeeze=True):
         pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)

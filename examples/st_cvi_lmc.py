@@ -44,27 +44,56 @@ parser.add_argument( '--batch', action='store_true')
 cmd_args = vars(parser.parse_args())
 
 
+def plot_data(X, Y, Nt, Ns):
+    P = Y.shape[-1]
+    fig, axes = plt.subplots(1, P)
+
+    N = Y.shape[0]
+    for p in range(P):
+        axes[p].imshow(
+            Y[:, p].reshape(Nt, Ns)
+        )
+
+    plt.show()
+
+def plot_res(mu, var, Nt, Ns):
+    P = mu.shape[0]
+    fig, axes = plt.subplots(1, P)
+
+    N = Y.shape[0]
+    for p in range(P):
+        axes[p].imshow(
+            mu[p].reshape(Nt, Ns)
+        )
+
+    plt.show()
 
 # Generate data
 Q = 3
 P = 3
-N = 50
 
-Nt = 20
-Ns = 20
+Nt = 50
+Ns = 50
 
-XS, X, Y = multi_output_spatial_data(P, 20, 20, 200, 200, seed=0)
+Nts = 500
+Nss = 500
 
+XS, X, Y = multi_output_spatial_data(P, Nt, Ns, Nts, Nss, seed=0)
+
+#Y[:, 1] = 100*Y[:, 1]
+#Y[:, 2] = -100*Y[:, 1]
+
+if False:
+    plot_data(X, Y, Nt, Ns)
 
 Z = [NoSparsity(X) for q in range(Q)]
-
 Z_all = StackedNoSparsity(Z)
 
 # Construct Latent GPs
 latent_kernels = [
     SpatioTemporalSeperableKernel(
-        Matern32(input_dim=1, lengthscales=[0.1]),
-        Matern32(input_dim=1, lengthscales=[0.1])
+        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]),
+        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[1])
     )
     for q in range(Q)
 ]
@@ -76,18 +105,17 @@ prior = lego.transforms.multi_output.LMC(latent_gps, output_dim = P)
 
 if True:
     sde_gp = lego.models.GP(
-            data=get_sequential_data_obj(X=X, Y=Y[:, 0][:, None], sort=True), 
-        likelihood=BlockDiagonalGaussian(block_size=Ns, num_blocks=Nt),
+        data=get_sequential_data_obj(X=X, Y=Y, sort=True), 
+        likelihood=BlockDiagonalGaussian(block_size=Ns*Q, num_blocks=Nt),
         inference='Sequential',
         prior=prior.latent_obj
     )
     print(sde_gp.get_objective())
-    sde_mu, sde_var = sde_gp.predict_f(X)
-    plt.imshow(np.reshape(Y[:, 0], [20, 20]));
-    plt.show()
+    sde_mu, sde_var = sde_gp.predict_f(XS)
 
-    plt.imshow(np.reshape(sde_mu[:, 0], [20, 20]));
-    plt.show()
+    plot_data(X, Y, Nt, Ns)
+    plot_res(sde_mu, sde_var, Nts, Nss)
+
     exit()
 
 # Construct Approximate Posterior
