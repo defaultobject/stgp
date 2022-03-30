@@ -125,3 +125,29 @@ def order_sequentially_np(X, Y = None):
         return unique_idx, reverse_idx, idx, X, Y
 
     return unique_idx, reverse_idx, idx, X
+
+def add_temporal_points(XS: 'Data', X: 'Data'):
+    """
+    Only add new temporal points to X from XS.
+    """
+
+    Nt = XS.Nt
+    Ns = X.Ns
+
+    # Get spatial locations in X
+    spatial_locations = X.X_space
+
+    # Unique time points in XS
+    unique_time_points = XS.X_time
+
+    # ensure rank 1
+    unique_time_points = onp.reshape(unique_time_points, [-1])
+
+    # Create spatio-temporal grid from unique_time_points and spatial_locations
+    new_st_points = onp.hstack([
+        np.repeat(unique_time_points, X.Ns)[:, None],
+        np.tile(spatial_locations, [Nt,  1])
+    ])
+
+    return new_st_points
+

@@ -83,13 +83,14 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     out_dim = R.shape[-1]
 
 
-
     # TODO: will not work for normal gaussian
-    # padding missing likelihood entries
-    points_added = Y.shape[0]-R.shape[0] 
-    R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
-    R = np.vstack([R, R_tmp])
-    R = R[data.unique_idx][data.sort_idx]
+    if False:
+        # padding missing likelihood entries
+        # NOTE: only works in time
+        points_added = Y.shape[0]-R.shape[0] 
+        R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
+        R = np.vstack([R, R_tmp])
+        R = R[data.unique_idx][data.sort_idx]
 
     # nan masking
     # construct mask so we can track where nans are
@@ -97,6 +98,7 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
 
     # replace nans with zero to avoid nans in code
     Y = np.nan_to_num(Y, nan=0.0)
+
 
     with loops.Scope() as s:
         s.log_marginal_lik = 0.0

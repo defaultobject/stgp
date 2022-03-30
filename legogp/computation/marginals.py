@@ -19,12 +19,11 @@ from .predictors.base_predictors import gaussian_prediction_blocks
 
 
 @jit
-def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+def gaussian_spatial_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, Ktt, m, S_chol, mean_x, mean_xs):
     """
-    Let A = K(XS, X) K(X, X)^{-1} then
-        
-        N(f_s) = \int N(f_s | A (f - mean_x) + mean_s, K(XS, XS) - A K(X, XS)) N(f \mid m, S) df
-               = N(f_s | mean_s + A (m-mean_x), K(XS, XS) - A K(X, XS) + A S A^T)
+    Computes:
+        mu = [ I ⊗ Ksz Kzz⁻¹ ] m
+        var = diag[ Ktt ] ⊗ diag[ Kss - Ksz Kzz⁻¹ Kss] - diag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
     """
 
     Kxsxs_diag = np.squeeze(Kxsxs_diag)
@@ -35,13 +34,26 @@ def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs
     A2 = (S_chol.T @ A1).T # N x M 
 
     mu = mean_xs + A1.T @ (m-mean_x) # N x 1
-    sig = Kxsxs_diag - np.sum(np.square(A), axis=0) + np.sum(np.square(A2), axis=1) #N x 1
+    sig = Ktt * (Kxsxs_diag - np.sum(np.square(A), axis=0)) + np.sum(np.square(A2), axis=1) #N x 1
 
     #ensure correct shapes
     mu = np.reshape(mu, [mu.shape[0], 1])
     sig = np.reshape(sig, [sig.shape[0], 1])
 
     return mu, sig
+
+@jit
+def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+    """
+    Let A = Kxz Kzz⁻¹ then
+        
+        N(f_s) = ∫ N(f_s | A (f - mean_x) + mean_s, Kxx - A Kzx) N(f | m, S) df
+               = N(f_s | mean_s + A (m-mean_x), Kxx - A Kzx + A S A^T)
+    """
+
+    return gaussian_spatial_conditional_diagional(
+        XS, X, Kzz, Kxz, Kxsxs_diag, 1, m, S_chol, mean_x, mean_xs
+    )
 
 @jit
 def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_chol, mean_x, mean_xs) -> np.ndarray:
@@ -102,8 +114,6 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
 
     return mu, var
 
-
-
 @jit
 def gaussian_conditional_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:
     k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
@@ -138,8 +148,6 @@ def whitened_gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, K
     chex.assert_rank(mu, 2)
     chex.assert_rank(sig_chol, 2)
 
-
-
     k_zz_chol = cholesky(add_jitter(k_zz, settings.jitter))
 
     print(k_zz)
@@ -167,8 +175,6 @@ def whitened_gaussian_conditional_full(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, K
             g1 defines the distribution of the conditional p(f*|f)
             g2 defines the distribution that the expectation is wrt E_{q(f)} [ . ]
     """
-
-
     k_zz = Kzz
     k_xz = Kxz
     k_xsxs = Kxsxs
@@ -187,3 +193,4 @@ def whitened_gaussian_conditional_full(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, K
     sig = k_xsxs - k_xz @ A + A1.T @ sig @ A1
 
     return mu, sig
+

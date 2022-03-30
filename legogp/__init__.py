@@ -13,6 +13,7 @@ from .computation.marginals import *
 from .computation.predictors import *
 from .computation.elbos import *
 from .computation.natural_gradients import *
+from .computation.spatial_conditionals import *
 
 from .data import *
 

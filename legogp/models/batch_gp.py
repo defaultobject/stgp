@@ -148,7 +148,6 @@ class BatchGP(Posterior):
         return var_arr
 
 
-
     def predict_f(self, XS,  diagonal=True, squeeze=True):
         mu_arr, var_arr =  self.inference.predict_f(
             XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal

@@ -269,7 +269,6 @@ class TemporalData(SequentialData):
         self.output_dim = 1
         self.P = 1
 
-
     @property
     def X_time(self):
         return self._X.X[:, 0]

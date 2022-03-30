@@ -13,6 +13,7 @@ from . import GP, BatchGP
 from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
 from ..defaults import get_default_likelihood
 from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
+from ..data.sequential import add_temporal_points
 from ..kernels import Matern32
 from ..likelihood import get_product_likelihood
 from ..transforms import Independent
@@ -229,29 +230,58 @@ class SDE_GP(Posterior):
 
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
+        """
+        We use the Kalman filter and smoother to predict and the temporal slices of XS,
+        and then use the results to extrapolate to the new spatial locations.
+
+        Whilst we could use the Kalman smoother to predict at all these locations, having them 
+        separate requires less pre-processing of the data, and having them separate is required for
+        CVI anyway.
+
+        In:
+            XS: Ns x D
+
+        """
 
         if diagonal is False:
             raise NotImplementedError()
 
-        NS = XS.shape[0]
         chex.assert_equal(XS.shape[1], self.data.D)
+
+        NS = XS.shape[0]
+        YS_nans = onp.NaN * onp.ones([NS, self.output_dim])
+
+        XS_data = get_sequential_data_obj(
+            XS, 
+            YS_nans,
+            sort=True
+        )
+
+        # Get all ordered temporal points
+        # This will be uses to unsort the results
+        all_t = np.vstack([self.data.X_time[:, None], XS_data.X_time[:, None]])
+        all_temporal_data = get_sequential_data_obj(
+            all_t,
+            np.ones_like(all_t), # Dummy data, we only care about X here
+            sort=True
+        )
+
 
         X = onp.array(self.data.X)
         Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
 
+        XS_new = add_temporal_points(XS_data, self.data)
+        YS_new_nans = onp.NaN * onp.ones([XS_new.shape[0], self.output_dim])
+
         # Stack X first so that training data does not get removed when sorting data
-        X_stacked = onp.vstack([X, XS])
-
-        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
-        Y_stacked = onp.vstack([Y, Y_nans])
-
+        X_stacked = onp.vstack([X, XS_new])
+        Y_stacked = onp.vstack([Y, YS_new_nans])
 
         test_data = get_sequential_data_obj(
             X_stacked,
             Y_stacked,
             sort=True 
         )
-
 
         _, mu, var = filter_and_smooth(
             test_data,
@@ -260,17 +290,19 @@ class SDE_GP(Posterior):
             N = test_data.Nt
         )
 
+        # 
+        mu, var_diag = evoke('spatial_conditional', XS_data, test_data, self, self.prior)(
+            XS_data, test_data, mu, var, self, True
+        )
+
+        # Unsort data and remove the training data
+        mu = all_temporal_data.unsort(mu[0])[self.data.Nt:]
+        var_diag = all_temporal_data.unsort(var_diag[0])[self.data.Nt:]
+
         # mu, var are in time - space format
         # Therefore we just need to stack them
         mu = np.reshape(mu, [-1, self.output_dim])
-
-        # only keep diagonals
-        var_diag = np.diagonal(var, axis1=1, axis2=2)
         var_diag = np.reshape(var_diag, [-1, self.output_dim])
-
-        # Unsort data and remove the training data
-        mu = test_data.unsort(mu)[self.data.N:]
-        var_diag = test_data.unsort(var_diag)[self.data.N:]
 
         return mu, var_diag
 
