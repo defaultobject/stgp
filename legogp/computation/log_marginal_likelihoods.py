@@ -133,7 +133,6 @@ def log_marginal_likelihood(
     k_xx_arr = prior.full_covar(X, X)
     mean_arr = prior.vec_mean(X) 
 
-
     likelihood_var = likelihood.full_variance
 
     # Permute so that the ordering between likelihood_var and Y is the same
