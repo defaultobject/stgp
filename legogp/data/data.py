@@ -7,9 +7,17 @@ from .sequential import order_sequentially_np, pad_with_nan_to_make_grid
 from .. import Parameter
 
 class Input(objax.Module):
+    """ Base class for storing Input X.  """
     def __init__(self, X, name='X', train=False):
+        """
+        X can either be an array for another Input object. If X is an array we store it as a parameter, otherwise
+            we just store the object.
+        """
 
-        if isinstance(X, Input):
+        if X is None:
+            self._X = None
+            self._X_ref = None
+        elif isinstance(X, Input):
             self._X_ref = X # Store reference
             self._X = None
         else:
@@ -28,18 +36,56 @@ class Input(objax.Module):
         if self._X is not None:
             return self._X.value
 
-        return self._X_ref.X
+        elif self._X_ref is not None:
+            return self._X_ref.X
+
+        return None
+
+    @property
+    def value(self):
+        """ Mimic Parameter object. """
+        return self.X
+
+
+class SpatialTemporalInput(Input):
+    def __init__(self, X_time, X_space, train=False):
+        self._X_time = Input(X_time, name='X_Time', train=False)
+        self._X_space = Input(X_space, name='X_Space', train=train)
+
+        self.Nt = self._X_time.shape[0]
+        self.Ns = self._X_space.shape[0]
+        self.D = self._X_space.shape[1] + 1 # Plus one for the temporal dim
+
+    @property
+    def X_time(self):
+        return self._X_time.X
+
+    @property
+    def X_space(self):
+        return self._X_space.X
+
+    @property
+    def X(self):
+        # We return X so that it is already ordered.
+        #  ie in time-space ordering
+        X_t = np.repeat(self.X_time[:, None], self.Ns)[:, None]
+        X_s = np.tile(self.X_space, [self.Nt, 1])
+
+        X = np.hstack([X_t, X_s])
+
+        return X
+
 
 class Data(objax.Module):
     def __init__(self, X, Y):
-        #chex.assert_rank(X, 2)
-        #chex.assert_rank(Y, 2)
-        #chex.assert_equal(X.shape[0], Y.shape[0])
-
         self._Y = Parameter(np.array(Y), train=False, name='Y')
-        self._X = Input(X, train=False)
+        self.save_X(X, train=False, name='X')
 
         self.N = Y.shape[0]
+
+    @property
+    def base(self):
+        return self
 
     @property
     def Y(self):
@@ -87,16 +133,18 @@ class SequentialData(Data):
         num_original_points = X.shape[0]
 
 
+        # Adding missing points to make the full spatio-temporal grid
         points_added, X_padded, Y_padded = pad_with_nan_to_make_grid(
             X,
             Y
         )
 
+        # Convert to time-space format
         unique_idx, reverse_unique_idx, sort_idx, X_sorted, Y_sorted = order_sequentially_np(
             X_padded, Y_padded
         )
 
-
+        # Save sorting indexes so that this sorting function can be reversed
         self.num_original_points = num_original_points
         self.num_points_added = points_added
         self.unique_idx = unique_idx
@@ -118,6 +166,7 @@ class SequentialData(Data):
         return self._x_time.value
 
     def unsort(self, A):
+        """ Reverse the sorting steps performed in self.sort """
         return A[self.sort_idx][self.reverse_unique_idx][:self.num_original_points]
 
     @property
@@ -128,14 +177,23 @@ class SequentialData(Data):
 class SpatioTemporalData(SequentialData):
     def __init__(self, X_time = None, X_space = None, X = None,  Y = None, sort=True):
         """
+        Base class for Spatio-temporal Data
+
 
         There are two cases supported:
 
-        1) X is already sorted 
+        1) X is already sorted and X_time + X_space are passed
 
             X_time: Nt  
             X_space: Ns x D
             X: None
+            Y: Nt x Ns x P
+
+        3) X is already sorted and X is passed
+
+            X_time: None  
+            X_space: None
+            X: Nt * Ns x D
             Y: Nt x Ns x P
 
         2) X is not sorted 
@@ -145,13 +203,17 @@ class SpatioTemporalData(SequentialData):
             X: N x 1 
             Y: N x P
 
+        If Y is None, then only X will be sorted
+
         """
 
         if sort:
             # X_time and X_space are None
             if X is None: raise RuntimeError('X must be passed')
 
-            chex.assert_rank([X, Y], [2, 2])
+            chex.assert_rank(X,  2)
+            if Y is not None:
+                chex.assert_rank(Y,  2)
 
             X_sorted, Y_sorted = self.sort(X, Y)
 
@@ -161,44 +223,45 @@ class SpatioTemporalData(SequentialData):
             X_space = X_sorted[0, :, 1:]
             Y = Y_sorted
 
-        chex.assert_rank(X_time, 1)
-        chex.assert_rank(X_space, 2)
-        chex.assert_rank(Y, 3)
-        chex.assert_equal(X_time.shape[0], Y.shape[0])
-        chex.assert_equal(X_space.shape[0], Y.shape[1])
 
-        # Y is in time - space order
-        self._Y = Parameter(np.array(Y), train=False, name='Y')
-        self._x_time = Parameter(np.array(X_time), train=False, name='X_time')
-        self._X_space = Parameter(np.array(X_space), train=False, name='X_space')
+        if sort is True:
+            chex.assert_rank(X_time, 1)
+            chex.assert_rank(X_space, 2)
+            self._X = SpatialTemporalInput(X_time, X_space, train=False)
+        else:
+            self._X = X
+
+        if Y is not None:
+            self._Y = Parameter(np.array(Y), train=False, name='Y')
+            self.P = Y.shape[2]
 
         # Useful statistcs of the data
-        self.Nt = X_sorted.shape[0]
-        self.Ns = X_space.shape[0]
-        self.D = X_space.shape[1]+1
+        self.Nt = self._X.Nt
+        self.Ns = self._X.Ns
+        self.D = self._X.D
         self.N = self.Ns*self.Nt
-        self.P = Y.shape[2]
+
+        self.check_shapes()
+
+    def check_shapes(self):
+        pass
+        #chex.assert_rank(Y, 3)
+        #chex.assert_equal(self._X.X_time.shape[0], Y.shape[0])
+        #chex.assert_equal(self._X.X_space.shape[0], Y.shape[1])
+
 
     @property
     def X(self):
         """ Constructs the full spatio-temporal input from the temporal and spatial parts. """
-
-        # We return X so that it is already ordered.
-        #  ie in time-space ordering
-        X_t = np.repeat(self.X_time[:, None], self.Ns)[:, None]
-        X_s = np.tile(self.X_space, [self.Nt, 1])
-
-        X = np.hstack([X_t, X_s])
-
-        return X
+        return self._X.X
 
     @property
     def X_space(self):
-        return self._X_space.value
+        return self._X.X_space
 
     @property
     def X_time(self):
-        return self._x_time.value
+        return self._X.X_time
 
     @property
     def Y(self):
@@ -217,6 +280,31 @@ class SpatioTemporalData(SequentialData):
 
         return Y
 
+class DataReshape(SpatioTemporalData):
+    """ Same functionality as SpatioTemporalData except Y is flat and is reshaped lazily """
+
+    def __init__(self, data, new_shape):
+        self.data = data
+        self.new_shape = new_shape
+
+    @property
+    def base(self):
+        return self.data.base
+
+    @property
+    def Y(self):
+        Y_raw = self.Y_flat
+        return np.reshape(Y_raw, self.new_shape)
+
+    @property
+    def Y_flat(self):
+        return self.data._Y.value
+    @property
+    def Y_flat(self):
+        return self.data._Y.value
+
+    def __getattr__(self, name, *args, **kwargs):
+        return getattr(self.data, name)
 
 class TemporalData(SequentialData):
     def __init__(self, X_time, Y, sort=True):

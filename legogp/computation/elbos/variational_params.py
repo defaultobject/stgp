@@ -92,6 +92,21 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
+@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+    """
+    output:
+        mu: NtxNs
+        var: NtxNsxNs
+    """
+    mu, var = approximate_posterior.surrogate.posterior_blocks()
+    Nt = mu.shape[0]
+    Ns = mu.shape[1]
+
+    mu = np.reshape(mu, [Nt, Ns])
+    var = np.reshape(var, [Nt, Ns, Ns])
+
+    return mu, var
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
     """
@@ -102,13 +117,12 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
     """
 
     block_size = likelihood.block_size
-    N = data.X.shape[0]
 
     mu, var = approximate_posterior.surrogate.posterior_blocks()
 
     # Normalize shapes
-    mu = np.reshape(mu, [N, block_size, 1])
-    var = np.reshape(var, [N, block_size, block_size])
+    mu = np.reshape(mu, [-1, block_size, 1])
+    var = np.reshape(var, [-1, block_size, block_size])
 
     return mu, var
 

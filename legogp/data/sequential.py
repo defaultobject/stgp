@@ -16,13 +16,17 @@ def pad_with_nan_to_make_grid(X, Y):
         X: N_grid x D
         Y: N_grid x P
     """
+
+    process_y = Y is not None
     # Ensure correct format
     chex.assert_rank(X, 2)
-    chex.assert_rank(Y, 2)
-    chex.assert_equal(X.shape[0], Y.shape[0])
+
+    if process_y:
+        chex.assert_rank(Y, 2)
+        chex.assert_equal(X.shape[0], Y.shape[0])
+        P = Y.shape[1]
 
     N = X.shape[0]
-    P = Y.shape[1]
 
     #construct target grid
     unique_time = onp.unique(X[:, 0])
@@ -44,16 +48,22 @@ def pad_with_nan_to_make_grid(X, Y):
 
     #Find the indexes in X_tmp that we need to add to X to make a full grid
     _X = onp.vstack([X,  X_tmp])
-    _Y = onp.nan*onp.zeros([_X.shape[0], P])
+
+    if process_y:
+        _Y = onp.nan*onp.zeros([_X.shape[0], P])
 
     _, idx = onp.unique(_X, return_index=True, axis=0)
     idx = idx[idx>=N]
 
     X_to_add = _X[idx, :]
-    Y_to_add = _Y[idx, :]
-
     X_grid = onp.vstack([X, X_to_add])
-    Y_grid = onp.vstack([Y, Y_to_add])
+
+    if process_y:
+        Y_to_add = _Y[idx, :]
+        Y_grid = onp.vstack([Y, Y_to_add])
+    else:
+        Y_grid = None
+
 
     return X_to_add.shape[0], X_grid, Y_grid
 
@@ -124,7 +134,7 @@ def order_sequentially_np(X, Y = None):
 
         return unique_idx, reverse_idx, idx, X, Y
 
-    return unique_idx, reverse_idx, idx, X
+    return unique_idx, reverse_idx, idx, X, None
 
 def add_temporal_points(XS: 'Data', X: 'Data'):
     """

@@ -1,12 +1,12 @@
 """
-Sparsity excepts with a numpy array or a parameter object.
+Sparsity accepts a numpy array or a parameter object.
 """
 import objax
 import jax.numpy as np
 from batchjax import batch_or_loop
 from ..utils.utils import get_batch_type
 
-from ..data import Input
+from ..data import Input, SpatialTemporalInput
 from ..parameter import Parameter
 
 class Sparsity(Input):
@@ -46,12 +46,13 @@ class FullSparsity(FreeSparsity):
 
 
 class SpatialSparsity(StructuredSparsity):
-    def __init__(self, Z: np.ndarray = None, Z_ref: Parameter = None):
+    def __init__(self, X_time, Z_space):
 
-        if Z is not None:
-            self.raw_Z = Parameter(np.array(Z), constraint=None, name='SpatialZ')
-        else:
-            self.raw_Z = Z_ref
+        self.raw_Z = SpatialTemporalInput(
+            X_time = X_time,
+            X_space = Z_space,
+            train=True
+        )
 
     @property
     def Z(self):

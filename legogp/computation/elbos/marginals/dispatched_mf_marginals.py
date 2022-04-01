@@ -35,6 +35,43 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
     """ Catch all for single latent functions """
     return q_m, q_S
 
+@dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+
+    data_Z = sparsity.raw_Z
+    mu, var = evoke('spatial_conditional', data, data_Z, 'SDE_GP', prior)(
+        data,
+        data_Z,
+        q_m,
+        q_S,
+        prior,
+        True
+    )
+
+    mu = np.reshape(mu, [-1, 1])
+    var = np.reshape(var, [-1, 1])
+
+    return mu, var
+
+@dispatch(ApproximatePosterior, BlockDiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+
+    # Ensure rank 2
+    q_m = np.reshape(q_m, [data.Nt, -1])
+
+    data_Z = sparsity.raw_Z
+    mu, var = evoke('spatial_conditional', data, data_Z, 'SDE_GP', prior)(
+        data,
+        data_Z,
+        q_m,
+        q_S,
+        prior,
+        False
+    )
+
+    return mu, var
+
+
 @dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'FullSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
     # TODO: this is a hack

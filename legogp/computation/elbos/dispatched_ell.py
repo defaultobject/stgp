@@ -54,7 +54,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
 # ====================== GAUSSIAN ELLs ===================
 
-@dispatch("BlockDiagonalGaussian", GaussianApproximatePosterior)
+@dispatch(BlockDiagonalGaussian, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     # TODO: adding missing data masking
     block_size = likelihood.block_size

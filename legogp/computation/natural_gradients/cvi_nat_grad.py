@@ -13,7 +13,7 @@ from ...dispatch import dispatch, evoke
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior
-from ...sparsity import NoSparsity, FreeSparsity, Sparsity
+from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal
 
@@ -95,7 +95,7 @@ def reparametise_vec_grad(m, m_grad, prior):
 
     return m_grad
 
-def _get_mf_params(model):
+def _get_mf_params(model, diagonal=True):
     """ Helper function to wrap up batching over the latent GPs to collect variational parameters"""
     q = model.approximate_posterior
 
@@ -105,7 +105,7 @@ def _get_mf_params(model):
 
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = batch_or_loop(
-        lambda q: (q.surrogate.data.Y, q.surrogate.likelihood.variance),
+        lambda q: (q.surrogate.data.base.Y, q.surrogate.likelihood.base.variance),
         [q_list],
         [0],
         dim=len(q_list),
@@ -113,9 +113,14 @@ def _get_mf_params(model):
         batch_type = get_batch_type(q_list)
     )
 
+    if diagonal:
+        fn = lambda q: q.surrogate.posterior(diagonal=True)
+    else:
+        fn = lambda q: q.surrogate.posterior_blocks()
+
     # Compute q_m_z, q_S_z
     q_mu_z, q_var_z = batch_or_loop(
-        lambda q: q.surrogate.posterior(diagonal=True),
+        fn,
         [q_list],
         [0, 0],
         dim = Q,
@@ -140,7 +145,7 @@ def partial_ell(m, q_m, q_S):
 
 @dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
 def natural_gradients(model, beta: float) -> np.ndarray:
-    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model)
+    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=True)
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
@@ -180,6 +185,48 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
+@dispatch('VGP', ConjugateApproximatePosterior, SpatialSparsity)
+def natural_gradients(model, beta: float) -> np.ndarray:
+    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
+
+    # Different models store Y with different dimensions so we store it here so can 
+    #   match the shape in the output
+    Y_shape = Y_tilde_arr.shape
+
+    Q, Nt, B, _ = V_tilde_arr.shape
+    N = Nt*B
+
+    # Fix shapes for ELL
+    q_mu_z = np.reshape(q_mu_z, [Q, Nt, B])
+    q_var_z = np.reshape(q_var_z, [Q, Nt, B, B])
+
+    # Compute dELL/dm, dEll/dS
+    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
+
+    # Fix shapes for Natgrads
+    Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, Nt, B, 1])
+    V_tilde_arr = np.reshape(V_tilde_arr, [Q, Nt, B, B])
+
+    q_mu_z = np.reshape(q_mu_z, [Q, Nt, B, 1])
+    q_var_z = np.reshape(q_var_z, [Q, Nt, B, B])
+
+    mu_grads = np.reshape(mu_grads, [Q, Nt, B, 1])
+    var_grads = np.reshape(var_grads, [Q, Nt, B, B])
+
+    # vmap over Q and N
+    new_Y_tilde, new_V_tilde = jax.vmap(
+        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None]),
+        [0, 0, 0, 0, 0, 0, None]
+    )(
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta
+    )
+
+    # Fix shapes for output
+    new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
+
+    return new_Y_tilde, new_V_tilde
 
 
 @dispatch('VGP', ConjugateApproximatePosterior, FreeSparsity)

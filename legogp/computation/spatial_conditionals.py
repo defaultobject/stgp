@@ -2,11 +2,11 @@
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
-from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional
+from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional
 from .matrix_ops import batched_block_diagional
 
 # Import Types
-from ..data import Data
+from ..data import Data, Input
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..likelihood import Likelihood
 from ..models import BatchGP, SDE_GP
@@ -20,6 +20,7 @@ import objax
 from batchjax import batch_or_loop, BatchType
 
 
+@dispatch(Data, Input, SDE_GP, 'GPPrior')
 @dispatch(Data, Data, SDE_GP, 'GPPrior')
 def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp, diagonal):
     """
@@ -50,7 +51,8 @@ def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp
         Ktt = gp.kernel.k1.K_diag(X_time)
         Kss = gp.kernel.k2.K_diag(XS_space)
     else:
-        raise NotImplementedError()
+        Ktt = gp.kernel.k1.K_diag(X_time)
+        Kss = gp.kernel.k2.K(XS_space, XS_space)
 
     # Evaluate separable kernels
     Kzz = gp.kernel.k2.K(X_space, X_space)
@@ -63,8 +65,16 @@ def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp
         )( 
             XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, pred_var, mean_x, mean_xs
         )
+    else:
+        mu, var = jax.vmap(
+            gaussian_spatial_conditional,
+            [None, None, None, None, None, 0, 0, 0, None, None],
+        )( 
+            XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, pred_var, mean_x, mean_xs
+        )
 
-        return mu, var
+
+    return mu, var
 
 @dispatch(Data, Data, SDE_GP, Independent)
 def spatial_conditional(XS: 'Data', X: 'Data', pred_mean, pred_var, gp, diagonal):

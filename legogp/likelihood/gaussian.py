@@ -8,7 +8,7 @@ from .. import Parameter
 
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar
-from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular
+from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular, to_block_diag, batched_diag
 
 class FullGaussian(FullLikelihood):
     def __init__(self, dim: int = None, variance=None, train=True):
@@ -57,7 +57,32 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
 
     @property
     def full_variance(self) -> np.ndarray:
-        return jax.scipy.linalg.block_diag(*self.variance)
+        return to_block_diag(self.variance)
+
+class ReshapedBlockDiagonalGaussian(BlockDiagonalGaussian):
+    def __init__(self, bd_lik, block_size:int=None, num_blocks:int=None):
+        self.bd_lik = bd_lik
+        self.block_size = block_size
+        self.num_blocks = num_blocks
+
+    @property
+    def base(self):
+        return self.bd_lik.base
+
+    @property
+    def variance_param(self):
+        """ Return the original variance parameter so that it is consistent for gradient updates etc. """
+        return self.bd_lik.variance_param
+
+    @property
+    def variance(self) -> np.ndarray:
+        return batched_diag(np.reshape(self.bd_lik.variance, [self.block_size, self.num_blocks]))
+
+    @property
+    def full_variance(self) -> np.ndarray:
+        return self.bd_lik.full_variance
+
+
 
 class DiagonalGaussian(DiagonalLikelihood):
     """Gaussian likelihood."""

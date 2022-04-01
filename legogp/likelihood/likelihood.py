@@ -8,6 +8,10 @@ import chex
 class Likelihood(objax.Module):
     """Base likelihood class."""
 
+    @property
+    def base(self):
+        return self
+
     def log_likelihood(self, Y, F):
         chex.assert_shape(Y, F.shape)
         chex.assert_rank(Y, 2)

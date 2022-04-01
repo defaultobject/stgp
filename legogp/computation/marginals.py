@@ -42,6 +42,41 @@ def gaussian_spatial_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kx
     return mu, sig
 
 @jit
+def gaussian_spatial_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, Ktt, m, S_chol, mean_x, mean_xs):
+    """
+    Computes:
+        mu =  Ksz Kzz⁻¹ m
+        var =  Ktt * blkdiag[ Kss - Ksz Kzz⁻¹ Kss] + blkdiag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
+    """
+
+    N = Kxsxs.shape[0]
+    M = m.shape[0]
+
+    chex.assert_shape(Kxsxs, [N, N])
+    chex.assert_shape(Kzz, [M, M])
+    chex.assert_shape(Kxz, [N, M])
+    chex.assert_shape(mean_x, [M, 1])
+    chex.assert_shape(mean_xs, [N, 1])
+    chex.assert_shape(m, [M, 1])
+    chex.assert_shape(S_chol, [M, M])
+
+    k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+    
+    A = triangular_solve(k_zz_chol, Kxz.T, lower=True) # M x N
+    A1 = triangular_solve(k_zz_chol.T, A, lower=False) # M x N
+
+    A2 = (S_chol.T @ A1).T # N x M 
+
+    mu = mean_xs + A1.T @ (m-mean_x) # N x 1
+    sig = Ktt*(Kxsxs - A.T @ A) + A2 @ A2.T #N x N
+
+    #ensure correct shapes
+    mu = np.reshape(mu, [N, 1])
+    sig = np.reshape(sig, [N, N])
+
+    return mu, sig
+
+@jit
 def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:
     """
     Let A = Kxz Kzz⁻¹ then

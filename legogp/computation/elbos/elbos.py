@@ -108,7 +108,6 @@ def elbo(
 
     ELL_surrogate = np.sum(ELL_surrogate)
 
-
     # get_ojective returns the negative log liklihood
     # We require the (postive) log liklihood
     ML_arr =  batch_or_loop(

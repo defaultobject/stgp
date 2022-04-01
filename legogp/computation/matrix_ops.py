@@ -36,6 +36,12 @@ def batched_block_diagional(A, block_size):
     return jax.vmap(get_block_diagonal, [0, None])(A, block_size)
 
 @jit
+def batched_diag(A):
+    chex.assert_rank(A, 2)
+    return jax.vmap(np.diag, [0])(A)
+
+
+@jit
 def cartesian_product(X, Y):
     return np.vstack([np.tile(X, Y.shape[0]), np.repeat(Y, X.shape[0])])
 
