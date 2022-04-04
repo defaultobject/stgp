@@ -23,6 +23,14 @@ from ..sparsity import NoSparsity
 
 @dispatch(Model, 'Sequential')
 class SDE_GP(Posterior):
+    def __new__(cls, data, *args, **kwargs):
+        if isinstance(data, SpatioTemporalData):
+            return ST_SDE_GP(data, *args, **kwargs)
+        else:
+            return T_SDE_GP(data, *args, **kwargs)
+
+@dispatch(Model, 'Sequential')
+class BASE_SDE_GP(Posterior):
     def __init__(
         self, 
         data = None,
@@ -36,7 +44,7 @@ class SDE_GP(Posterior):
         **kwargs
     ):
         # Use the sorted X and Y to construct the model on
-        super(SDE_GP, self).__init__(data=data)
+        super(BASE_SDE_GP, self).__init__(data=data)
 
         self._likelihood = likelihood
         self.kernel = kernel
@@ -321,4 +329,10 @@ class SDE_GP(Posterior):
 
         return pred_y_mu, pred_y_var
 
+class T_SDE_GP(BASE_SDE_GP):
+    """ Temporal SDE GP """
+    pass
 
+class ST_SDE_GP(BASE_SDE_GP):
+    """ Spatio-Temporal SDE GP """
+    pass

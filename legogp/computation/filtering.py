@@ -56,8 +56,8 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     X_s = data.X_space
     Y = data.Y
 
-    Nt = x_t.shape[0]
-    Ns = X_s.shape[0]
+    Nt = data.Nt
+    Ns = data.Ns
     P = Y.shape[-1]
 
     # Get Filter parameters for corresponding prior

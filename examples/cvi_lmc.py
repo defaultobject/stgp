@@ -146,7 +146,8 @@ if cmd_args['st']:
 
 elif cmd_args['time']:
     if cmd_args['sde']:
-        pass
+        #data = MultiOutputTemporalData(X=X, Y=Y, sort=True)
+        data = Data(X=X, Y=Y)
     else:
         data = Data(X=X, Y=Y)
 
@@ -209,19 +210,34 @@ if cmd_args['mf']:
 
     if cmd_args['sde']:
         if cmd_args['no_Z']:
-            q_cvi = MeanFieldConjugateGaussian([
-                ConjugateGaussian(
-                    X=Z[q],
-                    block_size=block_size,
-                    surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
-                        data=DataReshape(SpatioTemporalData(X=X.raw_Z, Y=Y, sort=False), new_shape=[st_data.Nt, st_data.Ns, 1]), # Data should already be in the correct format
-                        prior=Independent([latent_gps[q]]), 
-                        likelihood=ReshapedBlockDiagonalGaussian(likelihood[0], Nt, Ns),
-                        inference='Sequential'
-                    ) # batch gp surrogate model 
-                )
-                for q in range(Q)
-            ])
+            if cmd_args['st']:
+                q_cvi = MeanFieldConjugateGaussian([
+                    ConjugateGaussian(
+                        X=Z[q],
+                        block_size=block_size,
+                        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
+                            data=DataReshape(SpatioTemporalData(X=X.raw_Z, Y=Y, sort=False), new_shape=[st_data.Nt, st_data.Ns, 1]), # Data should already be in the correct format
+                            prior=Independent([latent_gps[q]]), 
+                            likelihood=ReshapedBlockDiagonalGaussian(likelihood[0], Nt, Ns),
+                            inference='Sequential'
+                        ) # batch gp surrogate model 
+                    )
+                    for q in range(Q)
+                ])
+            elif cmd_args['time']:
+                q_cvi = MeanFieldConjugateGaussian([
+                    ConjugateGaussian(
+                        X=Z[q],
+                        block_size=block_size,
+                        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
+                            data=TemporalData(X=X.raw_Z, Y=Y, sort=False), # Data should already be in the correct format
+                            prior=Independent([latent_gps[q]]), 
+                            likelihood=likelihood[0],
+                            inference='Sequential'
+                        ) # batch gp surrogate model 
+                    )
+                    for q in range(Q)
+                ])
         elif cmd_args['spatial_Z']:
             q_cvi = MeanFieldConjugateGaussian([
                 ConjugateGaussian(
@@ -291,6 +307,8 @@ elif cmd_args['fp']:
 
 else:
     raise RuntimeError()
+
+breakpoint()
 
 # Create Model
 if cmd_args['spatial_Z']:

@@ -307,24 +307,25 @@ class DataReshape(SpatioTemporalData):
         return getattr(self.data, name)
 
 class TemporalData(SequentialData):
-    def __init__(self, X_time, Y, sort=True):
+    def __init__(self, X, Y, sort=True):
         """
         There are two cases supported:
 
         1) X is already sorted 
 
-            X_time: Nt x 1 
+            X: Nt x 1 
             Y: Nt x 1 x 1
 
         2) X is not sorted 
 
-            X_time: Nt x 1 
+            X: Nt x 1 
             Y: Nt x 1 
         """
 
         super(TemporalData, self).__init__()
 
         # Only supports single output 
+        X_time = X
         chex.assert_rank(X_time, 2)
 
         if sort:
@@ -382,25 +383,25 @@ class MultiOutputTemporalData(SequentialData):
     Within the Kalman Filtering and Smoothing algorithms multi-output temporal data and
         spatio-temporal data are handled in similarilily. However the way the data must be pre-processed is slightly different, therefore we have separate classes between for SpatioTemporalData and MultiOutputTemporalData data.
     """
-    def __init__(self, X_time, Y, sort=True):
+    def __init__(self, X, Y, sort=True):
 
         super(MultiOutputTemporalData, self).__init__()
 
         # Only supports single output 
-        chex.assert_rank(X_time, 2)
+        chex.assert_rank(X, 2)
 
         if sort:
             chex.assert_rank(Y, 2)
 
             X_sorted, Y_sorted = self.sort(
-                    X_time, Y
+                X, Y
             )
 
             # self.sort sorts onto a spatio-temporal grid. We only require the temporal part.
             X_sorted = X_sorted[..., 0]
 
         else:
-            X_sorted = X_time
+            X_sorted = X
             Y_sorted = Y   
 
         chex.assert_rank(X_sorted, 2)
