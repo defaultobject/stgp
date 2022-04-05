@@ -62,6 +62,9 @@ def log_marginal_likelihood(
     # Assume that are likelihoods are the same such that they can be batched over
     assert all([type(lik) == Gaussian for lik in likelihood_arr])
 
+    X = data.X
+    Y = data.Y
+
     N = Y.shape[0]
 
     Y_vec = vec_columns(Y)

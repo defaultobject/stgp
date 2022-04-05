@@ -5,7 +5,7 @@ from jax import jit
 import jax.numpy as np
 import chex
 
-from ..settings import jitter
+from .. import settings 
 from .matrix_ops import cholesky, cholesky_solve, add_jitter
 from .gaussian import log_gaussian, log_gaussian_with_mask
 from ..utils.nan_utils import get_same_shape_mask
@@ -36,7 +36,7 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
     S = var + R_k
 
     #Kalman Gain
-    S = add_jitter(S, jitter)
+    S = add_jitter(S, settings.jitter)
     L = cholesky(S)
     K = (cholesky_solve(L, M @ H_k @ P_)).T
 
@@ -102,7 +102,6 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     # replace nans with zero to avoid nans in code
     Y = np.nan_to_num(Y, nan=0.0)
 
-
     with loops.Scope() as s:
         s.log_marginal_lik = 0.0
         s.m, s.P = m_inf, P_inf
@@ -141,7 +140,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, Q_k):
 
     #kalman gain
     P_predicted_chol = cholesky(
-        add_jitter(P_predicted, jitter)
+        add_jitter(P_predicted, settings.jitter)
     )
     G = cholesky_solve(
         P_predicted_chol, A_k @ P_filtered_k

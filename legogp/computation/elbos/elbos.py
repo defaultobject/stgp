@@ -70,8 +70,6 @@ def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterio
 def elbo(
     data, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
-    N = Y.shape[0]
-
     # Compute KL term
     KL = evoke('kullback_leibler', approximate_posterior, prior)(
         approximate_posterior, prior
@@ -81,7 +79,6 @@ def elbo(
     ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
     return  ELL - KL
-    #return  ELL
 
 
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)

@@ -29,7 +29,6 @@ class SDE_GP(Posterior):
         else:
             return T_SDE_GP(data, *args, **kwargs)
 
-@dispatch(Model, 'Sequential')
 class BASE_SDE_GP(Posterior):
     def __init__(
         self, 
@@ -237,6 +236,68 @@ class BASE_SDE_GP(Posterior):
         return mu, var
 
 
+
+
+    def predict_y(self, XS, squeeze=True):
+        pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
+
+        # TODO: fix the hack
+        pred_y_mu, pred_y_var = evoke('predict_y_diagonal', 'BatchGP', self.likelihood)(
+            XS,  self.likelihood, pred_mu, pred_var
+        )
+
+        return pred_y_mu, pred_y_var
+
+class T_SDE_GP(BASE_SDE_GP):
+    """ Temporal SDE GP """
+    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
+        if diagonal is False:
+            raise NotImplementedError()
+
+        NS = XS.shape[0]
+        chex.assert_equal(XS.shape[1], self.data.D)
+
+        X = onp.array(self.data.X)
+        Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
+
+        # Stack X first so that training data does not get removed when sorting data
+        X_stacked = onp.vstack([X, XS])
+
+        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
+        Y_stacked = onp.vstack([Y, Y_nans])
+
+
+        test_data = get_sequential_data_obj(
+            X_stacked,
+            Y_stacked,
+            sort=True 
+        )
+
+
+        _, mu, var = filter_and_smooth(
+            test_data,
+            self.prior,
+            self.likelihood,
+            N = test_data.Nt
+        )
+
+        # mu, var are in time - space format
+        # Therefore we just need to stack them
+        mu = np.reshape(mu, [-1, self.output_dim])
+
+        # only keep diagonals
+        var_diag = np.diagonal(var, axis1=1, axis2=2)
+        var_diag = np.reshape(var_diag, [-1, self.output_dim])
+
+        # Unsort data and remove the training data
+        mu = test_data.unsort(mu)[self.data.N:]
+        var_diag = test_data.unsort(var_diag)[self.data.N:]
+
+        return mu, var_diag
+
+class ST_SDE_GP(BASE_SDE_GP):
+    """ Spatio-Temporal SDE GP """
+
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
         """
         We use the Kalman filter and smoother to predict and the temporal slices of XS,
@@ -318,21 +379,3 @@ class BASE_SDE_GP(Posterior):
         var_diag = np.reshape(var_diag, [-1, self.output_dim])
 
         return mu.T, var_diag.T
-
-    def predict_y(self, XS, squeeze=True):
-        pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
-
-        # TODO: fix the hack
-        pred_y_mu, pred_y_var = evoke('predict_y_diagonal', 'BatchGP', self.likelihood)(
-            XS,  self.likelihood, pred_mu, pred_var
-        )
-
-        return pred_y_mu, pred_y_var
-
-class T_SDE_GP(BASE_SDE_GP):
-    """ Temporal SDE GP """
-    pass
-
-class ST_SDE_GP(BASE_SDE_GP):
-    """ Spatio-Temporal SDE GP """
-    pass

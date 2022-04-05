@@ -391,6 +391,11 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
 
+    # Different models store Y with different dimensions so we store it here so can 
+    #   match the shape in the output
+    Y_shape = Y_tilde_arr.shape
+
+
     # Predict in data-latent order
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
 
@@ -414,8 +419,10 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         cvi_block_update,
         [0, 0, 0, 0, 0, 0, None]
     )(
-        Y_tilde_arr, V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta
+        Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta
     )
+
+    new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde
 

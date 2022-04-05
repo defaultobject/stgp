@@ -8,8 +8,6 @@ import objax
 import chex
 
 from ..computation.matrix_ops import cholesky, cholesky_solve, add_jitter
-from ..settings import jitter
-
 
 def get_same_shape_mask(Y: np.ndarray) -> np.ndarray:
     """
@@ -21,7 +19,9 @@ def get_mask(Y: np.ndarray) -> np.ndarray:
     """
     Returns 1 if Y_n is numeric, otherwise 0
     """
-    return np.squeeze(get_same_shape_mask(Y))
+    mask =  get_same_shape_mask(Y)
+    # make sure rank one
+    return np.reshape(mask, [mask.shape[0]])
 
 def mask_vector(Y, mask):
     chex.assert_equal(Y.shape[0], mask.shape[0])

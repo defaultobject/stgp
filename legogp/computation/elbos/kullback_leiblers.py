@@ -5,7 +5,7 @@ import chex
 from typing import List
 from objax import ModuleList
 
-from ...settings import jitter
+from ...import settings
 from ...kernels import Kernel, RBF
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior
@@ -49,8 +49,8 @@ def gaussian_kl( mu_1, covar_1, mu_2, covar_2) -> np.ndarray:
     """
     computs KL[g1, g2]
     """
-    covar_chol_1 = cholesky(add_jitter(covar_1, jitter))
-    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+    covar_chol_1 = cholesky(add_jitter(covar_1, settings.jitter))
+    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
     
     return gaussian_cholesky_kl(mu_1, covar_chol_1, mu_2, covar_chol_2)
 
@@ -82,7 +82,7 @@ def KL(X, approximate_posterior, kernel, sparsity):
     mu_2 = np.zeros(mu_1.shape)
 
     covar_2 = kernel.K(X, X)
-    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
 
     return gaussian_kl(mu_1, mu_2, covar_chol_1, covar_chol_2)
 

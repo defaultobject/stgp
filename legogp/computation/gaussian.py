@@ -4,7 +4,7 @@ import jax
 import jax.numpy as np
 from jax import jit
 import chex
-from ..settings import jitter
+from .. import settings
 
 from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -19,7 +19,7 @@ def log_gaussian(Y, mu, sigma):
     # ensure square matrix
     chex.assert_equal(sigma.shape[0], sigma.shape[1])
 
-    sigma_chol = cholesky(sigma + jitter * np.eye(sigma.shape[0]))
+    sigma_chol = cholesky(sigma + settings.jitter * np.eye(sigma.shape[0]))
 
     N = Y.shape[0]
 
@@ -51,7 +51,7 @@ def log_gaussian_with_mask(Y, mu, sigma, mask):
     sigma = mask_to_identity(sigma, mask)
     mu = mask_vector(mu, mask)
 
-    sigma_chol = cholesky(sigma + jitter * np.eye(sigma.shape[0]))
+    sigma_chol = cholesky(sigma + settings.jitter * np.eye(sigma.shape[0]))
 
     N = Y.shape[0]
 

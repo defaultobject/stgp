@@ -7,7 +7,7 @@ from .kullback_leiblers import gaussian_cholesky_kl
 from ...transforms import Transform, Independent
 from ...utils.batch_utils import batch_over_module_types
 from ..matrix_ops import cholesky, add_jitter
-from ...settings import jitter
+from ... import settings
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_Z, prior_mean_X
 
 
@@ -18,7 +18,7 @@ def kullback_leibler(approximate_posterior, prior):
     Z = prior.sparsity.Z
     # We need to index prior.(mean/covar) because they return a 3d array for consistency to multi-output priors
     covar_2 = prior.covar(Z, Z)[0]
-    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
 
     return gaussian_cholesky_kl(
         approximate_posterior.m,
@@ -66,7 +66,7 @@ def kullback_leibler(approximate_posterior, prior):
     Z = prior.get_Z()
     mean_2 = prior.np_mean(Z)
     covar_2 = prior.np_full_covar(Z, Z)
-    covar_chol_2 = cholesky(add_jitter(covar_2, jitter))
+    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
 
     # Approx is already in data-latent format
     m = approximate_posterior.m

@@ -39,7 +39,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
 
     data_Z = sparsity.raw_Z
-    mu, var = evoke('spatial_conditional', data, data_Z, 'SDE_GP', prior)(
+    mu, var = evoke('spatial_conditional', data, data_Z, 'BASE_SDE_GP', prior)(
         data,
         data_Z,
         q_m,
@@ -60,7 +60,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
     q_m = np.reshape(q_m, [data.Nt, -1])
 
     data_Z = sparsity.raw_Z
-    mu, var = evoke('spatial_conditional', data, data_Z, 'SDE_GP', prior)(
+    mu, var = evoke('spatial_conditional', data, data_Z, 'BASE_SDE_GP', prior)(
         data,
         data_Z,
         q_m,
@@ -81,7 +81,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
         data.X, data.X, approximate_posterior, likelihood, prior, sparsity
     )
 
-@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', FreeSparsity)
+@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity)
 def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol

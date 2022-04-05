@@ -6,7 +6,7 @@ import chex
 from typing import List
 from objax import ModuleList
 
-from ...settings import jitter
+from ...import settings
 from ...core import GPPrior
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
@@ -94,7 +94,7 @@ def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.n
     chex.assert_equal(Y.shape, q_mu.shape)
     chex.assert_shape(q_covar, [Y.shape[0], Y.shape[0]])
 
-    noise_chol = cholesky(add_jitter(noise, jitter))
+    noise_chol = cholesky(add_jitter(noise, settings.jitter))
 
     ml =  log_gaussian(Y, q_mu, noise) 
     trace_term = -0.5*np.trace(cholesky_solve(noise_chol, q_covar))

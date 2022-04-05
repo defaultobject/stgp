@@ -1,4 +1,4 @@
-from ...settings import jitter
+from ...import settings
 from ...kernels import Kernel, RBF
 from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior

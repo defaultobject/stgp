@@ -9,7 +9,7 @@ from .matrix_ops import batched_block_diagional
 from ..data import Data, Input
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..likelihood import Likelihood
-from ..models import BatchGP, SDE_GP
+from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent
 
 import jax
@@ -20,8 +20,8 @@ import objax
 from batchjax import batch_or_loop, BatchType
 
 
-@dispatch(Data, Input, SDE_GP, 'GPPrior')
-@dispatch(Data, Data, SDE_GP, 'GPPrior')
+@dispatch(Data, Input, BASE_SDE_GP, 'GPPrior')
+@dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
 def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp, diagonal):
     """
     gp is a GP prior with a spatio-temporal kernel 
@@ -76,7 +76,7 @@ def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp
 
     return mu, var
 
-@dispatch(Data, Data, SDE_GP, Independent)
+@dispatch(Data, Data, BASE_SDE_GP, Independent)
 def spatial_conditional(XS: 'Data', X: 'Data', pred_mean, pred_var, gp, diagonal):
     """
     Let P be the number of outputs then:
@@ -151,7 +151,7 @@ def spatial_conditional_block(XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, 
     breakpoint()
     pass
 
-@dispatch(Data, Data, SDE_GP, Independent)
+@dispatch(Data, Data, BASE_SDE_GP, Independent)
 def spatial_conditional_block(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp, diagonal):
     """
     Let P be the number of outputs then:
@@ -203,7 +203,7 @@ def spatial_conditional_block(XS_data: 'Data', X_data: 'Data', pred_mean, pred_v
 
     return marginal_mu, marginal_var
 
-@dispatch(Data, Data, SDE_GP, 'GPPrior')
+@dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
 def block_spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp):
     block_size = gp.prior.num_latents
 

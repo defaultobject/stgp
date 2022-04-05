@@ -310,7 +310,19 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     X, Y = data.X, data.Y
 
-    chex.assert_rank(X, 2)
+    # TODO
+    # Y has shape Nt x Ns x P
+    # At each timestep we need latent-data order because of how the state space is representated
+    # To convert to latent-data order we just need to stack each spatials observations
+    #Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, data.Ns*data.P]) 
+
+    # Ensure rank 2 after batching
+    Y = Y[..., None]
+
+    # X should be P x N x D
+    #chex.assert_rank(X, 3)
+
+    # Y should be N x P x 1
     chex.assert_rank(Y, 3)
 
     N, P, _ = Y.shape
@@ -333,7 +345,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(
         full_gaussian_expected_log_likelihood,
-        [None, 0, 0, 0, 0],
+        [1, 0, 0, 0, 0],
         0
     )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
 

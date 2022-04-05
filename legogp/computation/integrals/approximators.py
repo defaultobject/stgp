@@ -2,7 +2,7 @@ import jax
 import jax.numpy as np
 import objax
 import chex
-from ...settings import jitter
+from ...import settings
 
 def gauss_quad():
     pass
@@ -53,7 +53,7 @@ def mv_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_s
 
     if True:
         tiled_jit = np.tile(
-            np.eye(var_arr.shape[1])*jitter,
+            np.eye(var_arr.shape[1])*settings.jitter,
             [var_arr.shape[0], 1, 1]
         )
         chol_arr = np.linalg.cholesky(var_arr+tiled_jit)

@@ -1,5 +1,3 @@
-from ...settings import jitter
-
 # Import Types
 from ...data import Data
 from ...kernels import Kernel, RBF
@@ -251,6 +249,7 @@ def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diag
     # Permute so that the ordering between likelihood_var and Y is the same
     N = X.shape[0]
     NS = likelihood_var.shape[0]
+
 
     permutation = data_order_to_output_order(P, N)
     lik_var = permutation @ likelihood_var @ permutation.T

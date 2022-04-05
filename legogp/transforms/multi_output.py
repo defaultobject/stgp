@@ -144,7 +144,6 @@ class GPRN_DRD(GPRN_Base):
 
         var_diag = np.diag(self.variances.value)
 
-
         return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
 
 class LMC_Base(LinearTransform):
@@ -193,7 +192,7 @@ class LMC_Base(LinearTransform):
         W1 = np.kron(mixing_matrix, np.eye(N1))
         W2 = np.kron(mixing_matrix, np.eye(N2))
 
-        K_bdiag = self.latents.full_covar(X1, X2)
+        K_bdiag = self.latent_obj.full_covar(X1, X2)
         chex.assert_shape(K_bdiag, [Q*N1, Q*N2])
 
         covar = W1 @ K_bdiag @ W2.T
@@ -208,7 +207,7 @@ class LMC_Base(LinearTransform):
 
         mixing_matrix = self.W
 
-        K_diag = self.latents.var(X1)
+        K_diag = self.latent_obj.var(X1)
         chex.assert_shape(K_diag, [Q, N1])
 
         W = mixing_matrix**2
