@@ -85,14 +85,16 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     # Ensure rank 2 at each time step
     Y = Y[..., None]
 
-    # TODO: will not work for normal gaussian
-    if False:
+    if True:
         # padding missing likelihood entries
         # NOTE: only works in time
-        points_added = Y.shape[0]-R.shape[0] 
+        
+        points_added = data.Nt-R.shape[0] 
+        # Full R. This wont be used at locations without data so we just ignore
         R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
         R = np.vstack([R, R_tmp])
         R = R[data.unique_idx][data.sort_idx]
+        R = np.reshape(R, [data.Nt, likelihood.block_size, likelihood.block_size])
 
     # nan masking
     # construct mask so we can track where nans are
