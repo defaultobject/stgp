@@ -85,7 +85,10 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     # Ensure rank 2 at each time step
     Y = Y[..., None]
 
-    if True:
+    # Currently likelihood is only defined on the training points. When prediction there will be less likelihood points then testing
+    #   Jax silently wraps around in this setting, which could cause some issues. 
+    # In the Gaussian likelihood (single sigma_y) case, this makes no difference so for now we ignore.
+    if False:
         # padding missing likelihood entries
         # NOTE: only works in time
         
@@ -95,6 +98,7 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
         R = np.vstack([R, R_tmp])
         R = R[data.unique_idx][data.sort_idx]
         R = np.reshape(R, [data.Nt, likelihood.block_size, likelihood.block_size])
+
 
     # nan masking
     # construct mask so we can track where nans are

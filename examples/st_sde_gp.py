@@ -8,7 +8,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import Matern32, SpatioTemporalSeperableKernel
-from legogp.likelihood import Gaussian
+from legogp.likelihood import Gaussian, ReshapedGaussian
 from legogp.data import SpatioTemporalData
 
 import objax
@@ -31,15 +31,19 @@ from data_zoo import single_output_spatial_data
 
 XS, X, Y = single_output_spatial_data(20, 20, 200, 200, seed=0)
 
+data = SpatioTemporalData(X=X, Y=Y, sort=True)
+
 # Setup Model
 
+lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=data.Ns)
+
 m = lego.models.GP(
-    data = SpatioTemporalData(X=X, Y=Y, sort=True), 
+    data = data, 
     kernel = SpatioTemporalSeperableKernel(
-        Matern32(input_dim=1, lengthscales=[0.1]),
-        Matern32(input_dim=1, lengthscales=[0.1])
+        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]),
+        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[1])
     ),
-    likelihood = Gaussian(variance=0.1),
+    likelihood = lik,
     inference='Sequential'
 )
 
@@ -47,7 +51,7 @@ print(m.get_objective())
 
 if True:
     # Train
-    epochs = 200
+    epochs = 500
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
         m, 
@@ -60,8 +64,6 @@ if True:
     # Plot learning curve
     plt.plot(learning_curve)
     plt.show()
-
-
 
 # Plot
 pred_mu, pred_var = m.predict_y(XS)

@@ -82,11 +82,11 @@ class BASE_SDE_GP(Posterior):
             raise RuntimeError('Only kernel or a prior must be passed')
 
         if self.prior is None:
+            if self.kernel is None: 
+                raise RuntimeError('Kernel must be passed!')
 
-            # Only set a default kernel if we are in kernel mode and one has not been passed
-            warnings.warn('Using default Matern32 kernel with lengthscale 1.0')
-            self.kernel = [Matern32(lengthscales=[1.0]) for q in range(self.output_dim)]
-
+            if type(self.kernel) is not list:
+                self.kernel = [self.kernel]
 
             # Pass object to avoid storing multiple copies of X
             X_ref = self.data._X
@@ -242,6 +242,10 @@ class BASE_SDE_GP(Posterior):
         pred_y_mu, pred_y_var = evoke('predict_y_diagonal', self, self.likelihood)(
             XS,  self.likelihood, pred_mu, pred_var
         )
+
+        if squeeze:
+            pred_y_mu = np.squeeze(pred_y_mu)
+            pred_y_var = np.squeeze(pred_y_var)
 
         return pred_y_mu, pred_y_var
 
