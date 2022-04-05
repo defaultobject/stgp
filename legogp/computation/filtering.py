@@ -85,7 +85,6 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
     # Ensure rank 2 at each time step
     Y = Y[..., None]
 
-
     # TODO: will not work for normal gaussian
     if False:
         # padding missing likelihood entries

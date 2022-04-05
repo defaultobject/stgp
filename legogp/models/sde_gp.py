@@ -236,13 +236,10 @@ class BASE_SDE_GP(Posterior):
         return mu, var
 
 
-
-
     def predict_y(self, XS, squeeze=True):
         pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
 
-        # TODO: fix the hack
-        pred_y_mu, pred_y_var = evoke('predict_y_diagonal', 'BatchGP', self.likelihood)(
+        pred_y_mu, pred_y_var = evoke('predict_y_diagonal', self, self.likelihood)(
             XS,  self.likelihood, pred_mu, pred_var
         )
 

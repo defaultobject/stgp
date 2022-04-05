@@ -146,6 +146,23 @@ class Gaussian(DiagonalGaussian):
     def conditional_mean(self, f):
         return f
 
+class ReshapedGaussian(Gaussian):
+    def __init__(self, base,  num_blocks, block_size): 
+        self._base = base    
+        self.num_blocks = num_blocks
+        self.block_size = block_size
+
+        self.new_mat = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+    @property
+    def base(self):
+        return self._base.base
+
+    @property
+    def variance(self) -> np.ndarray:
+        return self.new_mat * self.base.variance
+
+
 class GaussianParameterised(Likelihood):
     """Gaussian likelihood."""
 

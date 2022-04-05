@@ -19,9 +19,12 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, 'Gaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
-
     return post_mu, post_var + likelihood.variance
 
+@dispatch(Posterior, 'ReshapedGaussian')
+def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+
+    return post_mu, post_var + likelihood.base.variance
 
 @dispatch(Posterior, 'ProductLikelihood', Independent)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
@@ -47,12 +50,8 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
     return mu_arr, var_arr
 
-@dispatch('BatchGP', 'GaussianProductLikelihood', LinearTransform)
+@dispatch('BatchGP', 'ReshapedGaussian', LinearTransform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
-
-    likelihood_arr = likelihood.likelihood_arr
-
-
     if diagonal:
         lik_var = get_vec_gaussian_likelihood_variances(
             np.transpose(post_var, [1, 0]),
@@ -60,6 +59,15 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         )
 
         return post_mu, post_var+lik_var
+    else:
+        raise NotImplementedError()
+
+
+@dispatch('BatchGP', 'GaussianProductLikelihood', LinearTransform)
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+
+    if diagonal:
+        return post_mu, post_var + likelihood.base.variance
     else:
         raise NotImplementedError()
 

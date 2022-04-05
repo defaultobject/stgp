@@ -30,10 +30,10 @@ class Variational(Inference):
 
     def predict_latents(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
 
-        latents = prior.latents
+        latents = prior.latent_obj
 
-        return evoke('marginal', 'prediction', approximate_posterior, latents)(
-            XS, data, approximate_posterior, latents
+        return evoke('marginal', 'prediction', approximate_posterior, likelihood, latents)(
+            XS, data, approximate_posterior, likelihood, prior, latents, diagonal
         )
 
     def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal):

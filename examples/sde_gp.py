@@ -8,7 +8,7 @@ import legogp as lego
 from legogp.trainers import SimpleTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import Matern32
-from legogp.likelihood import Gaussian
+from legogp.likelihood import Gaussian, ReshapedGaussian
 from legogp.data import TemporalData
 
 import objax
@@ -30,13 +30,15 @@ np.random.seed(0)
 
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
-data = TemporalData(X, Y[..., None], sort=False)
+data = TemporalData(X=X, Y=Y, sort=True)
+
+lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=1)
 
 # Create Model
 m = lego.models.GP(
     data = data, 
     kernel = Matern32(lengthscales=[0.1]),
-    likelihood = Gaussian(variance=0.1),
+    likelihood = lik,
     inference='Sequential'
 )
 
@@ -44,7 +46,7 @@ print(m.get_objective())
 
 if True:
     # Train
-    epochs = 200
+    epochs = 500
     callback = progress_bar_callback(epochs)
     learning_curve, training_time = SimpleTrainer().train(
         m, 

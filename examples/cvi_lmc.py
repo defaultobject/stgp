@@ -136,8 +136,8 @@ if False :
 if cmd_args['st']:
     if cmd_args['spatial_Z']:
         #  In the spatial sparsity setting we require kronecker structure on the surrogate model  
-        st_data = data
         data = SpatioTemporalData(X=X, Y=Y, sort=True)
+        st_data = data
     else:
         data = Data(X=X, Y=Y)
         st_data = SpatioTemporalData(X=X, Y=Y, sort=True)
@@ -295,20 +295,20 @@ elif cmd_args['fp']:
             num_latents=Q,
             block_size=block_size,
             surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
-                data=MultiOutputTemporalData(X.sparsity_arr[0], Y[..., None], sort=False), 
+                data=MultiOutputTemporalData(X.sparsity_arr[0], Y[:, None, :], sort=False), 
                 likelihood=likelihood, 
                 prior=prior.latent_obj,
                 inference='Sequential'
             )
         )
+        print(q_cvi.surrogate.get_objective())
+        breakpoint()
 
     else:
         raise RuntimeError()
 
 else:
     raise RuntimeError()
-
-breakpoint()
 
 # Create Model
 if cmd_args['spatial_Z']:
@@ -329,14 +329,23 @@ print(m.get_objective())
 if True:
     # NatGrad trainer
     natgrad_trainer = NatGradTrainer(m, schedule='linear')
-    natgrad_trainer.train([1.0, 1.0], 1)
+    #natgrad_trainer.train([1.0, 1.0], 1)
     #natgrad_trainer.train([0.01, 0.1], 10)
+    if cmd_args['fp']:
+        natgrad_trainer.train([0.01, 0.01], 10)
+        natgrad_trainer.train([0.01, 0.1], 10)
+        natgrad_trainer.train([0.1, 0.1], 10)
+    else:
+        natgrad_trainer.train([1.0, 1.0], 1)
     #natgrad_trainer.train([0.1, 0.1], 5)
 
     print('OBJ after NG: ', m.get_objective())
 
 # Predict
-pred_mu, pred_var = m.predict_y(XS, diagonal=True)
+if cmd_args['fp']:
+    pred_mu, pred_var = m.predict_y(np.tile(XS, [Q, 1, 1]), diagonal=True)
+else:
+    pred_mu, pred_var = m.predict_y(XS, diagonal=True)
 
 plot_data(X, Y, Nt, Ns, cmd_args)
 plot_res(pred_mu, pred_var, Nts, Nss, cmd_args)

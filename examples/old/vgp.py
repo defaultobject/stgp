@@ -60,8 +60,8 @@ m1 = lego.models.GP(
     approximate_posterior = qu
 )
 
-m_name = match_suffix('._m', m1.vars().keys())
-s_chol_name = match_suffix('._S_chol', m1.vars().keys())
+m_name = match_suffix('._m(Parameter).raw_var', m1.vars().keys())
+s_chol_name = match_suffix('._S_chol(Parameter).raw_var', m1.vars().keys())
 approx_posterior_vars = [m_name, s_chol_name]
 
 
