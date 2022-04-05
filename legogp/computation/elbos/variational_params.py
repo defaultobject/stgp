@@ -170,3 +170,30 @@ def variational_params(data, approximate_posterior, likelihood, prior):
 def variational_params(data, approximate_posterior, likelihood, prior):
     """  conjugate Full-posterior approximate posterior setting """
     return approximate_posterior.surrogate.posterior_blocks()
+
+
+@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform)
+def variational_params(data, approximate_posterior, likelihood, prior):
+    m = approximate_posterior.m
+    S = approximate_posterior.S
+
+    Ns = m.shape[0]
+    num_latents = prior.num_latents
+
+    # X is shaped so that all outputs are grouped together
+    # We need to instead group by each input
+
+    m_p = prior.permute_vec(m)
+    S_p = prior.permute_mat(S)
+
+    m_p = np.reshape(m_p, [-1, num_latents])
+
+    # Extract block diagonals
+    S_blocks = get_block_diagonal(S_p, num_latents)
+
+    # Assert shapes are correct
+    chex.assert_shape(m_p, [Ns/num_latents, num_latents])
+    chex.assert_shape(S_blocks, [Ns/num_latents, num_latents, num_latents])
+
+    return m_p, S_blocks
+

@@ -85,7 +85,6 @@ class DataLatentPermutation(Transform):
 
 
     def permute_mat(self, A):
-        raise RuntimeError()
         left_P = self.permutation_fn(
             self.num_latents,
             int(A.shape[0]/self.num_latents)

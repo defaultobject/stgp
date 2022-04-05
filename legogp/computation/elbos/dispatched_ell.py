@@ -6,11 +6,11 @@ import objax
 from ...dispatch import dispatch, evoke
 from ..matrix_ops import block_from_vec, block_from_mat, stack_rows
 
-from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform
+from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform, DataLatentPermutation
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
-from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian
+from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian, GaussianProductLikelihood
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
@@ -306,6 +306,39 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     )
 
 # ================================= Special Cases =================================
+@dispatch(GaussianProductLikelihood, DataLatentPermutation, FullGaussianApproximatePosterior)
+def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    Both q_f_mu_arr and q_f_var_arr are already in data-latent format
+    We just need to mix them by W and call full_gaussian_expected_log_likelihood
+    """
+
+    X, Y = data.X, data.Y
+
+    W = prior.latent_obj.W
+
+    # Ensure rank 2 after batching
+    q_f_mu_arr = q_f_mu_arr[..., None]
+    Y = Y[..., None]
+
+    # Mix outputs by the linear transform defined in the prior
+    q_f_mu_arr = jax.vmap(lambda W, f: W @ f, [None, 0])(W, q_f_mu_arr)
+    q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
+
+    variance = np.diag(likelihood.variance)
+
+
+    # ELL is the sum of the individual blocks
+    ell_blocks = jax.vmap(
+        full_gaussian_expected_log_likelihood,
+        [None, 0, None, 0, 0],
+        0
+    )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
+
+    chex.assert_shape(ell_blocks, [q_f_mu_arr.shape[0]])
+
+    return np.sum(ell_blocks)
+
 @dispatch(BlockDiagonalGaussian, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     X, Y = data.X, data.Y
@@ -314,7 +347,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     # Y has shape Nt x Ns x P
     # At each timestep we need latent-data order because of how the state space is representated
     # To convert to latent-data order we just need to stack each spatials observations
-    #Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, data.Ns*data.P]) 
+    Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, data.Ns*data.P]) 
 
     # Ensure rank 2 after batching
     Y = Y[..., None]
@@ -345,7 +378,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(
         full_gaussian_expected_log_likelihood,
-        [1, 0, 0, 0, 0],
+        [None, 0, 0, 0, 0],
         0
     )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
 

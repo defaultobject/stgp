@@ -141,7 +141,8 @@ class NatGradTrainer(Trainer):
         learning_rate, 
         epochs, 
         callback=None,
-        epoch_ofset=0
+        epoch_ofset=0,
+        verbose=False
     ):
 
         def gradient_step(i, global_i):
@@ -161,7 +162,8 @@ class NatGradTrainer(Trainer):
             else:
                 raise NotImplementedError(f'{self.schedule} is not implemented')
 
-            print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
+            if verbose:
+                print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
             params = self.natgrad_fn(lr)
 
@@ -172,11 +174,12 @@ class NatGradTrainer(Trainer):
 
         epoch_arr = []
         for i in range(epochs):
+            gradient_step(i, i+epoch_ofset)
+
             val = self.objective_fn()
 
             epoch_arr.append(val)
 
-            gradient_step(i, i+epoch_ofset)
 
             if callback is not None:
                 callback(i, None, None)

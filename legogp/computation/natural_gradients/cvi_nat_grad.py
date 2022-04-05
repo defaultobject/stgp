@@ -415,6 +415,9 @@ def natural_gradients(model, beta: float) -> np.ndarray:
         model, q_mu_z, q_var_z
     )
 
+    # Fix shapes
+    Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
+
     new_Y_tilde, new_V_tilde = jax.vmap(
         cvi_block_update,
         [0, 0, 0, 0, 0, 0, None]
