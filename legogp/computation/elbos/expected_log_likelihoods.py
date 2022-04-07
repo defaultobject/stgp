@@ -11,9 +11,10 @@ from ...core import GPPrior
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ...dispatch import dispatch
-from ..gaussian import log_gaussian
+from ..gaussian import log_gaussian, log_gaussian_with_nans
 from ..matrix_ops import add_jitter, cholesky, cholesky_solve
 from ... import utils
+from ...utils.nan_utils import get_mask, mask_to_identity, mask_vector
 
 
 @jit
@@ -96,8 +97,16 @@ def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.n
 
     noise_chol = cholesky(add_jitter(noise, settings.jitter))
 
-    ml =  log_gaussian(Y, q_mu, noise) 
-    trace_term = -0.5*np.trace(cholesky_solve(noise_chol, q_covar))
+    ml =  log_gaussian_with_nans(Y, q_mu, noise) 
+
+    mask = get_mask(Y)
+    masked_q_covar = mask_to_identity(q_covar, mask)
+    masked_noise_chol = mask_to_identity(noise_chol, mask)
+
+    traced_term = cholesky_solve(noise_chol, q_covar)
+    masked_trace_term = mask_vector(traced_term, mask)
+
+    trace_term = -0.5*np.trace(masked_trace_term)
 
     ell =  ml + trace_term
 

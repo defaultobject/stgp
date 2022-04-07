@@ -112,6 +112,10 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
 
 @partial(jit, static_argnums=(0, 1))
 def gaussian_prediction_blocks(group_size, block_size, Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    N = K_xs.shape[0]
+    M = K_xs_x.shape[1]
+    Q = block_size
+
     chex.assert_shape(K_xx, lik_var.shape)
 
     # TODO: add means and missing data
@@ -124,13 +128,17 @@ def gaussian_prediction_blocks(group_size, block_size, Y, K_xs, K_xs_x, K_xx, me
         K_xs_x.T, 
         lower=True
     )
+    chex.assert_shape(A, [M, N*Q])
 
     B = block_diagonal_from_cholesky(A.T, block_size)
+    chex.assert_shape(B, [N, Q, Q])
 
     sig = K_xs - B
+    chex.assert_shape(sig, [N, Q, Q])
 
     # K_xs_x @ cholesky_solve(K_chol, Y)
     mu = triangular_solve(K_chol.T, A, lower=False).T @ Y
     mu = block_from_vec(mu, block_size)
+    chex.assert_shape(mu, [N, Q])
 
     return mu, sig

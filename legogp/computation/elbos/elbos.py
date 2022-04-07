@@ -53,7 +53,6 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
 
     return (N/minibatch_size) * ELL
 
-
 def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
 
     # We use the latent_obj because we want to get the latent prior, not the transformed ones
@@ -64,7 +63,6 @@ def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterio
     return compute_expected_log_liklihood_with_variational_params(
         data, q_m, q_S, likelihood, prior, approximate_posterior, inference
     )
-
 
 @dispatch(Likelihood, Transform, ApproximatePosterior)
 def elbo(
@@ -79,7 +77,6 @@ def elbo(
     ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
     return  ELL - KL
-
 
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
 def elbo(
@@ -118,9 +115,7 @@ def elbo(
 
     ML_surrogate = np.sum(ML_arr)
 
-
     return ELL - ELL_surrogate + ML_surrogate
-
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(
@@ -146,4 +141,3 @@ def elbo(
     #elbo =  ELL 
 
     return elbo
-

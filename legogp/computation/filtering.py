@@ -51,7 +51,7 @@ def kalman_step(Y_k, A_k, H_k, m_k, P_k, Q_k, R_k, mask_k):
 
     return m_k, P_k, log_Z_k
 
-def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood: 'Likelihood', N: int, store_intermediate: bool = False):
+def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', R, N: int, store_intermediate: bool = False):
     x_t = data.X_time
     X_s = data.X_space
     Y = data.Y
@@ -74,9 +74,6 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
 
     dt = np.diff(x_t)
 
-    R = likelihood.variance
-    out_dim = R.shape[-1]
-
     # Y has shape Nt x Ns x P
     # At each timestep we need latent-data order because of how the state space is representated
     # To convert to latent-data order we just need to stack each spatials observations
@@ -84,20 +81,6 @@ def sequential_kalman_filter(data: 'SequentialData', prior: 'Prior', likelihood:
 
     # Ensure rank 2 at each time step
     Y = Y[..., None]
-
-    # Currently likelihood is only defined on the training points. When prediction there will be less likelihood points then testing
-    #   Jax silently wraps around in this setting, which could cause some issues. 
-    # In the Gaussian likelihood (single sigma_y) case, this makes no difference so for now we ignore.
-    if False:
-        # padding missing likelihood entries
-        # NOTE: only works in time
-        
-        points_added = data.Nt-R.shape[0] 
-        # Full R. This wont be used at locations without data so we just ignore
-        R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
-        R = np.vstack([R, R_tmp])
-        R = R[data.unique_idx][data.sort_idx]
-        R = np.reshape(R, [data.Nt, likelihood.block_size, likelihood.block_size])
 
 
     # nan masking
@@ -156,7 +139,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, A_k, Q_k):
 
     return m, P, G
 
-def sequential_rts_smoother(data, m_filtered, P_filtered, prior: 'Prior', likelihood: 'Likelihood', N: int):
+def sequential_rts_smoother(data, m_filtered, P_filtered, prior: 'Prior', N: int):
     x_t =  data.X_time
     X_s =  data.X_space
 
@@ -233,13 +216,13 @@ def filter_to_obvs(filtered_m, filtered_P, prior: 'Prior'):
 
     return m, P
 
-def filter_and_smooth(data: 'SequentialData', prior: 'Prior', likelihood: 'Likelihood', N: int):
+def filter_and_smooth(data: 'SequentialData', prior: 'Prior', R, N: int):
     log_marginal_lik, filtered_m, filtered_P = sequential_kalman_filter(
-            data, prior, likelihood, N = N, store_intermediate=True
+            data, prior, R, N = N, store_intermediate=True
     )
 
     smoothed_m, smoothed_P = sequential_rts_smoother(
-        data, filtered_m, filtered_P,  prior, likelihood, N = N
+        data, filtered_m, filtered_P,  prior, N = N
     )
 
     return log_marginal_lik, smoothed_m, smoothed_P

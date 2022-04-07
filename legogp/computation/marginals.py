@@ -1,5 +1,6 @@
 import jax
 from jax import jit
+from functools import partial
 import jax.numpy as np
 import chex
 from typing import List
@@ -124,8 +125,18 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
 
     return mu, sig
 
-@jit
+@partial(jit, static_argnums=(0, 1))
 def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+
+    M = X.shape[1]
+    N = XS.shape[0]
+    Q = block_size
+
+    chex.assert_shape(Kzz, [M*Q, M*Q])
+    chex.assert_shape(Kxz, [N*Q, M*Q])
+    chex.assert_shape(Kxx, [N, Q, Q])
+    chex.assert_shape(m, [M*Q, 1])
+    chex.assert_shape(S_chol, [M*Q, M*Q])
 
     # Add jitter to help the cholesy solve
     jit = np.eye(Kzz.shape[0])*settings.jitter
@@ -135,6 +146,10 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
     pred_mu, pred_var = gaussian_prediction_blocks(
         group_size, block_size, m,  Kxx, Kxz, Kzz, mean_x, mean_xs, jit
     )
+
+    chex.assert_shape(pred_mu, [N, Q])
+    chex.assert_shape(pred_var, [N, Q, Q])
+
 
     # Compute KxzKzz^{-1}SKzz^{-1}Kxz.T
     K_chol = cholesky(add_jitter(Kzz, settings.jitter))

@@ -22,7 +22,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -37,6 +37,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
 
 @dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+    """ Compute diagonal spatial sparsity conditional """
 
     data_Z = sparsity.raw_Z
     mu, var = evoke('spatial_conditional', data, data_Z, 'BASE_SDE_GP', prior)(
@@ -55,6 +56,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
 
 @dispatch(ApproximatePosterior, BlockDiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+    """ Compute block diagonal spatial sparsity conditional """
 
     # Ensure rank 2
     q_m = np.reshape(q_m, [data.Nt, -1])
@@ -71,20 +73,21 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-
 @dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'FullSparsity')
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
-    # TODO: this is a hack
+def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity):
+    """ The marginal q(f) here is the same as the predictive distribution q(f*).  """
+
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity)
 
     return fn(
-        data.X, data.X, approximate_posterior, likelihood, prior, sparsity
+        data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity
     )
 
 @dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity)
-def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
-    m = approximate_posterior.m
-    S_chol = approximate_posterior.S_chol
+def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity):
+    """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
+    chex.assert_rank([m, S_chol], [2, 2])
+    chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
 
     return gaussian_conditional_diagional(
         XS, 
@@ -100,6 +103,9 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
 
 @dispatch('full_prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', FreeSparsity)
 def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
+    """ Computes the full q(f) = ∫ p(f | u) q(u) du """
+
+    raise NotImplementedError()
     m = approximate_posterior.m
     S_chol = approximate_posterior.S_chol
 
@@ -155,7 +161,6 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
     return marginal_mu, marginal_var
 
-
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
     latents_arr = prior.latents
@@ -163,6 +168,43 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     sparsity_arr = prior.get_sparsity_list()
     likelihood_arr = likelihood.likelihood_arr
 
+    # When prediction we can just directly get the raw params
+    q_m, q_S = approximate_posterior.get_variational_params()
+
+    num_latents = len(sparsity_arr)
+    N = XS.shape[0]
+
+    if diagonal:
+        evoke_params = 'prediction'
+    else:
+        evoke_params = 'full_prediction'
+
+    #TODO: assuming that all likelihoods are the same
+    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
+
+    # Compute q(f) for each output
+    marginal_mu, marginal_var = batch_over_module_types(
+        evoke_name = 'marginal',
+        evoke_params = [evoke_params],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_params = [XS, data, q_m, q_S, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_axes = [None, None, 0, 0, 0, 0, 0, 0],
+        dim = len(latents_arr),
+        out_dim  = 2
+    )
+
+    #chex.assert_shape(marginal_mu, [num_latents, N, 1])
+    #chex.assert_shape(marginal_var, [num_latents, N, 1])
+
+    return marginal_mu, marginal_var
+
+
+@dispatch('prediction', MeanFieldConjugateGaussian, ProductLikelihood, Independent)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+    latents_arr = prior.latents
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    sparsity_arr = prior.get_sparsity_list()
+    likelihood_arr = likelihood.likelihood_arr
 
     num_latents = len(sparsity_arr)
     N = XS.shape[0]
@@ -231,7 +273,6 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearTransform)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
-
     if diagonal is False:
         raise NotImplementedError()
 

@@ -24,7 +24,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Gaussian expected log likelihood component. """
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
-
 @dispatch('scalar', Likelihood, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Expected log likelihood component approximated through quadrature. """
@@ -113,7 +112,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     ell = np.sum(ell_arr)
 
     return ell
-
 
 @dispatch(DiagonalLikelihood, GaussianApproximatePosterior)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
@@ -306,6 +304,8 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     )
 
 # ================================= Special Cases =================================
+
+@dispatch(GaussianProductLikelihood, LinearTransform, FullGaussianApproximatePosterior)
 @dispatch(GaussianProductLikelihood, DataLatentPermutation, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
@@ -313,9 +313,14 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     We just need to mix them by W and call full_gaussian_expected_log_likelihood
     """
 
+    chex.assert_rank([q_f_mu_arr, q_f_var_arr], [2, 3])
+
     X, Y = data.X, data.Y
 
-    W = prior.latent_obj.W
+    if isinstance(prior, DataLatentPermutation):
+        W = prior.latent_obj.W
+    else:
+        W = prior.W
 
     # Ensure rank 2 after batching
     q_f_mu_arr = q_f_mu_arr[..., None]
@@ -326,7 +331,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
 
     variance = np.diag(likelihood.variance)
-
 
     # ELL is the sum of the individual blocks
     ell_blocks = jax.vmap(

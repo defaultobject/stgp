@@ -3,6 +3,7 @@ from jax import jit
 import jax.numpy as np
 import chex
 
+from ...likelihood import ProductLikelihood
 from ...transforms import LinearTransform, Independent
 from ...dispatch import dispatch, evoke
 from ...utils.batch_utils import batch_over_module_types
@@ -14,7 +15,6 @@ from ...core import Posterior
 # Gaussian Likelihoods
 @dispatch(Posterior, 'Gaussian')
 def predict_y_full(XS, likelihood, post_mu, post_var):
-
     return post_mu, add_jitter(post_var, likelihood.variance)
 
 @dispatch(Posterior, 'Gaussian')
@@ -26,7 +26,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
     return post_mu, post_var + likelihood.base.variance
 
-@dispatch(Posterior, 'ProductLikelihood', Independent)
+@dispatch(Posterior, ProductLikelihood, Independent)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
     num_outputs = gp.output_dim
 
@@ -67,7 +67,14 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
     if diagonal:
-        return post_mu, post_var + likelihood.base.variance
+        chex.assert_rank([post_mu, post_var], [2, 2])
+        chex.assert_equal_shape([post_mu, post_var])
+
+        lik_var = likelihood.base.variance
+
+        chex.assert_rank(lik_var, 1)
+
+        return post_mu, post_var + lik_var[:, None]
     else:
         raise NotImplementedError()
 

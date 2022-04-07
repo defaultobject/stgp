@@ -11,6 +11,10 @@ from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 @jit
 def log_gaussian(Y, mu, sigma):
+    """
+    Computes 
+        log N(Y | m, S) = -(1/2) [N log 2π + log |S| + (Y-m)^T S⁻¹ (Y-m)]
+    """
     # ensure matrices
     chex.assert_rank(mu, 2)
     chex.assert_rank(Y, 2)
@@ -36,12 +40,23 @@ def log_gaussian(Y, mu, sigma):
 
 @jit
 def log_gaussian_with_mask(Y, mu, sigma, mask):
+    """
+    Let Y_m, Y_o indicate the missing and observed datapoints then this function computes 
+        log N(Y | m, S) = log N(Y_o | m_o, S_o) N(Y_m | m_m, S_m)
+
+    Then the log-marginal likelihood only on Y_o is given by:
+        log N(Y | m, S) - log N(Y_m | 0, 1) where Y_m = 0.
+    which is equal to
+        log N(Y | m, S) + (1/2) N_m log 2π
+
+    We work with both Y_m and Y_o to keep matrix dimensions fixed no matter how many missing observations
+        there are.
+    """
     # ensure matrices
     chex.assert_rank(mu, 2)
     chex.assert_rank(Y, 2)
     chex.assert_rank(sigma, 2)
     chex.assert_rank(mask, 1)
-
 
     # ensure square matrix
     chex.assert_equal(sigma.shape[0], sigma.shape[1])

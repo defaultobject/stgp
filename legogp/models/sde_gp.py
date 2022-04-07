@@ -117,7 +117,7 @@ class BASE_SDE_GP(Posterior):
         return sequential_kalman_filter(
             self.data,
             self.prior,
-            self.likelihood,
+            self.likelihood.variance,
             N = self.Nt
         )
 
@@ -148,6 +148,8 @@ class BASE_SDE_GP(Posterior):
         X_sorted = X_stacked[sort_idx]
         Y_sorted = Y_stacked[sort_idx]
 
+
+
         _, mu, var = filter_and_smooth(
             X_sorted.value,
             Y_sorted.value,
@@ -169,7 +171,7 @@ class BASE_SDE_GP(Posterior):
         _, mu, var = filter_and_smooth(
             self.data,
             self.prior,
-            self.likelihood,
+            self.likelihood.variance,
             N = self.data.Nt
         )
         return mu, var
@@ -178,7 +180,7 @@ class BASE_SDE_GP(Posterior):
         _, mu, var = filter_and_smooth(
             self.data,
             self.prior,
-            self.likelihood,
+            self.likelihood.variance,
             N = self.data.Nt
         )
 
@@ -195,6 +197,8 @@ class BASE_SDE_GP(Posterior):
             return mu, var_diag
 
         return mu, var
+
+
 
     def predict_blocks(self, XS, group_size, block_size, diagonal=False):
         chex.assert_equal(group_size, 1)
@@ -220,7 +224,7 @@ class BASE_SDE_GP(Posterior):
         _, mu, var = filter_and_smooth(
             test_data,
             self.prior,
-            self.likelihood,
+            self.get_likelihood_for_prediction(test_data),
             N = test_data.Nt
         )
 
@@ -251,6 +255,25 @@ class BASE_SDE_GP(Posterior):
 
 class T_SDE_GP(BASE_SDE_GP):
     """ Temporal SDE GP """
+
+    def get_likelihood_for_prediction(self, data):
+        # Currently the likelihood is only defined on the training points. 
+        # But due to the implementation we need to provide likelihood values everywhere
+        # Jax will silently wraps around in this setting if less data is passed through
+
+        R = self.likelihood.variance
+
+        out_dim = R.shape[-1]
+
+        points_added = data.Nt-R.shape[0] 
+        # Full R. This wont be used at locations without data so we just ignore
+        R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
+        R = np.vstack([R, R_tmp])
+        R = R[data.unique_idx][data.sort_idx]
+        R = np.reshape(R, [data.Nt, self.likelihood.block_size, self.likelihood.block_size])
+
+        return R
+
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
         if diagonal is False:
             raise NotImplementedError()
@@ -268,6 +291,7 @@ class T_SDE_GP(BASE_SDE_GP):
         Y_stacked = onp.vstack([Y, Y_nans])
 
 
+
         test_data = get_sequential_data_obj(
             X_stacked,
             Y_stacked,
@@ -278,7 +302,7 @@ class T_SDE_GP(BASE_SDE_GP):
         _, mu, var = filter_and_smooth(
             test_data,
             self.prior,
-            self.likelihood,
+            self.get_likelihood_for_prediction(test_data),
             N = test_data.Nt
         )
 
@@ -298,6 +322,23 @@ class T_SDE_GP(BASE_SDE_GP):
 
 class ST_SDE_GP(BASE_SDE_GP):
     """ Spatio-Temporal SDE GP """
+
+    def get_likelihood_for_prediction(self, data):
+        # Currently the likelihood is only defined on the training points. 
+        # But due to the implementation we need to provide likelihood values everywhere
+        # Jax will silently wraps around in this setting if less data is passed through
+        raise NotImplementedError()
+
+        R = self.likelihood.variance
+
+        points_added = data.Nt-R.shape[0] 
+        # Full R. This wont be used at locations without data so we just ignore
+        R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
+        R = np.vstack([R, R_tmp])
+        R = R[data.unique_idx][data.sort_idx]
+        R = np.reshape(R, [data.Nt, likelihood.block_size, likelihood.block_size])
+
+        return R
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
         """
@@ -355,7 +396,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         _, mu, var = filter_and_smooth(
             test_data,
             self.prior,
-            self.likelihood,
+            self.get_likelihood_for_prediction(all_temporal_data),
             N = test_data.Nt
         )
 

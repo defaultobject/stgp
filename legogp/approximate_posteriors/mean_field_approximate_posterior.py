@@ -3,7 +3,7 @@ import jax.numpy as np
 import objax
 import chex
 from .. import settings
-from ..utils.utils import ensure_module_list, can_batch
+from ..utils.utils import ensure_module_list, get_batch_type
 from batchjax import batch_or_loop
 
 from ..transforms  import LinearTransform, NonLinearTransform
@@ -20,7 +20,7 @@ def batch_over_posteriors(post_list, fn):
         [0],
         dim = post_list,
         out_dim = 1,
-        batch_flag = can_batch(post_list)
+        batch_type = get_batch_type(post_list)
     )
     return arr
 
@@ -40,6 +40,9 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             self.approx_posteriors = approximate_posteriors
 
         self.num_of_latents = len(self.approx_posteriors)
+
+    def get_variational_params(self):
+        return self.m, self.S_chol
 
     @property
     def m(self):

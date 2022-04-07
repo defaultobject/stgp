@@ -30,6 +30,16 @@ from ...sparsity import FreeSparsity, Sparsity
 
 # ================================== Dispatched q(u) ==============================
 
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity')
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity')
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+    """ For computational reasons we return S_chol """
+    mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol
+
+    chex.assert_rank([mu, var_chol], [2, 2])
+
+    return mu, var_chol
+
 @dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity')
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
     """
@@ -107,6 +117,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
     var = np.reshape(var, [Nt, Ns, Ns])
 
     return mu, var
+
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
     """
@@ -130,15 +141,17 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 def variational_params(data, approximate_posterior, likelihood, prior):
     """  Single approximate posterior setting """
     sparsity = prior.sparsity
+
     mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity)(
         data, approximate_posterior, likelihood, prior, sparsity
     ) 
 
     return mu, var
 
+#================== MEAN FIELD ==========================
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent)
 def variational_params(data, approximate_posterior, likelihood, prior):
-    """  Mean-field approximate posterior setting """
+    """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
@@ -161,39 +174,25 @@ def variational_params(data, approximate_posterior, likelihood, prior):
 
     return q_m, q_S
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent)
-def variational_params(data, approximate_posterior, likelihood, prior):
-    """  Full-posterior approximate posterior setting """
-    return approximate_posterior.m, approximate_posterior.S_blocks
 
-@dispatch(FullConjugateGaussian, Likelihood, Independent)
-def variational_params(data, approximate_posterior, likelihood, prior):
+#================== DENSE FULL POSTERIOR ==========================
+
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity')
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
     """  conjugate Full-posterior approximate posterior setting """
     return approximate_posterior.surrogate.posterior_blocks()
 
-
-@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
 def variational_params(data, approximate_posterior, likelihood, prior):
-    m = approximate_posterior.m
-    S = approximate_posterior.S
+    """  Full-posterior approximate posterior setting """
 
-    Ns = m.shape[0]
-    num_latents = prior.num_latents
+    sparsity_arr = prior.get_sparsity_list()
 
-    # X is shaped so that all outputs are grouped together
-    # We need to instead group by each input
+    #TODO: assuming same sparsity across all latents
+    sparsity = sparsity_arr[0]
 
-    m_p = prior.permute_vec(m)
-    S_p = prior.permute_mat(S)
+    mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity)(
+        data, approximate_posterior, likelihood, prior, sparsity
+    ) 
 
-    m_p = np.reshape(m_p, [-1, num_latents])
-
-    # Extract block diagonals
-    S_blocks = get_block_diagonal(S_p, num_latents)
-
-    # Assert shapes are correct
-    chex.assert_shape(m_p, [Ns/num_latents, num_latents])
-    chex.assert_shape(S_blocks, [Ns/num_latents, num_latents, num_latents])
-
-    return m_p, S_blocks
-
+    return mu, var

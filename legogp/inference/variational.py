@@ -39,8 +39,7 @@ class Variational(Inference):
     def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
         pred_mu, pred_var = self.predict_f(XS, data, likelihood, prior, approximate_posterior, diagonal)
 
-
-        if False:
+        if True:
             pred_y_mu, pred_y_var = evoke('predict_y', approximate_posterior, likelihood, prior)(
                 XS, approximate_posterior, likelihood, pred_mu, pred_var, diagonal
             )
