@@ -31,9 +31,10 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 config = {
     'ls': [0.1, 0.1, 0.1],
-    'lik_var': [0.1, 0.1, 0.1],
+    'lik_var': [0.01, 0.1, 0.1],
     'epochs': 100,
     'lr': 0.01,
+    'beta': 1.0
 }
 
 res_time = {}
@@ -68,13 +69,20 @@ def svgp(config, XS, X, Y):
 
     print(m.get_objective())
     
-    learning_curve, training_time = SimpleTrainer().train(
-        m, 
-        objax.optimizer.Adam,
-        config['lr'],
-        config['epochs'],
-        callback = None,
-    )
+    natgrad_trainer = NatGradTrainer(m, schedule='constant')
+    # Do not use adam for the approx posterios
+    all_vars = list(m.vars().keys())
+    m_name = [a for a in all_vars if a.endswith('._m(Parameter).raw_var')]
+    s_chol_name = [a for a in all_vars if a.endswith('._S_chol(Parameter).raw_var')]
+    approx_posterior_vars = m_name + s_chol_name
+    grad_step = GradDescentTrainer(m, objax.optimizer.Adam, hold_vars = approx_posterior_vars)
+
+    learning_curve = []
+    for i in range(config['epochs']):
+        obj_val, _ = natgrad_trainer.train(config['beta'], epochs=1)
+        #grad_step.train(config['lr'], epochs=1)
+        learning_curve.append(obj_val[0])
+        break
     
     return {'m': m, 'lc': learning_curve}
     

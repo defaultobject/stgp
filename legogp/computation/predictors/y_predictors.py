@@ -4,7 +4,7 @@ import jax.numpy as np
 import chex
 
 from ...likelihood import ProductLikelihood
-from ...transforms import LinearTransform, Independent
+from ...transforms import LinearTransform, Independent, Transform
 from ...dispatch import dispatch, evoke
 from ...utils.batch_utils import batch_over_module_types
 from batchjax import batch_or_loop, BatchType
@@ -26,7 +26,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
     return post_mu, post_var + likelihood.base.variance
 
-@dispatch(Posterior, ProductLikelihood, Independent)
+@dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
     num_outputs = gp.output_dim
 

@@ -103,7 +103,11 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         obj_val, _ = natgrad_trainer.train(1.0, epochs=1)
         learning_curve.append(obj_val[0])
         grad_step.train(config['lr'], epochs=1)
+
+    pred_mu, pred_var = m.predict_y(XS)
+
     
-    return {'m': m, 'lc': learning_curve}
+    return {'m': m, 'lc': learning_curve, 'pred_mu': pred_mu, 'pred_var': pred_var}
     
 res_time['dense_sde_cvi'] = dense_sde_cvi_lmc(config, XS, X, Y)
+

@@ -49,7 +49,7 @@ m = lego.models.GP(
 
 print(m.get_objective())
 
-if True:
+if False:
     # Train
     epochs = 500
     callback = progress_bar_callback(epochs)

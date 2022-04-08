@@ -327,16 +327,20 @@ class ST_SDE_GP(BASE_SDE_GP):
         # Currently the likelihood is only defined on the training points. 
         # But due to the implementation we need to provide likelihood values everywhere
         # Jax will silently wraps around in this setting if less data is passed through
-        raise NotImplementedError()
 
         R = self.likelihood.variance
+
+        # Data is temporal data. We do not use the Kalman filter and smoother to predict in space,
+        #  only in time.  
+
+        out_dim = self.likelihood.block_size
 
         points_added = data.Nt-R.shape[0] 
         # Full R. This wont be used at locations without data so we just ignore
         R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
         R = np.vstack([R, R_tmp])
         R = R[data.unique_idx][data.sort_idx]
-        R = np.reshape(R, [data.Nt, likelihood.block_size, likelihood.block_size])
+        R = np.reshape(R, [data.Nt, self.likelihood.block_size, self.likelihood.block_size])
 
         return R
 

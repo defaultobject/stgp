@@ -161,6 +161,44 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
     return marginal_mu, marginal_var
 
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+
+    latents = prior.latent_obj
+
+    num_latents = len(latents.latents)
+    N = data.X.shape[0]
+
+    # Compute q(f) for each output
+    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, latents)(
+        data, q_m , q_S, approximate_posterior, likelihood, latents
+    )
+
+    # Mix outputs by the linear transform defined in the prior
+    marginal_mu, marginal_var = prior.transform_diagonal(marginal_mu, marginal_var)
+
+    chex.assert_shape(marginal_mu, [num_latents, N, 1])
+    chex.assert_shape(marginal_var, [num_latents, N, 1])
+
+    return marginal_mu, marginal_var
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearTransform)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+    """ 
+    Computation of the ELL with a non-linear transform is computed using monte-carlo. Therefore we return the (untransformed)
+    latents here so they can be used to perform the monte-carlo approximation.
+    """
+    latents = prior.latent_obj
+
+    return   evoke('marginal', approximate_posterior, likelihood, latents)(
+        data, q_m, q_S, approximate_posterior, likelihood, latents
+    ) 
+
+# ========================= Predictions =========================
+
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
     latents_arr = prior.latents
@@ -168,8 +206,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     sparsity_arr = prior.get_sparsity_list()
     likelihood_arr = likelihood.likelihood_arr
 
-    # When prediction we can just directly get the raw params
-    q_m, q_S = approximate_posterior.get_variational_params()
+    # When predicting we can just directly get the raw params
+    q_m, q_S_chol = approximate_posterior.get_variational_params()
 
     num_latents = len(sparsity_arr)
     N = XS.shape[0]
@@ -187,7 +225,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
         evoke_name = 'marginal',
         evoke_params = [evoke_params],
         module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [XS, data, q_m, q_S, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_params = [XS, data, q_m, q_S_chol, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
         fn_axes = [None, None, 0, 0, 0, 0, 0, 0],
         dim = len(latents_arr),
         out_dim  = 2
@@ -233,42 +271,6 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return marginal_mu, marginal_var
 
-
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
-
-    latents = prior.latent_obj
-
-    num_latents = len(latents.latents)
-    N = data.X.shape[0]
-
-    # Compute q(f) for each output
-    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, latents)(
-        data, q_m , q_S, approximate_posterior, likelihood, latents
-    )
-
-    # Mix outputs by the linear transform defined in the prior
-    marginal_mu, marginal_var = prior.transform_diagonal(marginal_mu, marginal_var)
-
-    chex.assert_shape(marginal_mu, [num_latents, N, 1])
-    chex.assert_shape(marginal_var, [num_latents, N, 1])
-
-    return marginal_mu, marginal_var
-
-
-@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearTransform)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
-    """ 
-    Computation of the ELL with a non-linear transform is computed using monte-carlo. Therefore we return the (untransformed)
-    latents here so they can be used to perform the monte-carlo approximation.
-    """
-    latents = prior.latent_obj
-
-    return   evoke('marginal', approximate_posterior, likelihood, latents)(
-        data, q_m, q_S, approximate_posterior, likelihood, latents
-    ) 
-
-# ========================= Predictions =========================
 
 
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearTransform)
