@@ -21,6 +21,7 @@ from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.models import GP
 from legogp.transforms import DataLatentPermutation , Independent
+from legogp.core import MultiObjectiveModel
 
 import objax
 import jax
@@ -50,18 +51,43 @@ Y2 = Y[20:, 1][:, None]
 
 m1 = GP(
     data = Data(X1, Y1),
-    kernel = RBF(),
+    kernel = RBF(lengthscales=[0.1]),
+    likelihood = [Gaussian(variance=0.1)],
     inference='Batch'
 )
 
 m2 = GP(
     data = Data(X2, Y2),
-    kernel = DeepRBF(parent=m1),
+    kernel = DeepRBF(parent=m1, lengthscale=[0.1]),
+    likelihood = [Gaussian(variance=0.1)],
     inference='Batch'
 )
-print(m1.get_objective())
-print(m2.get_objective())
 
-m1.predict_y(X2)
-m2.predict_y(X2)
-breakpoint()
+m = MultiObjectiveModel([m2, m1])
+
+if True:
+    # Train
+    epochs = 500
+    callback = progress_bar_callback(epochs)
+    learning_curve, training_time = SimpleTrainer().train(
+        m, 
+        objax.optimizer.Adam,
+        0.01,
+        epochs,
+        callback = callback
+    )
+
+    # Plot learning curve
+    plt.plot(learning_curve)
+    plt.show()
+
+
+pred_mu_1, pred_var_1 = m1.predict_y(XS)
+pred_mu_2, pred_var_2 = m2.predict_y(XS)
+
+plt.scatter(X1, Y1)
+plt.plot(XS, pred_mu_1)
+
+plt.scatter(X2, Y2)
+plt.plot(XS, pred_mu_2)
+plt.show()

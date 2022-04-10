@@ -1,5 +1,7 @@
 import objax
-class MultiObjectiveModel(objax.Module):
+
+from . import Model
+class MultiObjectiveModel(Model):
     def __init__(self, model_list):
         self.model_list = objax.ModuleList(model_list)
 
