@@ -74,6 +74,8 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         )  
     )
 
+    breakpoint()
+
 
     m = GP(
         data = data,

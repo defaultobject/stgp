@@ -145,6 +145,10 @@ class TemporalAggregatedData(AggregatedData):
 
 class SequentialData(Data):
     def __init__(self):
+
+        self.minibatch = False
+
+
         self.unique_idx = None
         self.sort_idx = None
         self.points_added = None

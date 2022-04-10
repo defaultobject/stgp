@@ -31,12 +31,15 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
-    chex.assert_shape(ELL, [prior.output_dim])
 
-    Y_mask = get_same_shape_mask(data.Y)
-    N_no_nan = np.sum(Y_mask, axis=0)
+    if data.minibatch:
+        chex.assert_shape(ELL, [prior.output_dim])
+        Y_mask = get_same_shape_mask(data.Y)
+        N_no_nan = np.sum(Y_mask, axis=0)
 
-    return np.sum((N/N_no_nan) * ELL)
+        return np.sum((N/N_no_nan) * ELL)
+    else:
+        return np.sum(ELL)
 
 def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
 
