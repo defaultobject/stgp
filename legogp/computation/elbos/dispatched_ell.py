@@ -190,7 +190,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     chex.assert_shape(ell_arr, [len(likelihood_arr)])
 
-    return np.sum(ell_arr)
+    return ell_arr
 
 def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     chex.assert_rank(f, 2)

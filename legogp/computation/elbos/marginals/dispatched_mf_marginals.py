@@ -199,6 +199,16 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
 # ========================= Predictions =========================
 
+@dispatch('latents', MeanFieldApproximatePosterior, Likelihood, Transform)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+    latents = prior.latent_obj
+
+    mu, var = evoke('marginal', 'prediction', approximate_posterior, likelihood, latents)(
+        XS, data, approximate_posterior, likelihood, latents, inference, diagonal 
+    )
+
+    return mu.T, var.T
+
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
     latents_arr = prior.latents

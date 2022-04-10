@@ -10,7 +10,7 @@ use_loop_mode = False
 force_black_box = False
 
 jitter = 1e-5
-ng_jitter = 1e-5
+ng_jitter = 1e-7
 
 
 class strict_mode:

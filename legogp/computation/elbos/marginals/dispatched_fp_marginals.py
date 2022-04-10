@@ -135,8 +135,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
         data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity_arr
     ) 
 
-
-@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
+@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
 
     if diagonal is False:
@@ -160,6 +159,22 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
         latent_mu, latent_var =  fn(
             XS, data, q_m, q_S , approximate_posterior, likelihood, prior, sparsity_arr
         ) 
+
+    return latent_mu, latent_var
+
+
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+
+    if diagonal is False:
+        raise NotImplementedError()
+
+    sparsity_arr = prior.get_sparsity_list()
+
+
+    latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, prior)(
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
+    )
 
     # Compute transformed q(f)
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)

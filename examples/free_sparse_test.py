@@ -40,7 +40,8 @@ config = {
 res_time = {}
 
 def svgp(config, XS, X, Y):
-    data = Data(X, Y)
+    settings.jitter = 1e-7
+    data = Data(X, Y, minibatch_size=None)
 
     M = 3
     Z = np.linspace(0, 1, M)[:, None]
@@ -67,9 +68,10 @@ def svgp(config, XS, X, Y):
         prediction_samples = 1000
     )
 
-    print(m.get_objective())
+    #print(m.get_objective())
     
     natgrad_trainer = NatGradTrainer(m, schedule='constant')
+
     # Do not use adam for the approx posterios
     all_vars = list(m.vars().keys())
     m_name = [a for a in all_vars if a.endswith('._m(Parameter).raw_var')]
@@ -83,14 +85,54 @@ def svgp(config, XS, X, Y):
         #grad_step.train(config['lr'], epochs=1)
         learning_curve.append(obj_val[0])
         break
+
+    print(m.get_objective())
     
     return {'m': m, 'lc': learning_curve}
     
+
+
+
+def gpflow_model(config, XS, X, Y):
+    import gpflow
+    from gpflow.models import VGP, GPR, SGPR, SVGP
+    from gpflow.optimizers import NaturalGradient
+
+    M = 3
+    Z = np.linspace(0, 1, M)[:, None]
+
+
+    inducing_variable = Z
+
+    data = (X, Y)
+
+    svgp = SVGP(
+        kernel=gpflow.kernels.RBF(lengthscales=config['ls'][0]),
+        likelihood=gpflow.likelihoods.Gaussian(variance=config['lik_var'][0]),
+        inducing_variable=inducing_variable,
+        whiten=False
+    )
+
+    print(-svgp.elbo(data).numpy())
+
+    natgrad_opt = NaturalGradient(gamma=1.0)
+    variational_params = [(svgp.q_mu, svgp.q_sqrt)]
+    svgp_natgrad_loss = svgp.training_loss_closure(data)
+    natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+
+    print(-svgp.elbo(data).numpy())
+
+    return {'m':svgp, 'lc': None}
+
+
 res_time['batch'] = svgp(config, XS, X, Y)
+
+#res_time['gpflow'] = gpflow_model(config, XS, X, Y)
+#m = res_time['gpflow']['m']
 
 m = res_time['batch']['m']
 
-pred_mu, pred_var = m.predict_y(XS)
+pred_mu, pred_var = m.predict_f(XS)
 
 plt.fill_between(np.squeeze(XS), np.squeeze(pred_mu + 1.96 * np.sqrt(pred_var)), np.squeeze(pred_mu - 1.96 * np.sqrt(pred_var)), alpha = 0.4)
 plt.plot(XS, pred_mu)

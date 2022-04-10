@@ -11,47 +11,32 @@ from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
 from ...dispatch import dispatch, evoke
 
+from ...utils.nan_utils import get_same_shape_mask
+
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
 def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likelihood, prior, approximate_posterior, inference):
     N = data.N
 
-    # Minibatching across all outputs
-    minibatch = False
-    if inference.minibatch_size is not None:
-        minibatch = True
+    if data.minibatch:
+        # TODO: minibatching only works when sparsity is used. Assert this.
+        data.batch()
 
-    if minibatch:
-        raise NotImplementedError()
-        #minibatch
-        minibatch_size = inference.minibatch_size
-
-        # TODO: minibatching should only happen at locations WITHOUT missing data
-        # TODO: OR scaling should take into account the missing data
-        idx = objax.random.randint((minibatch_size,), low=0, high=N-1, generator=inference.generator)
-
-        X = X[idx,:]
-        Y = Y[idx,:]
-
-        # Compute approximate posterior
-        # TODO: this need to depend on sparisty and if whitened or not
-        q_f_mu, q_f_var = evoke('marginal', 'prediction', approximate_posterior, prior)(
-            X, X, approximate_posterior, prior
-        )
-
-    else:
-        minibatch_size = N
-
-        q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior)(
-            data, q_m, q_S, approximate_posterior, likelihood, prior
-        )
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior)(
+        data, q_m, q_S, approximate_posterior, likelihood, prior
+    )
 
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
 
-    return (N/minibatch_size) * ELL
+    chex.assert_shape(ELL, [prior.output_dim])
+
+    Y_mask = get_same_shape_mask(data.Y)
+    N_no_nan = np.sum(Y_mask, axis=0)
+
+    return np.sum((N/N_no_nan) * ELL)
 
 def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
 

@@ -191,6 +191,7 @@ class Independent(LinearTransform):
 
         self._latents_arr = ensure_module_list(latents)
         self._num_outputs = self.num_latents
+        self._output_dim = self.num_latents
 
     def forward(self, x):
         """Compute f=T(x)."""

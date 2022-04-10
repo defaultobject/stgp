@@ -2,6 +2,7 @@ import objax
 import chex
 import jax.numpy as np
 import numpy as onp
+import objax
 
 from .sequential import order_sequentially_np, pad_with_nan_to_make_grid
 from .. import Parameter
@@ -77,11 +78,31 @@ class SpatialTemporalInput(Input):
 
 
 class Data(objax.Module):
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, minibatch_size=None):
+
         self._Y = Parameter(np.array(Y), train=False, name='Y')
         self.save_X(X, train=False, name='X')
 
         self.N = Y.shape[0]
+
+        self.generator = objax.random.Generator(seed=0)
+
+        if minibatch_size is not None:
+            self.minibatch_size = minibatch_size
+            self.minibatch = True
+            self.idx = None
+        else:
+            self.minibatch_size = self.N
+            self.minibatch = False
+            self.idx = None
+
+    def batch(self):
+        self.idx = objax.random.randint(
+            (self.minibatch_size,), 
+            low=0, 
+            high=self.N-1, 
+            generator=self.generator
+        )
 
     @property
     def base(self):
@@ -89,11 +110,17 @@ class Data(objax.Module):
 
     @property
     def Y(self):
-        return self._Y.value
+        if self.minibatch:
+            return self._Y.value[self.idx]
+        else:
+            return self._Y.value
 
     @property
     def X(self):
-        return self._X.X
+        if self.minibatch:
+            return self._X.X[self.idx]
+        else:
+            return self._X.X
 
     def save_X(self, _X, name='X', train=False):
         """
@@ -106,7 +133,6 @@ class Data(objax.Module):
             self._X = _X # Store as reference
         else:
             self._X = Input(np.array(_X), name=name, train=train)
-
 
 class AggregatedData(Data):
     pass
