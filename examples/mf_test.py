@@ -21,6 +21,7 @@ from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.models import GP
 from legogp.transforms import DataLatentPermutation , Independent
+from legogp.transforms.multi_output import LMC
 from legogp.core import MultiObjectiveModel
 from legogp.metrics.nlpd import nlpd
 
@@ -41,34 +42,37 @@ import pandas as pd
 from data_zoo import multi_output_timeseries
 
 
-P = 2
+P = 6
 XS, X, Y = multi_output_timeseries(P, 100, 1000, seed=0)
 
 
-X1 = X
-X2 = X[20:]
-Y1 = Y[:, 0][:, None]
-Y2 = Y[20:, 1][:, None]
+Y1 = Y[:, :3]
+Y2 = Y[:, :3]
 
-m1 = GP(
-    data = Data(X1, Y1),
-    kernel = RBF(lengthscales=[0.1]),
-    likelihood = [Gaussian(variance=0.1)],
-    inference='Batch'
-)
+P1 = 3
+P2 = 3
+
+m1_latents = [
+    GP(
+        data = Data(X, Y[:, p][:, None]),
+        kernel = RBF(lengthscales=[0.1]),
+        likelihood = [Gaussian(variance=0.1)],
+        inference='Batch'
+    )
+    for p in range(P1)
+]
+
+m2_prior = LMC(m1_latents, output_dim = P2)
 
 m2 = GP(
-    data = Data(X2, Y2),
-    kernel = DeepRBF(parent=m1, lengthscale=[0.1]),
-    likelihood = [Gaussian(variance=0.1)],
+    data = Data(X, Y2),
+    prior = m2_prior,
+    likelihood = [Gaussian(variance=0.1) for p in range(P2)],
     inference='Batch'
 )
+print(nlpd(X, Y2, m2))
 
-m = MultiObjectiveModel([m2, m1])
-
-YS = Y[:, 1][:, None]
-
-print(nlpd(X, YS, m2))
+m = MultiObjectiveModel([m2] + m1_latents)
 
 if True:
     # Train
@@ -86,14 +90,17 @@ if True:
     plt.plot(learning_curve)
     plt.show()
 
-print(nlpd(X, YS, m2))
 
-pred_mu_1, pred_var_1 = m1.predict_y(XS)
+print(nlpd(X, Y2, m2))
+
+#pred_mu_1, pred_var_1 = m1.predict_y(XS)
 pred_mu_2, pred_var_2 = m2.predict_y(XS)
 
-plt.scatter(X1, Y1)
-plt.plot(XS, pred_mu_1)
+#plt.scatter(X1, Y1)
+#plt.plot(XS, pred_mu_1)
 
-plt.scatter(X2, Y2)
-plt.plot(XS, pred_mu_2)
+for p in range(P2):
+    plt.scatter(X, Y2[:, p])
+    plt.plot(XS, pred_mu_2[p])
+
 plt.show()
