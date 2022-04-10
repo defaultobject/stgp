@@ -143,7 +143,7 @@ class BatchGP(Posterior):
             X, Y = self.X, self.Y
 
         var_arr =  self.inference.predictive_covar(
-            XS_1, XS_2, X, Y, self, self.likelihood, self.prior
+            XS_1, XS_2, self.data, self, self.likelihood, self.prior
         )
         return var_arr
 

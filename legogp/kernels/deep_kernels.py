@@ -276,7 +276,10 @@ class DeepStationary(StationaryKernel):
             pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
 
 
-        return pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2
+        vec_shape_1 = [self.input_dim, x1.shape[0], 1]
+        vec_shape_2 = [self.input_dim, x2.shape[0], 1]
+
+        return np.reshape(pm_x1, vec_shape_1) , np.reshape(pm_x2, vec_shape_2), np.reshape(pk_x1x1, vec_shape_1), np.reshape(pk_x2x2, vec_shape_2), pk_x1x2
 
     def K_diag(self, X1):
         return self._K_var(self.lengthscales) * np.ones(X1.shape[0])
