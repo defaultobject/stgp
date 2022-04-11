@@ -1,7 +1,7 @@
 jax
 jaxlib
 objax
-batchjax
+git+https://github.com/defaultobject/batchjax
 chex
 multipledispatch
 bibtexparser

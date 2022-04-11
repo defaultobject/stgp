@@ -43,8 +43,6 @@ class DeepNN(Kernel):
 
 
 
-
-
 class DeepHetreo(Kernel):
     def __init__(
         self,
@@ -185,7 +183,10 @@ class DeepKernel(Kernel):
             pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
 
 
-        return pm_x1, pm_x2, pk_x1x1, pk_x2x2, pk_x1x2
+        vec_shape_1 = [self.input_dim, x1.shape[0], 1]
+        vec_shape_2 = [self.input_dim, x2.shape[0], 1]
+
+        return np.reshape(pm_x1, vec_shape_1) , np.reshape(pm_x2, vec_shape_2), np.reshape(pk_x1x1, vec_shape_1), np.reshape(pk_x2x2, vec_shape_2), pk_x1x2
 
     def _K(self, X1, X2):
         # Precompute parent mean and variances
@@ -207,7 +208,7 @@ class DeepLinear(DeepKernel):
     def K_diag(self, X1):
         pm_x1, pk_x1x1 = self.propogate_parent_var(X1)
 
-        return (pm_x1[0] * pm_x1[0] + pk_x1x1[0])[:, 0]
+        return np.squeeze((pm_x1[0] * pm_x1[0] + pk_x1x1[0]))
 
 class DeepStationary(StationaryKernel):
     """

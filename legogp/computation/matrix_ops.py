@@ -2,7 +2,7 @@
 
 import jax
 import jax.numpy as np
-from jax import jit
+from jax import jit, grad
 from functools import partial
 import chex
 

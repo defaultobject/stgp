@@ -7,7 +7,7 @@ import chex
 
 from .. import settings
 from ..decorators import strict_mode_check, ensure_data
-from ..dispatch import dispatch
+from ..dispatch import dispatch, evoke
 
 from ..core import Model, Posterior
 from . import GP
@@ -167,6 +167,10 @@ class BatchGP(Posterior):
             mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
 
         return mu_arr, var_arr
+
+    def confidence_intervals(self, XS):
+        """ Returns the median and the 95% confidence intervals. """
+        return evoke('confidence_intervals', self)(XS, self)
 
     def predict_blocks(self, XS, group_size: int, block_size: int, diagonal=True, squeeze=False):
         """ Returns predictions with the same block size as the likelihood. """ 

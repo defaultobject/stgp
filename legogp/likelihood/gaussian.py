@@ -1,7 +1,9 @@
 """Gaussian likelihood."""
+import chex
 import objax
 import jax
 import jax.numpy as np
+from jax import grad, jacfwd
 from . import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 
 from .. import Parameter
@@ -148,7 +150,7 @@ class Gaussian(DiagonalGaussian):
 
 class ReshapedGaussian(Gaussian):
     def __init__(self, base,  num_blocks, block_size): 
-        self._base = base    
+        self._base = base
         self.num_blocks = num_blocks
         self.block_size = block_size
 

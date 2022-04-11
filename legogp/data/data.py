@@ -1,11 +1,14 @@
 import objax
 import chex
+import jax
 import jax.numpy as np
 import numpy as onp
 import objax
 
 from .sequential import order_sequentially_np, pad_with_nan_to_make_grid
 from .. import Parameter
+from batchjax import batch_or_loop, BatchType
+from ..utils.utils import get_batch_type
 
 class Input(objax.Module):
     """ Base class for storing Input X.  """
@@ -133,6 +136,100 @@ class Data(objax.Module):
             self._X = _X # Store as reference
         else:
             self._X = Input(np.array(_X), name=name, train=train)
+
+class TransformedData(Data):
+    def __init__(self, base_data, transform_arr):
+        self.transform_arr = objax.ModuleList(transform_arr)
+        self.base_data = base_data
+
+        self.minibatch = self.base_data.minibatch
+
+    def batch(self):
+        return self.base_data.batch()
+
+    def forward_transform(self, Y_base):
+        P = Y_base.shape[1]
+        # Compute lml for each likelihood and prior
+        Y_transformed = batch_or_loop(
+            lambda t_fn, y_p: t_fn.forward(y_p),
+            [ self.transform_arr, Y_base ],
+            [ 0, 1],
+            dim = P,
+            out_dim = 1,
+            batch_type = get_batch_type(self.transform_arr)
+        )
+
+        # batch_or_loop assumes that the batchout output is axis 0
+        # We want the same shape as Y_base so we transpose
+
+        Y_transformed = Y_transformed.T
+
+        chex.assert_equal_shape([Y_base, Y_transformed])
+
+        return Y_transformed
+
+    def inverse_transform(self, Y_base):
+        P = Y_base.shape[1]
+        # Compute lml for each likelihood and prior
+        Y_transformed = batch_or_loop(
+            lambda t_fn, y_p: t_fn.inverse(y_p),
+            [ self.transform_arr, Y_base ],
+            [ 0, 1],
+            dim = P,
+            out_dim = 1,
+            batch_type = get_batch_type(self.transform_arr)
+        )
+
+        # batch_or_loop assumes that the batchout output is axis 0
+        # We want the same shape as Y_base so we transpose
+
+        Y_transformed = Y_transformed.T
+
+        chex.assert_equal_shape([Y_base, Y_transformed])
+
+        return Y_transformed
+
+    @property
+    def Y(self):
+        Y_base = self.Y_base
+
+        P = Y_base.shape[1]
+
+        Y_transformed = self.forward_transform(Y_base)
+
+        return Y_transformed
+
+    def log_jacobian(self, Y_base):
+        """ Computes log |dT(Y)/dY| """
+
+        # Compute jacobian for each ouput
+        P = Y_base.shape[1]
+
+        # Compute lml for each likelihood and prior
+        jac = batch_or_loop(
+            lambda t_fn, y_p: jax.vmap(jax.grad(t_fn.forward))(y_p),
+            [ self.transform_arr, Y_base ],
+            [ 0, 1],
+            dim = P,
+            out_dim = 1,
+            batch_type = get_batch_type(self.transform_arr)
+        )
+
+        jac = np.log(jac)
+
+        jac = jac.T
+        chex.assert_equal_shape([Y_base, jac])
+
+        return jac
+
+    @property
+    def Y_base(self):
+        return self.base_data.Y
+
+    @property
+    def X(self):
+        return self.base_data.X
+
 
 class AggregatedData(Data):
     pass

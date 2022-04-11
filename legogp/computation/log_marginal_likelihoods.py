@@ -1,15 +1,16 @@
 # Import Types
-from ..data import Data
+from ..data import Data, TransformedData
 from ..kernels import Kernel, RBF
 from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
-from ..transforms import Independent, LinearTransform
+from ..transforms import Independent, LinearTransform, Transform
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from .matrix_ops import vec_columns, stack_rows
 from ..models import BatchGP
 from ..utils import utils
 from ..utils.utils import get_batch_type
+from ..utils.nan_utils import get_same_shape_mask
 from .permutations import data_order_to_output_order
 
 
@@ -128,7 +129,6 @@ def log_marginal_likelihood(
 
     Y_vec = vec_columns(Y)
 
-
     num_latents = prior.num_latents
     num_outputs = prior.num_outputs
 
@@ -205,4 +205,23 @@ def log_marginal_likelihood(
         mean_arr,
         k_xx_arr + likelihood_var
     )
+
+@dispatch(TransformedData, BatchGP, GaussianProductLikelihood, LinearTransform)
+@dispatch(TransformedData, BatchGP, GaussianProductLikelihood, Independent)
+def log_marginal_likelihood(
+        data, gp: 'Posterior', likelihood, prior: Transform
+):
+    base_data = data.base_data
+
+    base_lml = evoke(
+        'log_marginal_likelihood', base_data, gp, likelihood, prior
+    )(data, gp, likelihood, prior)
+
+    log_jac = data.log_jacobian(data.Y_base)
+
+    # Ignores nans
+    log_jac = np.nan_to_num(log_jac, 0.0)
+    log_jac = np.sum(log_jac)
+
+    return base_lml + log_jac
 

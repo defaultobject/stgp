@@ -38,8 +38,6 @@ class GaussianProductLikelihood(ProductLikelihood):
         return var_arr
 
 
-
 class BlockGaussianProductLikelihood(ProductLikelihood):
     pass
-
 

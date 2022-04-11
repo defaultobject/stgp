@@ -16,7 +16,7 @@ from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF
 from legogp.kernels.deep_kernels import DeepRBF
 from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
-from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape
+from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
 from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.models import GP
@@ -24,6 +24,7 @@ from legogp.transforms import DataLatentPermutation , Independent
 from legogp.transforms.multi_output import LMC
 from legogp.core import MultiObjectiveModel
 from legogp.metrics.nlpd import nlpd
+from legogp.transforms.basic import Log
 
 import objax
 import jax
@@ -41,10 +42,10 @@ import pandas as pd
 
 from data_zoo import multi_output_timeseries
 
-
 P = 6
 XS, X, Y = multi_output_timeseries(P, 100, 1000, seed=0)
 
+Y = np.square(Y)
 
 Y1 = Y[:, :3]
 Y2 = Y[:, :3]
@@ -63,14 +64,18 @@ m1_latents = [
 ]
 
 m2_prior = LMC(m1_latents, output_dim = P2)
+data = TransformedData(Data(X, Y2), [Log(), Log(), Log()])
 
 m2 = GP(
-    data = Data(X, Y2),
+    data = data, 
     prior = m2_prior,
     likelihood = [Gaussian(variance=0.1) for p in range(P2)],
     inference='Batch'
 )
-print(nlpd(X, Y2, m2))
+
+
+#print(m2.get_objective())
+#print(nlpd(X, Y2, m2))
 
 m = MultiObjectiveModel([m2] + m1_latents)
 
@@ -90,17 +95,18 @@ if True:
     plt.plot(learning_curve)
     plt.show()
 
-
 print(nlpd(X, Y2, m2))
 
+median, lower_ci, upper_ci = m2.confidence_intervals(XS)
+
 #pred_mu_1, pred_var_1 = m1.predict_y(XS)
-pred_mu_2, pred_var_2 = m2.predict_y(XS)
+#pred_mu_2, pred_var_2 = m2.predict_y(XS)
 
 #plt.scatter(X1, Y1)
 #plt.plot(XS, pred_mu_1)
 
 for p in range(P2):
-    plt.scatter(X, Y2[:, p])
-    plt.plot(XS, pred_mu_2[p])
+    plt.scatter(X, Y[:, p])
+    plt.plot(XS, median[p])
 
 plt.show()
