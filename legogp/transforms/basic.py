@@ -4,6 +4,8 @@ from .transform import Transform, LinearTransform, ElementWiseTransform
 import jax.numpy as np
 import objax
 from ..utils.utils import ensure_module_list
+from ..computation.parameter_transforms import softplus, inv_softplus
+from ..parameter import Parameter
 
 class Independent(LinearTransform):
     def __init__(self, latents: list):
@@ -18,6 +20,19 @@ class Independent(LinearTransform):
 
 class Identity(ElementWiseTransform):
     pass
+
+class ReverseFlow(ElementWiseTransform):
+    def __init__(self, base_flow):
+        self.base_flow = base_flow
+
+    def forward(self, x):
+        return self.base_flow.inverse(x)
+
+    def inverse(self, f):
+        """Compute x=T^{-1}(f)."""
+        return self.base_flow.forward(f)
+
+
 
 class Exp(ElementWiseTransform):
     """Expontial Function."""
@@ -42,9 +57,48 @@ class Log(Exp):
         """Compute x=T^{-1}(f)."""
         return super(Log, self).forward(f)
 
+class Softminus(ElementWiseTransform):
+
+    def forward(self, x):
+        """Compute f=T(x)."""
+        return inv_softplus(x)
+
+    def inverse(self, f):
+        """Compute x=T^{-1}(f)."""
+        return softplus(f)
+
 
 class Affine(ElementWiseTransform):
     """Affine Function."""
+    def __init__(self, a, b, train=True):
+
+        self.a_param = Parameter(
+            np.array(a), 
+            constraint=None, 
+            name ='Affine/a', 
+            train=train
+        )
+
+        self.b_param = Parameter(
+            np.array(b), 
+            constraint=None, 
+            name ='Affine/b', 
+            train=train
+        )
+
+    @property
+    def a(self):
+        return self.a_param.value
+
+    @property
+    def b(self):
+        return self.b_param.value
+
+    def forward(self, x):
+        return x * self.a + self.b
+
+    def inverse(self, f):
+        return (f - self.b) / self.a
 
 
 class Boxcox(ElementWiseTransform):

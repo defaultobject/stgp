@@ -230,6 +230,10 @@ class TransformedData(Data):
     def X(self):
         return self.base_data.X
 
+    @property
+    def _X(self):
+        return self.base_data._X
+
 
 class AggregatedData(Data):
     pass

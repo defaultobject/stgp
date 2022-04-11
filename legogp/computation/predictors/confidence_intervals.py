@@ -12,7 +12,7 @@ from ...data import Data, TransformedData
 
 @dispatch(Data, 'BatchGP', ProductLikelihood, Transform)
 def confidence_intervals(XS, m):
-    mu, var = m.predict_y(XS)
+    mu, var = m.predict_y(XS, squeeze=False, diagonal=True)
 
     return mu, mu-1.96*np.sqrt(var), mu+1.96*np.sqrt(var)
 

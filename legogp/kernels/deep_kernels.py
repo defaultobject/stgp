@@ -41,8 +41,6 @@ class DeepNN(Kernel):
         X2_nn = self.nn(X2)
         return self.kernel.K(X1_nn, X2_nn)
 
-
-
 class DeepHetreo(Kernel):
     def __init__(
         self,

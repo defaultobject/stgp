@@ -13,7 +13,7 @@ jax_config.update('jax_disable_jit', False)
 import legogp as lego
 from legogp.trainers import SimpleTrainer, NatGradTrainer
 from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF
+from legogp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF, ScaleKernel
 from legogp.kernels.deep_kernels import DeepRBF
 from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
 from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
@@ -56,7 +56,7 @@ P2 = 3
 m1_latents = [
     GP(
         data = Data(X, Y[:, p][:, None]),
-        kernel = RBF(lengthscales=[0.1]),
+        kernel = ScaleKernel(RBF(lengthscales=[0.1])),
         likelihood = [Gaussian(variance=0.1)],
         inference='Batch'
     )
@@ -106,7 +106,8 @@ median, lower_ci, upper_ci = m2.confidence_intervals(XS)
 #plt.plot(XS, pred_mu_1)
 
 for p in range(P2):
-    plt.scatter(X, Y[:, p])
+    plt.fill_between(np.squeeze(XS), lower_ci[p], upper_ci[p], alpha=0.4)
     plt.plot(XS, median[p])
+    plt.scatter(X, Y[:, p])
 
 plt.show()
