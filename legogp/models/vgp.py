@@ -212,10 +212,14 @@ class VGP(Posterior):
 
         return mu_arr, var_arr
 
-    def natural_gradients(self, learning_rate):
+    def natural_gradient_update(self, learning_rate, enforce_psd_type=None):
         natgrad_fn = evoke('natural_gradients', self, self.approximate_posterior)
 
         return natgrad_fn(
             self,
-            learning_rate
+            learning_rate,
+            enforce_psd_type
         )
+
+    def natural_gradient(self, learning_rate):
+        raise NotImplementedError()

@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 import objax
 
 import legogp as lego
@@ -32,7 +32,7 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 config = {
     'ls': [0.1, 0.1, 0.1],
     'lik_var': [0.01, 0.1, 0.1],
-    'epochs': 100,
+    'epochs': 10,
     'lr': 0.01,
     'beta': 1.0
 }
@@ -43,7 +43,7 @@ def svgp(config, XS, X, Y):
     settings.jitter = 1e-7
     data = Data(X, Y, minibatch_size=None)
 
-    M = 3
+    M = 10
     Z = np.linspace(0, 1, M)[:, None]
     
     Z = FullSparsity(Z=Z)
@@ -84,9 +84,9 @@ def svgp(config, XS, X, Y):
         obj_val, _ = natgrad_trainer.train(config['beta'], epochs=1)
         #grad_step.train(config['lr'], epochs=1)
         learning_curve.append(obj_val[0])
-        break
 
     print(m.get_objective())
+    breakpoint()
     
     return {'m': m, 'lc': learning_curve}
     
@@ -97,8 +97,10 @@ def gpflow_model(config, XS, X, Y):
     import gpflow
     from gpflow.models import VGP, GPR, SGPR, SVGP
     from gpflow.optimizers import NaturalGradient
+    from gpflow.optimizers.natgrad import XiSqrtMeanVar
 
-    M = 3
+
+    M = 10
     Z = np.linspace(0, 1, M)[:, None]
 
 
@@ -115,22 +117,40 @@ def gpflow_model(config, XS, X, Y):
 
     print(-svgp.elbo(data).numpy())
 
-    natgrad_opt = NaturalGradient(gamma=1.0)
-    variational_params = [(svgp.q_mu, svgp.q_sqrt)]
-    svgp_natgrad_loss = svgp.training_loss_closure(data)
-    natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+    if True:
+        natgrad_opt = NaturalGradient(gamma=1e-3)
+        variational_params = [(svgp.q_mu, svgp.q_sqrt, XiSqrtMeanVar())]
+        svgp_natgrad_loss = svgp.training_loss_closure(data)
+        for i in range(100):
+            natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+
+
+        print(-svgp.elbo(data).numpy())
+        natgrad_opt = NaturalGradient(gamma=0.1)
+        variational_params = [(svgp.q_mu, svgp.q_sqrt, XiSqrtMeanVar())]
+        svgp_natgrad_loss = svgp.training_loss_closure(data)
+        natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
+    else:
+        natgrad_opt = NaturalGradient(gamma=1.0)
+        variational_params = [(svgp.q_mu, svgp.q_sqrt)]
+        svgp_natgrad_loss = svgp.training_loss_closure(data)
+        natgrad_opt.minimize(svgp_natgrad_loss, var_list=variational_params)
 
     print(-svgp.elbo(data).numpy())
 
     return {'m':svgp, 'lc': None}
+if True:
+    res_time['batch'] = svgp(config, XS, X, Y)
+    m = res_time['batch']['m']
+    lc = res_time['batch']['lc']
+else:
+    res_time['gpflow'] = gpflow_model(config, XS, X, Y)
+    m = res_time['gpflow']['m']
+    lc = res_time['gpflow']['lc']
 
 
-res_time['batch'] = svgp(config, XS, X, Y)
-
-#res_time['gpflow'] = gpflow_model(config, XS, X, Y)
-#m = res_time['gpflow']['m']
-
-m = res_time['batch']['m']
+plt.plot(lc)
+plt.show()
 
 pred_mu, pred_var = m.predict_f(XS)
 

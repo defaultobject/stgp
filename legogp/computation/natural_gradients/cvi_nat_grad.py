@@ -10,6 +10,7 @@ from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jit
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
+from ..parameter_transforms import psd_retraction_map
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior
@@ -17,8 +18,8 @@ from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal
 
-@jit
-def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
+@partial(jit, static_argnums=(7))
+def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
     # Get natural parameters for approximate likelihood
     lambda_1, lambda_2 = theta_to_lambda_diagonal(Y_tilde, V_tilde)
 
@@ -29,15 +30,18 @@ def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
 
     # Natural gradient update updatae
     lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
-    lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+    if enforce_psd_type == None:
+        lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+    else:
+        raise NotImplementedError()
 
     # Convert to theta
     theta_1, theta_2 = lambda_to_theta_diagonal(lambda_1_new, lambda_2_new)
 
     return theta_1, theta_2
 
-@jit
-def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
+@partial(jit, static_argnums=(7))
+def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
      # Ensure matrix input
     chex.assert_rank(
         [Y_tilde, V_tilde, m, s, m_grad, s_grad],
@@ -54,7 +58,11 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta):
 
     # Natural gradient update updatae
     lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
-    lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+
+    if enforce_psd_type == None:
+        lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+    else:
+        lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2_init, -2*beta*lambda_2)/(-2)
 
     # Convert to theta
     theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)
@@ -144,7 +152,7 @@ def partial_ell(m, q_m, q_S):
 
 
 @dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=True)
 
     # Different models store Y with different dimensions so we store it here so can 
@@ -174,10 +182,10 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(
-        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None]),
-        [0, 0, 0, 0, 0, 0, None]
+        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None, None]),
+        [0, 0, 0, 0, 0, 0, None, None]
     )(
-        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta, enforce_psd_type
     )
 
     # Fix shapes for output
@@ -186,7 +194,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', ConjugateApproximatePosterior, SpatialSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
 
     # Different models store Y with different dimensions so we store it here so can 
@@ -217,10 +225,10 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(
-        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None]),
-        [0, 0, 0, 0, 0, 0, None]
+        jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None, None]),
+        [0, 0, 0, 0, 0, 0, None, None]
     )(
-        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads, var_grads, beta, enforce_psd_type
     )
 
     # Fix shapes for output
@@ -230,7 +238,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
 
 @dispatch('VGP', ConjugateApproximatePosterior, FreeSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     """
     Block CVI Natural Gradients
     """
@@ -320,7 +328,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
 
 @dispatch('VGP', FullConjugateGaussian, FreeSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.get_sparsity_list()
@@ -373,7 +381,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     mu_grads_permuted = reparametise_vec_grad(q_mu_z, mu_grads, surrogate_prior)
 
     new_Y_tilde, new_V_tilde = cvi_block_update(
-        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads_permuted, s_grad_permuted, beta
+        Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z, mu_grads_permuted, s_grad_permuted, beta, enforce_psd_type
     )
     # Fix dimensions and order
     new_Y_tilde = np.reshape(new_Y_tilde, q.surrogate.Y.shape)
@@ -383,7 +391,7 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', FullConjugateGaussian, NoSparsity)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.latent_obj.get_sparsity_list()
@@ -420,9 +428,9 @@ def natural_gradients(model, beta: float) -> np.ndarray:
 
     new_Y_tilde, new_V_tilde = jax.vmap(
         cvi_block_update,
-        [0, 0, 0, 0, 0, 0, None]
+        [0, 0, 0, 0, 0, 0, None, None]
     )(
-        Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta
+        Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta, enforce_psd_type
     )
 
     new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
@@ -430,15 +438,12 @@ def natural_gradients(model, beta: float) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', ApproximatePosterior)
-def natural_gradients(model, beta: float) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.latent_obj.get_sparsity_list()
 
     # TODO: assuming sparsity is constant across all latents
     return evoke('natural_gradients', model, q, sparsity_arr[0])(
-        model, beta
+        model, beta, enforce_psd_type
     )
-
-
-

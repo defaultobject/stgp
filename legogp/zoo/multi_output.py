@@ -31,7 +31,7 @@ def lmc_regression(X, Y, P, Q, kernels, inference):
 
     return m
 
-def gprn_regression(X, Y, P, Q, W_kernels, f_kernels, inference, constraint=None):
+def gprn_regression(X, Y, P, Q, W_kernels, f_kernels, inference, constraint=None, ell_samples=100):
     Z_f = [NoSparsity(X) for q in range(Q)]
     Z_W = [[NoSparsity(X) for q in range(Q)] for p in range(P)]
 
@@ -62,7 +62,7 @@ def gprn_regression(X, Y, P, Q, W_kernels, f_kernels, inference, constraint=None
         likelihood = [Gaussian(variance=0.1) for p in range(P)],
         prior=prior,
         inference=inference,
-        ell_samples=100,
+        ell_samples=ell_samples,
         prediction_samples=100
     )
 

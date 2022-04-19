@@ -132,11 +132,16 @@ def triangular_solve(chol, X, lower):
     #wrapper around _triangular_solve so that lower can be a keyword arg
     return _triangular_solve(chol, X, lower)
 
+@jit
+def to_lower_triangular_vec(A):
+    N = A.shape[0]
+    return A[np.tril_indices(N)].flatten()
 
 @jit
 def lower_triangular_cholesky(A):
-    N = A.shape[0]
-    return cholesky(A)[np.tril_indices(N)].flatten()
+    return to_lower_triangular_vec(cholesky(A))
+
+
 
 @jit
 def vectorized_lower_triangular_cholesky(A:np.ndarray) -> np.ndarray:

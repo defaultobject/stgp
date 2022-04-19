@@ -61,15 +61,19 @@ def nlpd(XS, YS, m):
 @dispatch(TransformedData, 'BatchGP', GaussianProductLikelihood, LinearTransform)
 @dispatch(TransformedData, 'BatchGP', GaussianProductLikelihood, Independent)
 def nlpd(XS, YS, model):
+    """
+    In the transformed setting the NLPD is given as:
+
+         - (1/N) \sum^N_n [ \log p(T(YS_n)) + log |dT(YS_n) / d YS_2| ]
+    """
     data = model.data
     base_data = data.base_data
 
     base_nlpd = evoke('nlpd', base_data, model, model.likelihood, model.prior)(
         XS,
-        YS,
+        data.forward_transform(YS),
         model
     )
-
     
     mask = get_same_shape_mask(YS)
 
@@ -77,7 +81,7 @@ def nlpd(XS, YS, model):
     log_jac = np.nan_to_num(log_jac, 0.0)
 
     # Average over N, ignoring the missing data
-    log_jac = np.sum(log_jac) / np.sum(mask, axis=0)
+    log_jac = np.sum(log_jac, axis=0) / np.sum(mask, axis=0)
 
     return base_nlpd - log_jac
 

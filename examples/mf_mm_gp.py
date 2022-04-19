@@ -57,27 +57,15 @@ Y2 = Y[20:, 1][:, None]
 #plt.show()
 
 #data = Data(X1, Y1)
-data = TransformedData(Data(X1, Y1), [ReverseFlow(Affine(1/np.std(Y1), np.mean(Y1), train=False))])
+data = TransformedData(Data(X1, Y1), [ReverseFlow(Affine(np.std(Y1), np.mean(Y1), train=False))])
 m1 = GP(
     data = data,
     kernel = ScaleKernel(RBF(lengthscales=[0.01])),
     likelihood = [Gaussian(variance=0.1)],
     inference='Batch'
 )
-pred_mu, pred_var = m1.predict_f(X1)
-
-plt.plot(data.X, data.Y)
-plt.plot(X1, pred_mu)
-plt.show()
-
-median_1, lower_ci_1, upper_ci_1 = m1.confidence_intervals(XS)
-plt.plot(XS, median_1[0])
-plt.scatter(X1, Y1)
-plt.show()
-exit()
 
 data = TransformedData(Data(X2, Y2), [Softminus()])
-
 #data = Data(X2, Y2)
 
 m2 = GP(

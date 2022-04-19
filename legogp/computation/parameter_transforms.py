@@ -4,6 +4,8 @@ import jax
 import jax.numpy as np
 from jax import jit
 from functools import partial
+from .matrix_ops import cholesky, cholesky_solve, add_jitter
+from .. import settings
 
 @jit
 def softplus(val):
@@ -173,3 +175,12 @@ def get_z_from_correlation_cholesky(R_chol, P, Q):
     # index into lower diagional and return z
     z = chol_a[np.tril_indices(P, -1)]
     return z
+
+
+@jit
+def psd_retraction_map(sigma, b):
+    chol = cholesky(add_jitter(sigma, settings.jitter))
+
+    sigma_new = sigma + b + 0.5* b @  cholesky_solve(chol, b)
+
+    return sigma_new

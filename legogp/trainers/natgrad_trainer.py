@@ -124,7 +124,7 @@ class NatGradTrainer(Trainer):
         self.vars_to_update = get_vars_to_update(self.m, vc)
 
         self.natgrad_fn = objax.Jit(
-            self.m.natural_gradients,
+            self.m.natural_gradient_update,
             vc
         )
 

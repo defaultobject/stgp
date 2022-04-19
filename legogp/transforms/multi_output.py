@@ -7,7 +7,7 @@ import jax.numpy as np
 import numpy as onp
 import objax
 import chex
-from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform
+from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform,softplus
 from .. import Parameter
 
 class GPRN_Base(NonLinearTransform):
@@ -64,7 +64,8 @@ class GPRN_Exp(GPRN_Base):
         latent_f = np.reshape(latent_f, [self.input_dim, 1])
 
         # Element wise exponential to force W to be positive
-        return (np.exp(latent_W) @ latent_f)[:, 0]
+        #return (np.exp(latent_W) @ latent_f)[:, 0]
+        return (softplus(latent_W) @ latent_f)[:, 0]
 
 class GPRN_LDL(GPRN_Base):
 
