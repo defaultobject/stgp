@@ -35,6 +35,7 @@ def batched_block_diagional(A, block_size):
     chex.assert_rank(A, 3)
     return jax.vmap(get_block_diagonal, [0, None])(A, block_size)
 
+
 @jit
 def batched_diag(A):
     chex.assert_rank(A, 2)
@@ -71,6 +72,43 @@ def diagonal_from_cholesky(L):
     diag = np.reshape(diag, [L.shape[0], 1])
 
     return diag
+
+
+@jit
+def diagonal_from_XDXT(X, d):
+    """
+    Computes diagonal of XDX^T where D is a diagonal matrix
+
+    This is done by forming the matrix square root:
+        L = X @ diag(sqrt(d))
+
+    and calling diagonal_from_cholesky(L)
+
+    Returns:
+        diag(LL^T): N x 1
+    """
+    chex.assert_rank(X, 2)
+    chex.assert_rank(d, 1)
+
+    return diagonal_from_cholesky(X @ np.sqrt(np.diag(d)))
+
+@jit
+def batched_diagonal_from_XDXT(X, D):
+    """
+    Batches diagonal_from_XDXT over the second arg D
+
+    Returns the same shape as D
+    """
+    chex.assert_rank(X, 2)
+    chex.assert_rank(D, 2)
+
+    res =  jax.vmap(diagonal_from_XDXT, [None, 1])(X, D)
+
+    res = res[..., 0].T
+
+    chex.assert_equal_shape([res, D])
+
+    return res
 
 
 @partial(jit, static_argnums=(1))

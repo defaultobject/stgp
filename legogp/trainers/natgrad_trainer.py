@@ -113,28 +113,42 @@ def update_vars(model, vars_to_update, params):
 class NatGradTrainer(Trainer):
     def __init__(
         self, 
-        model,
-        hold_vars = None,
-        schedule=None,
-        total_epochs=None
+        m,
+        schedule = None,
+        total_epochs = None,
+        enforce_psd_type=None
     ):
-        self.m = model
+        """
+        Args
+            schedule: [linear, log, constant, none]
+        """
+        self.m = m
         vc = self.m.vars()
 
         self.vars_to_update = get_vars_to_update(self.m, vc)
 
         self.natgrad_fn = objax.Jit(
             self.m.natural_gradient_update,
+            vc,
+            static_argnums=(1,)
+        )
+
+        self.objective_fn = objax.Jit(
+            self.m.get_objective, 
             vc
         )
 
-        self.objective_fn = objax.Jit(self.m.get_objective, vc)
 
-        if schedule is None:
+        if (schedule is None) or (schedule is 'none'):
             schedule = 'constant'
 
         self.schedule = schedule
+
+        # When using a schedule we need to know how many iters we are training for
+        #    so we can construct the schedule
         self.total_epochs = total_epochs
+
+        self.enforce_psd_type = enforce_psd_type
 
     def train(
         self, 
@@ -165,7 +179,7 @@ class NatGradTrainer(Trainer):
             if verbose:
                 print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
-            params = self.natgrad_fn(lr)
+            params = self.natgrad_fn(lr, self.enforce_psd_type)
 
             if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
                 raise RuntimeError('NaN encountered whilst natgrad training!')
@@ -177,12 +191,10 @@ class NatGradTrainer(Trainer):
             gradient_step(i, i+epoch_ofset)
 
             val = self.objective_fn()
-
-            epoch_arr.append(val)
-
+            epoch_arr.append(jnp.array(val).flatten())
 
             if callback is not None:
                 callback(i, None, None)
 
-        return epoch_arr, None
+        return jnp.array(epoch_arr).flatten(), None
 

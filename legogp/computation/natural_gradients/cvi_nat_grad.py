@@ -61,8 +61,10 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_t
 
     if enforce_psd_type == None:
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
+    elif enforce_psd_type == 'retraction':
+        lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2, -2*beta*grad_2)/(-2)
     else:
-        lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2_init, -2*beta*lambda_2)/(-2)
+        raise NotImplementedError()
 
     # Convert to theta
     theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)

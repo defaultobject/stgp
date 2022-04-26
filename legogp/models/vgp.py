@@ -223,3 +223,7 @@ class VGP(Posterior):
 
     def natural_gradient(self, learning_rate):
         raise NotImplementedError()
+
+    def confidence_intervals(self, XS):
+        """ Returns the median and the 95% confidence intervals. """
+        return evoke('confidence_intervals', self)(XS, self)

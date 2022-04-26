@@ -144,6 +144,8 @@ class TransformedData(Data):
 
         self.minibatch = self.base_data.minibatch
 
+        self.N = self.base_data.N
+
     def batch(self):
         return self.base_data.batch()
 

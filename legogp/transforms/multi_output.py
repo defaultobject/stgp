@@ -147,6 +147,50 @@ class GPRN_DRD(GPRN_Base):
 
         return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
 
+class GPRN_DRD_EXP(GPRN_Base):
+
+    def __init__(self, v, W_vec, f, a=None, variances =  None, input_dim: int = None, output_dim: int = None):
+
+        #super(GPRN_DRD, self).__init__()
+
+        self._input_dim = len(f)
+        self._output_dim = self.input_dim
+
+        # When using LMC_corr the mixing matrix must be square
+        self.P = self.output_dim
+        self.Q = int(self.P*(self.P-1)/2)
+
+        if a is None:
+            self.a = 1.0
+
+        # Flatten latents to fit into VI framework
+        self._latent_obj = Independent(
+            latents = v+f+W_vec,
+            prior = True
+        )
+
+    def forward(self, f):
+        # f has the same ordering as self.latents
+        latent_v = f[:self.output_dim]
+        latent_f = f[self.output_dim:self.output_dim+self.input_dim]
+        latent_W = f[self.output_dim+self.input_dim:]
+
+
+        latent_v = np.reshape(latent_v, [self.input_dim])
+        latent_f = np.reshape(latent_f, [self.input_dim, 1])
+        latent_W = np.reshape(latent_W, [-1]) # ensure rank 1
+
+        correlation_cholesky =  get_correlation_cholesky(
+            correlation_transform(latent_W, self.a), 
+            self.P, 
+            self.Q
+        )
+
+        var_diag = np.diag(softplus(latent_v))
+
+        return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
+
+
 class LMC_Base(LinearTransform):
     """
     Inherits

@@ -39,9 +39,7 @@ def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior
                 
                 μ = (m, mm^T + S⁻¹)
 
-        The natural gradient step is given by, and taking the chain rule leads to:
-            
-            ξᵣ₊₁ = ξᵣ + β ((∂ξ/∂μ) (∂L/∂λ^T))
+
     """
     m = approx_posterior._m.value
     S_chol_flattened = approx_posterior._S_chol.value
@@ -59,10 +57,10 @@ def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior
     partial_s_chol_flattened = s_grad
     partial_s_chol = lower_triangle(partial_s_chol_flattened, M)
 
-    #calculate ∂ξ/∂λ 
-    x, u = vjp(lambda_to_xi, lambda_1_init, lambda_2_init)
+    #calculate ∂ξ/∂ 
+    x, u = vjp(expectation_to_xi, mu1, mu2)
 
-    #calculate ∂L/∂λ = ∂L/∂ξ ∂ξ/∂λ
+    #calculate ∂L/∂λ = ∂L/∂ξ ∂ξ/∂
     u = u((partial_m, partial_s_chol))
     lambda_1, lambda_2 = u[0], u[1]
 

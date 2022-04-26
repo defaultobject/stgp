@@ -1,7 +1,7 @@
 """Base transform class."""
 from ..utils.utils import ensure_module_list, can_batch, get_batch_type
 from batchjax import batch_or_loop, BatchType
-from ..computation.matrix_ops import to_block_diag
+from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT
 
 import jax
 import jax.numpy as np
@@ -98,14 +98,27 @@ class LinearTransform(Transform):
         return self.latent_obj.get_Z()
 
     def transform_diagonal(self, mu, var):
+        """
+        Computes the pointwise of 
+            F_n = W U_n
+
+        This functions assumes that U_n are indepenent
+
+        Hence F_n ~ N(W mu_n, W diag(var_n) W.T)
+
+        The diagonal of this is given by:
+            W mu
+            W diag(sqrt(var))
+
+        """
         W = self.W
 
         # Mixing latent functions
         mu = W @ mu[..., 0] 
-        var = np.square(W) @ var[..., 0] 
+        var = batched_diagonal_from_XDXT(W, var[..., 0])
+
 
         # fix shapes
-
         mu = mu[..., None]
         var = var[..., None]
 
