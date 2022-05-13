@@ -3,9 +3,31 @@
 import jax
 import jax.numpy as np
 from jax import jit
+from jax.scipy.special import erf
 from functools import partial
 from .matrix_ops import cholesky, cholesky_solve, add_jitter
 from .. import settings
+
+@jit
+def gauss_cdf(x):
+    """ Approximation of standard Gaussian cdf using error function """
+    return (1.0 + erf(x / np.sqrt(2.0))) / 2
+
+@jit
+def inv_probit(x):
+    """
+    Gaussian CDF
+    """
+
+    # CDF is between 0 and 1
+    return gauss_cdf(x) 
+
+@jit
+def identity(x):
+    """
+    f(x) = x
+    """
+    return x 
 
 @jit
 def softplus(val):

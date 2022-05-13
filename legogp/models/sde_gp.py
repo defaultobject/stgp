@@ -10,7 +10,8 @@ from ..dispatch import dispatch
 from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
-from ..computation.filtering import sequential_kalman_filter, filter_and_smooth
+from ..computation.filters import kalman_filter, rts_smoother
+
 from ..defaults import get_default_likelihood
 from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
 from ..data.sequential import add_temporal_points
@@ -103,9 +104,6 @@ class BASE_SDE_GP(Posterior):
                 kernel_list=self.kernel
             )
 
-        if type(self.prior) != Independent:
-            self._prior = Independent([self._prior])
-
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
 
@@ -114,12 +112,13 @@ class BASE_SDE_GP(Posterior):
 
 
     def log_marginal_likelihood(self):
-        return sequential_kalman_filter(
+        lml, _  = kalman_filter.filter_loop(
             self.data,
             self.prior,
-            self.likelihood.variance,
-            N = self.Nt
+            self.likelihood.variance
         )
+
+        return lml
 
     def get_objective(self):
         return -self.log_marginal_likelihood()
@@ -167,21 +166,32 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
+    def filter_and_smooth(self, data, prior, R):
+        _, kf_res  = kalman_filter.filter_loop(
+            data,
+            prior,
+            R
+        ) 
+
+        return rts_smoother.smoother_loop(
+            data, 
+            prior,
+            kf_res
+        )
+
     def posterior_blocks(self):
-        _, mu, var = filter_and_smooth(
+        mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
-            self.likelihood.variance,
-            N = self.data.Nt
+            self.likelihood.variance
         )
         return mu, var
 
     def posterior(self, diagonal=True):
-        _, mu, var = filter_and_smooth(
+        mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
             self.likelihood.variance,
-            N = self.data.Nt
         )
 
 
@@ -221,11 +231,10 @@ class BASE_SDE_GP(Posterior):
             sort=True 
         )
 
-        _, mu, var = filter_and_smooth(
+        mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            self.get_likelihood_for_prediction(test_data),
-            N = test_data.Nt
+            self.get_likelihood_for_prediction(test_data)
         )
 
         # mu, var are in time - space format
@@ -299,11 +308,10 @@ class T_SDE_GP(BASE_SDE_GP):
         )
 
 
-        _, mu, var = filter_and_smooth(
+        mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            self.get_likelihood_for_prediction(test_data),
-            N = test_data.Nt
+            self.get_likelihood_for_prediction(test_data)
         )
 
         # mu, var are in time - space format
@@ -397,11 +405,10 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True 
         )
 
-        _, mu, var = filter_and_smooth(
+        mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            self.get_likelihood_for_prediction(all_temporal_data),
-            N = test_data.Nt
+            self.get_likelihood_for_prediction(all_temporal_data)
         )
 
         mu, var_diag = evoke('spatial_conditional', XS_data, test_data, self, self.prior)(

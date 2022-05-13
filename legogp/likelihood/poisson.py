@@ -1,4 +1,4 @@
-"""Gaussian likelihood."""
+"""Poisson likelihood."""
 import objax
 import jax.numpy as np
 from . import DiagonalLikelihood

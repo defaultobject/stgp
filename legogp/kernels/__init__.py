@@ -11,7 +11,7 @@ from .kernel import (
     ScaleKernel,
     Linear
 )
-from .matern import Matern32
+from .matern import Matern32, ScaledMatern32
 from .rbf import RBF
 from .approximate_markov import ApproximateMarkovKernel
 from .deep_kernels import DeepStationary
@@ -31,5 +31,6 @@ __all__ = [
     "BiasKernel",
     "SpatioTemporalSeperableKernel",
     "Linear",
-    "RQ"
+    "RQ",
+    "ScaledMatern32"
 ]

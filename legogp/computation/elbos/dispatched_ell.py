@@ -202,13 +202,19 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     likelihood_arr = likelihood.likelihood_arr
     num_likelihoods = len(likelihood_arr)
 
+    N = Y.shape[0]
+    P = Y.shape[1]
+
     # Reparameterise
-    # Transform through prior
+    # Transform through prior for each datapoint
     transformed_f = jax.vmap(
         prior.forward,
         [1],
         0
     )(f)
+
+    # we want f to have shape [N, P]
+    transformed_f = np.reshape(transformed_f, [N, num_likelihoods])
 
     # Y and F must be rank 2 when they are passed to log_likelihood
     # When vmapping one dimension is lost so extent here

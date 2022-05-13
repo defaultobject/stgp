@@ -11,6 +11,7 @@ from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent
+from ..transforms.sdes import SDE
 
 import jax
 import jax.numpy as np
@@ -76,6 +77,7 @@ def spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp
 
     return mu, var
 
+@dispatch(Data, Data, BASE_SDE_GP, SDE)
 @dispatch(Data, Data, BASE_SDE_GP, Independent)
 def spatial_conditional(XS: 'Data', X: 'Data', pred_mean, pred_var, gp, diagonal):
     """
@@ -151,6 +153,7 @@ def spatial_conditional_block(XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, 
     breakpoint()
     pass
 
+@dispatch(Data, Data, BASE_SDE_GP, SDE)
 @dispatch(Data, Data, BASE_SDE_GP, Independent)
 def spatial_conditional_block(XS_data: 'Data', X_data: 'Data', pred_mean, pred_var, gp, diagonal):
     """

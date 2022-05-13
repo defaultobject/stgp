@@ -4,7 +4,7 @@ from .transform import Transform, LinearTransform, ElementWiseTransform
 import jax.numpy as np
 import objax
 from ..utils.utils import ensure_module_list
-from ..computation.parameter_transforms import softplus, inv_softplus
+from ..computation.parameter_transforms import softplus, inv_softplus, inv_probit
 from ..parameter import Parameter
 
 class Independent(LinearTransform):
@@ -111,3 +111,8 @@ class Sinh_Arcsinh(ElementWiseTransform):
 
 class Tanh(ElementWiseTransform):
     """Sinh_Arcsinh Function."""
+
+class InvProbit(ElementWiseTransform):
+    """Sinh_Arcsinh Function."""
+    def forward(self, x):
+        return inv_probit(x)
