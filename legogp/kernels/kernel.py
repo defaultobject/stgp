@@ -116,9 +116,9 @@ class CombinationKernel(Kernel):
 
 
 class SumKernel(CombinationKernel):
-    def to_ss(self):
-        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss()
-        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss()
+    def to_ss(self, X_spatial=None):
+        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss(X_spatial)
+        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss(X_spatial)
 
         F = block_diag(k1_F, k2_F)
         L = block_diag(k1_L, k2_L)
@@ -136,9 +136,9 @@ class SumKernel(CombinationKernel):
 
 
 class ProductKernel(CombinationKernel):
-    def to_ss(self):
-        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss()
-        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss()
+    def to_ss(self, X_spatial=None):
+        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss(X_spatial)
+        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss(X_spatial)
 
         I_1 = np.eye(k1_F.shape[0])
         I_2 = np.eye(k2_F.shape[0])

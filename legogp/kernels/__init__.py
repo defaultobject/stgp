@@ -17,6 +17,7 @@ from .approximate_markov import ApproximateMarkovKernel
 from .deep_kernels import DeepStationary
 from .bias import BiasKernel
 from .rq import RQ
+from .periodic import Periodic, ApproxSDEPeriodic
 
 __all__ = [
     "Kernel",
@@ -32,5 +33,7 @@ __all__ = [
     "SpatioTemporalSeperableKernel",
     "Linear",
     "RQ",
-    "ScaledMatern32"
+    "ScaledMatern32",
+    "Periodic",
+    "ApproxSDEPeriodic"
 ]

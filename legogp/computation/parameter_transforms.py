@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as np
 from jax import jit
-from jax.scipy.special import erf
+from jax.scipy.special import erf, erfinv
 from functools import partial
 from .matrix_ops import cholesky, cholesky_solve, add_jitter
 from .. import settings
@@ -14,13 +14,15 @@ def gauss_cdf(x):
     return (1.0 + erf(x / np.sqrt(2.0))) / 2
 
 @jit
-def inv_probit(x):
-    """
-    Gaussian CDF
-    """
+def inv_gauss_cdf(p):
+    """ Approximation of standard Gaussian inverse cdf using error function """
+    return np.sqrt(2) * erfinv(2 * p - 1)
 
-    # CDF is between 0 and 1
-    return gauss_cdf(x) 
+@jit
+def inv_probit(x): return gauss_cdf(x) 
+
+@jit
+def probit(x): return inv_gauss_cdf(x) 
 
 @jit
 def identity(x):

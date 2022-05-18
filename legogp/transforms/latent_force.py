@@ -135,6 +135,72 @@ class LotkaVolterra(NonLinearLFM):
     def P_inf_lfm(self, x, X_s, t):
         return np.eye(self.state_size)
 
+class RM_Population(NonLinearLFM):
+    def __init__(self, latents, alpha, K, beta, b, gamma, delta, init_state = None):
+        super(RM_Population, self).__init__(latents)
+
+        self.alpha = Parameter(np.array(alpha, dtype=np.float64), constraint='positive', name='alpha')
+        self.K = Parameter(np.array(K, dtype=np.float64), constraint='positive', name='K')
+        self.beta = Parameter(np.array(beta, dtype=np.float64), constraint='positive', name='beta')
+        self.b = Parameter(np.array(b, dtype=np.float64), constraint='positive', name='b')
+        self.gamma = Parameter(np.array(gamma, dtype=np.float64), constraint='positive', name='gamma')
+        self.delta = Parameter(np.array(delta, dtype=np.float64), constraint='positive', name='delta')
+
+        self.state_size = 2
+
+        if init_state is None:
+            init_state = 10.0*np.ones(self.state_size)[:, None]
+
+        self.init_state = Parameter(
+            np.reshape(np.array(init_state), [self.state_size, 1]),
+            name = 'init_state' 
+        )
+
+    def _f(self, state_x, t):
+        """ Evalulate dx/dt"""
+        alpha = self.alpha.value
+        K = self.K.value
+        beta = self.beta.value
+        b = self.b.value
+        gamma = self.gamma.value
+        delta = self.delta.value
+
+        x, y = state_x[0], state_x[1]
+
+        return np.array([
+            x * (alpha * (1-(x/K)) - beta * y / (b + x)),
+            y * ( delta * x / (b+x) - gamma) 
+        ])
+
+    def f_lfm(self, state_x, X_s, t):
+        """ Evalulate dx/dt"""
+        x = state_x[0]
+        y = state_x[1]
+        u1 = state_x[2]
+        u2 = state_x[3]
+
+        ob_state = [x, y]
+
+        d = self._f(ob_state, t)
+
+        return np.array([
+            d[0] + u1,
+            d[1] + u2 
+        ])
+
+    def H_lfm(self, x, X_s, t):
+        return np.eye(self.state_size)
+
+    def L_lfm(self, x, X_s, t):
+        return np.ones(self.state_size)[:, None]  
+
+
+    def m_inf_lfm(self, x, X_s, t):
+        return self.init_state.value
+
+    def P_inf_lfm(self, x, X_s, t):
+        return np.eye(self.state_size)
+
 
 class PopulationLotkaVolterra(NonLinearLFM):
     """ Following https://jckantor.github.io/CBE30338/02.05-Hare-and-Lynx-Population-Dynamics.html """

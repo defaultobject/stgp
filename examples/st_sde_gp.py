@@ -5,11 +5,15 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import legogp as lego
-from legogp.trainers import SimpleTrainer, ScipyTrainer
+from legogp.trainers import GradDescentTrainer, ScipyTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import Matern32, SpatioTemporalSeperableKernel
 from legogp.likelihood import Gaussian, ReshapedGaussian
 from legogp.data import SpatioTemporalData
+from legogp.transforms.sdes import LTI_SDE
+from legogp.transforms import Independent
+from legogp.models import GP
+from legogp.sparsity import NoSparsity
 
 import objax
 import jax
@@ -37,12 +41,23 @@ data = SpatioTemporalData(X=X, Y=Y, sort=True)
 
 lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=data.Ns)
 
+latents = [
+    GP(
+        sparsity=NoSparsity(), 
+        kernel= SpatioTemporalSeperableKernel(
+            Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]),
+            Matern32(input_dim=1, lengthscales=[0.1], active_dims=[1])
+        )
+    )
+]
+
+
+base_gp = Independent(latents)
+prior = LTI_SDE(base_gp)
+
 m = lego.models.GP(
     data = data, 
-    kernel = SpatioTemporalSeperableKernel(
-        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]),
-        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[1])
-    ),
+    prior = prior,
     likelihood = lik,
     inference='Sequential'
 )
@@ -50,12 +65,12 @@ m = lego.models.GP(
 print(m.get_objective())
 
 if False:
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
     # Train
     epochs = 500
     callback = progress_bar_callback(epochs)
-    learning_curve, training_time = SimpleTrainer().train(
-        m, 
-        objax.optimizer.Adam,
+    learning_curve, training_time = trainer.train(
         0.01,
         epochs,
         callback = callback
