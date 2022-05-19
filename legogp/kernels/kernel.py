@@ -123,8 +123,8 @@ class SumKernel(CombinationKernel):
         F = block_diag(k1_F, k2_F)
         L = block_diag(k1_L, k2_L)
         Pinf = block_diag(k1_Pinf, k2_Pinf)
-        Q = block_diag(k1_Q, k2_Q)
-        H = np.hstack(k1_H, k2_H)
+        Qc = block_diag(k1_Qc, k2_Qc)
+        H = np.hstack([k1_H, k2_H])
 
         return F, L, Qc, H, Pinf
 

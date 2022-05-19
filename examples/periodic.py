@@ -53,12 +53,14 @@ XS = np.linspace(-1, 2, 1000)[:, None]
 lego.settings.jitter = 1e-5
 
 
-if False:
+if True:
     data = TemporalData(X=X, Y=Y)
-    kern = ApproxSDEPeriodic(1.0, 1.0, 1.0, n_terms=1)
+    kern = ApproxSDEPeriodic(10.0, 1.0, 1.0, n_terms=2)
 
     likelihood = BlockDiagonalGaussian(1, 1, variance=1e-1*np.tile(np.ones([1, 1]), [1, 1, 1]))
+    likelihood.variance_param.fix()
     likelihood = ReshapedGaussian(likelihood, data.Nt, 1)
+
 
     latents = [
         GP(sparsity=NoSparsity(), kernel=kern) for q in range(1)
@@ -74,7 +76,7 @@ if False:
     )
 else:
     data = Data(X=X, Y=Y)
-    kern = Periodic(1.0, 1.0, 1.0)
+    kern = Periodic(10.0, 1.0, 1.0)
 
     likelihood = Gaussian(0.01)
 
@@ -92,14 +94,14 @@ if False:
     callback = progress_bar_callback(epochs)
     learning_rates, _ = trainer.train(0.01, epochs, callback=callback)
 
-else:
+if True:
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
     epochs = 100
     callback = progress_bar_callback(epochs)
     learning_rates, _ = trainer.train(0.01, epochs, callback=callback)
 
-plt.plot(learning_rates)
-plt.show()
+    plt.plot(learning_rates)
+    plt.show()
 
 pred_mu, pred_var = m.predict_f(XS)
 

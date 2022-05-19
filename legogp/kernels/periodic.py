@@ -8,37 +8,45 @@ from . import Kernel, MarkovKernel
 from .. import Parameter
 
 from tensorflow_probability.substrates import jax as tfp
+from jax.scipy.linalg import expm
 
 
 class _PeriodicBase(MarkovKernel):
     """ Two dimensional oscillatory SDE model """
 
-    def __init__(self, j):
+    def __init__(self, period_param, lengthscale_param, variance_param, j):
         self.j = j
 
-    def to_ss(self, period, lengthscale, variance, X_spatial=None):
-        """ 
-        Note: This is only used internally so we break the pattern of only passing X_spatial to avoid define a new function. 
-        """
+        self.period_param = period_param
+        self.lengthscale_param = lengthscale_param
+        self.variance_param = variance_param
+
+
+    def to_ss(self, X_spatial=None):
+        period = self.period_param.value
+        lengthscale = self.lengthscale_param.value
+        variance= self.variance_param.value
+
         j = self.j
 
         F = np.array([
             [0, - period * j],
-            [- period * j, 0],
+            [period * j, 0],
         ])
 
         L = np.eye(2)
 
         inv_ls = 1/(lengthscale**2)
-        qj = 2 * tfp.math.log_bessel_ive(j, inv_ls) / np.exp(inv_ls)
+
+
+        qj = 2 * (tfp.math.bessel_ive(j, inv_ls) / np.exp(-np.abs(inv_ls))) / np.exp(inv_ls)
         
         Qc = np.array([
             [qj]
         ])
 
         H = np.array([
-            [1.0],
-            [0.0]
+            [1.0, 0.0],
         ])
 
 
@@ -90,7 +98,12 @@ class ApproxSDEPeriodic(MarkovKernel, Periodic):
 
     def _setup_base_kernel(self):
         for n in range(self.n_terms):
-            new_term = _PeriodicBase(n)
+            new_term = _PeriodicBase(
+                self.period_param,
+                self.lengthscale_param,
+                self.variance_param,
+                n+1
+            )
 
             if self.base_kernel == None:
                 self.base_kernel = new_term
@@ -98,13 +111,15 @@ class ApproxSDEPeriodic(MarkovKernel, Periodic):
                 self.base_kernel = self.base_kernel + new_term
 
     def to_ss(self, X_spatial=None):
+        return self.base_kernel.to_ss(X_spatial)
 
-        return self.base_kernel.to_ss(
-            self.period_param.value,
-            self.lengthscale_param.value,
-            self.variance_param.value,
-            X_spatial
-        )
+
+    def expm(self, dt, X_spatial=None):
+        """appproximate matrix exponential A = expm(F * dt)"""
+
+        F, _, _, _, _ = self.base_kernel.to_ss(X_spatial) 
+
+        return expm( F * dt)
 
 
 
