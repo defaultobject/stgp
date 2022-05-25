@@ -339,10 +339,16 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         m_grads.append(gradients[q])
         S_grads.append(gradients[q+1])
 
+    if type(beta) is list:
+        beta_axis = 0
+        beta = np.array(beta)
+    else:
+        beta_axis = None
+
     xi1_arr, xi2_arr = batch_or_loop(
         lambda m, b, q, m_grad, s_grad, enforce_psd, : natural_gradient_update_for_gaussian_approx_posterior(m, b, q, m_grad, s_grad, enforce_psd),
         [model, beta, approx_posteriors, np.array(m_grads), np.array(S_grads), enforce_psd_type],
-        [None, None, 0, 0, 0, None],
+        [None, beta_axis, 0, 0, 0, None],
         dim = num_q,
         out_dim=2,
         batch_type = get_batch_type(approx_posteriors)

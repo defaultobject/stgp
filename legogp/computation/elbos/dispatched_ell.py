@@ -194,7 +194,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     return ell_arr
 
 # Meanfield Approximate Posterior
-
 def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     chex.assert_rank(f, 2)
     chex.assert_rank(Y, 2)
@@ -282,7 +281,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     )
 
 # Full Gaussian ELL Approximate Posterior
-@dispatch(Data, ProductLikelihood, Transform, FullGaussianApproximatePosterior)
+@dispatch(Data, ProductLikelihood, NonLinearTransform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     Samples from the approximate posteriors need to be transformed through the prior and then the 
@@ -312,10 +311,16 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
+@dispatch(Data, GaussianProductLikelihood, DataLatentPermutation, FullGaussianApproximatePosterior)
+def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    base_prior = prior.latent_obj
+    return evoke('expected_log_likelihood', data, likelihood, base_prior, approximate_posterior)(
+        data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
+    )
+
 # ================================= Special Cases =================================
 
 @dispatch(Data, GaussianProductLikelihood, LinearTransform, FullGaussianApproximatePosterior)
-@dispatch(Data, GaussianProductLikelihood, DataLatentPermutation, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     Both q_f_mu_arr and q_f_var_arr are already in data-latent format

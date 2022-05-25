@@ -19,7 +19,11 @@ class Independent(LinearTransform):
         return np.eye(self.num_latents)
 
 class Identity(ElementWiseTransform):
-    pass
+    def forward(self, x):
+        return x
+
+    def inverse(self, f):
+        return f
 
 class ReverseFlow(ElementWiseTransform):
     def __init__(self, base_flow):
@@ -66,6 +70,16 @@ class Softminus(ElementWiseTransform):
     def inverse(self, f):
         """Compute x=T^{-1}(f)."""
         return softplus(f)
+
+class Softplus(ElementWiseTransform):
+
+    def forward(self, x):
+        """Compute f=T(x)."""
+        return softplus(x)
+
+    def inverse(self, f):
+        """Compute x=T^{-1}(f)."""
+        return inv_softplus(f)
 
 
 class Affine(ElementWiseTransform):

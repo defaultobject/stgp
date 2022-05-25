@@ -7,7 +7,7 @@ import jax.numpy as np
 import numpy as onp
 import objax
 import chex
-from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform,softplus
+from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform,softplus, probit
 from .. import Parameter
 
 class GPRN_Base(NonLinearTransform):
@@ -113,14 +113,16 @@ class GPRN_DRD(GPRN_Base):
         self.Q = int(self.P*(self.P-1)/2)
 
         if a is None:
-            self.a = 1.0
+            a = 1.0
+
+        self.a = a
 
         # Set defaults
         if variances is None:
             variances = np.ones(self.P)
 
         # Setup Parameters
-        self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance')
+        self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance', train=False)
 
         # Flatten latents to fit into VI framework
         self._latent_obj = Independent(

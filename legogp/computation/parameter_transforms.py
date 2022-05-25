@@ -68,13 +68,12 @@ def inv_sigmoid(val):
 
 @jit
 def correlation_transform(val, a):
-    return 2 * sigmoid(a * val) - 1
-
+    return 2*inv_probit(val) - 1
+    #return 2 * sigmoid(a * val) - 1
 
 @jit
 def inv_correlation_transform(val, a):
     return inv_sigmoid((val + 1) / 2) / a
-
 
 @partial(jit, static_argnums=(1,))
 def lower_triangle(val, N):

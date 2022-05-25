@@ -262,7 +262,7 @@ class StationaryKernel(Kernel):
         chex.assert_shape(lengthscales, [input_dim])
 
         # register lengthscales and variances
-        self.lengthscale_param = Parameter(lengthscales, constraint='positive')
+        self.lengthscale_param = Parameter(lengthscales, constraint='positive', name='Kernel/Lengthscale')
 
     @property
     def lengthscales(self) -> np.ndarray:

@@ -310,7 +310,6 @@ class Independent(LinearTransform):
 
         return F, L, Qc, H, P_inf
 
-
     def expm(self, dt, X_s):
         A_blocks = batch_or_loop(
             lambda d, x_s, latent:  latent.kernel.expm(dt, x_s),
@@ -322,9 +321,6 @@ class Independent(LinearTransform):
         )
 
         return to_block_diag(A_blocks)
-
-
-        
 
 class SumTransform(LinearTransform):
     def __init__(self, t1: Transform, t2: Transform):

@@ -6,7 +6,7 @@ import objax
 
 import legogp as lego
 from legogp import settings
-from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer, GradDescentTrainer
+from legogp.trainers import ScipyTrainer, NatGradTrainer, GradDescentTrainer
 from legogp.trainers.callbacks import progress_bar_callback
 from legogp.kernels import Matern32, ScaleKernel
 from legogp.likelihood import Gaussian, ReshapedGaussian
@@ -14,7 +14,7 @@ from legogp.data import TemporalData, Data, MultiOutputTemporalData
 from legogp.models import GP
 from legogp.sparsity import NoSparsity, StackedNoSparsity
 from legogp.transforms import Independent, DataLatentPermutation
-from legogp.transforms.multi_output import LMC
+from legogp.transforms.multi_output import LMC, GPRN_DRD
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.approximate_posteriors import FullGaussianApproximatePosterior
 
@@ -26,8 +26,8 @@ from data_zoo import multi_output_timeseries
 
 np.random.seed(0)
 
-P = 3
-Q = 3
+P = 2
+Q = 2
 
 XS, X, Y = multi_output_timeseries(P, 100, 1000, seed=0)
 
@@ -58,29 +58,23 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         for q in range(Q)
     ]
     
-    prior = LMC(Independent(latents), output_dim = P)
+    prior = GPRN_DRD([latents[0]], latents, output_dim = P)
     
     lik = [Gaussian(config['lik_var'][p]) for p in range(P)]
     
-    q_cvi = FullConjugateGaussian(
-        X=Z_all,
-        num_latents=Q,
-        block_size=Q,
-        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
-            data=MultiOutputTemporalData(X=X.sparsity_arr[0], Y=Y[:, None, :], sort=False), # Data should already be in the correct format
-            prior=prior.latent_obj, 
-            likelihood=likelihood,
-            inference='Sequential'
-        )  
+    approximate_posterior = FullGaussianApproximatePosterior(
+        dim = Z[0].shape[0]*prior.num_latents
     )
+    prior = DataLatentPermutation(prior)
 
     m = GP(
         data = data,
         prior = prior,
         likelihood=lik,
-        approximate_posterior=q_cvi,
+        approximate_posterior=approximate_posterior,
         inference='Variational',
-        prediction_samples=100
+        prediction_samples=100,
+        ell_samples=100
     )
     print(m.get_objective())
 
