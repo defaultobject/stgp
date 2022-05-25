@@ -162,10 +162,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return latent_mu, latent_var
 
-
-@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
+@dispatch('samples', FullGaussianApproximatePosterior, Likelihood, Transform)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
-
     if diagonal is False:
         raise NotImplementedError()
 
@@ -187,6 +185,15 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
         generator = inference.generator, 
         num_samples = inference.prediction_samples,
         average=False
+    )
+
+    return mu
+
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+
+    mu = evoke('marginal', 'samples', approximate_posterior, likelihood, prior)(
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
     )
 
     second_moment =  mu**2

@@ -281,8 +281,6 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return marginal_mu, marginal_var
 
-
-
 @dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearTransform)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
     if diagonal is False:
@@ -306,19 +304,22 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearTransform)
+@dispatch('samples', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearTransform)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+
     if diagonal is False:
         raise NotImplementedError()
 
     latents = prior.latent_obj
 
+    # compute predictions of the (Gaussian) latent functions
     latent_mu, latent_var =  evoke('marginal', 'prediction', approximate_posterior, likelihood, latents)(
         XS, data, approximate_posterior, likelihood, latents, inference, diagonal
     ) 
 
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)
 
+    # sample and push through the nonlinear transform
     mu = mv_indepentdent_monte_carlo(
         lambda f, fn: fn(f),
         latent_mu,
@@ -331,6 +332,17 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     # Ensure correct shape
     mu = np.reshape(mu, [inference.prediction_samples, XS.shape[0], prior.output_dim, 1])
+
+    return mu
+
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearTransform)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+    latents = prior.latent_obj
+
+    #compute samples
+    mu =  evoke('marginal', 'samples', approximate_posterior, likelihood, prior)(
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
+    ) 
     
     second_moment =  mu**2
 

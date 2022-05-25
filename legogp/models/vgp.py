@@ -176,6 +176,13 @@ class VGP(Posterior):
             diagonal=diagonal
         )
 
+        # ensure shap is [P, N]
+        P = mean.shape[0]
+        N = XS.shape[0]
+
+        mean = np.reshape(mean, [P, N])
+        var = np.reshape(var, [P, N])
+
         if squeeze:
             return np.squeeze(mean), np.squeeze(var)
 
@@ -192,6 +199,13 @@ class VGP(Posterior):
             diagonal=diagonal
         )
 
+        # ensure shap is [P, N]
+        P = mean.shape[0]
+        N = XS.shape[0]
+
+        mean = np.reshape(mean, [P, N])
+        var = np.reshape(var, [P, N])
+
         if squeeze:
             return np.squeeze(mean), np.squeeze(var)
 
@@ -206,6 +220,12 @@ class VGP(Posterior):
             self.approximate_posterior,
             diagonal=diagonal
         )
+        # ensure shap is [P, N]
+        P = mu_arr.shape[0]
+        N = XS.shape[0]
+
+        mu_arr = np.reshape(mu_arr, [P, N])
+        var_arr = np.reshape(var_arr, [P, N])
 
         if squeeze:
             mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 

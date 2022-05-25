@@ -17,6 +17,7 @@ from legogp.transforms import Independent, DataLatentPermutation
 from legogp.transforms.multi_output import LMC, GPRN_DRD
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.approximate_posteriors import FullGaussianApproximatePosterior
+from legogp.metrics.nlpd import nlpd
 
 import matplotlib.pyplot as plt
 
@@ -58,14 +59,18 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         for q in range(Q)
     ]
     
-    prior = GPRN_DRD([latents[0]], latents, output_dim = P)
+    #prior = GPRN_DRD([latents[0]], latents, output_dim = P)
+    prior = LMC(latents, output_dim = P)
     
     lik = [Gaussian(config['lik_var'][p]) for p in range(P)]
     
-    approximate_posterior = FullGaussianApproximatePosterior(
-        dim = Z[0].shape[0]*prior.num_latents
-    )
-    prior = DataLatentPermutation(prior)
+    if False:
+        approximate_posterior = FullGaussianApproximatePosterior(
+            dim = Z[0].shape[0]*prior.num_latents
+        )
+        prior = DataLatentPermutation(prior)
+    else:
+        approximate_posterior = None
 
     m = GP(
         data = data,
@@ -73,10 +78,12 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         likelihood=lik,
         approximate_posterior=approximate_posterior,
         inference='Variational',
-        prediction_samples=100,
-        ell_samples=100
+        prediction_samples=89,
+        ell_samples=44
     )
     print(m.get_objective())
+
+    print(nlpd( X, Y, m ))
 
     m.predict_y(X)
     
@@ -98,6 +105,8 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         grad_step.train(config['lr'], epochs=1)
 
     pred_mu, pred_var = m.predict_y(XS)
+
+    print(nlpd( X, Y, m ))
 
     
     return {'m': m, 'lc': learning_curve, 'pred_mu': pred_mu, 'pred_var': pred_var}
