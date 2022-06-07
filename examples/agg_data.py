@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import stgp
+
 def aggregate_in_time(x, y, group_size):
     """
     Groups (x, y) in groups of group_size. Y is returned as the average of the group.
@@ -40,7 +42,9 @@ f = np.sin(x*10)
 x_aggr, f_aggr = aggregate_in_time(x, f, 5)
 y_aggr = f_aggr + 0.01*np.random.randn(f_aggr.shape[0])
 
-if True:
+if False:
     plt.plot(x, f)
     plot_timeseries_aggregated_xy(x_aggr, y_aggr)
     plt.show()
+
+breakpoint()
