@@ -123,7 +123,9 @@ if True:
 
 # Predict
 pred_aggr_mu, pred_aggr_var = m.predict_f(data.X, squeeze=True)
-pred_mu, pred_var = m.predict_latents(XS, squeeze=True)
+pred_mu, pred_var = m.predict_latents(XS, squeeze=True, diagonal=False)
+
+breakpoint()
 
 # Plot results
 fig = plt.figure(figsize=(10, 5))

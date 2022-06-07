@@ -66,7 +66,7 @@ class VGP(Posterior):
         raise NotImplementedError()
 
     @property
-    def output_dim(self): return self.Y.shape[1]
+    def output_dim(self): return self.prior.output_dim
 
     @property
     def input_dim(self): return self.output_dim

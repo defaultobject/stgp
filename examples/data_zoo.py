@@ -1,7 +1,7 @@
 import numpy as np
 
-import legogp as lego
-from legogp.computation.parameter_transforms import correlation_transform, get_correlation_cholesky
+import stgp as lego
+from stgp.computation.parameter_transforms import correlation_transform, get_correlation_cholesky
 
 # Helper functions
 

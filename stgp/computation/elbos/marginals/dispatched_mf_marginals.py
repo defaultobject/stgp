@@ -17,7 +17,7 @@ import jax.numpy as np
 
 from ....dispatch import dispatch, evoke
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec
 
 # Import Types
@@ -438,3 +438,52 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     var = second_moment - np.square(mu)
     
     return mu, var
+
+# =================== COVAR PREDICTION ===================
+
+@dispatch('prediction_covar', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity)
+def marginal(X1, X2, data, approximate_posterior, likelihood, prior, sparsity):
+    m, S_chol  = approximate_posterior.m, approximate_posterior.S_chol
+    K12 = prior.kernel.K(X1, X2)
+    K1z = prior.kernel.K(X1, sparsity.Z)
+    Kz2 = prior.kernel.K(sparsity.Z, X2)
+    Kzz = prior.kernel.K(sparsity.Z, sparsity.Z)
+
+    return gaussian_conditional_covar(
+        X1, X2, sparsity.Z,
+        Kzz, 
+        K1z,
+        Kz2,
+        K12,
+        m,
+        S_chol
+    )
+
+@dispatch('prediction_covar', MeanFieldApproximatePosterior, ProductLikelihood, Transform)
+def marginal(X1, X2, data, approximate_posterior, likelihood, prior, inference):
+    latents = prior.latent_obj
+
+    latents_arr = prior.latents
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    sparsity_arr = prior.get_sparsity_list()
+    likelihood_arr = likelihood.likelihood_arr
+
+    num_latents = len(sparsity_arr)
+
+
+    #TODO: assuming that all likelihoods are the same
+    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
+
+    # Compute q(f) for each output
+    marginal_covar = batch_over_module_types(
+        evoke_name = 'marginal',
+        evoke_params = ['prediction_covar'],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_params = [X1, X2, data, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_axes = [None, None, None, 0, 0, 0, 0],
+        dim = len(latents_arr),
+        out_dim  = 1
+    )
+
+    return marginal_covar
+

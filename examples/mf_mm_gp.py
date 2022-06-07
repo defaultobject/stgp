@@ -8,22 +8,23 @@ This files show how to construct low level multi-task variational models in the
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 
-import legogp as lego
-from legogp.trainers import SimpleTrainer, NatGradTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF, ScaleKernel
-from legogp.kernels.deep_kernels import DeepRBF, DeepLinear
-from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
-from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
-from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
-from legogp.models import GP
-from legogp.transforms import DataLatentPermutation , Independent
-from legogp.core import MultiObjectiveModel
-from legogp.metrics.nlpd import nlpd
-from legogp.transforms.basic import Log, Softminus, Affine, ReverseFlow
+import stgp 
+from stgp.trainers import GradDescentTrainer, NatGradTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF, ScaleKernel
+from stgp.kernels.deep_kernels import DeepRBF, DeepLinear
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
+from stgp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
+from stgp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+from stgp.models import GP
+from stgp.transforms import DataLatentPermutation , Independent
+from stgp.models.wrappers import MultiObjectiveModel, LatentPredictor
+from stgp.metrics.nlpd import nlpd
+from stgp.transforms.basic import Log, Softminus, Affine, ReverseFlow
+from stgp.models.wrappers import LatentPredictor
 
 import objax
 import jax
@@ -32,11 +33,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import batchjax
-import stdata as st
-from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
-import stdata
 import pandas as pd
 
 from data_zoo import multi_output_timeseries
@@ -52,30 +50,45 @@ X2 = X[20:]
 Y1 = Y[:, 0][:, None]
 Y2 = Y[20:, 1][:, None]
 
+D = 1
+
 #plt.scatter(X1, Y1)
 #plt.scatter(X2, Y2)
 #plt.show()
 
 #data = Data(X1, Y1)
 data = TransformedData(Data(X1, Y1), [ReverseFlow(Affine(np.std(Y1), np.mean(Y1), train=False))])
+
+latent_gp = GP(
+    sparsity = NoSparsity(Z=X1), 
+    kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)]))
+)
+
 m1 = GP(
     data = data,
-    kernel = ScaleKernel(RBF(lengthscales=[0.01])),
+    prior = Independent([latent_gp]),
     likelihood = [Gaussian(variance=0.1)],
-    inference='Batch'
+    inference='Variational'
 )
+latent_m1 = LatentPredictor(m1)
 
 data = TransformedData(Data(X2, Y2), [Softminus()])
 #data = Data(X2, Y2)
 
+
 m2 = GP(
     data = data,
-    kernel = ScaleKernel(DeepRBF(parent=m1, lengthscale=[1.0])) + ScaleKernel(DeepLinear(parent=m1)),
+    kernel = ScaleKernel(DeepRBF(parent=latent_m1, lengthscale=[1.0])) + ScaleKernel(DeepLinear(parent=latent_m1)),
     likelihood = [Gaussian(variance=0.1)],
     inference='Batch'
 )
 
 m = MultiObjectiveModel([m2, m1])
+
+
+print(m.get_objective())
+
+breakpoint()
 
 YS = Y[:, 1][:, None]
 

@@ -75,10 +75,16 @@ def correlation_transform(val, a):
 def inv_correlation_transform(val, a):
     return inv_sigmoid((val + 1) / 2) / a
 
+
+def update_idx(X, idx, val):
+    #return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
+    return X.at[idx].set(val)
+
 @partial(jit, static_argnums=(1,))
 def lower_triangle(val, N):
     tri = np.zeros((N, N))
-    return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
+    return update_idx(tri, np.tril_indices(N, 0), val)
+
 
 
 @partial(jit, static_argnums=(1,))
@@ -104,7 +110,8 @@ def get_correlation_cholesky(z_arr, P, Q):
     # identity + raw z's in lower triangle
     # [ 1 0 ]
     # [ z 1 ]
-    chol = jax.ops.index_add(chol, jax.ops.index[np.tril_indices(P, -1)], z_arr)
+    #chol = jax.ops.index_add(chol, jax.ops.index[np.tril_indices(P, -1)], z_arr)
+    chol = update_idx(chol, np.tril_indices(P, -1), z_arr)
 
     # construct elements (1-z**2)^0.5
     # [ 0 1 ]
@@ -115,9 +122,10 @@ def get_correlation_cholesky(z_arr, P, Q):
     # [ 0 0 ]
     # [ (1-z^2)^0.5 0 ]
     upper_tri_index = np.triu_indices(P, 1)
-    chol_a = jax.ops.index_add(
-        chol_a, jax.ops.index[upper_tri_index], -chol_a[upper_tri_index]
-    )
+    #chol_a = jax.ops.index_add(
+    #    chol_a, jax.ops.index[upper_tri_index], -chol_a[upper_tri_index]
+    #)
+    chol_a = update_idx(chol_a, upper_tri_index, np.zeros(int(P*(P-1)/2)))
 
     # Add ones back onto the diagional
     # [ 1 0 ]
