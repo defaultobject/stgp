@@ -21,7 +21,7 @@ from ...marginals import gaussian_conditional_diagional, gaussian_conditional
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec
 
 # Import Types
-from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform
+from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
@@ -102,12 +102,11 @@ def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, spar
     )
 
 @dispatch('full_prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', FreeSparsity)
-def marginal(XS, data, approximate_posterior, likelihood, prior, sparsity):
+def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity):
     """ Computes the full q(f) = ∫ p(f | u) q(u) du """
 
-    raise NotImplementedError()
-    m = approximate_posterior.m
-    S_chol = approximate_posterior.S_chol
+    chex.assert_rank([m, S_chol], [2, 2])
+    chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
 
     return gaussian_conditional(
         XS, 
@@ -196,6 +195,46 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     return   evoke('marginal', approximate_posterior, likelihood, latents)(
         data, q_m, q_S, approximate_posterior, likelihood, latents
     ) 
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Aggregate)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+
+    # we need to compute the full predictive distributions for each aggregated group
+
+    latents_arr = prior.latent_obj.latents
+    likelihood_arr = likelihood.likelihood_arr
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    sparsity_arr = prior.get_sparsity_list()
+
+    num_latents = prior.num_latents
+
+    #TODO: assuming that all likelihoods are the same
+    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
+
+    
+    # Compute q(f) for each site
+    site_fn = lambda X: batch_over_module_types(
+        evoke_name = 'marginal',
+        evoke_params = ['full_prediction'],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_params = [X, data, q_m, q_S, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
+        fn_axes = [None, None, 0, 0, 0, 0, 0, 0],
+        dim = num_latents,
+        out_dim  = 2
+    )
+
+    marginal_mu, marginal_var = jax.vmap(site_fn, (0, ))(data.X)
+
+    # fix shapes
+    marginal_mu = marginal_mu[..., 0]
+
+    group_size = marginal_mu.shape[2]
+
+    marginal_mu = np.sum(marginal_mu, axis=2)/group_size
+    marginal_var = np.sum(np.sum(marginal_var, axis=2), axis=2)/(group_size*group_size)
+
+    return (marginal_mu.T)[..., None], (marginal_var.T)[..., None]
 
 # ========================= Predictions =========================
 

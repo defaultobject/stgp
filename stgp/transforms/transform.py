@@ -51,39 +51,11 @@ class Transform(objax.Module):
         return objax.ModuleList([g.kernel for g in self.latents])
 
     @property
-    def latents(self):
-        return self._latents_arr
-
-    @property
     def latent_obj(self):
         return self._latent_obj
 
     def get_batches(self):
         return self.batches
-
-class NonLinearTransform(Transform):
-    @property
-    def num_latents(self):
-        return len(self.latents)
-
-    def get_sparsity_list(self):
-        return [p.sparsity for p in self.latents]
-
-    @property
-    def latents(self):
-        return self.latent_obj._latents_arr
-
-    def get_Z(self):
-        return self.latent_obj.get_Z()
-
-
-class LinearTransform(Transform):
-    """
-    All linear transforms support .W returns the mixing matrix
-    """
-
-    def get_sparsity_list(self):
-        return [p.sparsity for p in self.latents]
 
     @property
     def latents(self):
@@ -93,9 +65,19 @@ class LinearTransform(Transform):
     def num_latents(self):
         return len(self.latent_obj.latents)
 
+    def get_sparsity_list(self):
+        return [p.sparsity for p in self.latents]
 
     def get_Z(self):
         return self.latent_obj.get_Z()
+
+class NonLinearTransform(Transform):
+    pass
+
+class LinearTransform(Transform):
+    """
+    All linear transforms support .W returns the mixing matrix
+    """
 
     def transform_diagonal(self, mu, var):
         """

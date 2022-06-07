@@ -3,6 +3,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 import stgp
+from stgp.data import AggregatedData
+from stgp.models import GP
+from stgp.kernels import ScaleKernel, RBF
+from stgp.transforms import Aggregate
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
+import objax
+from tqdm import trange
 
 def aggregate_in_time(x, y, group_size):
     """
@@ -39,12 +47,76 @@ def plot_timeseries_aggregated_xy(x, y):
 x = np.linspace(0, 1, 100)
 f = np.sin(x*10) 
 
+
+XS = np.linspace(0, 1, 1000)[:, None]
+
 x_aggr, f_aggr = aggregate_in_time(x, f, 5)
 y_aggr = f_aggr + 0.01*np.random.randn(f_aggr.shape[0])
+Y_aggr = y_aggr[:, None]
+X_aggr = x_aggr[..., None]
 
 if False:
     plt.plot(x, f)
     plot_timeseries_aggregated_xy(x_aggr, y_aggr)
     plt.show()
 
-breakpoint()
+D = 1
+
+data = AggregatedData(X_aggr, Y_aggr)
+lik = stgp.likelihood.Gaussian(0.01)
+Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])
+
+latent_gp = GP(
+    sparsity = Z, 
+    kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)]))
+)
+
+prior = Aggregate([latent_gp])
+
+m = GP(
+    data = data,
+    likelihood = [lik],
+    prior = prior,
+    inference='Variational'
+)
+
+if True:
+    # Train
+    epochs = 200
+    natgrad_trainer = NatGradTrainer(m, schedule='constant')
+
+    for q in range(len(m.approximate_posterior.approx_posteriors)):
+        m.approximate_posterior.approx_posteriors[q]._S_chol.fix()
+        m.approximate_posterior.approx_posteriors[q]._m.fix()
+
+    trainer = GradDescentTrainer(
+        m, 
+        objax.optimizer.Adam,
+    )
+
+    natgrad_trainer.train(1.0, 1)
+
+    lc_arr = []
+    for i in trange(epochs):
+        trainer.train(0.01, 1)
+
+        obj_val, _ = natgrad_trainer.train(0.1, 1)
+
+        lc_arr.append(obj_val)
+
+    plt.plot(lc_arr)
+    plt.show()
+
+    print(lc_arr[0], lc_arr[-1])    
+
+# Predict
+pred_mu, pred_var = m.predict_latents(XS, squeeze=True)
+
+# Plot results
+fig = plt.figure(figsize=(10, 5))
+ax = plt.gca()
+
+ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 2*np.sqrt(pred_var)), np.squeeze(pred_mu + 2*np.sqrt(pred_var)), alpha=0.4)
+ax.plot(XS, pred_mu)
+plot_timeseries_aggregated_xy(x_aggr, y_aggr)
+plt.show()

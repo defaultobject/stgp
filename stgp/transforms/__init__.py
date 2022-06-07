@@ -3,6 +3,7 @@ from .transform import Transform, LinearTransform, NonLinearTransform, Independe
 from .basic import Identity
 from .multi_output import LMC_Base, LMC_Unit_Tri, LMC_Corr
 from .data_latent_permutation import DataLatentPermutation
+from .aggregate import Aggregate
 
 __all__ = [
     "Transform", 
@@ -15,5 +16,6 @@ __all__ = [
     "LMC_Base",
     "LMC_Unit_Tri",
     "LMC_Corr",
-    "DataLatentPermutation"
+    "DataLatentPermutation",
+    "Aggregate"
 ]
