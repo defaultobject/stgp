@@ -5,7 +5,7 @@ from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, Di
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
-from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform
+from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform, Aggregate
 from ..permutations import data_order_to_output_order
 
 from ...utils import utils
@@ -156,7 +156,6 @@ def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
     chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
 
     return var_arr
-
 
 @dispatch(Data, 'BatchGP', ProductLikelihood, LinearTransform)
 def predict(XS, data, gp, likelihood, prior, diagonal):

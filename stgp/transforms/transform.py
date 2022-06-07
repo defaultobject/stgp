@@ -414,6 +414,20 @@ class ElementWiseTransform(Transform):
         self._num_latents = 1
         self._num_outputs = 1
 
+class LinearOne2One(LinearTransform):
+    def __init__(self, base_prior: 'Transform', transform_arr: list):
+        self.base_prior = base_prior
+        self.transform_arr = objax.ModuleList(transform_arr)
+        self._output_dim = len(self.transform_arr)
+
+    @property
+    def latent_obj(self):
+        return self.base_prior.latent_obj
+
+    def forward(self, f):
+        raise NotImplementedError()
+
+
 
 class One2One(NonLinearTransform):
     def __init__(self, base_prior: 'Transform', transform_arr: list):

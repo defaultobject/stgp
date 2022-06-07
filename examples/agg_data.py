@@ -6,7 +6,7 @@ import stgp
 from stgp.data import AggregatedData
 from stgp.models import GP
 from stgp.kernels import ScaleKernel, RBF
-from stgp.transforms import Aggregate
+from stgp.transforms import Aggregate, Independent, LinearOne2One
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 import objax
@@ -43,6 +43,16 @@ def plot_timeseries_aggregated_xy(x, y):
         min_x, max_x = np.min(x[n]), np.max(x[n])
         plt.plot([min_x, max_x], [y[n], y[n]], c=linecolor)
 
+def plot_timeseries_aggregated_pred(x, mu, var):
+    linecolor= 'red'
+
+    for n in range(x.shape[0]):
+        # get group boundary
+        min_x, max_x = np.min(x[n]), np.max(x[n])
+
+        plt.plot([min_x, max_x], [mu[n], mu[n]], c=linecolor)
+        plt.fill_between([min_x, max_x], [mu[n]-1.96*np.sqrt(var[n]), mu[n]-1.96*np.sqrt(var[n])], [mu[n]+1.96*np.sqrt(var[n]), mu[n]+1.96*np.sqrt(var[n])], alpha=0.4, facecolor=linecolor)
+
 
 x = np.linspace(0, 1, 100)
 f = np.sin(x*10) 
@@ -71,7 +81,7 @@ latent_gp = GP(
     kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)]))
 )
 
-prior = Aggregate([latent_gp])
+prior = Aggregate(Independent([latent_gp]))
 
 m = GP(
     data = data,
@@ -79,6 +89,8 @@ m = GP(
     prior = prior,
     inference='Variational'
 )
+
+print(m.get_objective())
 
 if True:
     # Train
@@ -110,6 +122,7 @@ if True:
     print(lc_arr[0], lc_arr[-1])    
 
 # Predict
+pred_aggr_mu, pred_aggr_var = m.predict_f(data.X, squeeze=True)
 pred_mu, pred_var = m.predict_latents(XS, squeeze=True)
 
 # Plot results
@@ -118,5 +131,7 @@ ax = plt.gca()
 
 ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 2*np.sqrt(pred_var)), np.squeeze(pred_mu + 2*np.sqrt(pred_var)), alpha=0.4)
 ax.plot(XS, pred_mu)
+
+plot_timeseries_aggregated_pred(x_aggr, pred_aggr_mu, pred_aggr_var)
 plot_timeseries_aggregated_xy(x_aggr, y_aggr)
 plt.show()
