@@ -41,9 +41,10 @@ class _PeriodicBase(MarkovKernel):
 
         qj = 2 * (tfp.math.bessel_ive(j, inv_ls) / np.exp(-np.abs(inv_ls))) / np.exp(inv_ls)
         
-        Qc = np.array([
-            [qj]
-        ])
+        Qc = np.eye(2) * qj
+        #Qc = np.array([
+        #    [qj]
+        #])
 
         H = np.array([
             [1.0, 0.0],

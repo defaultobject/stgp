@@ -169,7 +169,6 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     sparsity_arr = prior.get_sparsity_list()
 
-
     latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, prior)(
         XS, data, approximate_posterior, likelihood, prior, inference, diagonal
     )

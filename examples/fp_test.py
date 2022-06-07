@@ -18,6 +18,8 @@ from legogp.transforms.multi_output import LMC, GPRN_DRD
 from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from legogp.approximate_posteriors import FullGaussianApproximatePosterior
 from legogp.metrics.nlpd import nlpd
+from legogp.transforms.sdes import LTI_SDE
+
 
 import matplotlib.pyplot as plt
 
@@ -59,57 +61,45 @@ def dense_sde_cvi_lmc(config, XS, X, Y):
         for q in range(Q)
     ]
     
-    #prior = GPRN_DRD([latents[0]], latents, output_dim = P)
-    prior = LMC(latents, output_dim = P)
+    prior = LMC(Independent(latents), output_dim = P)
     
     lik = [Gaussian(config['lik_var'][p]) for p in range(P)]
     
-    if False:
-        approximate_posterior = FullGaussianApproximatePosterior(
-            dim = Z[0].shape[0]*prior.num_latents
-        )
-        prior = DataLatentPermutation(prior)
-    else:
-        approximate_posterior = None
+    q_cvi = FullConjugateGaussian(
+        X=Z_all,
+        num_latents=Q,
+        block_size=Q,
+        surrogate_model = lambda X, Y, likelihood:  lego.models.GP(
+            data=MultiOutputTemporalData(X=X.sparsity_arr[0], Y=Y[:, None, :], sort=False), # Data should already be in the correct format
+            prior=LTI_SDE(prior.latent_obj), 
+            likelihood=likelihood,
+            inference='Sequential'
+        )  
+    )
 
     m = GP(
         data = data,
         prior = prior,
         likelihood=lik,
-        approximate_posterior=approximate_posterior,
+        approximate_posterior=q_cvi,
         inference='Variational',
-        prediction_samples=89,
-        ell_samples=44
+        prediction_samples=1000
     )
-    print(m.get_objective())
-
-    print(nlpd( X, Y, m ))
-
-    m.predict_y(X)
     
     # Natgrad step
     natgrad_trainer = NatGradTrainer(m, schedule='constant')
     
-    # Do not use adam for the approx posterios
-    all_vars = list(m.vars().keys())
-    m_name = [a for a in all_vars if a.endswith('._m(Parameter).raw_var')]
-    s_chol_name = [a for a in all_vars if a.endswith('._S_chol(Parameter).raw_var')]
-    approx_posterior_vars = m_name + s_chol_name
-            
-    grad_step = GradDescentTrainer(m, objax.optimizer.Adam, hold_vars = approx_posterior_vars)
+    grad_step = GradDescentTrainer(m, objax.optimizer.Adam)
     
     learning_curve = []
     for i in range(config['epochs']):
         obj_val, _ = natgrad_trainer.train(1.0, epochs=1)
         learning_curve.append(obj_val[0])
         grad_step.train(config['lr'], epochs=1)
-
+    
     pred_mu, pred_var = m.predict_y(XS)
-
-    print(nlpd( X, Y, m ))
-
     
-    return {'m': m, 'lc': learning_curve, 'pred_mu': pred_mu, 'pred_var': pred_var}
-    
+    return {'m': m, 'lc': learning_curve, 'pred_mu': pred_mu, 'pred_var': pred_var}    
+
 res_time['dense_sde_cvi'] = dense_sde_cvi_lmc(config, XS, X, Y)
 

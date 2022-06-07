@@ -409,6 +409,11 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     # Predict in data-latent order
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
 
+    # Ensure correct size
+    N, Q = q_mu_z.shape[0], q_mu_z.shape[1]
+    q_mu_z = np.reshape(q_mu_z, [N, Q])
+    q_var_z = np.reshape(q_var_z, [N, Q, Q])
+
     def partial_ell(m, q_m, q_S):
         return compute_expected_log_liklihood_with_variational_params(
             m.data,

@@ -18,6 +18,7 @@ from ..data.sequential import add_temporal_points
 from ..kernels import Matern32
 from ..likelihood import get_product_likelihood
 from ..transforms import Independent
+from ..transforms.sdes import LTI_SDE
 
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 from ..sparsity import NoSparsity
@@ -103,6 +104,7 @@ class BASE_SDE_GP(Posterior):
                 self.output_dim, 
                 kernel_list=self.kernel
             )
+            self._prior = LTI_SDE(self._prior)
 
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
@@ -185,9 +187,11 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             self.likelihood.variance
         )
+        mu = np.reshape(mu, [mu.shape[0], mu.shape[1]])
         return mu, var
 
     def posterior(self, diagonal=True):
+
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,

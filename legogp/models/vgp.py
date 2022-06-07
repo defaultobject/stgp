@@ -176,12 +176,15 @@ class VGP(Posterior):
             diagonal=diagonal
         )
 
-        # ensure shap is [P, N]
-        P = mean.shape[0]
+        # TODO: make consistent with predict_f/y
+        # TODO: make work is diagonal=False
+        # ensure shap is [N, P]
+        P = mean.shape[-1]
         N = XS.shape[0]
 
-        mean = np.reshape(mean, [P, N])
-        var = np.reshape(var, [P, N])
+        if False:
+            mean = np.reshape(mean, [N, P])
+            var = np.reshape(var, [N, P])
 
         if squeeze:
             return np.squeeze(mean), np.squeeze(var)

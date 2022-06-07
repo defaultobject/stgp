@@ -18,7 +18,7 @@ def batch_over_posteriors(post_list, fn):
         fn,
         [post_list],
         [0],
-        dim = post_list,
+        dim = len(post_list),
         out_dim = 1,
         batch_type = get_batch_type(post_list)
     )

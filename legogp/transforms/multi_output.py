@@ -122,7 +122,7 @@ class GPRN_DRD(GPRN_Base):
             variances = np.ones(self.P)
 
         # Setup Parameters
-        self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance', train=False)
+        self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance', train=True)
 
         # Flatten latents to fit into VI framework
         self._latent_obj = Independent(

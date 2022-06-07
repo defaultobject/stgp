@@ -10,7 +10,7 @@ from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 
 # Import types
-from ...transforms.sdes import SDE
+from ...transforms.sdes import SDE, LTI_SDE
 
 import objax
 import chex
@@ -82,7 +82,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     }
 
 
-@dispatch('LTI_SDE')
+@dispatch(LTI_SDE)
 def kf_predict_step(prior, carry, x, X_s):
     """ Linear Kalman Filter Predict Step """
 
@@ -143,6 +143,7 @@ def filter_step_wrapper(data, m):
     return _fn
 
 def filter_loop(data: 'SequentialData', prior: 'Prior', R):
+
     x_t =  data.X_time
     X_s =  data.X_space
 

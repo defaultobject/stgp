@@ -55,9 +55,8 @@ class NonLinearLFM(LatentForce):
 
         # pad with zeros to make shape compatable
         n_zero_to_add = H.shape[1] - H_lfm.shape[1]
-        H_lfm = np.pad(H_lfm, ((0, 0), (0, n_zero_to_add)))
+        #H_lfm = np.pad(H_lfm, ((0, 0), (0, n_zero_to_add)))
 
-        breakpoint()
         return np.hstack([H_lfm, H])
 
     def P_inf(self, x, X_s, t):

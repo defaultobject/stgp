@@ -54,7 +54,6 @@ def nlpd(XS, YS, m, prior):
     mask = get_same_shape_mask(YS)
     Y_masked = np.nan_to_num(YS, nan=0.0)
 
-
     #compute samples
     # shape will be [n_samples, N, P, 1] or [n_samples, N, P]
     m_samples = evoke('marginal', 'samples', m.approximate_posterior, m.likelihood, prior)(
@@ -197,5 +196,8 @@ def nlpd(XS, YS, model):
     )
 
 def nlpd(XS, YS, model):
+    if model.data.minibatch:
+        model.data.batch()
+
     return evoke('nlpd', model)( XS, YS, model)
 

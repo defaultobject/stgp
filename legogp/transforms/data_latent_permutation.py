@@ -18,6 +18,7 @@ class DataLatentPermutation(Transform):
 
         self.permutation_fn = data_order_to_output_order
         self.num_latents = self.latent_obj.num_latents
+        self._output_dim = self.latent_obj.output_dim 
 
     def get_sparsity_list(self):
         return self.latent_obj.get_sparsity_list()

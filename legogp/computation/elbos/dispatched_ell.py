@@ -247,7 +247,8 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     # Mask out log-liklihoods that correspond to missing data
     ll_arr = mask_matrix(ll_arr, mask)
 
-    return np.sum(ll_arr)
+    #return np.sum(ll_arr)
+    return ll_arr
 
 # Meanfield Gaussian with non-linear ELL Approximate Posterior
 @dispatch(Data, ProductLikelihood, NonLinearTransform, MeanFieldApproximatePosterior)
@@ -263,7 +264,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     approx_posteriors_arr = approximate_posterior.approx_posteriors
 
     num_likelihoods = len(likelihood_arr)
-    N = Y.shape[0]
+    N, P = Y.shape
     Q = prior.num_latents
 
     # Normalise shapes
@@ -271,7 +272,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     q_f_var_arr = np.reshape(q_f_var_arr, [Q, N])
 
 
-    return mv_indepentdent_monte_carlo(
+    ell =  mv_indepentdent_monte_carlo(
         compute_ell_for_sample, 
         q_f_mu_arr, 
         q_f_var_arr, 
@@ -279,6 +280,12 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         generator = inference.generator, 
         num_samples = inference.ell_samples
     )
+
+    chex.assert_shape(ell, [N, P, 1])
+
+    ell = np.sum(ell, axis=0)[:, 0]
+
+    return ell
 
 # Full Gaussian ELL Approximate Posterior
 @dispatch(Data, ProductLikelihood, NonLinearTransform, FullGaussianApproximatePosterior)

@@ -182,6 +182,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
     """  conjugate Full-posterior approximate posterior setting """
     return approximate_posterior.surrogate.posterior_blocks()
 
+
+
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
 def variational_params(data, approximate_posterior, likelihood, prior):
     """  Full-posterior approximate posterior setting """

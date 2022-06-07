@@ -289,6 +289,8 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         lambda_2 = lambda_2_init + beta*(-lambda_2)
     elif enforce_psd == 'retraction':
         lambda_2 = psd_retraction_map(-2*lambda_2_init, 2*beta*lambda_2)/(-2)
+    else:
+        raise NotImplementedError()
 
     #convert from natural parameters to the raw parameters
     theta_1, theta_2 = lambda_to_theta(lambda_1, lambda_2)

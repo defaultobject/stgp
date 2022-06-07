@@ -103,6 +103,7 @@ def elbo(
     ML_surrogate = np.sum(ML_arr)
 
     return ELL - ELL_surrogate + ML_surrogate
+    #return ELL 
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(

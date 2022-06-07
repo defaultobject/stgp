@@ -22,6 +22,11 @@ class Variational(Inference):
         self.prediction_samples=prediction_samples
 
     def predict_f(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
+
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
+
         mu, var = evoke('predict', likelihood, prior, approximate_posterior)(
             XS, data, likelihood, prior, approximate_posterior, self, diagonal
         )
@@ -29,6 +34,9 @@ class Variational(Inference):
         return mu, var
 
     def predict_latents(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
 
         return evoke('marginal', 'latents', approximate_posterior, likelihood, prior)(
             XS, data, approximate_posterior, likelihood, prior, self, diagonal
@@ -48,6 +56,10 @@ class Variational(Inference):
 
 
     def predictive_covar(self, XS_1, XS_2, data, likelihood, prior, approximate_posterior):
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
+
         pred_var = multi_latent_predictive_covar.dispatch(type(prior), type(approximate_posterior))(
             XS_1, XS_2, data, likelihood, prior, approximate_posterior
 

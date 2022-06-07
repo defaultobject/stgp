@@ -135,10 +135,10 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict):
             'P': P_init 
         },
         {
-            'm': np.flip(filter_res['m'], axis=0)[:-1, ...],
-            'P': np.flip(filter_res['P'], axis=0)[:-1, ...],
-            'dt': np.flip(dt, axis=0)[:-1, ...],
-            't': np.flip(X_t, axis=0)[:-1, ...]
+            'm': np.flip(filter_res['m'], axis=0)[1:, ...],
+            'P': np.flip(filter_res['P'], axis=0)[1:, ...],
+            'dt': np.flip(dt, axis=0)[1:, ...],
+            't': np.flip(X_t, axis=0)[1:, ...]
         }
     )
 
