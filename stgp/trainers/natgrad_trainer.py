@@ -139,7 +139,7 @@ class NatGradTrainer(Trainer):
         )
 
 
-        if (schedule is None) or (schedule is 'none'):
+        if (schedule is None) or (schedule == 'none'):
             schedule = 'constant'
 
         self.schedule = schedule

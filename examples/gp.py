@@ -4,11 +4,11 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
-import legogp as lego
-from legogp.trainers import SimpleTrainer, ScipyTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import RBF, ScaleKernel, BiasKernel
-from legogp.likelihood import Gaussian
+import stgp
+from stgp.trainers import GradDescentTrainer, ScipyTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import RBF, ScaleKernel, BiasKernel
+from stgp.likelihood import Gaussian
 
 import objax
 import jax
@@ -17,8 +17,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import batchjax
-import stdata as st
-from stdata.plots import grid_to_matrix
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -36,7 +34,7 @@ Y = y[:, None]
 XS = np.linspace(-1, 2, 1000)[:, None]
 
 # Create Model
-m = lego.models.GP(
+m = stgp.models.GP(
     X, 
     Y, 
     kernel=ScaleKernel(RBF(lengthscales=[0.1])),
@@ -49,9 +47,10 @@ if True:
     # Train
     epochs = 200
     callback = progress_bar_callback(epochs)
-    learning_curve, training_time = SimpleTrainer().train(
+    learning_curve, training_time = GradDescentTrainer(
         m, 
         objax.optimizer.Adam,
+    ).train(
         0.01,
         epochs,
         callback = callback
