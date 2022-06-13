@@ -8,7 +8,7 @@ This files show how to construct low level multi-task variational models in the
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 
 import stgp 
 from stgp.trainers import GradDescentTrainer, NatGradTrainer
@@ -71,6 +71,7 @@ m1 = GP(
     inference='Variational'
 )
 latent_m1 = LatentPredictor(m1)
+#latent_m1 = m1
 
 data = TransformedData(Data(X2, Y2), [Softminus()])
 #data = Data(X2, Y2)
@@ -88,19 +89,22 @@ m = MultiObjectiveModel([m2, m1])
 
 print(m.get_objective())
 
-breakpoint()
 
 YS = Y[:, 1][:, None]
 
 print(nlpd(X, YS, m2))
 
 if True:
+    ng_1 = NatGradTrainer(m1)
+    ng_1.train(1.0, 1)
+
     # Train
     epochs = 1000
     callback = progress_bar_callback(epochs)
-    learning_curve, training_time = SimpleTrainer().train(
-        m, 
-        objax.optimizer.Adam,
+    learning_curve, training_time = GradDescentTrainer(
+            m, 
+        objax.optimizer.Adam
+    ).train(
         0.01,
         epochs,
         callback = callback
@@ -109,6 +113,8 @@ if True:
     # Plot learning curve
     plt.plot(learning_curve)
     plt.show()
+
+
 
 print(nlpd(X, YS, m2))
 

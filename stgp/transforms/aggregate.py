@@ -10,7 +10,6 @@ class Aggregate(LinearTransform):
         self._latent_obj = latents
 
 
-
     def forward(self, f):
         raise NotImplementedError()
 

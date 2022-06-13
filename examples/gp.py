@@ -46,7 +46,9 @@ print(m.get_objective())
 if True:
     # Train
     epochs = 200
+
     callback = progress_bar_callback(epochs)
+
     learning_curve, training_time = GradDescentTrainer(
         m, 
         objax.optimizer.Adam,

@@ -374,7 +374,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
         out_dim  = 2
     )
 
-    marginal_mu, marginal_var = jax.vmap(site_fn, (0, ))(data.X)
+    marginal_mu, marginal_var = jax.vmap(site_fn, (0, ))(XS)
 
     # fix shapes
     marginal_mu = marginal_mu[..., 0]

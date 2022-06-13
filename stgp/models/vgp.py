@@ -66,13 +66,13 @@ class VGP(Posterior):
         raise NotImplementedError()
 
     @property
-    def output_dim(self): return self.prior.output_dim
+    def output_dim(self): return self.data.Y.shape[1]
 
     @property
     def input_dim(self): return self.output_dim
 
     @property
-    def input_space_dim(self): return self.X.shape[1]
+    def input_space_dim(self): return self.data.X.shape[1]
 
     @property
     def likelihood(self): return self._likelihood
@@ -144,13 +144,14 @@ class VGP(Posterior):
     def mean(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
 
-        chex.assert_shape(mu, [self.output_dim, XS.shape[0], 1])
+        mu = np.reshape(mu, [self.output_dim, XS.shape[0], 1])
         return mu
 
     def var(self, XS):
         _, var = self.predict_f(XS, diagonal=True, squeeze=False)
 
-        chex.assert_shape(var, [self.output_dim, XS.shape[0], 1])
+        #chex.assert_shape(var, [self.output_dim, XS.shape[0], 1])
+        var = np.reshape(var, [self.output_dim, XS.shape[0], 1])
         return var
 
     def covar(self, XS_1, XS_2, X=None, Y=None):

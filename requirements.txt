@@ -1,6 +1,4 @@
 protobuf==3.19.0
-jax
-jaxlib
 objax
 git+https://github.com/defaultobject/batchjax
 chex
@@ -21,3 +19,4 @@ tqdm
 tensorflow_probability
 pandas
 matplotlib
+bng_latlon

@@ -28,7 +28,6 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
-    num_outputs = gp.output_dim
 
     if diagonal:
         evoke_name = 'predict_y_diagonal'
@@ -36,6 +35,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         evoke_name = 'predict_y_full'
 
     likelihood_arr = likelihood.likelihood_arr
+    num_outputs = len(likelihood_arr)
 
     # Compute prediction for each likelihood-prior pair
     mu_arr, var_arr =  batch_over_module_types(

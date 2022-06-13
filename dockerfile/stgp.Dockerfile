@@ -1,16 +1,24 @@
-FROM nvidia/cuda:10.2-devel-ubuntu18.04
+FROM nvidia/cuda:11.1.1-devel-ubuntu18.04
+
+RUN apt-get update 
+
+RUN apt-get install -y curl
 
 # Install python3
-RUN apt update && apt install -y python3-pip
+RUN apt-get install -y python3.8
+RUN apt-get install -y python3-distutils
 
-RUN ln -sf /usr/bin/python3 /usr/bin/python && \
-ln -sf /usr/bin/pip3 /usr/bin/pip
+RUN ln -sf /usr/bin/python3.8 /usr/bin/python 
+
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN python get-pip.py
+
+# install jax and jaxlib
 
 RUN pip --no-cache-dir install --upgrade pip setuptools_rust
 
 # Install ML Packages built with CUDA11 support
-RUN ln -s /usr/lib/cuda /usr/local/cuda-10.2
-RUN pip --no-cache-dir install --upgrade jax[cuda102] -f https://storage.googleapis.com/jax-releases/jax_releases.html
+RUN pip install --upgrade jax jaxlib==0.3.7+cuda11.cudnn805 -f https://storage.googleapis.com/jax-releases/jax_releases.html
 
 #git required to pip install from git repo's
 RUN apt-get install -y git
