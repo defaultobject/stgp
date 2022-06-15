@@ -1,3 +1,8 @@
+"""
+Converts a prior from latent-data format to data-latent format.  This is required when using a FullApproximatePosterior 
+
+There are two separate classes and we can exploit sparsity when permuting independent priors.
+"""
 import jax
 import jax.numpy as np
 from batchjax import batch_or_loop, BatchType
@@ -8,7 +13,32 @@ from ..computation.matrix_ops import block_from_mat, v_get_block_diagonal
 from ..computation.permutations import data_order_to_output_order
 from ..utils.utils import ensure_module_list, get_batch_type
 
+class DataLatentPermutationFromFull(Transform):
+    def __init__(self, latent):
+        self._latent_obj = latent
+        self._output_dim = self.latent_obj.output_dim 
+
+    def np_mean(self, X):
+        return self.latent_obj.mean(X[0])
+
+    def np_full_covar(self, X1, X2):
+        #TODO: why?
+        return self.latent_obj.covar(X1[0], X2[0])
+
+
+
 class DataLatentPermutation(Transform):
+    """
+    Converts a prior from latent-data format to data-latent format.
+    This is required when using a FullApproximatePosterior .
+
+    Assumes that latent_obj is independent
+
+    Function name syntax:
+        p: permute
+        lp: left permute
+        np: no permute
+    """
     def __init__(self, latents):
         # Allow passing a list of prior models and transformed model
         if type(latents) is list:
@@ -17,8 +47,11 @@ class DataLatentPermutation(Transform):
             self._latent_obj = latents 
 
         self.permutation_fn = data_order_to_output_order
-        self.num_latents = self.latent_obj.num_latents
         self._output_dim = self.latent_obj.output_dim 
+
+    @property
+    def num_latents(self):
+        self.latent_obj.num_latents
 
     def get_sparsity_list(self):
         return self.latent_obj.get_sparsity_list()

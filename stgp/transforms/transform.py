@@ -153,6 +153,8 @@ class LinearTransform(Transform):
         """ Output shape [PxN1, PxN1]. """
         raise NotImplementedError()
 
+
+
 class Independent(LinearTransform):
     def __init__(
         self, 
