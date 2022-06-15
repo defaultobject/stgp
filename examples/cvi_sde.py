@@ -4,18 +4,18 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 import objax
 
-import legogp as lego
-from legogp import settings
-from legogp.trainers import ScipyTrainer, NatGradTrainer, GradDescentTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32
-from legogp.likelihood import Gaussian, ReshapedGaussian
-from legogp.data import TemporalData, Data
-from legogp.models import GP
-from legogp.sparsity import NoSparsity
-from legogp.transforms import Independent
-from legogp.transforms.sdes import LTI_SDE
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+import stgp as lego
+from stgp import settings
+from stgp.trainers import ScipyTrainer, NatGradTrainer, GradDescentTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32
+from stgp.likelihood import Gaussian, ReshapedGaussian
+from stgp.data import TemporalData, Data
+from stgp.models import GP
+from stgp.sparsity import NoSparsity
+from stgp.transforms import Independent
+from stgp.transforms.sdes import LTI_SDE
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 
 
 import matplotlib.pyplot as plt

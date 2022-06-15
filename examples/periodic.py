@@ -14,27 +14,27 @@ import jax.numpy as jnp
 import objax
 
 import numpy as np
-import legogp as lego
-from legogp.transforms import Independent
-from legogp.transforms.latent_force import NonLinearLFM, LotkaVolterra, Linearized, PopulationLotkaVolterra, RM_Population, LatentForce
-from legogp.transforms.sdes import LTI_SDE, EulerMaruyama
-from legogp.kernels import Matern32, ScaledMatern32, Periodic, ApproxSDEPeriodic
-from legogp.models import GP
-from legogp.sparsity import NoSparsity
-from legogp.computation.solvers.euler import euler
-from legogp.computation.filters import kalman_filter as kf
-from legogp.computation.filters import rts_smoother as rts
-from legogp.inference import StatisticallyLinearisedFilter
-from legogp.data import Data, MultiOutputTemporalData, TemporalData
-from legogp import settings
-from legogp.core import Model
-from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedGaussian
-from legogp import Parameter
+import stgp as lego
+from stgp.transforms import Independent
+from stgp.transforms.latent_force import NonLinearLFM, LotkaVolterra, Linearized, PopulationLotkaVolterra, RM_Population, LatentForce
+from stgp.transforms.sdes import LTI_SDE, EulerMaruyama
+from stgp.kernels import Matern32, ScaledMatern32, Periodic, ApproxSDEPeriodic
+from stgp.models import GP
+from stgp.sparsity import NoSparsity
+from stgp.computation.solvers.euler import euler
+from stgp.computation.filters import kalman_filter as kf
+from stgp.computation.filters import rts_smoother as rts
+from stgp.inference import StatisticallyLinearisedFilter
+from stgp.data import Data, MultiOutputTemporalData, TemporalData
+from stgp import settings
+from stgp.core import Model
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedGaussian
+from stgp import Parameter
 
-from legogp.computation.parameter_transforms import inv_probit, probit
+from stgp.computation.parameter_transforms import inv_probit, probit
 
-from legogp.trainers import GradDescentTrainer, ScipyTrainer
-from legogp.trainers.callbacks import progress_bar_callback
+from stgp.trainers import GradDescentTrainer, ScipyTrainer
+from stgp.trainers.callbacks import progress_bar_callback
 
 from pathlib import Path
 import pandas as pd
