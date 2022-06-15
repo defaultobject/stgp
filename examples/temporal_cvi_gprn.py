@@ -3,14 +3,14 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
-import legogp as lego
-from legogp.trainers import SimpleTrainer, NatGradTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32
-from legogp.likelihood import Gaussian
-from legogp.data import Data, TemporalData
-from legogp.sparsity import NoSparsity
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian
+import stgp as lego
+from stgp.trainers import SimpleTrainer, NatGradTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32
+from stgp.likelihood import Gaussian
+from stgp.data import Data, TemporalData
+from stgp.sparsity import NoSparsity
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian
 
 import objax
 import jax

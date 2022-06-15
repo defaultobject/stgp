@@ -51,7 +51,7 @@ class DataLatentPermutation(Transform):
 
     @property
     def num_latents(self):
-        self.latent_obj.num_latents
+        return self.latent_obj.num_latents
 
     def get_sparsity_list(self):
         return self.latent_obj.get_sparsity_list()
