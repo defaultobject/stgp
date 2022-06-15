@@ -10,15 +10,15 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
-import legogp as lego
-from legogp.trainers import SimpleTrainer, NatGradTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32, SpatioTemporalSeperableKernel
-from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
-from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape
-from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
-from legogp.transforms import DataLatentPermutation , Independent
+import stgp as lego
+from stgp.trainers import SimpleTrainer, NatGradTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32, SpatioTemporalSeperableKernel
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
+from stgp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape
+from stgp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+from stgp.transforms import DataLatentPermutation , Independent
 
 import objax
 import jax

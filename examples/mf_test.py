@@ -10,21 +10,21 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
-import legogp as lego
-from legogp.trainers import SimpleTrainer, NatGradTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF, ScaleKernel
-from legogp.kernels.deep_kernels import DeepRBF
-from legogp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
-from legogp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
-from legogp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
-from legogp.models import GP
-from legogp.transforms import DataLatentPermutation , Independent
-from legogp.transforms.multi_output import LMC
-from legogp.core import MultiObjectiveModel
-from legogp.metrics.nlpd import nlpd
-from legogp.transforms.basic import Log
+import stgp as lego
+from stgp.trainers import SimpleTrainer, NatGradTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32, SpatioTemporalSeperableKernel, RBF, ScaleKernel
+from stgp.kernels.deep_kernels import DeepRBF
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian
+from stgp.data import Data, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, SpatioTemporalData, DataReshape, TransformedData
+from stgp.sparsity import NoSparsity, StackedNoSparsity, SpatialSparsity
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior , MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+from stgp.models import GP
+from stgp.transforms import DataLatentPermutation , Independent
+from stgp.transforms.multi_output import LMC
+from stgp.core import MultiObjectiveModel
+from stgp.metrics.nlpd import nlpd
+from stgp.transforms.basic import Log
 
 import objax
 import jax

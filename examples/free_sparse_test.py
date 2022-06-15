@@ -4,19 +4,19 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', True)
 import objax
 
-import legogp as lego
-from legogp import settings
-from legogp.trainers import SimpleTrainer, ScipyTrainer, NatGradTrainer, GradDescentTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32, ScaleKernel, RBF
-from legogp.likelihood import Gaussian, ReshapedGaussian
-from legogp.data import TemporalData, Data, MultiOutputTemporalData
-from legogp.models import GP
-from legogp.sparsity import NoSparsity, StackedNoSparsity, FullSparsity
-from legogp.transforms import Independent, DataLatentPermutation
-from legogp.transforms.multi_output import LMC
-from legogp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
-from legogp.approximate_posteriors import FullGaussianApproximatePosterior
+import stgp as lego
+from stgp import settings
+from stgp.trainers import ScipyTrainer, NatGradTrainer, GradDescentTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32, ScaleKernel, RBF
+from stgp.likelihood import Gaussian, ReshapedGaussian
+from stgp.data import TemporalData, Data, MultiOutputTemporalData
+from stgp.models import GP
+from stgp.sparsity import NoSparsity, StackedNoSparsity, FullSparsity
+from stgp.transforms import Independent, DataLatentPermutation
+from stgp.transforms.multi_output import LMC
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 
 import matplotlib.pyplot as plt
 

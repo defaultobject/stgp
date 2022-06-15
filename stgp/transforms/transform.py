@@ -282,7 +282,7 @@ class Independent(LinearTransform):
             [X_s, self.latents],
             [None, 0],
             dim = self.num_latents,
-            out_dim = 1,
+            out_dim = 5,
             batch_type = get_batch_type(self.latents)
         )
 

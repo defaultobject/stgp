@@ -116,16 +116,18 @@ if True:
 
         lc_arr.append(obj_val)
 
-    plt.plot(lc_arr)
-    plt.show()
+    if True:
+        plt.plot(lc_arr)
+        plt.show()
 
     print(lc_arr[0], lc_arr[-1])    
 
 # Predict
 pred_aggr_mu, pred_aggr_var = m.predict_f(data.X, squeeze=True)
-pred_mu, pred_var = m.predict_latents(XS, squeeze=True, diagonal=False)
+pred_mu, pred_var = m.predict_latents(XS, squeeze=True, diagonal=True)
 
-breakpoint()
+pred_mu = np.squeeze(pred_mu)
+pred_var = np.squeeze(pred_var)
 
 # Plot results
 fig = plt.figure(figsize=(10, 5))

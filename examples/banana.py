@@ -9,13 +9,13 @@ jax_config.update('jax_disable_jit', False)
 
 import matplotlib.pyplot as plt
 
-import legogp
-from legogp.models import GP
-from legogp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
-from legogp.computation.parameter_transforms import identity, inv_probit
-from legogp.transforms.basic import InvProbit
-from legogp.kernels import ScaleKernel, RBF
-from legogp.transforms import Independent, One2One
+import stgp
+from stgp.models import GP
+from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
+from stgp.computation.parameter_transforms import identity, inv_probit
+from stgp.transforms.basic import InvProbit
+from stgp.kernels import ScaleKernel, RBF
+from stgp.transforms import Independent, One2One
 
 X_df = pd.read_csv('data/banana_X_train.csv', header=None)
 Y_df = pd.read_csv('data/banana_Y_train.csv', header=None)
@@ -36,12 +36,12 @@ def model(X, Y):
     Q = 1
     D = 2
 
-    data = legogp.data.Data(X, Y)
-    lik = [legogp.likelihood.Bernoulli(link_fn=identity) for p in range(P)]
+    data = stgp.data.Data(X, Y)
+    lik = [stgp.likelihood.Bernoulli(link_fn=identity) for p in range(P)]
 
     latent_gps = [
         GP(
-            sparsity=legogp.sparsity.NoSparsity(Z_ref=data._X), 
+            sparsity=stgp.sparsity.NoSparsity(Z_ref=data._X), 
             kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[1.0 for d in range(D)]))
         )
         for q in range(Q)

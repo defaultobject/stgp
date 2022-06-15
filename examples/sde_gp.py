@@ -4,12 +4,15 @@ from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
-import legogp as lego
-from legogp.trainers import GradDescentTrainer, ScipyTrainer
-from legogp.trainers.callbacks import progress_bar_callback
-from legogp.kernels import Matern32
-from legogp.likelihood import Gaussian, ReshapedGaussian
-from legogp.data import TemporalData
+import stgp 
+from stgp.trainers import GradDescentTrainer, ScipyTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import Matern32
+from stgp.likelihood import Gaussian, ReshapedGaussian
+from stgp.data import TemporalData
+from stgp.transforms.sdes import LTI_SDE
+from stgp.transforms import Independent
+from stgp.models import GP
 
 import objax
 import jax
@@ -34,13 +37,23 @@ data = TemporalData(X=X, Y=Y, sort=True)
 
 lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=1)
 
+Z = stgp.sparsity.NoSparsity(Z_ref = data.X)
+D = 1
+
+latent_gp = GP(
+    sparsity = Z, 
+    kernel = Matern32(input_dim=D, lengthscales=[0.1 for d in range(D)]),
+    prior = True
+)
+
 # Create Model
-m = lego.models.GP(
+m = GP(
+    prior = LTI_SDE(Independent([latent_gp])),
     data = data, 
-    kernel = Matern32(lengthscales=[0.1]),
     likelihood = lik,
     inference='Sequential'
 )
+
 
 print(m.get_objective())
 
