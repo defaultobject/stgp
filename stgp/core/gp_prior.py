@@ -59,15 +59,29 @@ class GPPrior(Prior):
 
     def var(self, XS):
         k =  self.kernel.K_diag(XS)
+        chex.assert_shape(k, [XS.shape[0]])
+        return k[..., None]
+
+    def var_blocks(self, XS):
+        k =  self.kernel.K_diag(XS)
         k = k[None, :]
         chex.assert_shape(k, [1, XS.shape[0]])
         return k[..., None]
 
-    def covar(self, X1, X2):
+    def covar_blocks(self, X1, X2):
         k = self.kernel.K(X1, X2)
         k = k[None, :]
         chex.assert_shape(k, [1, X1.shape[0], X2.shape[0]])
         return k
+
+    def covar(self, X1, X2):
+        k = self.kernel.K(X1, X2)
+        chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
+        return k
+
+
+    def full_var(self, X):
+        return self.covar(X, X)
 
     def sample(self, X1, X2):
         raise NotImplementedError()

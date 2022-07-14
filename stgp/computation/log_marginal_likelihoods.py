@@ -1,7 +1,7 @@
 # Import Types
 from ..data import Data, TransformedData
 from ..kernels import Kernel, RBF
-from ..likelihood import Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
+from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
 from ..dispatch import dispatch, evoke
 from .gaussian import log_gaussian, log_gaussian_with_nans
 from ..transforms import Independent, LinearTransform, Transform
@@ -12,6 +12,8 @@ from ..utils import utils
 from ..utils.utils import get_batch_type
 from ..utils.nan_utils import get_same_shape_mask
 from .permutations import data_order_to_output_order
+from ..core.models import Model
+from ..core.model_types import LinearModel, NonLinearModel
 
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -70,8 +72,8 @@ def log_marginal_likelihood(
 
     Y_vec = vec_columns(Y)
 
-    mean = prior.vec_mean(X)
-    K_xx = prior.full_covar(X, X)
+    mean = prior.mean(X)
+    K_xx = prior.full_var(X)
     lik_xx = get_diagonal_gaussian_likelihood_variances(Y, likelihood_arr)
 
     sigma = K_xx + lik_xx
@@ -225,3 +227,15 @@ def log_marginal_likelihood(
 
     return base_lml + log_jac
 
+@dispatch(Data, Model, Likelihood, LinearModel)
+def log_marginal_likelihood( data, gp, likelihood, prior):
+
+    return evoke(
+        'log_marginal_likelihood', data, gp, likelihood, prior.parent
+    )(
+        data, gp, likelihood, prior.parent
+    )
+
+@dispatch(Data, Model, Likelihood, NonLinearModel)
+def log_marginal_likelihood( data, gp, likelihood, prior):
+    raise RuntimeError('Batch Inference is not supported for Nonlinear Models. Try using Variational inference instead.')

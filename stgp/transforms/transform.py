@@ -1,4 +1,5 @@
 """Base transform class."""
+from ..core import Prior, GPPrior, Model
 from ..utils.utils import ensure_module_list, can_batch, get_batch_type
 from batchjax import batch_or_loop, BatchType
 from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT
@@ -11,22 +12,24 @@ import chex
 from typing import List, Optional
 
 
-class Transform(objax.Module):
-    """All transforms must be define a forward or inverse method."""
+class Transform(Prior):
+    """
+    All transforms must define a forward or inverse method.
+    
+    """
     def __init__(self):
-        self._num_latents = None
-        self._num_outputs = None
-
         self._output_dim = None
         self._input_dim = None
 
-        self._latent_obj = None
-        self._latents_arr = None
-
-        self.batches = None
+        # parent obj that is being transformed
+        self._parent = None
 
     def transform_diagonal(self, mu, var):
-        """Transform a Gaussian dist """
+        """ Transform a diagonal gaussian dist """
+        raise NotImplementedError()
+
+    def transform(self, mu, var):
+        """ Transform a full gaussian dist """
         raise NotImplementedError()
 
     def forward(self, x):
@@ -38,8 +41,14 @@ class Transform(objax.Module):
         raise NotImplementedError()
 
     @property
-    def num_outputs(self):
-        return self._num_outputs
+    def base_prior(self):
+        """
+        A transform is paced on top of a GP prior. This returns that base GP prior.
+        """
+        raise NotImplementedError()
+
+    @property
+    def num_outputs(self): raise RuntimeWarning('num_outputs has been removed. Use output_dim instead.')
 
     @property
     def output_dim(self): return self._output_dim
@@ -47,34 +56,30 @@ class Transform(objax.Module):
     @property
     def input_dim(self): return self._input_dim
 
-    def get_kernels(self):
-        return objax.ModuleList([g.kernel for g in self.latents])
-
     @property
-    def latent_obj(self):
-        return self._latent_obj
-
-    def get_batches(self):
-        return self.batches
-
-    @property
-    def latents(self):
-        return self.latent_obj._latents_arr
-
-    @property
-    def num_latents(self):
-        return len(self.latent_obj.latents)
-
-    def get_sparsity_list(self):
-        return [p.sparsity for p in self.latents]
-
-    def get_Z(self):
-        return self.latent_obj.get_Z()
+    def parent(self): return self._parent
 
 class NonLinearTransform(Transform):
     pass
 
-class LinearTransform(Transform):
+class LinearTransform(Transform, GPPrior):
+    """
+    All linear transforms are expressed as 
+        T(x) = Ax + b.
+
+    Because they are linear they also can also act directly as a GP prior 
+        (since a linear transform of a GP is still a GP).
+    """
+
+    @property
+    def A(self): raise NotImplementedError()
+
+    @property
+    def b(self): raise NotImplementedError()
+
+
+
+class _LinearTransform(Transform):
     """
     All linear transforms support .W returns the mixing matrix
     """
@@ -408,13 +413,23 @@ class _One2One(Independent):
         return var
 
 
+class LatentSpecific(Transform):
+    """ A transform that can only be applied to a single latent function """
+    pass
 
-
-class ElementWiseTransform(Transform):
+class ElementWiseTransform(LatentSpecific):
     def __init__(self):
         super(ElementWiseTransform, self).__init__()
         self._num_latents = 1
         self._num_outputs = 1
+
+class ParentPassThrough(Transform):
+    """ Helper class to 'inherit' the parents methods """
+    def var(self, XS: np.ndarray) -> np.ndarray :
+        return self.parent.var(XS)
+
+    def full_var(self, XS: np.ndarray) -> np.ndarray :
+        return self.parent.full_var(XS)
 
 class LinearOne2One(LinearTransform):
     def __init__(self, base_prior: 'Transform', transform_arr: list):

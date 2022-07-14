@@ -1,5 +1,5 @@
 """Single input and outputs transforms."""
-from .transform import Transform, LinearTransform, ElementWiseTransform
+from .transform import Transform, LinearTransform, ElementWiseTransform, LatentSpecific, ParentPassThrough
 
 import jax.numpy as np
 import objax
@@ -7,16 +7,13 @@ from ..utils.utils import ensure_module_list
 from ..computation.parameter_transforms import softplus, inv_softplus, inv_probit
 from ..parameter import Parameter
 
-class Independent(LinearTransform):
-    def __init__(self, latents: list):
-        self._num_latents = len(latents)
-        self._num_outputs = self.num_latents
+class InputMeanFunction(LinearTransform, LatentSpecific, ParentPassThrough):
+    def __init__(self, latent):
+        self._parent = latent
 
-        self._latents = ensure_module_list(latents)
+    def mean(self, X):
+        return X[:, 0][:, None]
 
-    @property
-    def W(self):
-        return np.eye(self.num_latents)
 
 class Identity(ElementWiseTransform):
     def forward(self, x):
