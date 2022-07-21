@@ -53,12 +53,18 @@ prior_output_1, prior_output_2 = OutputMap(
     [[0], [0, 1, 2, 3, 4]], 
 )
 
+pde_output = HeatEquation2D(prior_output_2)
+
+print(pde_output.mean(X).shape)
+print(pde_output.covar(X, XS).shape)
+breakpoint()
+
 print(prior_output_1.mean(X).shape)
 print(prior_output_1.covar(X, XS).shape)
 
 prior = MultiOutput([
     prior_output_1,
-    HeatEquation2D(prior_output_2)
+    pde_output
 ])
 
 q = FullGaussianApproximatePosterior(dim = N * diff_op_prior.output_dim)
