@@ -15,7 +15,7 @@ class InputMeanFunction(LinearTransform, LatentSpecific, ParentPassThrough):
         return X[:, 0][:, None]
 
 
-class Identity(ElementWiseTransform):
+class Identity(LinearTransform):
     def forward(self, x):
         return x
 
