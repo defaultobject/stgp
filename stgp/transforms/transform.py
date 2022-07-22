@@ -45,7 +45,7 @@ class Transform(Prior):
         """
         A transform is paced on top of a GP prior. This returns that base GP prior.
         """
-        raise NotImplementedError()
+        return self.parent.base_prior
 
     @property
     def num_outputs(self): raise RuntimeWarning('num_outputs has been removed. Use output_dim instead.')

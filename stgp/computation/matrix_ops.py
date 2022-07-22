@@ -6,6 +6,7 @@ from jax import jit, grad
 from functools import partial
 import chex
 
+@jit
 def to_block_diag(A):
     return jax.scipy.linalg.block_diag(*A)
 

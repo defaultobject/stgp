@@ -7,24 +7,12 @@ import jax
 import jax.numpy as np
 from batchjax import batch_or_loop, BatchType
 import chex
+from functools import partial
 
 from . import Transform
 from ..computation.matrix_ops import block_from_mat, v_get_block_diagonal
-from ..computation.permutations import data_order_to_output_order
+from ..computation.permutations import data_order_to_output_order, permute_vec_blocks, permute_vec
 from ..utils.utils import ensure_module_list, get_batch_type
-
-class DataLatentPermutationFromFull(Transform):
-    def __init__(self, latent):
-        self._latent_obj = latent
-        self._output_dim = self.latent_obj.output_dim 
-
-    def np_mean(self, X):
-        return self.latent_obj.mean(X[0])
-
-    def np_full_covar(self, X1, X2):
-        #TODO: why?
-        return self.latent_obj.covar(X1[0], X2[0])
-
 
 
 class DataLatentPermutation(Transform):
@@ -32,80 +20,55 @@ class DataLatentPermutation(Transform):
     Converts a prior from latent-data format to data-latent format.
     This is required when using a FullApproximatePosterior .
 
-    Assumes that latent_obj is independent
+    Assumes that parent is independent
 
     Function name syntax:
         p: permute
         lp: left permute
+        rp: left permute
         np: no permute
+        s: static (ie the input should not be batched over)
+        b: batched (ie the input should be batched over)
     """
     def __init__(self, latents):
+
         # Allow passing a list of prior models and transformed model
         if type(latents) is list:
-            self._latent_obj = Independent(latents=latents, prior=True)
+            self._parent = Independent(latents=latents, prior=True)
         else:
-            self._latent_obj = latents 
+            self._parent = latents 
 
-        self.permutation_fn = data_order_to_output_order
-        self._output_dim = self.latent_obj.output_dim 
+        self._output_dim = self.parent.output_dim 
+        self._input_dim = self.parent.output_dim
 
-    @property
-    def num_latents(self):
-        return self.latent_obj.num_latents
+    def forward(self, *args, **kwargs): return self.parent.forward(*args, **kwargs)
 
-    def get_sparsity_list(self):
-        return self.latent_obj.get_sparsity_list()
+    def mean_blocks(self, X): 
+        """ Computes the mean across all latents keeping X fixed """
+        chex.assert_rank(X, 2)
+        return self.parent.mean_blocks(X)
 
-    def get_Z(self):
-        return self.latent_obj.get_Z()
+    def b_mean_blocks(self, X):
+        """ 
+        X is of rank 3, one X per latent function.
+        This computes the mean of each latent function with its corresponding X
+        """
 
-    def forward(self, *args, **kwargs):
-        return self.latent_obj.forward(*args, **kwargs)
-
-    @property
-    def _latents_arr(self):
-        return self.latent_obj.latents
-
-    def _mean_blocks(self, X):
-        return batch_or_loop(
-            lambda  x, latent: latent.mean(x)[0],
-            [X, self.latent_obj.latents],
-            [0, 0 ],
-            dim = self.latent_obj.num_latents,
-            out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
-        )
-
-    def s_mean_blocks(self, X):
-        return batch_or_loop(
-            lambda  x, latent: latent.mean(x)[0],
-            [X, self.latent_obj.latents],
-            [None, 0 ],
-            dim = self.latent_obj.num_latents,
-            out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
-        )
+        chex.assert_rank(X, 3)
+        return self.parent.b_mean_blocks(X)
 
     def mean(self, X):
-        return self.permute_vec_blocks(self._mean_blocks(X))
+        """ Return mean in data-latent format """
+        return permute_vec_blocks(self.mean_blocks(X))
 
-    def s_mean(self, X):
-        return self.permute_vec_blocks(self.s_mean_blocks(X))
+    def b_mean(self, X):
+        """ Return (batched X) mean in data-latent format """
+        return permute_vec_blocks(self.b_mean_blocks(X))
 
     def np_mean(self, X):
-        return np.vstack(self._mean_blocks(X))
+        """ mean without permutations """
+        return self.parent.mean(X)
 
-    def permute_vec(self, v):
-        P = self.permutation_fn(
-            self.num_latents,
-            int(v.shape[0]/self.num_latents)
-        )
-
-        return P @ v
-
-    def permute_vec_blocks(self, v_blocks):
-        # TODO: check this, atm makes no difference as we are zero mean
-        return np.reshape(v_blocks, [-1, v_blocks.shape[-1]])
 
     def permute_blocks(self, A_blocks):
         lp_A =  self.lp_blocks(A_blocks) 
@@ -156,11 +119,11 @@ class DataLatentPermutation(Transform):
     def vec_mean(self, X1: np.ndarray) -> np.ndarray:
         m = batch_or_loop(
             lambda x1, latent: latent.mean(x1)[0],
-            [X1, self.latent_obj.latents],
+            [X1, self.parent.latents],
             [0, 0],
-            dim = self.latent_obj.num_latents,
+            dim = self.parent.num_latents,
             out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
+            batch_type = get_batch_type(self.parent.latents)
         )
         m = np.vstack(m)
 
@@ -171,15 +134,6 @@ class DataLatentPermutation(Transform):
         chex.assert_rank(K_blocks, 3)
         return jax.scipy.linalg.block_diag(*K_blocks)
 
-    def lp_blocks(self, K_blocks):
-        chex.assert_rank(K_blocks, 3)
-
-        Q = K_blocks.shape[0]
-        N1 = K_blocks.shape[1]
-
-        K = self._blocks(K_blocks)
-        return np.vstack(np.transpose(np.reshape(K, [Q, N1, -1]), [1, 0, 2]))
-
     def p_blocks(self, K_blocks):
         return self.permute_blocks(K_blocks)
 
@@ -188,11 +142,11 @@ class DataLatentPermutation(Transform):
         """ X1 is static. No Permutations """
         K = batch_or_loop(
             lambda x1, x2, latent: latent.covar(x1, x2)[0],
-            [X1, X2, self.latent_obj.latents],
+            [X1, X2, self.parent.latents],
             [None, 0, 0],
-            dim = self.latent_obj.num_latents,
+            dim = self.parent.num_latents,
             out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
+            batch_type = get_batch_type(self.parent.latents)
         )
         return K
 
@@ -200,11 +154,11 @@ class DataLatentPermutation(Transform):
         """ X1 and X2 are static. No Permutations """
         K = batch_or_loop(
             lambda x1, x2, latent: latent.covar(x1, x2)[0],
-            [X1, X2, self.latent_obj.latents],
+            [X1, X2, self.parent.latents],
             [None, None, 0],
-            dim = self.latent_obj.num_latents,
+            dim = self.parent.num_latents,
             out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
+            batch_type = get_batch_type(self.parent.latents)
         )
         return K
 
@@ -212,11 +166,11 @@ class DataLatentPermutation(Transform):
         """ No Permutations """
         K = batch_or_loop(
             lambda x1, x2, latent: latent.covar(x1, x2)[0],
-            [X1, X2, self.latent_obj.latents],
+            [X1, X2, self.parent.latents],
             [0, 0, 0],
-            dim = self.latent_obj.num_latents,
+            dim = self.parent.num_latents,
             out_dim=1,
-            batch_type = get_batch_type(self.latent_obj.latents)
+            batch_type = get_batch_type(self.parent.latents)
         )
         return K
 
@@ -261,7 +215,7 @@ class DataLatentPermutation(Transform):
 
 
     def vec_var(self, X1: np.ndarray) -> np.ndarray:
-        K = self.latent_obj.var(X1)
+        K = self.parent.var(X1)
         K = np.vstack(K)
         return self.permute_vec(K)
 

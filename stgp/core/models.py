@@ -23,10 +23,12 @@ class Model(objax.Module):
     def name(self) -> int:
         return 'model_checkpoint'
 
+    @property
     def input_dim(self) -> int:
         """ If a transformation the number of inputs it transforms. """
         raise NotImplementedError()
 
+    @property
     def output_dim(self) -> int:
         """ Number of outputs """
         raise NotImplementedError()
@@ -35,8 +37,16 @@ class Model(objax.Module):
         """ Rank 2 mean (output_dim * N x 1) """
         raise NotImplementedError()
 
+    def b_mean(self, XS: np.ndarray) -> np.ndarray :
+        """ Rank 2 mean (output_dim * N x 1) """
+        raise NotImplementedError()
+
     def mean_blocks(self, XS: np.ndarray) -> np.ndarray :
         """ Rank 3 mean (output_dim x N x 1) """
+        raise NotImplementedError()
+
+    def b_mean_blocks(self, XS: np.ndarray) -> np.ndarray :
+        """ Rank 3 mean (output_dim x N x 1) whilst batching over XS """
         raise NotImplementedError()
 
     def var(self, XS: np.ndarray) -> np.ndarray :

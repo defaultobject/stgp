@@ -1,10 +1,10 @@
 import pytest
 import numpy as np
 
-import gpax
-from gpax.likelihood import Gaussian
-from gpax.kernel import RBF
-from gpax.approximate_posteriors import GaussianApproximatePosterior
+import stgp
+from stgp.likelihood import Gaussian
+from stgp.kernels import RBF
+from stgp.approximate_posteriors import GaussianApproximatePosterior
 
 @pytest.fixture
 def regression_1d_data(N):

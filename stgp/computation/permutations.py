@@ -1,12 +1,110 @@
+""" utils for converting from latent-data to data-latent format """
 import jax.numpy as np
 from jax import jit
 from functools import partial
+import chex
+
+from .matrix_ops import to_block_diag
 
 @partial(jit, static_argnums=(0, 1))
 def data_order_to_output_order(num_outputs: int, N: int):
+    """
+    A permutation matrix to convert from latent-data or data-latent order
+    """
     total_N = N*num_outputs
 
     i = np.hstack([np.arange(i , total_N, N) for i in range(N)])
     permutation = np.eye(total_N)[i]
 
     return permutation
+
+
+@jit
+def permute_vec_blocks(v_blocks):
+    """
+    v_blocks is of rank 3 where the first axis are latents, the second is data
+
+    The default ordering in numpy is C-like/row major which stacks rows. However we need to stack columns (latents)
+        so we use F-like / column major ordering.
+
+    So to convert to data - latent order we simply need to reshape.
+    """
+
+    chex.assert_rank(v_blocks, 3)
+
+    return np.reshape(v_blocks, [-1, v_blocks.shape[-1]], order='F')
+
+@partial(jit, static_argnums=(1))
+def permute_vec(v, num_latents):
+    chex.assert_rank(v, 2)
+    P = data_order_to_output_order(
+        num_latents,
+        int(v.shape[0]/num_latents)
+    )
+
+    return P @ v
+
+@partial(jit, static_argnums=(1))
+def unpermute_vec(v, num_latents):
+    chex.assert_rank(v, 2)
+    P = data_order_to_output_order(
+        num_latents,
+        int(v.shape[0]/num_latents)
+    )
+
+    return P.T @ v
+
+@jit
+def lp_blocks(K_blocks):
+    chex.assert_rank(K_blocks, 3)
+
+    Q = K_blocks.shape[0]
+    N1 = K_blocks.shape[1]
+
+    K = to_block_diag(K_blocks)
+
+    return np.vstack(np.transpose(np.reshape(K, [Q, N1, -1]), [1, 0, 2]))
+
+@partial(jit, static_argnums=(1))
+def permute_blocks(A_blocks, num_latents):
+    chex.assert_rank(A_blocks, 3)
+    lp_A = lp_blocks(A_blocks) 
+
+    right_P = data_order_to_output_order(
+        num_latents,
+        int(lp_A.shape[-1]/num_latents)
+    )
+
+    return lp_A @ right_P.T
+
+@partial(jit, static_argnums=(1))
+def permute_mat(A, num_latents):
+    chex.assert_rank(A, 2)
+
+    left_P = data_order_to_output_order(
+        num_latents,
+        int(A.shape[0]/num_latents)
+    )
+
+    right_P = data_order_to_output_order(
+        num_latents,
+        int(A.shape[1]/num_latents)
+    )
+
+    return left_P @ A @ right_P.T
+
+@partial(jit, static_argnums=(1))
+def unpermute_mat(A, num_latents):
+    chex.assert_rank(A, 2)
+
+    left_P = data_order_to_output_order(
+        num_latents,
+        int(A.shape[0]/num_latents)
+    )
+
+    right_P = data_order_to_output_order(
+        num_latents,
+        int(A.shape[1]/num_latents)
+    )
+
+    return left_P.T @ A @ right_P

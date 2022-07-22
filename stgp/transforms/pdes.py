@@ -27,8 +27,20 @@ class DifferentialOperatorJoint(LinearTransform):
     def mean_blocks(self, X1):
         return np.zeros([self.output_dim, X1.shape[0], 1])
 
+    def b_mean(self, X1):
+        # We only support zero mean so we simply return the mean
+        return self.mean(X1[0])
+
+    def b_mean_blocks(self, X1):
+        return self.mean_blocks(X1[0])
+
     def covar(self, X1, X2):
         return self.derivative_kernel.K(X1, X2)
+
+    @property
+    def base_prior(self):
+        """ DifferentialOperatorJoint is only used to construct a base prior""" 
+        return self
 
 class PDE(Transform):
     pass
