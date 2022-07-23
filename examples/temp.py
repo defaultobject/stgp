@@ -56,7 +56,6 @@ print(diff_op_prior.b_mean_blocks(X[None, ...]).shape)
 print(diff_op_prior.mean(X).shape)
 print(diff_op_prior.b_mean(X[None, ...]).shape)
 print(diff_op_prior.np_mean(X).shape)
-breakpoint()
 
 prior_output_1, prior_output_2 = OutputMap(
     diff_op_prior, 

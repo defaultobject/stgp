@@ -70,52 +70,6 @@ class DataLatentPermutation(Transform):
         return self.parent.mean(X)
 
 
-    def permute_blocks(self, A_blocks):
-        lp_A =  self.lp_blocks(A_blocks) 
-
-        right_P = self.permutation_fn(
-            self.num_latents,
-            int(lp_A.shape[-1]/self.num_latents)
-        )
-
-        return lp_A @ right_P.T
-
-
-    def permute_mat(self, A):
-        left_P = self.permutation_fn(
-            self.num_latents,
-            int(A.shape[0]/self.num_latents)
-        )
-
-        right_P = self.permutation_fn(
-            self.num_latents,
-            int(A.shape[1]/self.num_latents)
-        )
-
-        return left_P @ A @ right_P.T
-
-    def unpermute_vec(self, v):
-        P = self.permutation_fn(
-            self.num_latents,
-            int(v.shape[0]/self.num_latents)
-        )
-
-        return P.T @ v
-
-    def unpermute_mat(self, A):
-        left_P = self.permutation_fn(
-            self.num_latents,
-            int(A.shape[0]/self.num_latents)
-        )
-
-        right_P = self.permutation_fn(
-            self.num_latents,
-            int(A.shape[1]/self.num_latents)
-        )
-
-        return left_P.T @ A @ right_P
-
-
     def vec_mean(self, X1: np.ndarray) -> np.ndarray:
         m = batch_or_loop(
             lambda x1, latent: latent.mean(x1)[0],
@@ -129,10 +83,6 @@ class DataLatentPermutation(Transform):
 
         return self.permute_vec(m)
 
-    def _blocks(self, K_blocks):
-        """ Block diag without permutation"""
-        chex.assert_rank(K_blocks, 3)
-        return jax.scipy.linalg.block_diag(*K_blocks)
 
     def p_blocks(self, K_blocks):
         return self.permute_blocks(K_blocks)

@@ -37,6 +37,9 @@ class GPPrior(Prior):
             raise NotImplementedError()
             self.sparsity = NoSparsity(self.X)
 
+    def get_Z(self):
+        return self.sparsity.Z
+
     @property
     def latent_obj(self):
         return self
@@ -54,6 +57,10 @@ class GPPrior(Prior):
     def output_dim(self): return 1
 
     def mean(self, XS):
+        """ Assume a zero mean GP """
+        return np.zeros(XS.shape[0])[:, None]
+
+    def mean_blocks(self, XS):
         """ Assume a zero mean GP """
         return np.zeros(XS.shape[0])[None, :, None]
 

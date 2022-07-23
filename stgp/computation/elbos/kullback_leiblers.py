@@ -19,10 +19,11 @@ from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, diagonal_fro
 @jit
 def gaussian_cholesky_kl( mu_1, covar_chol_1, mu_2, covar_chol_2) -> np.ndarray:
     """
-    computs KL[g1, g2]
+    computes KL[g1, g2]
     where
         g1 = N(mu_1, covar_chol_1 @ covar_chol_1.T)
         g2 = N(mu_2, covar_chol_2 @ covar_chol_2.T)
+
     """
 
     log_det_term = log_chol_matrix_det(covar_chol_2) - log_chol_matrix_det(covar_chol_1)
@@ -47,7 +48,9 @@ def gaussian_cholesky_kl( mu_1, covar_chol_1, mu_2, covar_chol_2) -> np.ndarray:
 @jit
 def gaussian_kl( mu_1, covar_1, mu_2, covar_2) -> np.ndarray:
     """
-    computs KL[g1, g2]
+    Computes KL[g1, g2] between two gaussians:
+
+        1/2 [log(|Σ2|/|Σ1|)−d+tr{Σ2^{−1} Σ1}+(𝜇2−𝜇1)^T Σ2^{-1}(𝜇2−𝜇1)]
     """
     covar_chol_1 = cholesky(add_jitter(covar_1, settings.jitter))
     covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
@@ -74,22 +77,3 @@ def whitened_gaussian_kl(mu_1, covar_chol_1) -> np.ndarray:
     N = mu_1.shape[0] * 1.0
 
     return 0.5 * (log_det_term - N + trace_term + maha_term)
-
-def KL(X, approximate_posterior, kernel, sparsity):
-    mu_1 = approximate_posterior.m
-    covar_chol_1 = approximate_posterior.S_chol
-
-    mu_2 = np.zeros(mu_1.shape)
-
-    covar_2 = kernel.K(X, X)
-    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
-
-    return gaussian_kl(mu_1, mu_2, covar_chol_1, covar_chol_2)
-
-def whitened_KL(X, approximate_posterior, kernel, sparsity):
-
-    mu_1 = approximate_posterior.m
-    covar_chol_1 = approximate_posterior.S_chol
-
-    return whitened_gaussian_kl(mu_1, covar_chol_1)
-

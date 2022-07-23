@@ -12,7 +12,7 @@ import chex
 from typing import List, Optional
 
 
-class Transform(Prior):
+class Transform(GPPrior):
     """
     All transforms must define a forward or inverse method.
     
@@ -58,6 +58,9 @@ class Transform(Prior):
 
     @property
     def parent(self): return self._parent
+
+class Joint(Transform):
+    pass
 
 class NonLinearTransform(Transform):
     pass
@@ -264,6 +267,7 @@ class _LinearTransform(Transform):
     def full_var(self, X1):
         """ Output shape [PxN1, PxN1]. """
         raise NotImplementedError()
+
 
 
 

@@ -89,6 +89,7 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
 
 
 class FullGaussianApproximatePosterior(GaussianApproximatePosterior):
+    """ Gaussian approximate posterior defined in latent-data format """
     pass
 
 class DataLatentBlockDiagonalApproximatePosterior(FullGaussianApproximatePosterior):

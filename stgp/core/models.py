@@ -10,6 +10,9 @@ from ..utils import utils
 from ..data import Data
 
 class Model(objax.Module):
+    """
+    Base model class for almost all objects
+    """
     def __init__(self, **kwargs):
         super(Model, self).__init__()
 
@@ -99,8 +102,6 @@ class Model(objax.Module):
 
     def get_fixed_params(self):
         return utils.get_fixed_params(self)
-
-
 
 class Prior(Model):
     pass

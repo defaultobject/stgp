@@ -16,6 +16,7 @@ jupyter
 black
 pytest
 tqdm
+tensorflow
 tensorflow_probability
 pandas
 matplotlib

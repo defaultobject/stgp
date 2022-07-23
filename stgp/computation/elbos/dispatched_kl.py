@@ -1,3 +1,4 @@
+""" KL dispatchers """
 import chex
 import jax
 import jax.numpy as np
@@ -10,25 +11,30 @@ from ..matrix_ops import cholesky, add_jitter
 from ... import settings
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_Z, prior_mean_X
 
+from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, FullGaussianApproximatePosterior
+from ...core import GPPrior
+from ...transforms import DataLatentPermutation, Joint
 
-
-@dispatch('GaussianApproximatePosterior', 'GPPrior')
+@dispatch(GaussianApproximatePosterior, Joint)
+@dispatch(GaussianApproximatePosterior, GPPrior)
 def kullback_leibler(approximate_posterior, prior):
+    """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
+    Z = prior.get_Z()
 
-    Z = prior.sparsity.Z
-    # We need to index prior.(mean/covar) because they return a 3d array for consistency to multi-output priors
-    covar_2 = prior.covar(Z, Z)[0]
+    covar_2 = prior.covar(Z, Z)
+
     covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
 
     return gaussian_cholesky_kl(
         approximate_posterior.m,
         approximate_posterior.S_chol,
-        prior.mean(Z)[0],
+        prior.mean(Z),
         covar_chol_2
     )
 
-@dispatch('MeanFieldApproximatePosterior', Independent)
+@dispatch(MeanFieldApproximatePosterior, Independent)
 def kullback_leibler(approximate_posterior, prior):
+    """ Compute KL between mean-field Gaussian approximate posterior and mean-field Gaussian prior"""
 
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -48,41 +54,30 @@ def kullback_leibler(approximate_posterior, prior):
     return np.sum(kl_arr)
 
 
-@dispatch('MeanFieldApproximatePosterior', Transform)
+@dispatch(MeanFieldApproximatePosterior, Transform)
 def kullback_leibler(approximate_posterior, prior):
+    """
+    A prior is constructed by defining joint/independent GPs and then transforming them. 
+    The KL term is only calculated on the GPs not the transformed ones.
+    """
 
-    latents = prior.latent_obj
+    latents = prior.base_prior
 
     return evoke('kullback_leibler', approximate_posterior, latents)(
         approximate_posterior, latents
     )
 
-@dispatch('FullGaussianApproximatePosterior', Transform)
+@dispatch(FullGaussianApproximatePosterior, Transform)
 def kullback_leibler(approximate_posterior, prior):
     """
     Both the prior and the approximate psoterior are defined in latent-data format.
     """
-    # get the part where the stochasticity is defined
     base_prior = prior.base_prior
 
-    breakpoint()
+    assert not(isinstance(base_prior, DataLatentPermutation))
 
-    # Get prior in data-latent format
-    Z = prior.get_Z()
-    mean_2 = prior.np_mean(Z)
-    covar_2 = prior.np_full_covar(Z, Z)
-    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
-
-    # Approx is already in data-latent format
-    m = approximate_posterior.m
-    S_chol = approximate_posterior.S_chol
-
-    chex.assert_equal(m.shape, mean_2.shape)
-    chex.assert_equal(S_chol.shape, covar_chol_2.shape)
-
-    return gaussian_cholesky_kl(
-        approximate_posterior.m,
-        approximate_posterior.S_chol,
-        mean_2,
-        covar_chol_2
+    return evoke('kullback_leibler', approximate_posterior, base_prior)(
+        approximate_posterior, base_prior
     )
+
+

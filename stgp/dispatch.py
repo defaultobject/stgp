@@ -3,6 +3,24 @@ import inspect
 
 _REGISTERED = {}
 
+def _is_arg_more_specific(arg1, arg2):
+    # If the argument of arg1 or arg2 is a string they must be the same
+    #   as we cannot do inhertentence checking on strings
+    if type(arg1) == str or type(arg2) == str:
+        if _ensure_str(arg1) != _ensure_str(arg2):
+            # Cannot compare dispatched types with strings therefore assume that it is not more specific
+            return False
+
+    # If arg1 and arg2 are the same class then it is more specific
+    elif arg1 == arg2:
+        return True
+
+    # If arg1 is not a subclass of arg2 this means that it must be more general hence we can return False
+    elif not issubclass(arg1, arg2):
+        return False
+
+    return True
+
 def is_more_specific(key_1, key_2):
     """
     Returns true if key_1 is more specific than key_2
@@ -11,24 +29,6 @@ def is_more_specific(key_1, key_2):
     """
 
     specific_flag = True
-
-    def _is_arg_more_specific(arg1, arg2):
-        # If the argument of arg1 or arg2 is a string they must be the same
-        #   as we cannot do inhertentence checking on strings
-        if type(arg1) == str or type(arg2) == str:
-            if _ensure_str(arg1) != _ensure_str(arg2):
-                # Cannot compare dispatched types with strings therefore assume that it is not more specific
-                return False
-
-        # If arg1 and arg2 are the same class then it is more specific
-        elif arg1 == arg2:
-            return True
-
-        # If arg1 is not a subclass of arg2 this means that it must be more general hence we can return False
-        elif not issubclass(arg1, arg2):
-            return False
-
-        return True
 
 
     for i in range(len(key_1.args)):
@@ -141,9 +141,7 @@ def evoke(*args, **kwargs):
 
     for k, item in _REGISTERED.items():
         if _DISPATCHER.match(k, *args, **kwargs):
-
             if matched_item is None or is_more_specific(k, matched_key):
-
 
                 matched_item = item
                 matched_key = k

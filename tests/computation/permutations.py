@@ -1,14 +1,11 @@
-"""
-Unittests for data-latent permutatations.
-"""
+""" Unittests for data-latent permutatations.  """
 
 import pytest
 import numpy as np
+import scipy
 
 import stgp
-from stgp.computation.permutations import data_order_to_output_order, permute_vec_blocks
-
-from ..common_fixtures import regression_1d_data, gaussian_likelihood, rbf_1d_kernel, gaussian_approximate_posterior
+from stgp.computation.permutations import data_order_to_output_order, permute_vec_blocks, permute_vec, unpermute_vec, permute_mat, unpermute_mat
 
 @pytest.fixture
 def permutation_vectors(num_outputs, N):
@@ -21,6 +18,12 @@ def permutation_vectors(num_outputs, N):
     v_data_latent = np.hstack(v_data_latent)[:, None]
 
     return v_data_latent, v_latent_data
+
+@pytest.fixture
+def permutation_matrices(num_outputs, N):
+    mat_latent_data = np.arange((num_outputs*N)**2).reshape(num_outputs*N, num_outputs*N)
+
+    raise NotImplementedError()
 
 @pytest.mark.parametrize('N', [10, 1])
 @pytest.mark.parametrize('num_outputs', [10, 1, 24])
@@ -53,5 +56,27 @@ def test__permute_vec_blocks(N, num_outputs, permutation_vectors):
     # ==== Assert ====
     np.testing.assert_allclose(v_data_latent, v_test)
 
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__permute_vec(N, num_outputs, permutation_vectors):
+    # ==== Arrange ====
+    v_data_latent, v_latent_data = permutation_vectors
 
+    # ==== Act ====
+    v_test = permute_vec(v_latent_data, num_outputs)
+
+    # ==== Assert ====
+    np.testing.assert_allclose(v_data_latent, v_test)
+
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__unpermute_vec(N, num_outputs, permutation_vectors):
+    # ==== Arrange ====
+    v_data_latent, v_latent_data = permutation_vectors
+
+    # ==== Act ====
+    v_test = unpermute_vec(v_data_latent, num_outputs)
+
+    # ==== Assert ====
+    np.testing.assert_allclose(v_latent_data, v_test)
 

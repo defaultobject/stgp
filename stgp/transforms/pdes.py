@@ -2,10 +2,10 @@ import jax.numpy as np
 import chex
 
 # Import Types
-from . import Transform, LinearTransform
+from . import Transform, LinearTransform, Joint
 
 
-class DifferentialOperatorJoint(LinearTransform):
+class DifferentialOperatorJoint(LinearTransform, Joint):
     """
     tbd.
     """
@@ -20,6 +20,9 @@ class DifferentialOperatorJoint(LinearTransform):
         self._parent = base_latent
         self.derivative_kernel = derivative_kernel
         self._output_dim = self.derivative_kernel.output_dim
+
+    def get_Z(self):
+        return self.parent.get_Z()
 
     def mean(self, X1):
         return np.zeros([X1.shape[0] * self.output_dim, 1])
