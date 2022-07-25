@@ -8,7 +8,7 @@ import chex
 import warnings
 
 class GaussianApproximatePosterior(ApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S=None, S_inv = None, train=True):
+    def __init__(self, dim: int=None, m=None, S=None, S_chol_vec = None, train=True):
         super(GaussianApproximatePosterior, self).__init__()
 
         if dim is None and m is None:
@@ -17,7 +17,7 @@ class GaussianApproximatePosterior(ApproximatePosterior):
             m = 0.01*np.ones([dim, 1])
             #m = np.ones([dim, 1])
 
-        if S is None and S_inv is None:
+        if S is None and S_chol_vec is None:
             warnings.warn('Approximate posterior ')
             S = 0.1*np.eye(dim)
 
@@ -31,11 +31,11 @@ class GaussianApproximatePosterior(ApproximatePosterior):
             train=train
         )
 
-        if S_inv is None:
-            S_inv = lower_triangular_cholesky(S)
+        if S_chol_vec is None:
+            S_chol_vec = lower_triangular_cholesky(S)
 
         self._S_chol = Parameter(
-            S_inv,
+            S_chol_vec,
             constraint=None,
             name='GaussianApproxPosterior/S_chol',
             train=train

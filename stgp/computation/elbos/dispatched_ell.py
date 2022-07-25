@@ -320,7 +320,8 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
 @dispatch(Data, GaussianProductLikelihood, DataLatentPermutation, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    base_prior = prior.latent_obj
+    base_prior = prior.parent
+
     return evoke('expected_log_likelihood', data, likelihood, base_prior, approximate_posterior)(
         data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
     )
@@ -338,18 +339,26 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     X, Y = data.X, data.Y
 
-    if isinstance(prior, DataLatentPermutation):
-        W = prior.latent_obj.W
+    if False:
+        breakpoint()
+        if isinstance(prior, DataLatentPermutation):
+            W = prior.parent.W
+        else:
+            W = prior.W
+
+        # Ensure rank 2 after batching
+        q_f_mu_arr = q_f_mu_arr[..., None]
+        Y = Y[..., None]
+
+        # Mix outputs by the linear transform defined in the prior
+        q_f_mu_arr = jax.vmap(lambda W, f: W @ f, [None, 0])(W, q_f_mu_arr)
+        q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
     else:
-        W = prior.W
+        q_f_mu_arr, q_f_var_arr = jax.vmap(lambda p, mu, var: prior._latent.transform(mu, var), [None, 0, 0])(prior, q_f_mu_arr, q_f_var_arr)
 
-    # Ensure rank 2 after batching
-    q_f_mu_arr = q_f_mu_arr[..., None]
-    Y = Y[..., None]
-
-    # Mix outputs by the linear transform defined in the prior
-    q_f_mu_arr = jax.vmap(lambda W, f: W @ f, [None, 0])(W, q_f_mu_arr)
-    q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
+        # Ensure rank 2 after batching
+        q_f_mu_arr = q_f_mu_arr[..., None, None]
+        Y = Y[..., None]
 
     variance = np.diag(likelihood.variance)
 

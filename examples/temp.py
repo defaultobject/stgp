@@ -32,7 +32,7 @@ from pathlib import Path
 # Fix randomness
 np.random.seed(0)
 
-XS, X, Y = single_output_spatial_data(20, 20, 30, 30, seed=0)
+XS, X, Y = single_output_spatial_data(10, 10, 30, 30, seed=0)
 N = X.shape[0]
 
 data = stgp.data.Data(X, Y)
@@ -49,13 +49,12 @@ diff_op_prior = DifferentialOperatorJoint(
 
 # required when using a full approximate posterior because the prior is defined in latent-data format
 #   however when computing expected log likelihoods and predictions everything is in data-latent format
-diff_op_prior = DataLatentPermutation(diff_op_prior)
 
-print(diff_op_prior.mean_blocks(X).shape)
-print(diff_op_prior.b_mean_blocks(X[None, ...]).shape)
-print(diff_op_prior.mean(X).shape)
-print(diff_op_prior.b_mean(X[None, ...]).shape)
-print(diff_op_prior.np_mean(X).shape)
+#print(diff_op_prior.mean_blocks(X).shape)
+#print(diff_op_prior.b_mean_blocks(X[None, ...]).shape)
+#print(diff_op_prior.mean(X).shape)
+#print(diff_op_prior.b_mean(X[None, ...]).shape)
+#print(diff_op_prior.np_mean(X).shape)
 
 prior_output_1, prior_output_2 = OutputMap(
     diff_op_prior, 
@@ -63,6 +62,22 @@ prior_output_1, prior_output_2 = OutputMap(
 )
 
 pde_output = HeatEquation2D(prior_output_2)
+
+A = pde_output.covar(X, X)
+B = diff_op_prior.covar(X, X)
+
+np.linalg.cholesky(B+1e-5 * np.eye(B.shape[0]))
+
+
+if False:
+    print(pde_output.mean(X))
+    print(pde_output.covar(X, X))
+
+    plt.imshow(pde_output.covar(X, X))
+    plt.show()
+    breakpoint()
+
+pde_output = DataLatentPermutation(pde_output)
 
 if False:
     print(pde_output.mean(X).shape)
@@ -85,8 +100,37 @@ m = stgp.models.GP(
     prior = pde_output,
     likelihood = [Gaussian(variance=0.1)],
     inference='Variational',
-    approximate_posterior = q
+    approximate_posterior = q,
+    prediction_samples = 100
 )
 
+
+print(m.predict_f(X))
+print(m.predict_f(XS))
 print(m.get_objective())
+exit()
+
+
+if True:
+    # Train
+    epochs = 200
+
+    callback = progress_bar_callback(epochs)
+
+    learning_curve, training_time = GradDescentTrainer(
+        m, 
+        objax.optimizer.Adam,
+    ).train(
+        0.01,
+        epochs,
+        callback = callback
+    )
+
+    # Plot learning curve
+    print(learning_curve[0], learning_curve[-1])
+    plt.plot(learning_curve)
+    plt.show()
+
+print(m.predict_f(XS))
+
 breakpoint()

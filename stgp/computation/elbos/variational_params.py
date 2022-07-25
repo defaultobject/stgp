@@ -188,7 +188,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 def variational_params(data, approximate_posterior, likelihood, prior):
     """  Full-posterior approximate posterior setting """
 
-    sparsity_arr = prior.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
     #TODO: assuming same sparsity across all latents
     sparsity = sparsity_arr[0]

@@ -204,8 +204,9 @@ class VGP(Posterior):
         )
 
         # ensure shap is [P, N]
-        P = mean.shape[0]
+        P = self.prior.output_dim
         N = XS.shape[0]
+
 
         mean = np.reshape(mean, [P, N])
         var = np.reshape(var, [P, N])

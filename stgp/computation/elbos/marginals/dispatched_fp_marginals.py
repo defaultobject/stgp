@@ -25,7 +25,7 @@ def marginal(data, approximate_posterior, likelihood, prior):
 
 @dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity)
 def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
-    Q = prior.num_latents
+    Q = prior.base_prior.output_dim
     M = sparsity[0].shape[0]
     D = XS.shape[-1]
     NS = XS.shape[0]
@@ -35,7 +35,8 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
     chex.assert_shape(q_S, [M * Q, M * Q])
 
     # Get all Z in latent-data format
-    Z_all = prior.get_Z()
+    Z_all = prior.base_prior.get_Z()
+
     chex.assert_shape(Z_all, [Q, M, D])
 
     # Convert XS to latent_data format
@@ -43,25 +44,25 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
 
     # Z does not need to be ordered, only X
     # Compute non permuted full covariance - this will be block diagonal
-    K_zz = prior.np_full_covar(Z_all, Z_all)
+    K_zz = prior.np_b_covar(Z_all, Z_all)
     chex.assert_shape(K_zz, [Q*M, Q*M])
 
     # Compute Kxz with x permutated into data-latent format
     # Left permute x, and do not permute Z
-    Kxz_p = prior.lp_ls_full_covar(XS, Z_all)
+    Kxz_p = prior.lp_rb_covar(XS, Z_all)
     chex.assert_shape(Kxz_p, [Q*NS, Q*M])
 
     # Compute the block diagonals of the permutated Kxx
     # TODO: stop tiling XS here
-    K_xx_p = prior.blocks_var(
+    K_xx_p = prior.b_full_var_blocks(
         XS_tiled,
         1,
         Q
     )
     chex.assert_shape(K_xx_p, [NS, Q, Q])
 
-    mean_Z = prior.mean(Z_all)
-    mean_XS = prior.s_mean(XS)
+    mean_Z = prior.b_mean(Z_all)
+    mean_XS = prior.mean(XS)
 
     # Compute q(F) = \int p(F | U) q(U) dU
     # Comput blocks of
@@ -85,17 +86,22 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity')
 def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity):
+
+    assert isinstance(prior, DataLatentPermutation)
+
     m = q_m
     S = q_S_chol @ q_S_chol.T
 
     Ns = m.shape[0]
-    num_latents = prior.num_latents
+
+    # Use the base prior as the transformation happens in thre ELL for Full posteriors
+    num_latents = prior.base_prior.output_dim
 
     # X is shaped so that all outputs are grouped together
     # We need to instead group by each input
 
-    m_p = prior.permute_vec(m)
-    S_p = prior.permute_mat(S)
+    m_p = prior.permute_vec(m, num_latents)
+    S_p = prior.permute_mat(S, num_latents)
 
     m_p = np.reshape(m_p, [-1, num_latents])
 
@@ -127,7 +133,7 @@ def marginal(data, approximate_posterior, likelihood, prior, sparsity):
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
     # TODO: assuming that sparsity is the same across latents
-    sparsity_arr = prior.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
     fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity_arr[0])
 
@@ -141,7 +147,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     if diagonal is False:
         raise NotImplementedError()
 
-    sparsity_arr = prior.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
 
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0])
@@ -167,7 +173,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     if diagonal is False:
         raise NotImplementedError()
 
-    sparsity_arr = prior.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
     latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, prior)(
         XS, data, approximate_posterior, likelihood, prior, inference, diagonal
@@ -175,6 +181,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     # Compute transformed q(f)
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)
+
 
     mu = mv_block_monte_carlo(
         lambda f, fn: fn(f),

@@ -22,12 +22,14 @@ def data_order_to_output_order(num_outputs: int, N: int):
 @jit
 def permute_vec_blocks(v_blocks):
     """
-    v_blocks is of rank 3 where the first axis are latents, the second is data
+    Converts blocks to a permuted vector.
 
-    The default ordering in numpy is C-like/row major which stacks rows. However we need to stack columns (latents)
-        so we use F-like / column major ordering.
+        v_blocks is of rank 3 where the first axis are latents, the second is data
 
-    So to convert to data - latent order we simply need to reshape.
+        The default ordering in numpy is C-like/row major which stacks rows. However we need to stack columns (latents)
+            so we use F-like / column major ordering.
+
+        So to convert to data - latent order we simply need to reshape.
     """
 
     chex.assert_rank(v_blocks, 3)
@@ -36,6 +38,7 @@ def permute_vec_blocks(v_blocks):
 
 @partial(jit, static_argnums=(1))
 def permute_vec(v, num_latents):
+    """ Permute vec and return vec"""
     chex.assert_rank(v, 2)
     P = data_order_to_output_order(
         num_latents,
@@ -46,6 +49,7 @@ def permute_vec(v, num_latents):
 
 @partial(jit, static_argnums=(1))
 def unpermute_vec(v, num_latents):
+    """ Unpermute vec and return vec"""
     chex.assert_rank(v, 2)
     P = data_order_to_output_order(
         num_latents,
@@ -56,6 +60,7 @@ def unpermute_vec(v, num_latents):
 
 @jit
 def lp_blocks(K_blocks):
+    """ Compute left permtued full matrix from blocks """
     chex.assert_rank(K_blocks, 3)
 
     Q = K_blocks.shape[0]
@@ -78,7 +83,7 @@ def permute_blocks(A_blocks, num_latents):
     return lp_A @ right_P.T
 
 @partial(jit, static_argnums=(1))
-def permute_mat(A, num_latents):
+def left_permute_mat(A, num_latents):
     chex.assert_rank(A, 2)
 
     left_P = data_order_to_output_order(
@@ -86,12 +91,26 @@ def permute_mat(A, num_latents):
         int(A.shape[0]/num_latents)
     )
 
+    return left_P @ A 
+
+@partial(jit, static_argnums=(1))
+def right_permute_mat(A, num_latents):
+    chex.assert_rank(A, 2)
+
     right_P = data_order_to_output_order(
         num_latents,
         int(A.shape[1]/num_latents)
     )
 
-    return left_P @ A @ right_P.T
+    return A @ right_P.T 
+
+@partial(jit, static_argnums=(1))
+def permute_mat(A, num_latents):
+    chex.assert_rank(A, 2)
+
+    A = left_permute_mat(A, num_latents)
+
+    return right_permute_mat(A, num_latents)
 
 @partial(jit, static_argnums=(1))
 def unpermute_mat(A, num_latents):

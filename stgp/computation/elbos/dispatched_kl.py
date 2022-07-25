@@ -16,6 +16,21 @@ from ...core import GPPrior
 from ...transforms import DataLatentPermutation, Joint
 
 @dispatch(GaussianApproximatePosterior, Joint)
+def kullback_leibler(approximate_posterior, prior):
+    """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
+    Z = prior.get_Z()
+
+    covar_2 = prior.b_covar(Z, Z)
+
+    covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
+
+    return gaussian_cholesky_kl(
+        approximate_posterior.m,
+        approximate_posterior.S_chol,
+        prior.b_mean(Z),
+        covar_chol_2
+    )
+
 @dispatch(GaussianApproximatePosterior, GPPrior)
 def kullback_leibler(approximate_posterior, prior):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""

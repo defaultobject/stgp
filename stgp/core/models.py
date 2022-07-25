@@ -72,8 +72,16 @@ class Model(objax.Module):
         """ Rank 2 full covariance (output_dim * N1 x output_dim * N2) """
         raise NotImplementedError()
 
+    def b_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray :
+        """ Rank 2 full covariance (output_dim * N1 x output_dim * N2) whilst batching over X1 and X2"""
+        raise NotImplementedError()
+
     def covar_blocks(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray :
         """ Rank 3  covariance (output_dim x N1 x N2) """
+        raise NotImplementedError()
+
+    def b_covar_blocks(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray :
+        """ Rank 3  covariance (output_dim x N1 x N2) whilst batching over X1 and X2"""
         raise NotImplementedError()
 
     def sample(self, X1):

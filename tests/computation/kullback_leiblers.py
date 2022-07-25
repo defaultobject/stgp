@@ -22,11 +22,9 @@ from ..common_fixtures import regression_1d_data, regression_2d_data, gp_prior_2
 import tensorflow
 import tensorflow_probability as tfp
 
-@pytest.mark.parametrize('N', [10])
-@pytest.mark.parametrize('rbf_ls', [0.1])
-@pytest.mark.parametrize('rbf_var', [2.3])
-def test__gaussian_cholesky_kl(N, gp_prior_1d, gaussian_approximate_posterior):
-    # ==== Arrange ====
+@pytest.fixture
+def kl_terms(N, gp_prior_1d, gaussian_approximate_posterior):
+
     Z = gp_prior_1d.sparsity.Z
 
     m = gaussian_approximate_posterior.m
@@ -38,7 +36,6 @@ def test__gaussian_cholesky_kl(N, gp_prior_1d, gaussian_approximate_posterior):
     K_chol = scipy.linalg.cholesky(K, lower=True)
 
 
-    # ==== Act ====
     g1 = tfp.distributions.MultivariateNormalTriL(
         loc = m[:, 0], scale_tril = S_chol
     )
@@ -48,6 +45,16 @@ def test__gaussian_cholesky_kl(N, gp_prior_1d, gaussian_approximate_posterior):
 
     KL_true = np.array(tfp.distributions.kl_divergence(g1, g2))
 
+    return m, S, S_chol, m2, K, K_chol, g1, g2, KL_true
+
+@pytest.mark.parametrize('N', [10])
+@pytest.mark.parametrize('rbf_ls', [0.1])
+@pytest.mark.parametrize('rbf_var', [2.3])
+def test__gaussian_cholesky_kl(N, kl_terms):
+    # ==== Arrange ====
+    m, S, S_chol, m2, K, K_chol, g1, g2, KL_true = kl_terms
+
+    # ==== Act ====
     KL_test = np.array(gaussian_cholesky_kl(
         m, S_chol, m2, K_chol
     ))
@@ -58,30 +65,12 @@ def test__gaussian_cholesky_kl(N, gp_prior_1d, gaussian_approximate_posterior):
 @pytest.mark.parametrize('N', [10])
 @pytest.mark.parametrize('rbf_ls', [0.1])
 @pytest.mark.parametrize('rbf_var', [2.3])
-def test__gaussian_kl(N, gp_prior_1d, gaussian_approximate_posterior):
+def test__gaussian_kl(N, kl_terms):
     # ==== Arrange ====
     settings.jitter = 0
 
-    Z = gp_prior_1d.sparsity.Z
-
-    m = gaussian_approximate_posterior.m
-    S = gaussian_approximate_posterior.S
-    S_chol = gaussian_approximate_posterior.S_chol
-
-    m2 = np.array(gp_prior_1d.mean(Z))
-    K = np.array(gp_prior_1d.covar(Z, Z))
-    K_chol = scipy.linalg.cholesky(K, lower=True)
-
-
+    m, S, S_chol, m2, K, K_chol, g1, g2, KL_true = kl_terms
     # ==== Act ====
-    g1 = tfp.distributions.MultivariateNormalTriL(
-        loc = m[:, 0], scale_tril = S_chol
-    )
-    g2 = tfp.distributions.MultivariateNormalTriL(
-        loc = m2[:, 0], scale_tril = K_chol
-    )
-
-    KL_true = np.array(tfp.distributions.kl_divergence(g1, g2))
 
     KL_test = np.array(gaussian_kl(
         m, S, m2, K
