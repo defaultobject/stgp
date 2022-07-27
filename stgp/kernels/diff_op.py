@@ -74,7 +74,6 @@ class SecondOrderDerivativeKernel_2D(Kernel):
         # arg 0 are the first dim, arg1 are the final
         res22 = hessian(hessian(k, argnums=(0)), argnums=(1))(x1, x2)
 
-
         # Construct full matrix
         # K,       K(T),       K(T^2),       K(S1),       K(S1^2)
         # (T)K,    (T)K(T),    (T)K(T^2),    (T)K(S1),    (T)K(S1^2)

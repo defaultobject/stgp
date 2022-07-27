@@ -24,6 +24,10 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     def forward(self, f): return f
 
+    def transform(self, mu, var):
+        """ This is a base prior so no need to transform """
+        return mu, var
+
     def get_sparsity_list(self):
         return [self.get_sparsity()]
 
@@ -97,14 +101,14 @@ class HeatEquation2D(PDE, LinearTransform):
         """ 
         f is of shape 5 corresponding to f, ft, ft2, fx, fx2
         """
-        return f[0] - f[4]
+        return np.array([f[1] - f[4]])
 
     def _transform_mean(self, mu):
 
-        dt = mu[0]
+        dt = mu[1]
         dx2 = mu[4]
 
-        return dt - dx2
+        return np.array([dt - dx2])
 
     def _transform_covar(self, var):
 

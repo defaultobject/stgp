@@ -16,6 +16,12 @@ from ..utils.utils import ensure_module_list, get_batch_type
 
 
 class DataLatentPermutation(Transform):
+    pass
+
+class IndependentDataLatentPermutation(DataLatentPermutation):
+    pass
+
+class JointDataLatentPermutation(DataLatentPermutation):
     """
     Converts a prior from latent-data format to data-latent format.
     This is required when using a FullApproximatePosterior .
@@ -165,8 +171,6 @@ class DataLatentPermutation(Transform):
         block_size is the size variance for the corresponding groups
         """
         # Group data
-
-        _X = np.copy(X)
 
         X = jax.vmap(
             block_from_mat,

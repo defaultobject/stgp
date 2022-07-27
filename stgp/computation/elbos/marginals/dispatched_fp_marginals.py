@@ -1,3 +1,16 @@
+"""
+Full posteriors are transformed in the expected log likelihood / prediction functions so these marginals are only dealing with the base prior (where the GPs are defined).
+
+There are two types of prior that we handle:
+
+    1) when the base GPs are independent 
+    2) when the base GPs are joint
+
+And the following types of expected log likelihood/transform
+
+    a) Diagonal 
+    b) (tbd) Blocked (for example Aggregated Data/Transforms)
+"""
 import chex
 import jax
 import jax.numpy as np
@@ -11,21 +24,42 @@ from ..prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean
 from ...permutations import data_order_to_output_order
 from ...integrals.approximators import mv_block_monte_carlo
 
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
+
 # Import Types
-from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform
+from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Joint
 from ....approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
-from ....transforms import DataLatentPermutation
+from ....transforms import DataLatentPermutation, MultiOutput
+
+def _get_wrapped_base_prior(prior):
+    base_prior = prior.base_prior
+    if isinstance(base_prior, Joint):
+        base_prior = JointDataLatentPermutation(base_prior)
+    elif isinstance(base_prior, Joint):
+        base_prior = IndependentDataLatentPermutation(base_prior)
+    else:
+        raise RuntimeError()
+
+    return base_prior
 
 @dispatch('DataLatentBlockDiagonalApproximatePosterior', Likelihood, Transform)
 def marginal(data, approximate_posterior, likelihood, prior):
-    """ tbd. """
+    """ 
+    approximate_posterior is already is data latent format so does not need to updated. 
+    """
     return approximate_posterior.m, approximate_posterior.S_blocks
 
 @dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity)
 def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
-    Q = prior.base_prior.output_dim
+    """ 
+    approximate_posterior is already is in latent data format and so needs to be converted to data-latent format. 
+    """
+
+    base_prior = prior.base_prior
+
+    Q = base_prior.output_dim
     M = sparsity[0].shape[0]
     D = XS.shape[-1]
     NS = XS.shape[0]
@@ -35,8 +69,7 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
     chex.assert_shape(q_S, [M * Q, M * Q])
 
     # Get all Z in latent-data format
-    Z_all = prior.base_prior.get_Z()
-
+    Z_all = base_prior.get_Z()
     chex.assert_shape(Z_all, [Q, M, D])
 
     # Convert XS to latent_data format
@@ -116,6 +149,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, spar
 
 @dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+    """ CVI already returns q_m, q_S in blocks """
     return q_m, q_S
 
 
@@ -135,10 +169,12 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
-    fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity_arr[0])
+    base_prior = _get_wrapped_base_prior(prior)
+
+    fn = evoke('marginal', approximate_posterior, likelihood, base_prior, sparsity_arr[0])
 
     return fn(
-        data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity_arr
+        data, q_m, q_S, approximate_posterior, likelihood, base_prior, sparsity_arr
     ) 
 
 @dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform)
@@ -175,8 +211,10 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
-    latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, prior)(
-        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
+    base_prior = _get_wrapped_base_prior(prior)
+
+    latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, base_prior)(
+        XS, data, approximate_posterior, likelihood, base_prior, inference, diagonal
     )
 
     # Compute transformed q(f)

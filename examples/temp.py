@@ -5,7 +5,7 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import stgp
-from stgp.trainers import GradDescentTrainer, ScipyTrainer
+from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel
 from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D
@@ -26,18 +26,52 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import batchjax
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from pathlib import Path
+import stdata
+import stdata as st
+from stdata.plots import grid_to_matrix
+from stdata.grids import create_spatial_temporal_grid, create_spatial_grid
 
 # Fix randomness
 np.random.seed(0)
 
-XS, X, Y = single_output_spatial_data(10, 10, 30, 30, seed=0)
+Nt = 10
+T = np.linspace(0, 1, Nt)
+
+#X = create_spatial_temporal_grid(T, 0, 1, 0, 1, 5, 5)
+X = create_spatial_grid(0, 1, 0, 1, 5, 35)
+
+XS = create_spatial_grid(0, 1, 0, 1, 10, 100)
+
+init_idx = X[:, 0] == 0
+edge_idx = (X[:, 1] == 0) 
+
+Y = np.ones([X.shape[0], 1])*np.NaN
+Y[init_idx] = 0
+Y[edge_idx] = 1
+
 N = X.shape[0]
+
+if False:
+    fig, axes = plt.subplots(1, Nt, sharey=True)
+
+    norm = mpl.colors.Normalize(0, 1)
+    for i, t in enumerate(T):
+        i_idx = X[:, 0] == t
+
+        axes[i].scatter(X[i_idx, 1], Y[i_idx, 0], norm=norm)
+        axes[i].set_ylim(-0.5, 1.5)
+    plt.show()
+
+Y = np.hstack([Y, np.zeros_like(Y)])
 
 data = stgp.data.Data(X, Y)
 
-base_kernel_2d = RBF(input_dim = 2, lengthscales = [1.0, 1.0])
+base_kernel_2d = RBF(input_dim = 2, lengthscales = [0.1, 0.1])
+
+base_kernel_2d.lengthscale_param.fix()
 
 diff_op_prior = DifferentialOperatorJoint(
     GP(
@@ -63,21 +97,6 @@ prior_output_1, prior_output_2 = OutputMap(
 
 pde_output = HeatEquation2D(prior_output_2)
 
-A = pde_output.covar(X, X)
-B = diff_op_prior.covar(X, X)
-
-np.linalg.cholesky(B+1e-5 * np.eye(B.shape[0]))
-
-
-if False:
-    print(pde_output.mean(X))
-    print(pde_output.covar(X, X))
-
-    plt.imshow(pde_output.covar(X, X))
-    plt.show()
-    breakpoint()
-
-pde_output = DataLatentPermutation(pde_output)
 
 if False:
     print(pde_output.mean(X).shape)
@@ -86,34 +105,37 @@ if False:
     print(prior_output_1.mean(X).shape)
     print(prior_output_1.covar(X, XS).shape)
 
-    prior = MultiOutput([
-        prior_output_1,
-        pde_output
-    ])
+prior = MultiOutput([
+    prior_output_1,
+    pde_output
+])
 
 # Defined in data-latent format?
 q = FullGaussianApproximatePosterior(dim = N * diff_op_prior.output_dim)
 
+lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.001)]
+lik_arr[0].variance_param.fix()
+lik_arr[1].variance_param.fix()
+
 # Create Model
 m = stgp.models.GP(
     data = data,
-    prior = pde_output,
-    likelihood = [Gaussian(variance=0.1)],
+    prior = prior,
+    likelihood = lik_arr,
     inference='Variational',
     approximate_posterior = q,
-    prediction_samples = 100
+    prediction_samples = 1000
 )
 
+pred_mu, pred_var = m.predict_f(X)
 
-print(m.predict_f(X))
-print(m.predict_f(XS))
-print(m.get_objective())
-exit()
+#print(pred_mu.shape)
 
 
-if True:
+
+if False:
     # Train
-    epochs = 200
+    epochs = 1
 
     callback = progress_bar_callback(epochs)
 
@@ -127,10 +149,39 @@ if True:
     )
 
     # Plot learning curve
+    if False:
+        print(learning_curve[0], learning_curve[-1])
+        plt.plot(learning_curve)
+        plt.show()
+
+print(m.get_objective())
+
+if True:
+    ng_trainer = NatGradTrainer(m)
+    ng_trainer.train(0.1, 100) 
+    ng_trainer.train(0.5, 10) 
+    ng_trainer.train(1.0, 1) 
+
+print(m.get_objective())
+
+pred_mu, pred_var = m.predict_f(XS)
+
+if False:
     print(learning_curve[0], learning_curve[-1])
-    plt.plot(learning_curve)
+    plt.plot(learning_curve[100:])
     plt.show()
 
-print(m.predict_f(XS))
+pred_mu = pred_mu[0]
 
-breakpoint()
+if True:
+    fig, axes = plt.subplots(1, Nt, sharey=True)
+
+    norm = mpl.colors.Normalize(0, 1)
+    for i, t in enumerate(T):
+        i_idx = XS[:, 0] == t
+
+        axes[i].plot(XS[i_idx, 1], pred_mu[i_idx])
+        axes[i].set_ylim(-0.5, 1.5)
+    plt.show()
+
+

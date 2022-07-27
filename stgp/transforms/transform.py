@@ -41,6 +41,10 @@ class Transform(GPPrior):
         raise NotImplementedError()
 
     @property
+    def is_base(self):
+        return False
+
+    @property
     def base_prior(self):
         """
         A transform is paced on top of a GP prior. This returns that base GP prior.
@@ -60,7 +64,9 @@ class Transform(GPPrior):
     def parent(self): return self._parent
 
 class Joint(Transform):
-    pass
+    @property
+    def is_base(self):
+        return True
 
 class NonLinearTransform(Transform):
     pass
@@ -89,6 +95,20 @@ class _OutputMap(LinearTransform):
         self._parent = parent
         self.mapping = np.array(mapping)
         self._output_dim = len(mapping)
+
+    def forward(self, f):
+        res = self.parent.forward(f)
+        return res[self.mapping]
+
+
+    def transform(self, mu, var):
+        base_mu, base_var = self.parent.transform(mu, var)
+
+        t_mu = base_mu[self.mapping]
+        t_var = var[self.mapping, :]
+        t_var = t_var[:, self.mapping]
+
+        return t_mu, t_var
 
     def mean_blocks(self, X):
         """ Inefficient implementation for compatability """
@@ -179,15 +199,40 @@ class OutputMap(LinearTransform):
         return obj_list
 
 
-
 class MultiOutput(Transform):
     def __init__(self, parent):
+        # all objects in parent must share the SAME base prior
         self._parent = objax.ModuleList(
             parent
         )
 
+        self._output_dim = sum([p.output_dim for p in self.parent])
 
+    def transform(self, mu, var):
+        mu_arr = []
+        var_arr = []
 
+        # each must return a single output
+        for p in self.parent:
+            _m, _v = p.transform(mu, var)
+            mu_arr.append(_m)
+            var_arr.append(_v)
+
+        # TODO: this assuming a single output but if we return the list here we can generalise this
+        return np.vstack(mu_arr), to_block_diag(var_arr)
+
+    def forward(self, f):
+        res = []
+        for p in self.parent:
+            res.append(
+                p.forward(f)
+            )
+        return np.hstack(res)
+
+    @property
+    def base_prior(self):
+        # all objects in parent share the same base_prior so we can just return the first one
+        return self.parent[0].base_prior
 
 class _LinearTransform(Transform):
     """
@@ -285,6 +330,7 @@ class Independent(LinearTransform):
         super().__init__()
 
         self.prior = prior
+        self.is_base = True
 
         if (latents is None) and (latent is None):
             raise RuntimeError('Latents must be passed')

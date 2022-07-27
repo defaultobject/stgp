@@ -132,6 +132,7 @@ def test__b_full_var_blocks(seed, N, num_outputs, full_posterior_joint_model_no_
     X_batched = np.tile(X, [num_outputs, 1, 1])
 
     mat_true  = prior.covar(X, X) * np.kron(np.eye(data.N), np.ones([5, 5]))
+
     mat_test = prior.b_full_var_blocks(X_batched, 1, num_outputs)
     mat_test = scipy.linalg.block_diag(*mat_test)
 
