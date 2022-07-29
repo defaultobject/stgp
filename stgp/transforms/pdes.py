@@ -83,6 +83,34 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 class PDE(Transform):
     pass
 
+class Pendulum1D(PDE):
+    def __init__(self, latent):
+        """
+        Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
+
+        Let x be the angle
+
+        The  transform is:
+            d^2 x/dt^2 + sin(x) = 0
+        """
+        self._parent = latent
+        self._output_dim = 1
+        self._input_dim = self.parent.output_dim
+
+        self.W = np.eye(1)
+
+    def forward(self, f):
+        """ 
+        f is of shape 5 corresponding to f, ft, ft2, fx, fx2
+        """
+        dt2 = f[2]
+        t = f[0]
+
+        res = dt2 + np.sin(t)
+
+        return np.array([res])
+
+
 class HeatEquation2D(PDE, LinearTransform):
     def __init__(self, latent):
         """

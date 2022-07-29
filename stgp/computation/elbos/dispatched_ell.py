@@ -298,7 +298,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     X, Y = data.X, data.Y
 
-    Q = prior.num_latents
+    Q = prior.base_prior.output_dim
     N = Y.shape[0]
 
     chex.assert_rank(q_f_var_arr, 3)

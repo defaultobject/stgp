@@ -8,13 +8,13 @@ import stgp
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel
-from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D, SecondOrderDerivativeKernel_1D
+from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D, SecondOrderDerivativeKernel_1D, SecondOrderDerivativeKernel_1D
 from stgp.likelihood import Gaussian
 from stgp.models import GP
 from stgp.transforms import LinearTransform, OutputMap, Identity, MultiOutput, DataLatentPermutation
 from stgp.transforms.basic import InputMeanFunction
 from stgp.core.model_types import get_model_type
-from stgp.transforms.pdes import DifferentialOperatorJoint, HeatEquation2D
+from stgp.transforms.pdes import DifferentialOperatorJoint, HeatEquation2D, Pendulum1D
 from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior
 
 from data_zoo import single_output_spatial_data
@@ -34,78 +34,67 @@ import stdata as st
 from stdata.plots import grid_to_matrix
 from stdata.grids import create_spatial_temporal_grid, create_spatial_grid
 
-breakpoint()
-
 # Fix randomness
 np.random.seed(0)
 
-Nt = 10
+Nt = 100
 T = np.linspace(0, 1, Nt)
+X = T[:, None]
+XS = np.linspace(-1, 2, 1000)[:, None]
 
-#X = create_spatial_temporal_grid(T, 0, 1, 0, 1, 5, 5)
-X = create_spatial_grid(0, 1, 0, 1, 5, 35)
+Y = (np.sin(T*10) + 0.1*np.random.randn(T.shape[0]))[:, None]
 
-XS = create_spatial_grid(0, 1, 0, 1, 10, 100)
+base_kernel_1d = RBF(input_dim = 1, lengthscales = [0.05])
+kern = SecondOrderDerivativeKernel_1D(base_kernel_1d)
 
-init_idx = X[:, 0] == 0
-edge_idx = (X[:, 1] == 0) 
+Kxx = kern.K(X, X)
 
-Y = np.ones([X.shape[0], 1])*np.NaN
-Y[init_idx] = 0
-Y[edge_idx] = 1
-
-N = X.shape[0]
 
 if False:
-    fig, axes = plt.subplots(1, Nt, sharey=True)
+    # check out samples
+    latent = np.random.multivariate_normal(np.zeros(Kxx.shape[0]), Kxx)
 
-    norm = mpl.colors.Normalize(0, 1)
-    for i, t in enumerate(T):
-        i_idx = X[:, 0] == t
+    # there are three outputs
+    latent_t = latent[:Nt]
+    latent_dt = latent[Nt:Nt*2]
+    approx_dt = np.gradient(latent_t, T)
+    latent_dt2 = latent[Nt*2:]
+    approx_dt2 = np.gradient(latent_dt, T)
 
-        axes[i].scatter(X[i_idx, 1], Y[i_idx, 0], norm=norm)
-        axes[i].set_ylim(-0.5, 1.5)
+    fig, axes = plt.subplots(3, 1)
+    axes[0].plot(latent_t, color='black')
+
+    axes[1].plot(latent_dt, color='black')
+    axes[1].plot(approx_dt, color='red', linestyle=(0, (5, 10)))
+
+    axes[2].plot(latent_dt2, color='black')
+    axes[2].plot(approx_dt2, color='red', linestyle=(0, (5, 10)))
     plt.show()
 
-Y = np.hstack([Y, np.zeros_like(Y)])
+if False:
+    plt.plot(X, Y)
+    plt.show()
+
+Y = np.hstack([Y, np.ones_like(Y)])
 
 data = stgp.data.Data(X, Y)
 
-base_kernel_2d = RBF(input_dim = 2, lengthscales = [0.1, 0.1])
 
-base_kernel_2d.lengthscale_param.fix()
+#base_kernel_1d.lengthscale_param.fix()
 
 diff_op_prior = DifferentialOperatorJoint(
     GP(
         sparsity=stgp.sparsity.NoSparsity(Z=X), 
-        kernel = base_kernel_2d
+        kernel = base_kernel_1d
     ),
-    SecondOrderDerivativeKernel_2D(base_kernel_2d)
+    kern
 )
-
-# required when using a full approximate posterior because the prior is defined in latent-data format
-#   however when computing expected log likelihoods and predictions everything is in data-latent format
-
-#print(diff_op_prior.mean_blocks(X).shape)
-#print(diff_op_prior.b_mean_blocks(X[None, ...]).shape)
-#print(diff_op_prior.mean(X).shape)
-#print(diff_op_prior.b_mean(X[None, ...]).shape)
-#print(diff_op_prior.np_mean(X).shape)
-
 prior_output_1, prior_output_2 = OutputMap(
     diff_op_prior, 
-    [[0], [0, 1, 2, 3, 4]], 
+    [[0], [0, 1, 2]], 
 )
 
-pde_output = HeatEquation2D(prior_output_2)
-
-
-if False:
-    print(pde_output.mean(X).shape)
-    print(pde_output.covar(X, XS).shape)
-
-    print(prior_output_1.mean(X).shape)
-    print(prior_output_1.covar(X, XS).shape)
+pde_output = Pendulum1D(prior_output_2)
 
 prior = MultiOutput([
     prior_output_1,
@@ -113,11 +102,11 @@ prior = MultiOutput([
 ])
 
 # Defined in data-latent format?
-q = FullGaussianApproximatePosterior(dim = N * diff_op_prior.output_dim)
+q = FullGaussianApproximatePosterior(dim = X.shape[0] * diff_op_prior.output_dim)
 
 lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.001)]
-lik_arr[0].variance_param.fix()
-lik_arr[1].variance_param.fix()
+#lik_arr[0].variance_param.fix()
+#lik_arr[1].variance_param.fix()
 
 # Create Model
 m = stgp.models.GP(
@@ -126,18 +115,16 @@ m = stgp.models.GP(
     likelihood = lik_arr,
     inference='Variational',
     approximate_posterior = q,
+    ell_samples = 100,
     prediction_samples = 1000
 )
 
-pred_mu, pred_var = m.predict_f(X)
+m.print()
 
-#print(pred_mu.shape)
-
-
-
-if False:
+print(m.get_objective())
+if True:
     # Train
-    epochs = 1
+    epochs = 1000
 
     callback = progress_bar_callback(epochs)
 
@@ -151,14 +138,12 @@ if False:
     )
 
     # Plot learning curve
-    if False:
+    if True:
         print(learning_curve[0], learning_curve[-1])
         plt.plot(learning_curve)
         plt.show()
 
-print(m.get_objective())
-
-if True:
+if False:
     ng_trainer = NatGradTrainer(m)
     ng_trainer.train(0.1, 100) 
     ng_trainer.train(0.5, 10) 
@@ -166,24 +151,12 @@ if True:
 
 print(m.get_objective())
 
+m.print()
+
 pred_mu, pred_var = m.predict_f(XS)
 
-if False:
-    print(learning_curve[0], learning_curve[-1])
-    plt.plot(learning_curve[100:])
-    plt.show()
-
-pred_mu = pred_mu[0]
-
-if True:
-    fig, axes = plt.subplots(1, Nt, sharey=True)
-
-    norm = mpl.colors.Normalize(0, 1)
-    for i, t in enumerate(T):
-        i_idx = XS[:, 0] == t
-
-        axes[i].plot(XS[i_idx, 1], pred_mu[i_idx])
-        axes[i].set_ylim(-0.5, 1.5)
-    plt.show()
+plt.scatter(T, Y[:, 0])
+plt.plot(XS[:, 0], pred_mu[0])
+plt.show()
 
 
