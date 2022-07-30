@@ -196,6 +196,9 @@ class OutputMap(LinearTransform):
                 _OutputMap(parent, m_arr)
             )
 
+        if len(obj_list) == 1:
+            return obj_list[0]
+
         return obj_list
 
 

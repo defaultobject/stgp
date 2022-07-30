@@ -34,12 +34,11 @@ import stdata as st
 from stdata.plots import grid_to_matrix
 from stdata.grids import create_spatial_temporal_grid, create_spatial_grid
 
-breakpoint()
 
 # Fix randomness
 np.random.seed(0)
 
-Nt = 10
+Nt = 5
 T = np.linspace(0, 1, Nt)
 
 #X = create_spatial_temporal_grid(T, 0, 1, 0, 1, 5, 5)
@@ -56,7 +55,7 @@ Y[edge_idx] = 1
 
 N = X.shape[0]
 
-if False:
+if True:
     fig, axes = plt.subplots(1, Nt, sharey=True)
 
     norm = mpl.colors.Normalize(0, 1)
@@ -66,6 +65,7 @@ if False:
         axes[i].scatter(X[i_idx, 1], Y[i_idx, 0], norm=norm)
         axes[i].set_ylim(-0.5, 1.5)
     plt.show()
+    exit()
 
 Y = np.hstack([Y, np.zeros_like(Y)])
 

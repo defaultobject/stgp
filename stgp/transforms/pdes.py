@@ -73,7 +73,6 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         """ WARNING: we assume that X1 is actually repeated """
 
         return self.covar_blocks(X1[0], X2[0])
-            
 
     @property
     def base_prior(self):
@@ -101,10 +100,10 @@ class Pendulum1D(PDE):
 
     def forward(self, f):
         """ 
-        f is of shape 5 corresponding to f, ft, ft2, fx, fx2
+        f is of shape 5 corresponding to f, ft, ft2
         """
-        dt2 = f[2]
         t = f[0]
+        dt2 = f[2]
 
         res = dt2 + np.sin(t)
 

@@ -34,21 +34,25 @@ import stdata as st
 from stdata.plots import grid_to_matrix
 from stdata.grids import create_spatial_temporal_grid, create_spatial_grid
 
+from tqdm import tqdm, trange
+
 # Fix randomness
 np.random.seed(0)
 
-Nt = 100
-T = np.linspace(0, 1, Nt)
+Nt = 200
+T = np.linspace(-1, 2, Nt)
 X = T[:, None]
 XS = np.linspace(-1, 2, 1000)[:, None]
 
 Y = (np.sin(T*10) + 0.1*np.random.randn(T.shape[0]))[:, None]
 
-base_kernel_1d = RBF(input_dim = 1, lengthscales = [0.05])
+nan_idx = (X<0) | (X>1)
+Y[nan_idx] = np.NaN
+
+base_kernel_1d = RBF(input_dim = 1, lengthscales = [1.0])
 kern = SecondOrderDerivativeKernel_1D(base_kernel_1d)
 
 Kxx = kern.K(X, X)
-
 
 if False:
     # check out samples
@@ -75,10 +79,9 @@ if False:
     plt.plot(X, Y)
     plt.show()
 
-Y = np.hstack([Y, np.ones_like(Y)])
+Y = np.hstack([Y, np.zeros_like(Y)])
 
 data = stgp.data.Data(X, Y)
-
 
 #base_kernel_1d.lengthscale_param.fix()
 
@@ -89,24 +92,35 @@ diff_op_prior = DifferentialOperatorJoint(
     ),
     kern
 )
-prior_output_1, prior_output_2 = OutputMap(
-    diff_op_prior, 
-    [[0], [0, 1, 2]], 
-)
+if True:
+    prior_output_1, prior_output_2 = OutputMap(
+        diff_op_prior, 
+        [[0], [0, 1, 2]], 
+    )
 
-pde_output = Pendulum1D(prior_output_2)
+    pde_output = Pendulum1D(prior_output_2)
 
-prior = MultiOutput([
-    prior_output_1,
-    pde_output
-])
+    prior = MultiOutput([
+        prior_output_1,
+        pde_output
+    ])
+    lik_arr = [Gaussian(variance=0.1), Gaussian(variance=0.001)]
+else:
+    prior_output_1 = OutputMap(
+        diff_op_prior, 
+        [[0]], 
+    )
+
+    prior = MultiOutput([
+        prior_output_1
+    ])
+    lik_arr = [Gaussian(variance=0.01)]
 
 # Defined in data-latent format?
 q = FullGaussianApproximatePosterior(dim = X.shape[0] * diff_op_prior.output_dim)
 
-lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.001)]
-#lik_arr[0].variance_param.fix()
-#lik_arr[1].variance_param.fix()
+lik_arr[0].variance_param.fix()
+lik_arr[1].variance_param.fix()
 
 # Create Model
 m = stgp.models.GP(
@@ -122,7 +136,7 @@ m = stgp.models.GP(
 m.print()
 
 print(m.get_objective())
-if True:
+if False:
     # Train
     epochs = 1000
 
@@ -144,16 +158,37 @@ if True:
         plt.show()
 
 if False:
-    ng_trainer = NatGradTrainer(m)
-    ng_trainer.train(0.1, 100) 
-    ng_trainer.train(0.5, 10) 
-    ng_trainer.train(1.0, 1) 
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+    ng_trainer.train(0.01, 20) 
+    ng_trainer.train(0.1, 10) 
+    #ng_trainer.train(0.5, 10) 
+    #ng_trainer.train(1.0, 1) 
+
+if True:
+    epochs = 1000
+
+    ng_trainer = NatGradTrainer(m,  enforce_psd_type='retraction')
+    gd_trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+    ng_trainer.train(0.01, 20) 
+    learning_curve = []
+    for i in trange(epochs):
+        gd_trainer.train(0.001, 1)
+        lc_i, _ = ng_trainer.train(0.01, 1) 
+        learning_curve.append(lc_i)
+
+    # Plot learning curve
+    if True:
+        print(learning_curve[0], learning_curve[-1])
+        plt.plot(learning_curve)
+        plt.show()
+
 
 print(m.get_objective())
 
 m.print()
 
-pred_mu, pred_var = m.predict_f(XS)
+pred_mu, pred_var = m.predict_f(XS, squeeze=False)
 
 plt.scatter(T, Y[:, 0])
 plt.plot(XS[:, 0], pred_mu[0])

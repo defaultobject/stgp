@@ -87,9 +87,8 @@ def kullback_leibler(approximate_posterior, prior):
     """
     Both the prior and the approximate psoterior are defined in latent-data format.
     """
+    # use base prior as that is where the latent GPs are defined
     base_prior = prior.base_prior
-
-    assert not(isinstance(base_prior, DataLatentPermutation))
 
     return evoke('kullback_leibler', approximate_posterior, base_prior)(
         approximate_posterior, base_prior
