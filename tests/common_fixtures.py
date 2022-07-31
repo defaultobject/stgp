@@ -91,6 +91,27 @@ def gp_prior_2d(N, regression_2d_data, rbf_2d_kernel):
 
     return data, latent_gp
 
+@pytest.fixture
+def gp_model_1d(N, gaussian_likelihood, regression_1d_data, rbf_1d_kernel):
+    X, Y = regression_1d_data
+    data = Data(X, Y)
+
+    Z = NoSparsity(Z = X)
+
+    latent_gp = GP(
+        sparsity = Z, 
+        kernel = rbf_1d_kernel
+    )
+        
+    # Create Model
+    m = stgp.models.GP(
+        data = data, 
+        kernel=rbf_1d_kernel,
+        likelihood = gaussian_likelihood
+    )
+
+    return m
+
 
 @pytest.fixture
 def full_posterior_joint_model_no_sparsity(N, gp_prior_2d, gaussian_likelihood):

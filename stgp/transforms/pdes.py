@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as np
 import chex
 
@@ -63,7 +64,6 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def covar_blocks(self, X1, X2):
         K_full =  self.derivative_kernel.K(X1, X2)
 
-        breakpoint()
         return get_block_diagonal(
             K_full,
             self.output_dim,
@@ -73,6 +73,18 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         """ WARNING: we assume that X1 is actually repeated """
 
         return self.covar_blocks(X1[0], X2[0])
+
+    def full_var(self, X):
+        return self.covar(X, X)
+
+    def var(self, X):
+        fn = jax.vmap(lambda p,x: p.covar(x[None, :], x[None, :]), [None, 0])
+        res = fn(self, X)
+        diag_vec = np.diagonal(res, axis1=1, axis2=2)
+        res =  np.hstack(diag_vec.T)[:, None]
+
+        chex.assert_rank(res, 2)
+        return res
 
     @property
     def base_prior(self):

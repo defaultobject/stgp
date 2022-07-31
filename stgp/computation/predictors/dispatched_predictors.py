@@ -77,22 +77,23 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool):
     X = data.X
     Y = data.Y
 
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
+    num_outputs = prior.output_dim
 
     if diagonal:
-        K_xs = prior.var(XS)
+        K_xs = prior.var_blocks(XS)
+        # returns rank 3 but we need rank 2
+        K_xs = K_xs[..., 0]
         evoke_name = 'predict_diagonal'
     else:
-        K_xs = prior.covar(XS, XS)
+        K_xs = prior.covar_blocks(XS, XS)
         evoke_name = 'predict'
 
     # Precompute batched kernels
-    K_xx = prior.covar(X, X)
-    K_xs_x = prior.covar(XS, X)
+    K_xx = prior.covar_blocks(X, X)
+    K_xs_x = prior.covar_blocks(XS, X)
 
-    mean_x = prior.mean(X)
-    mean_xs = prior.mean(XS)
+    mean_x = prior.mean_blocks(X)
+    mean_xs = prior.mean_blocks(XS)
 
     likelihood_arr = likelihood.likelihood_arr
 
@@ -105,7 +106,7 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool):
         likelihood_arr,
         [XS, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, mean_x, mean_xs],
         [None, None, 1, 0, 0, 0, 0, 0, 0],
-        num_latents,
+        num_outputs,
         2
     )
 
@@ -168,12 +169,12 @@ def predict(XS, data, gp, likelihood, prior, diagonal):
 
     likelihood_arr = likelihood.likelihood_arr
 
-    K_xs = prior.vec_var(XS)[:, 0]
-    K_xx = prior.full_covar(X, X)
-    K_xs_x = prior.full_covar(XS, X)
+    K_xs = prior.var(XS)[..., 0]
+    K_xx = prior.covar(X, X)
+    K_xs_x = prior.covar(XS, X)
     lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood_arr)
-    mean_x = prior.vec_mean(X)
-    mean_xs = prior.vec_mean(XS)
+    mean_x = prior.mean(X)
+    mean_xs = prior.mean(XS)
 
     Y_vec = vec_columns(Y)
 

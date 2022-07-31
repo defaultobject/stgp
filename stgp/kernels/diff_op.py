@@ -6,6 +6,76 @@ from jax import jacfwd, jacrev, grad
 def hessian(f, argnums):
     return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 
+class FirstOrderDerivativeKernel_1D(Kernel):
+    def __init__(
+            self, 
+            base_kernel
+        ):
+
+        self.base_kernel = base_kernel
+        self.active_dims = None
+        self.output_dim = 2
+
+    def _compute_derivatives(self, x1, x2):
+        """
+        Let x1 have columns denotes by [t] then we use 
+            Tto denote the differential operators d/dt
+
+        The full joint kernel is given by (ignoring transposes):
+
+            K,       K(T),       K(T^2)             
+            (T)K,    (T)K(T),    (T)K(T^2)        
+            (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
+
+        """
+        k = lambda x1, x2: self.base_kernel.K(x1[None, ...], x2[None, ...])[0, 0]
+
+        # compute blocks
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+        #scalar
+        res00 = k(x1, x2)
+
+        # D dimensional jacobian vector
+        # [(T)K]
+        res10 = grad(k, argnums=(0))(x1, x2)
+        # K(T)
+        res01 = grad(k, argnums=(1))(x1, x2)
+
+
+        # Computes
+        # (T)K(T)
+        res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
+
+
+        # Construct full matrix
+        # K,       K(T))
+        # (T)K,    (T)K(T)
+
+        K = np.array([
+            [res00,       res01[0]], # f
+            [res10[0],    res11[0, 0]], # df/dt
+        ])
+
+        return K
+
+    def _K(self, X1, X2):
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        #return K[:, :, 0, 0]
+        #reshape to NxN
+        K_reshaped =  np.block([
+            [K[:, :, 0, 0], K[:, :, 0, 1]],
+            [K[:, :, 1, 0], K[:, :, 1, 1]],
+        ])
+
+        return K_reshaped
+
+
 class SecondOrderDerivativeKernel_1D(Kernel):
     def __init__(
             self, 

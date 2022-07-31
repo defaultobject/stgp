@@ -61,6 +61,11 @@ def gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, li
 
 @jit
 def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    chex.assert_rank(
+        [Y, mean_x, mean_xs, K_xs, K_xs_x, K_xx], 
+        [2, 2, 2 ,2, 2, 2]
+    )
+
     mask = get_mask(Y)
     M = get_diag_mask(mask)
     Y = mask_vector(Y, mask)

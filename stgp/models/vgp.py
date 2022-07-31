@@ -14,7 +14,7 @@ from ..core import Model, Posterior
 from . import GP, BatchGP
 from ..kernels import Kernel
 from ..inference import Variational
-from ..transforms import Transform, Identity
+from ..transforms import Transform
 from ..computation.log_marginal_likelihoods import *
 from ..likelihood import get_product_likelihood
 from ..kernels import RBF
@@ -22,7 +22,6 @@ from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
 from ..utils.utils import ensure_module_list
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
-#from ..computation.natural_gradients.nat_grad import general_ell_natural_gradients
 
 
 @dispatch(Model, 'Variational')

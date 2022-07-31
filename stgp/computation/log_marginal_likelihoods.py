@@ -91,12 +91,14 @@ def log_marginal_likelihood(
     X = data.X
     Y = data.Y
 
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
+    num_outputs = prior.output_dim
 
     # precompute prior covariance
-    k_xx_arr = prior.covar(X, X)
-    mean_arr = prior.mean(X) 
+    k_xx_arr = prior.covar_blocks(X, X)
+    mean_arr = prior.mean_blocks(X) 
+
+    chex.assert_rank(k_xx_arr, 3)
+    chex.assert_rank(mean_arr, 3)
 
     # Ensure batched Y has rank 2
     Y = Y[..., None]
@@ -109,7 +111,7 @@ def log_marginal_likelihood(
         lambda lml_fn, X, Y, lik, k, mean: lml_fn(X, Y, lik, k, mean),
         [ lml_fn, X, Y, likelihood_arr, k_xx_arr, mean_arr],
         [ None, None, 1, 0, 0, 0],
-        dim = num_latents,
+        dim = num_outputs,
         out_dim = 1,
         batch_type = get_batch_type(likelihood_arr)
     )
