@@ -30,9 +30,10 @@ from ...sparsity import FreeSparsity, Sparsity
 
 # ================================== Dispatched q(u) ==============================
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity')
-@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', False)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ For computational reasons we return S_chol """
     mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol
 
@@ -40,8 +41,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var_chol
 
-@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     Gaussian q(u). When the likelihood is Gaussian and no sparsity is used only the diagonal
     of q(u) is required.
@@ -57,8 +58,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-@dispatch('DiagonalGaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('DiagonalGaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     output:
         mu: Mx1
@@ -72,8 +73,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-@dispatch('GaussianApproximatePosterior', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('GaussianApproximatePosterior', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     With a block diagonal likelihood the approximate posterior is assumed to have the correct ordering.
 
@@ -87,8 +88,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
     block_size = likelihood.block_size
     return  block_from_vec(approximate_posterior.m, block_size), block_diagonal_from_cholesky(approximate_posterior.S_chol, block_size)
 
-@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'NoSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     output:
         mu: Mx1
@@ -102,8 +103,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     output:
         mu: NtxNs
@@ -118,8 +119,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-@dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity)
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity, False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     Let B = the block size, N_b the number of blocks then
     output:
@@ -137,37 +138,41 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity)
 
     return mu, var
 
-@dispatch(ApproximatePosterior, Likelihood, 'GPPrior')
-def variational_params(data, approximate_posterior, likelihood, prior):
+@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', False)
+@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', True)
+def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Single approximate posterior setting """
     sparsity = prior.sparsity
 
-    mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity)(
-        data, approximate_posterior, likelihood, prior, sparsity
+    mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity, whiten)(
+        data, approximate_posterior, likelihood, prior, sparsity, whiten
     ) 
 
     return mu, var
 
 #================== MEAN FIELD ==========================
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent)
-def variational_params(data, approximate_posterior, likelihood, prior):
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
+def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
-    latents_arr = prior.latents
+    latents_arr = prior.parent
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
     likelihood_arr = likelihood.likelihood_arr
 
-    num_latents = prior.num_latents
+    num_latents = prior.output_dim
 
     #TODO: assuming that all likelihoods are the same
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
 
+    whiten_arr = [whiten for q in range(num_latents)]
+
     q_m, q_S = batch_over_module_types(
         evoke_name = 'variational_params',
         evoke_params = [],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [data, approx_posteriors_arr, likelihood_arr[0], latents_arr, sparsity_arr],
-        fn_axes = [None, 0, None, 0, 0],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_params = [data, approx_posteriors_arr, likelihood_arr[0], latents_arr, sparsity_arr, whiten_arr],
+        fn_axes = [None, 0, None, 0, 0, 0],
         dim = num_latents,
         out_dim  = 2
     )
@@ -177,15 +182,16 @@ def variational_params(data, approximate_posterior, likelihood, prior):
 
 #================== DENSE FULL POSTERIOR ==========================
 
-@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity')
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', False)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """  conjugate Full-posterior approximate posterior setting """
     return approximate_posterior.surrogate.posterior_blocks()
 
 
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
-def variational_params(data, approximate_posterior, likelihood, prior):
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, True)
+def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Full-posterior approximate posterior setting """
 
     sparsity_arr = prior.base_prior.get_sparsity_list()
@@ -193,8 +199,8 @@ def variational_params(data, approximate_posterior, likelihood, prior):
     #TODO: assuming same sparsity across all latents
     sparsity = sparsity_arr[0]
 
-    mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity)(
-        data, approximate_posterior, likelihood, prior, sparsity
+    mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity, whiten)(
+        data, approximate_posterior, likelihood, prior, sparsity, whiten
     ) 
 
     return mu, var

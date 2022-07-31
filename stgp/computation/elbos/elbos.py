@@ -22,8 +22,8 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         # TODO: minibatching only works when sparsity is used. Assert this.
         data.batch()
 
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior)(
-        data, q_m, q_S, approximate_posterior, likelihood, prior
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, inference.whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
     # Compute Expected Log Likelihood   
@@ -42,9 +42,9 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
 
 def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
 
-    # We use the latent_obj because we want to get the latent prior, not the transformed ones
-    q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.latent_obj)(
-        data, approximate_posterior, likelihood, prior
+    # We use the abse prior because we want to get the latent prior, not the transformed ones
+    q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, inference.whiten)(
+        data, approximate_posterior, likelihood, prior, inference.whiten
     )
 
     return compute_expected_log_liklihood_with_variational_params(
@@ -56,8 +56,8 @@ def elbo(
     data, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
     # Compute KL term
-    KL = evoke('kullback_leibler', approximate_posterior, prior)(
-        approximate_posterior, prior
+    KL = evoke('kullback_leibler', approximate_posterior, prior, inference.whiten)(
+        approximate_posterior, prior, inference.whiten
     )
 
     # Compute expected log likelihood term

@@ -5,14 +5,14 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import stgp
+from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel
 from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D, SecondOrderDerivativeKernel_1D, SecondOrderDerivativeKernel_1D
 from stgp.likelihood import Gaussian
 from stgp.models import GP
-from stgp.transforms import LinearTransform, OutputMap, Identity, MultiOutput, DataLatentPermutation
-from stgp.transforms.basic import InputMeanFunction
+from stgp.transforms import LinearTransform, OutputMap, MultiOutput, DataLatentPermutation, Independent
 from stgp.core.model_types import get_model_type
 from stgp.transforms.pdes import DifferentialOperatorJoint, HeatEquation2D, Pendulum1D
 from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior
@@ -49,7 +49,7 @@ Y = (np.sin(T*10) + 0.1*np.random.randn(T.shape[0]))[:, None]
 nan_idx = (X<0) | (X>1)
 Y[nan_idx] = np.NaN
 
-base_kernel_1d = RBF(input_dim = 1, lengthscales = [1.0])
+base_kernel_1d = RBF(input_dim = 1, lengthscales = [0.1])
 kern = SecondOrderDerivativeKernel_1D(base_kernel_1d)
 
 Kxx = kern.K(X, X)
@@ -81,18 +81,18 @@ if False:
 
 Y = np.hstack([Y, np.zeros_like(Y)])
 
-data = stgp.data.Data(X, Y)
 
 #base_kernel_1d.lengthscale_param.fix()
+settings.ng_jitter = 1e-5
 
-diff_op_prior = DifferentialOperatorJoint(
-    GP(
-        sparsity=stgp.sparsity.NoSparsity(Z=X), 
-        kernel = base_kernel_1d
-    ),
-    kern
-)
 if True:
+    diff_op_prior = DifferentialOperatorJoint(
+        GP(
+            sparsity=stgp.sparsity.NoSparsity(Z=X), 
+            kernel = base_kernel_1d
+        ),
+        kern
+    )
     prior_output_1, prior_output_2 = OutputMap(
         diff_op_prior, 
         [[0], [0, 1, 2]], 
@@ -104,23 +104,45 @@ if True:
         prior_output_1,
         pde_output
     ])
-    lik_arr = [Gaussian(variance=0.1), Gaussian(variance=0.001)]
+    lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.01)]
+
+    data = stgp.data.Data(X, Y)
+
+    # Defined in data-latent format?
+    q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
+elif False:
+    prior = Independent([GP(
+        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        kernel = base_kernel_1d
+    )])
+
+    lik_arr = [Gaussian(variance=0.01)]
+
+    data = stgp.data.Data(X, Y[:, 0][:, None])
+
+    q = None
 else:
-    prior_output_1 = OutputMap(
+    diff_op_prior = DifferentialOperatorJoint(
+        GP(
+            sparsity=stgp.sparsity.NoSparsity(Z=X), 
+            kernel = base_kernel_1d
+        ),
+        kern
+    )
+    prior = OutputMap(
         diff_op_prior, 
         [[0]], 
     )
 
-    prior = MultiOutput([
-        prior_output_1
-    ])
+
     lik_arr = [Gaussian(variance=0.01)]
 
-# Defined in data-latent format?
-q = FullGaussianApproximatePosterior(dim = X.shape[0] * diff_op_prior.output_dim)
+    data = stgp.data.Data(X, Y[:, 0][:, None])
 
-lik_arr[0].variance_param.fix()
-lik_arr[1].variance_param.fix()
+    # Defined in data-latent format?
+    q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
+
+
 
 # Create Model
 m = stgp.models.GP(
@@ -157,14 +179,22 @@ if False:
         plt.plot(learning_curve)
         plt.show()
 
-if False:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-    ng_trainer.train(0.01, 20) 
-    ng_trainer.train(0.1, 10) 
+if True:
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+    ng_trainer = NatGradTrainer(m)
+    #ng_trainer = NatGradTrainer(m)
+    #ng_trainer.train(0.01, 20) 
+    lc_arr, _ = ng_trainer.train(0.01, 10) 
+    #lc_arr, _ = ng_trainer.train(0.1, 10) 
+    breakpoint()
+    plt.plot(lc_arr)
+    plt.show()
+    #ng_trainer.train(1.0, 1) 
+
     #ng_trainer.train(0.5, 10) 
     #ng_trainer.train(1.0, 1) 
 
-if True:
+if False:
     epochs = 1000
 
     ng_trainer = NatGradTrainer(m,  enforce_psd_type='retraction')

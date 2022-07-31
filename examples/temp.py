@@ -133,8 +133,6 @@ pred_mu, pred_var = m.predict_f(X)
 
 #print(pred_mu.shape)
 
-
-
 if False:
     # Train
     epochs = 1

@@ -165,7 +165,7 @@ def expected_log_likelihood_with_xy(X, Y, q_f_mu, q_f_var, likelihood, prior, ap
     )
 
 # Meanfield Approximate Posterior
-@dispatch(Data, ProductLikelihood, LinearTransform, MeanFieldApproximatePosterior)
+@dispatch(Data, ProductLikelihood, LinearModel, MeanFieldApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     When the prior is a linear transform the approximate posterior is Gaussian and 
@@ -252,7 +252,7 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
     return ll_arr
 
 # Meanfield Gaussian with non-linear ELL Approximate Posterior
-@dispatch(Data, ProductLikelihood, NonLinearTransform, MeanFieldApproximatePosterior)
+@dispatch(Data, ProductLikelihood, NonLinearModel, MeanFieldApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
     Samples from the approximate posteriors need to be transformed through the prior and then the 
@@ -319,6 +319,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
+@dispatch(Data, GaussianProductLikelihood, Transform, MeanFieldApproximatePosterior)
 @dispatch(Data, GaussianProductLikelihood, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     base_prior = prior.base_prior
@@ -358,11 +359,16 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         q_f_mu_arr = jax.vmap(lambda W, f: W @ f, [None, 0])(W, q_f_mu_arr)
         q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
     else:
+        # Ensure rank 2 after batching
+        q_f_mu_arr = q_f_mu_arr[..., None]
+
         q_f_mu_arr, q_f_var_arr = jax.vmap(lambda p, mu, var: prior.transform(mu, var), [None, 0, 0])(prior, q_f_mu_arr, q_f_var_arr)
 
+        chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 3])
+
         # Ensure rank 2 after batching
-        #q_f_mu_arr = q_f_mu_arr[..., None, None]
         Y = Y[..., None]
+        chex.assert_rank(Y, 3)
 
     variance = np.diag(likelihood.variance)
 

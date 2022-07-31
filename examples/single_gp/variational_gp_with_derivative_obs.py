@@ -10,13 +10,15 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import stgp
-from stgp.trainers import GradDescentTrainer, ScipyTrainer
+from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel
 from stgp.likelihood import Gaussian
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel_1D
 from stgp.transforms.pdes import DifferentialOperatorJoint
+from stgp.transforms import OutputMap, MultiOutput
 from stgp.models import GP
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior
 
 import objax
 import jax
@@ -68,18 +70,49 @@ diff_op_prior = DifferentialOperatorJoint(
     FirstOrderDerivativeKernel_1D(base_kernel_1d)
 )
 
+if  True:
+    prior_output_1, prior_output_2 = OutputMap(
+        diff_op_prior, 
+        [[0], [1]], 
+    )
+
+    prior = MultiOutput([
+        prior_output_1,
+        prior_output_2
+    ])
+else:
+    prior = diff_op_prior
+
+
+# Defined in data-latent format?
+q = FullGaussianApproximatePosterior(dim = N * diff_op_prior.output_dim)
+
+
+lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.1)]
+lik_arr[0].variance_param.fix()
+lik_arr[1].variance_param.fix()
+
 # Create Model
 m = stgp.models.GP(
     data = data, 
-    prior = diff_op_prior,
-    likelihood = [Gaussian(variance=0.1), Gaussian(variance=0.1)]
+    prior = prior,
+    likelihood = lik_arr,
+    inference='Variational',
+    approximate_posterior = q,
+    prediction_samples = 1000
 )
 
 print(m.get_objective())
 
 if True:
+    ng_trainer = NatGradTrainer(m)
+    ng_trainer.train(1.0, 1) 
+
+print(m.get_objective())
+
+if False:
     # Train
-    epochs = 1000
+    epochs = 10000
 
     callback = progress_bar_callback(epochs)
 
@@ -95,6 +128,8 @@ if True:
     # Plot learning curve
     plt.plot(learning_curve)
     plt.show()
+
+print(m.get_objective())
 
 # Predict
 pred_mu, pred_var = m.predict_y(XS, squeeze=True)

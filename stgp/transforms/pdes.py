@@ -27,6 +27,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     def transform(self, mu, var):
         """ This is a base prior so no need to transform """
+        chex.assert_rank([mu, var], [2, 2])
         return mu, var
 
     def get_sparsity_list(self):

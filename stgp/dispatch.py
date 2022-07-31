@@ -58,8 +58,11 @@ def _ensure_str(k):
     return k
 
 def _try_match(x, y):
-    # check if y is a child class of x
 
+    if isinstance(x, bool) and isinstance(y, bool) :
+        return x == y
+
+    # check if y is a child class of x
     if inspect.isclass(x):
         _x = x
     else:

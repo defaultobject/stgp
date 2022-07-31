@@ -61,6 +61,10 @@ class VGP(Posterior):
         self.set_defaults()
         self.fix_inputs()
 
+    @property
+    def X(self):
+        return self.data.X 
+
     def log_marginal_likelihood(self, X=None, Y=None):
         raise NotImplementedError()
 
@@ -103,8 +107,14 @@ class VGP(Posterior):
 
             # Construct independent prior
 
+            X_ref = self.data._X
+            sparsity = [
+                NoSparsity(Z_ref = X_ref) 
+                for q in range(self.output_dim)
+            ]
+
             self._prior = get_default_independent_prior(
-                self.X,
+                sparsity,
                 self.input_space_dim, 
                 self.input_dim, 
                 kernel_list=self.kernel,
@@ -125,8 +135,10 @@ class VGP(Posterior):
 
         if self.approximate_posterior is None:
             # Assume independent latents and that they have the same dimension
+            base_prior = self.prior.base_prior
+
             self.approximate_posterior = MeanFieldApproximatePosterior(
-                dim_list=[self.prior.latents[0].sparsity.Z.shape[0]]*self.prior.num_latents
+                dim_list=[base_prior.get_sparsity_list()[0].Z.shape[0]]*base_prior.output_dim
             )
 
     def get_objective(self):

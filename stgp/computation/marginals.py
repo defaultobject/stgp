@@ -198,10 +198,6 @@ def whitened_gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, K
 
     k_zz_chol = cholesky(add_jitter(k_zz, settings.jitter))
 
-    print(k_zz)
-    print('k_zz: ', np.sum(k_zz))
-    print('k_zz_chol: ', np.sum(k_zz_chol), np.sum(cholesky(k_zz)), settings.jitter)
-
     mu = k_xz @ jax.scipy.linalg.solve_triangular(k_zz_chol.T, mu, lower=False)
 
     A1 = jax.scipy.linalg.solve_triangular(k_zz_chol, k_xz.T, lower=True)
@@ -211,8 +207,6 @@ def whitened_gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, K
 
     mu = np.reshape(mu, [mu.shape[0], 1])
     sig = np.reshape(sig, [sig.shape[0], 1])
-
-    print('mu: ', np.sum(mu))
 
     return mu, sig
 

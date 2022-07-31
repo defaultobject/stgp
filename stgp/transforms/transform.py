@@ -50,7 +50,12 @@ class Transform(GPPrior):
         raise NotImplementedError()
 
     def transform(self, mu, var):
-        """ Transform a full gaussian dist """
+        """ 
+        Transform a full gaussian dist 
+
+        mu and var are rank 2, should return rank 2.
+        """
+        
         raise NotImplementedError()
 
     def forward(self, x):
@@ -119,7 +124,6 @@ class Independent(Transform):
         super().__init__()
 
         self.prior = prior
-        self._is_base = True
 
         if (latents is None) and (latent is None):
             raise RuntimeError('Latents must be passed')
@@ -138,6 +142,21 @@ class Independent(Transform):
 
         self._input_dim = self.output_dim
         self._parent = ensure_module_list(latents)
+
+    @property
+    def latents(self):
+        return self.parent
+
+    @property
+    def is_base(self):
+        return True
+
+    @property
+    def base_prior(self):
+        return self
+
+    def get_sparsity_list(self):
+        return [p.sparsity for p in self.parent]
 
     def get_Z(self):
         Z_arr = batch_or_loop(

@@ -16,9 +16,10 @@ import jax
 import jax.numpy as np
 
 from ....dispatch import dispatch, evoke
+from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -30,10 +31,20 @@ from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_mon
 
 # ================================== Dispatched q(f) ==============================
 
-@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity')
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ Catch all for single latent functions """
     return q_m, q_S
+
+@dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'NoSparsity', True)
+def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
+    chex.assert_rank(q_S_chol, 2)
+    chex.assert_shape(q_S_chol, [q_m.shape[0], q_m.shape[0]])
+
+    Kzz = prior.covar(sparsity.Z, sparsity.Z)
+    Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    return Kzz_chol @ q_m, diagonal_from_cholesky(Kzz_chol @ q_S_chol)
 
 @dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'SpatialSparsity')
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
@@ -83,8 +94,8 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, spar
         data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity
     )
 
-@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity)
-def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, False)
+def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
     chex.assert_rank([m, S_chol], [2, 2])
     chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
@@ -92,13 +103,30 @@ def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, spar
     return gaussian_conditional_diagional(
         XS, 
         data.X, 
-        prior.covar(sparsity.Z, sparsity.Z)[0], 
-        prior.covar(XS, sparsity.Z)[0], 
-        prior.var(XS)[0], 
+        prior.covar(sparsity.Z, sparsity.Z), 
+        prior.covar(XS, sparsity.Z), 
+        prior.var(XS), 
         m,
         S_chol,
-        prior.mean(sparsity.Z)[0],
-        prior.mean(XS)[0],
+        prior.mean(sparsity.Z),
+        prior.mean(XS),
+    )
+
+@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, True)
+def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
+    """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
+    chex.assert_rank([m, S_chol], [2, 2])
+    chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
+
+    #TODO: only works with zero mean gps
+    return whitened_gaussian_conditional_diagional(
+        XS, 
+        data.X, 
+        prior.covar(sparsity.Z, sparsity.Z), 
+        prior.covar(XS, sparsity.Z), 
+        prior.var(XS)[:, 0], 
+        m,
+        S_chol
     )
 
 @dispatch('full_prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', FreeSparsity)
@@ -130,9 +158,10 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     return mu, var
 
 
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
-    latents_arr = prior.latents
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
+    latents_arr = prior.parent
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
     likelihood_arr = likelihood.likelihood_arr
@@ -143,14 +172,15 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     #TODO: assuming that all likelihoods are the same
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
 
+    whiten_arr = [whiten for q in range(num_latents)]
     # TODO: pre-compute Kzz and Kzx so that any kernel can be used in the latents and batching can still be used.
     # Compute q(f) for each output
     marginal_mu, marginal_var = batch_over_module_types(
         evoke_name = 'marginal',
         evoke_params = [],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [data, q_m, q_S, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_axes = [None, 0, 0, 0, 0, 0, 0],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_params = [data, q_m, q_S, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_axes = [None, 0, 0, 0, 0, 0, 0, 0],
         dim = len(latents_arr),
         out_dim  = 2
     )
@@ -162,8 +192,9 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
 
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
     latents = prior.latent_obj
 
@@ -171,8 +202,8 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     N = data.X.shape[0]
 
     # Compute q(f) for each output
-    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, latents)(
-        data, q_m , q_S, approximate_posterior, likelihood, latents
+    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, latents, whiten)(
+        data, q_m , q_S, approximate_posterior, likelihood, latents, whiten
     )
 
     # Mix outputs by the linear transform defined in the prior
@@ -184,8 +215,8 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     return marginal_mu, marginal_var
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearTransform)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearTransform, False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     """ 
     Computation of the ELL with a non-linear transform is computed using monte-carlo. Therefore we return the (untransformed)
     latents here so they can be used to perform the monte-carlo approximation.
@@ -248,8 +279,9 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return mu.T, var.T
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
@@ -268,14 +300,15 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     #TODO: assuming that all likelihoods are the same
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
+    whiten_arr = [whiten for q in range(num_latents)]
 
     # Compute q(f) for each output
     marginal_mu, marginal_var = batch_over_module_types(
         evoke_name = 'marginal',
         evoke_params = [evoke_params],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [XS, data, q_m, q_S_chol, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_axes = [None, None, 0, 0, 0, 0, 0, 0],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_params = [XS, data, q_m, q_S_chol, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_axes = [None, None, 0, 0, 0, 0, 0, 0, 0],
         dim = len(latents_arr),
         out_dim  = 2
     )
