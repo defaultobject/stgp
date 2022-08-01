@@ -31,6 +31,7 @@ from ...sparsity import FreeSparsity, Sparsity
 # ================================== Dispatched q(u) ==============================
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):

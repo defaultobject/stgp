@@ -16,10 +16,11 @@ import jax
 import jax.numpy as np
 from jax.scipy.linalg import block_diag
 
+from .... import settings
 from ....dispatch import dispatch, evoke
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_blocks
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, stack_rows, cholesky_solve
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, stack_rows, cholesky_solve, cholesky, add_jitter
 from ..prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ, prior_mean_X, prior_covar_X
 from ...permutations import data_order_to_output_order
 from ...integrals.approximators import mv_block_monte_carlo
@@ -51,11 +52,25 @@ def marginal(data, approximate_posterior, likelihood, prior):
     """
     return approximate_posterior.m, approximate_posterior.S_blocks
 
-@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity)
-def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, False)
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, True)
+def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ 
     approximate_posterior is already is in latent data format and so needs to be converted to data-latent format. 
     """
+
+    if whiten:
+        base_prior = prior.base_prior
+        Z = base_prior.get_Z()
+        chex.assert_rank(Z, 3)
+
+        Kzz = base_prior.b_covar(Z, Z)
+        chex.assert_rank(Kzz, 2)
+
+        Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+        chex.assert_equal_shape([Kzz_chol, q_S])
+
+        q_m, q_S =  Kzz_chol @ q_m, Kzz_chol @ q_S
 
     base_prior = prior.base_prior
 
@@ -117,8 +132,8 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
 
     return _m, _S
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity')
-def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity):
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', False)
+def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
 
     assert isinstance(prior, DataLatentPermutation)
 
@@ -147,38 +162,66 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, spar
 
     return m_p, S_blocks
 
-@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity')
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity):
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
+def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
+    # first reparameterise and then we can treat as use
+
+    # reparameterise
+    base_prior = prior.base_prior
+
+    Z = base_prior.get_Z()
+    chex.assert_rank(Z, 3)
+
+    Kzz = base_prior.b_covar(Z, Z)
+    chex.assert_rank(Kzz, 2)
+
+    Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+    chex.assert_equal_shape([Kzz_chol, q_S_chol])
+
+    q_m, q_S_chol =  Kzz_chol @ q_m, Kzz_chol @ q_S_chol
+
+    # we have reparemeterised the approximate posterior so we can now treat it as unwhitened
+    fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity[0], False)
+
+    return fn(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, False
+    ) 
+
+
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ CVI already returns q_m, q_S in blocks """
     return q_m, q_S
 
 
-@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, FreeSparsity)
-def marginal(data, approximate_posterior, likelihood, prior, sparsity):
+@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, FreeSparsity, False)
+def marginal(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity[0])
 
     mu, var =  fn(
-        data.X, data, approximate_posterior, likelihood, prior, sparsity
+        data.X, data, approximate_posterior, likelihood, prior, sparsity, whiten
     )
 
     return mu, var
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = _get_wrapped_base_prior(prior)
 
-    fn = evoke('marginal', approximate_posterior, likelihood, base_prior, sparsity_arr[0])
+    fn = evoke('marginal', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten)
 
     return fn(
-        data, q_m, q_S, approximate_posterior, likelihood, base_prior, sparsity_arr
+        data, q_m, q_S, approximate_posterior, likelihood, base_prior, sparsity_arr, whiten
     ) 
 
-@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, False)
+@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, True)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
 
     if diagonal is False:
         raise NotImplementedError()
@@ -186,26 +229,27 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
 
-    fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0])
+    fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0], whiten)
 
     if isinstance(approximate_posterior, FullConjugateGaussian):
         # Fullconjugate Gaussian does not need the variational params to predict
         latent_mu, latent_var =  fn(
-            XS, data, approximate_posterior, likelihood, prior, sparsity_arr
+            XS, data, approximate_posterior, likelihood, prior, sparsity_arr, whiten
         ) 
     else:
-        q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.latent_obj)(
-            data, approximate_posterior, likelihood, prior
+        q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.latent_obj, whiten)(
+            data, approximate_posterior, likelihood, prior, whiten
         )
 
         latent_mu, latent_var =  fn(
-            XS, data, q_m, q_S , approximate_posterior, likelihood, prior, sparsity_arr
+            XS, data, q_m, q_S , approximate_posterior, likelihood, prior, sparsity_arr, whiten
         ) 
 
     return latent_mu, latent_var
 
-@dispatch('samples', FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('samples', FullGaussianApproximatePosterior, Likelihood, Transform, False)
+@dispatch('samples', FullGaussianApproximatePosterior, Likelihood, Transform, True)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     if diagonal is False:
         raise NotImplementedError()
 
@@ -213,8 +257,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     base_prior = _get_wrapped_base_prior(prior)
 
-    latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, base_prior)(
-        XS, data, approximate_posterior, likelihood, base_prior, inference, diagonal
+    latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, base_prior, whiten)(
+        XS, data, approximate_posterior, likelihood, base_prior, inference, whiten, diagonal
     )
 
     # Compute transformed q(f)
@@ -233,11 +277,12 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return mu
 
-@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, False)
+@dispatch('prediction', FullGaussianApproximatePosterior, Likelihood, Transform, True)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
 
-    mu = evoke('marginal', 'samples', approximate_posterior, likelihood, prior)(
-        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
+    mu = evoke('marginal', 'samples', approximate_posterior, likelihood, prior, whiten)(
+        XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal
     )
 
     second_moment =  mu**2

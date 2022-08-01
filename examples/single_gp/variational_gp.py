@@ -40,7 +40,8 @@ m = stgp.models.GP(
     data = data, 
     kernel=ScaleKernel(RBF(lengthscales=[0.1])),
     likelihood = [Gaussian(variance=0.1)],
-    inference='Variational'
+    inference='Variational',
+    whiten = False
 )
 
 print(m.get_objective())
@@ -53,7 +54,7 @@ if True:
     m.print()
 
     # Train
-    epochs = 1000
+    epochs = 200
 
     callback = progress_bar_callback(epochs)
 

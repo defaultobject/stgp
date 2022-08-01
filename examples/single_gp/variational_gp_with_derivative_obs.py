@@ -10,6 +10,7 @@ jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 
 import stgp
+from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel
@@ -99,20 +100,21 @@ m = stgp.models.GP(
     likelihood = lik_arr,
     inference='Variational',
     approximate_posterior = q,
-    prediction_samples = 1000
+    prediction_samples = 1000,
+    whiten=True
 )
 
 print(m.get_objective())
 
-if True:
+if False:
     ng_trainer = NatGradTrainer(m)
     ng_trainer.train(1.0, 1) 
 
 print(m.get_objective())
 
-if False:
+if True:
     # Train
-    epochs = 10000
+    epochs = 100
 
     callback = progress_bar_callback(epochs)
 
