@@ -11,7 +11,7 @@ from ...transforms import LinearTransform, Independent, NonLinearTransform, Tran
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
-from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian, GaussianProductLikelihood
+from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian, GaussianProductLikelihood, PowerLikelihood
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, ApproximatePosterior
@@ -146,6 +146,18 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     ell = np.sum(ell_arr)
 
     return ell
+
+@dispatch(PowerLikelihood, GaussianApproximatePosterior)
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    scale_a = likelihood.a
+
+    parent_lik = likelihood.parent
+
+    parent_ell =  evoke('expected_log_likelihood', parent_lik, approx_posterior)(
+        X, Y, q_f_mu, q_f_var, parent_lik
+    )
+
+    return parent_ell * scale_a
 
 # ====================== ELL FOR DIFFERENT APPROXIMATE POSTERIORS ===================
 
@@ -319,8 +331,8 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
-@dispatch(Data, GaussianProductLikelihood, Transform, MeanFieldApproximatePosterior)
-@dispatch(Data, GaussianProductLikelihood, Transform, FullGaussianApproximatePosterior)
+@dispatch(Data, ProductLikelihood, Transform, MeanFieldApproximatePosterior)
+@dispatch(Data, ProductLikelihood, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     base_prior = prior.base_prior
 

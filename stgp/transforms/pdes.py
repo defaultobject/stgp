@@ -5,6 +5,7 @@ import chex
 # Import Types
 from . import Transform, LinearTransform, Joint
 from ..computation.matrix_ops import get_block_diagonal
+from .. import Parameter
 
 
 class DifferentialOperatorJoint(LinearTransform, Joint):
@@ -96,7 +97,7 @@ class PDE(Transform):
     pass
 
 class Pendulum1D(PDE):
-    def __init__(self, latent):
+    def __init__(self, latent, g, l, train=True):
         """
         Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
 
@@ -111,16 +112,101 @@ class Pendulum1D(PDE):
 
         self.W = np.eye(1)
 
+        self.g_param = Parameter(
+            np.array(g), 
+            constraint='positive', 
+            name ='Pendulum1D/g', 
+            train=train
+        )
+
+        self.l_param = Parameter(
+            np.array(l), 
+            constraint='positive', 
+            name ='Pendulum1D/l', 
+            train=train
+        )
+
     def forward(self, f):
         """ 
-        f is of shape 5 corresponding to f, ft, ft2
+        f is of shape 3 corresponding to f, ft, ft2
         """
         t = f[0]
         dt2 = f[2]
 
-        res = dt2 + np.sin(t)
+        ls = self.g_param.value / self.l_param.value
+
+        res = dt2 + ls * np.sin(t)
 
         return np.array([res])
+
+class DampedPendulum1D(PDE):
+    def __init__(self, latent, b, g, l, train=True):
+        """
+        Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
+
+        Let x be the angle
+
+        The  transform is:
+            d^2 x/dt^2 + sin(x) + d x/dt = 0
+        """
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.W = np.eye(1)
+
+        self.b_param = Parameter(
+            np.array(b), 
+            constraint='positive', 
+            name ='Pendulum1D/b', 
+            train=train
+        )
+
+        self.g_param = Parameter(
+            np.array(g), 
+            constraint='positive', 
+            name ='Pendulum1D/g', 
+            train=train
+        )
+
+        self.l_param = Parameter(
+            np.array(l), 
+            constraint='positive', 
+            name ='Pendulum1D/l', 
+            train=train
+        )
+
+    def _f(self, init_x, t):
+        ls = self.g_param.value / self.l_param.value
+        b = self.b_param.value
+
+        t = init_x[0]
+        dt = init_x[1]
+
+        return np.array([
+            dt,
+            - ls * np.sin(t) - b * dt
+        ])
+
+    def forward(self, f):
+        """ 
+        f is of shape 3 corresponding to f, ft, ft2
+        """
+        t = f[0]
+        dt = f[1]
+        dt2 = f[2]
+
+        ls = self.g_param.value / self.l_param.value
+        b = self.b_param.value
+
+        res = dt2 + ls * np.sin(t) + b * dt
+
+        return np.array([res])
+
 
 
 class HeatEquation2D(PDE, LinearTransform):
@@ -193,4 +279,37 @@ class HeatEquation2D(PDE, LinearTransform):
 
         return self._transform_covar(parent_covar)
 
+class AllenCahn(PDE):
+    def __init__(self, latent, train=True):
+        """
+        Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
+
+        Let x be the angle
+
+        The  transform is:
+            d^2 x/dt^2 + sin(x) + d x/dt = 0
+        """
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+ 
+    def _f(self, init_x, t):
+        raise NotImplementedError()
+
+    def forward(self, f):
+        """ 
+        f is of shape 5 corresponding to f, ft, ft2 fx fx2
+        """
+        t = f[0]
+        dt = f[1]
+        dx2 = f[2]
+
+        res = dt - 0.0001 * dx2 + 5 * (t**3) - 5 * t
+
+        return np.array([res])
 

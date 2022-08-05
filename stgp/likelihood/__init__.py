@@ -3,6 +3,7 @@ from .gaussian import Gaussian, GaussianParameterised, DiagonalGaussian, BlockDi
 from .poisson import Poisson
 from .bernoulli import Bernoulli
 from .product_likelihood import ProductLikelihood, GaussianProductLikelihood, BlockGaussianProductLikelihood, get_product_likelihood
+from .power import PowerLikelihood
 
 __all__ = [
     'Likelihood',
@@ -19,5 +20,6 @@ __all__ = [
     'BlockGaussianProductLikelihood',
     'ReshapedBlockDiagonalGaussian',
     'ReshapedGaussian',
-    'get_product_likelihood'
+    'get_product_likelihood',
+    'PowerLikelihood'
 ]

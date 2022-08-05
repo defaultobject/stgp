@@ -45,6 +45,9 @@ class Parameter(objax.Module):
         else:
             self.name = None
 
+    def assign(self, val):
+        self.raw_var.assign(self.inv_transform(val))
+
     @property
     def is_trainable(self):
         return self._train_state

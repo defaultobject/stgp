@@ -6,6 +6,7 @@ from jax import jacfwd, jacrev, grad
 def hessian(f, argnums):
     return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 
+
 class FirstOrderDerivativeKernel_1D(Kernel):
     def __init__(
             self, 
@@ -262,6 +263,35 @@ class SecondOrderDerivativeKernel_2D(Kernel):
             [K[:, :, 2, 0], K[:, :, 2, 1], K[:, :, 2, 2], K[:, :, 2, 3], K[:, :, 2, 4]],
             [K[:, :, 3, 0], K[:, :, 3, 1], K[:, :, 3, 2], K[:, :, 3, 3], K[:, :, 3, 4]],
             [K[:, :, 4, 0], K[:, :, 4, 1], K[:, :, 4, 2], K[:, :, 4, 3], K[:, :, 4, 4]]
+        ])
+
+        return K_reshaped
+
+class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(SecondOrderDerivativeKernel_2D):
+
+    def __init__(
+            self, 
+            base_kernel
+        ):
+
+        self.base_kernel = base_kernel
+        self.active_dims = None
+        self.output_dim = 3
+
+    def _K(self, X1, X2):
+        Kxx = self.base_kernel.K(X1, X2)
+
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        #return K[:, :, 0, 0]
+        #reshape to NxN
+        K_reshaped =  np.block([
+            [K[:, :, 0, 0],  K[:, :, 0, 1], K[:, :, 0, 4]],
+            [K[:, :, 1, 0],  K[:, :, 1, 1], K[:, :, 1, 4]],
+            [K[:, :, 4, 0],  K[:, :, 4, 1], K[:, :, 4, 4]]
         ])
 
         return K_reshaped

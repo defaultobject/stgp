@@ -48,19 +48,19 @@ def cartesian_product(X, Y):
     return np.vstack([np.tile(X, Y.shape[0]), np.repeat(Y, X.shape[0])])
 
 @jit
-def add_jitter(A, jit):
+def add_jitter(A, jit_val):
     chex.assert_rank(A, 2)
-    return A + jit*np.eye(A.shape[0])
+    return A + jit_val*np.eye(A.shape[0])
 
 @jit
-def vec_add_jitter(A, jit):
+def vec_add_jitter(A, jit_val):
     chex.assert_rank(A, 3)
 
     return jax.vmap(
         add_jitter,
         (0, None),
         0
-    )(A, jit)
+    )(A, jit_val)
 
 @jit
 def diagonal_from_cholesky(L):
@@ -112,11 +112,18 @@ def batched_diagonal_from_XDXT(X, D):
     return res
 
 
-@partial(jit, static_argnums=(1))
+#@partial(jit, static_argnums=(1))
 def block_diagonal_from_cholesky(L, block_size):
     """
     Extracts block diagonals from L L^T
     """
+
+    if False:
+        N = int(L.shape[0]/block_size)
+        idx = np.arange(block_size)
+        A = L @ L.T
+        blocks = np.array([A[idx+p*block_size, :][:, idx+p*block_size] for p in range(N)])
+        return blocks
 
     L1 = np.reshape(
         L, 
@@ -167,7 +174,7 @@ def cholesky(A):
 def _triangular_solve(chol, X, lower):
     return jax.scipy.linalg.solve_triangular(chol, X, lower=lower) 
 
-def triangular_solve(chol, X, lower):
+def triangular_solve(chol, X, lower=True):
     #wrapper around _triangular_solve so that lower can be a keyword arg
     return _triangular_solve(chol, X, lower)
 

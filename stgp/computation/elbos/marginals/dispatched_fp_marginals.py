@@ -38,7 +38,7 @@ def _get_wrapped_base_prior(prior):
     base_prior = prior.base_prior
     if isinstance(base_prior, Joint):
         base_prior = JointDataLatentPermutation(base_prior)
-    elif isinstance(base_prior, Joint):
+    elif isinstance(base_prior, Independent):
         base_prior = IndependentDataLatentPermutation(base_prior)
     else:
         raise RuntimeError()
@@ -71,6 +71,7 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
         chex.assert_equal_shape([Kzz_chol, q_S])
 
         q_m, q_S =  Kzz_chol @ q_m, Kzz_chol @ q_S
+
 
     base_prior = prior.base_prior
 
@@ -107,6 +108,7 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
         1,
         Q
     )
+
     chex.assert_shape(K_xx_p, [NS, Q, Q])
 
     mean_Z = prior.b_mean(Z_all)
@@ -115,6 +117,8 @@ def marginal(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, spars
     # Compute q(F) = \int p(F | U) q(U) dU
     # Comput blocks of
     #val = K_xx - Kxz_p @ cholesky_solve(K_chol, Kxz_p.T)
+
+
     # TODO: assuming mean is zero
     _m, _S =  gaussian_conditional_blocks(
         1, 
@@ -228,6 +232,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
+    prior = _get_wrapped_base_prior(prior)
 
     fn = evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, sparsity_arr[0], whiten)
 
@@ -237,7 +242,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
             XS, data, approximate_posterior, likelihood, prior, sparsity_arr, whiten
         ) 
     else:
-        q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.latent_obj, whiten)(
+        q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
             data, approximate_posterior, likelihood, prior, whiten
         )
 
@@ -263,7 +268,6 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
 
     # Compute transformed q(f)
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)
-
 
     mu = mv_block_monte_carlo(
         lambda f, fn: fn(f),

@@ -39,17 +39,17 @@ from tqdm import tqdm, trange
 # Fix randomness
 np.random.seed(0)
 
-Nt = 200
-T = np.linspace(-1, 2, Nt)
+Nt = 100
+T = np.linspace(0, 50, Nt)
 X = T[:, None]
-XS = np.linspace(-1, 2, 1000)[:, None]
+XS = np.linspace(0, 50, 1000)[:, None]
 
-Y = (np.sin(T*10) + 0.1*np.random.randn(T.shape[0]))[:, None]
+Y = (np.sin(T) + 0.01*np.random.randn(T.shape[0]))[:, None]
 
-nan_idx = (X<0) | (X>1)
+nan_idx = (X>20)
 Y[nan_idx] = np.NaN
 
-base_kernel_1d = RBF(input_dim = 1, lengthscales = [0.1])
+base_kernel_1d = RBF(input_dim = 1, lengthscales = [1.0])
 kern = SecondOrderDerivativeKernel_1D(base_kernel_1d)
 
 Kxx = kern.K(X, X)
@@ -81,7 +81,6 @@ if False:
 
 Y = np.hstack([Y, np.zeros_like(Y)])
 
-
 #base_kernel_1d.lengthscale_param.fix()
 settings.ng_jitter = 1e-5
 
@@ -104,7 +103,10 @@ if True:
         prior_output_1,
         pde_output
     ])
-    lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.01)]
+    lik_arr = [Gaussian(variance=0.01), Gaussian(variance=0.001)]
+
+    lik_arr[0].variance_param.fix() 
+    lik_arr[1].variance_param.fix() 
 
     data = stgp.data.Data(X, Y)
 
@@ -152,7 +154,8 @@ m = stgp.models.GP(
     inference='Variational',
     approximate_posterior = q,
     ell_samples = 100,
-    prediction_samples = 1000
+    prediction_samples = 1000,
+    whiten=True
 )
 
 m.print()
@@ -160,7 +163,7 @@ m.print()
 print(m.get_objective())
 if False:
     # Train
-    epochs = 1000
+    epochs = 500
 
     callback = progress_bar_callback(epochs)
 
@@ -177,16 +180,16 @@ if False:
     if True:
         print(learning_curve[0], learning_curve[-1])
         plt.plot(learning_curve)
+        plt.yscale('log')
         plt.show()
 
-if True:
+if False:
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-    ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
     #ng_trainer = NatGradTrainer(m)
     #ng_trainer.train(0.01, 20) 
     lc_arr, _ = ng_trainer.train(0.01, 10) 
-    #lc_arr, _ = ng_trainer.train(0.1, 10) 
-    breakpoint()
+    lc_arr, _ = ng_trainer.train(0.1, 100) 
     plt.plot(lc_arr)
     plt.show()
     #ng_trainer.train(1.0, 1) 
@@ -194,8 +197,8 @@ if True:
     #ng_trainer.train(0.5, 10) 
     #ng_trainer.train(1.0, 1) 
 
-if False:
-    epochs = 1000
+if True:
+    epochs = 200
 
     ng_trainer = NatGradTrainer(m,  enforce_psd_type='retraction')
     gd_trainer = GradDescentTrainer(m, objax.optimizer.Adam)

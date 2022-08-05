@@ -6,7 +6,7 @@ import chex
 
 from .matrix_ops import to_block_diag
 
-@partial(jit, static_argnums=(0, 1))
+#@partial(jit, static_argnums=(0, 1))
 def data_order_to_output_order(num_outputs: int, N: int):
     """
     A permutation matrix to convert from latent-data or data-latent order
@@ -82,7 +82,7 @@ def permute_blocks(A_blocks, num_latents):
 
     return lp_A @ right_P.T
 
-@partial(jit, static_argnums=(1))
+#@partial(jit, static_argnums=(1))
 def left_permute_mat(A, num_latents):
     chex.assert_rank(A, 2)
 

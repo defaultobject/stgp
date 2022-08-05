@@ -125,42 +125,43 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
 
     return mu, sig
 
-@partial(jit, static_argnums=(0, 1))
-def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+#@partial(jit, static_argnums=(0, 1))
+def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, K_xz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+
 
     M = X.shape[1]
     N = XS.shape[0]
     Q = block_size
 
     chex.assert_shape(Kzz, [M*Q, M*Q])
-    chex.assert_shape(Kxz, [N*Q, M*Q])
+    chex.assert_shape(K_xz, [N*Q, M*Q])
     chex.assert_shape(Kxx, [N, Q, Q])
     chex.assert_shape(m, [M*Q, 1])
     chex.assert_shape(S_chol, [M*Q, M*Q])
 
     # Add jitter to help the cholesy solve
-    jit = np.eye(Kzz.shape[0])*settings.jitter
+    jit_arr = np.eye(Kzz.shape[0])*1e-3
 
     # pred_mu = Kxz(Kzz+jit)^{-1}m
     # pred_var = Kxx - Kxz(Kzz+jit)^{-1}Kxz.T
     pred_mu, pred_var = gaussian_prediction_blocks(
-        group_size, block_size, m,  Kxx, Kxz, Kzz, mean_x, mean_xs, jit
+        group_size, block_size, m,  Kxx, K_xz, Kzz, mean_x, mean_xs, jit_arr
     )
 
     chex.assert_shape(pred_mu, [N, Q])
     chex.assert_shape(pred_var, [N, Q, Q])
 
-
     # Compute KxzKzz^{-1}SKzz^{-1}Kxz.T
     K_chol = cholesky(add_jitter(Kzz, settings.jitter))
-    A = cholesky_solve(K_chol, Kxz.T)
+    A = cholesky_solve(K_chol, K_xz.T)
     A2 = S_chol.T @ A 
+
     B = block_diagonal_from_cholesky(A2.T, block_size)
 
     mu = pred_mu
-    var = pred_var + B
+    var =  pred_var + B
 
-    return mu, var
+    return mu, pred_mu
 
 @jit
 def gaussian_conditional_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:
