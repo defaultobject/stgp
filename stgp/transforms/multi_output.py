@@ -200,14 +200,11 @@ class LMC_Base(LinearTransform):
         num_latents
     """
     def __init__(self, latents, input_dim: int, output_dim: int):
-
-        super(LinearTransform, self).__init__()
-
         # Allow passing a list of prior models and transformed model
         if type(latents) is list:
-            self._latent_obj = Independent(latents=latents, prior=True)
+            self._parent = Independent(latents=latents, prior=True)
         else:
-            self._latent_obj = latents
+            self._parent = latents
 
         self._input_dim = input_dim
         self._output_dim = output_dim
@@ -216,7 +213,7 @@ class LMC_Base(LinearTransform):
     def W(self):
         raise NotImplementedError()
 
-    def vec_mean(self, X1: np.ndarray) -> np.ndarray:
+    def mean(self, X1: np.ndarray) -> np.ndarray:
         N1 = X1.shape[0]
         P = self.output_dim
 
@@ -227,7 +224,7 @@ class LMC_Base(LinearTransform):
 
         return mean
 
-    def full_covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
+    def covar(self, X1: np.ndarray, X2: np.ndarray) -> np.ndarray:
         N1 = X1.shape[0]
         N2 = X2.shape[0]
 
@@ -239,7 +236,7 @@ class LMC_Base(LinearTransform):
         W1 = np.kron(mixing_matrix, np.eye(N1))
         W2 = np.kron(mixing_matrix, np.eye(N2))
 
-        K_bdiag = self.latent_obj.full_covar(X1, X2)
+        K_bdiag = self.parent.covar(X1, X2)
         chex.assert_shape(K_bdiag, [Q*N1, Q*N2])
 
         covar = W1 @ K_bdiag @ W2.T
@@ -247,14 +244,17 @@ class LMC_Base(LinearTransform):
 
         return covar
 
-    def vec_var(self, X1: np.ndarray) -> np.ndarray:
+    def full_var(self, X):
+        return self.covar(X, X)
+
+    def var(self, X1: np.ndarray) -> np.ndarray:
         N1 = X1.shape[0]
         Q = self.input_dim
         P = self.output_dim
 
         mixing_matrix = self.W
 
-        K_diag = self.latent_obj.var(X1)
+        K_diag = self.parent.var_blocks(X1)[..., 0]
         chex.assert_shape(K_diag, [Q, N1])
 
         W = mixing_matrix**2
@@ -286,9 +286,7 @@ class LMC(LMC_Base):
         if type(latents) == list:
             latents = Independent(latents)
 
-        super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
-
-        self._num_latents = self.input_dim
+        super().__init__(latents, input_dim=latents.input_dim, output_dim=output_dim)
 
         # Setup correlation matrix variables
         self._W = Parameter(np.eye(self.output_dim, self.input_dim), name='W')

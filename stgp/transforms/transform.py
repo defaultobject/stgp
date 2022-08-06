@@ -207,6 +207,10 @@ class Independent(Transform):
 
         return k_arr
 
+    def covar(self, X1, X2):
+        c_blocks = self.covar_blocks(X1, X2)
+        return to_block_diag(c_blocks)
+
 
     def var_blocks(self, X1: np.ndarray) -> np.ndarray:
         var = batch_or_loop(
@@ -224,6 +228,12 @@ class Independent(Transform):
         )
 
         return var
+
+    def var(self, X):
+        v_blocks = self.var_blocks(X)
+        v_stacked =  np.vstack(v_blocks)
+        chex.assert_shape(v_stacked, [X.shape[0]*self.output_dim, 1])
+        return v_stacked
 
     def full_var_blocks(self, X1: np.ndarray) -> np.ndarray:
         return self.covar_blocks(X1, X1)
