@@ -188,7 +188,9 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     likelihood_arr = likelihood.likelihood_arr
     approx_posteriors_arr = approximate_posterior.approx_posteriors
-    latent_arr = prior.latent_obj.latents
+
+    # TODO: this assumes an indepedent prior
+    latent_arr = prior.base_prior.parent
 
     Y = Y[..., None]
 
@@ -278,7 +280,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     num_likelihoods = len(likelihood_arr)
     N, P = Y.shape
-    Q = prior.num_latents
+    Q = prior.base_prior.output_dim
 
     # Normalise shapes
     q_f_mu_arr = np.reshape(q_f_mu_arr, [Q, N])

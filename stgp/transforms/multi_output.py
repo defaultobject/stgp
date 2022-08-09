@@ -8,6 +8,7 @@ import numpy as onp
 import objax
 import chex
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform, inv_correlation_transform,softplus, probit
+from ..computation.matrix_ops import batched_diagonal_from_XDXT, lower_triangle
 from .. import Parameter
 
 class GPRN_Base(NonLinearTransform):
@@ -19,13 +20,17 @@ class GPRN_Base(NonLinearTransform):
         W_vec = [w for W_p in W for w in W_p]
 
         # Flatten latents to fit into VI framework
-        self._latent_obj = Independent(
+        self._parent = Independent(
             latents = f+W_vec,
             prior = True
         )
 
         self._input_dim = len(f)
         self._output_dim = len(W)
+
+    @property
+    def base_prior(self):
+        return self.parent
 
     @property
     def forward(self, f):
@@ -46,7 +51,7 @@ class GPRN(GPRN_Base):
             order='C'
         )
 
-        return (latent_W @ latent_f)[:, 0]
+        return (latent_W @ latent_f)
 
 class GPRN_Exp(GPRN_Base):
     def forward(self, f):
@@ -74,13 +79,13 @@ class GPRN_LDL(GPRN_Base):
         #super(GPRN_LDL, self).__init__()
 
         # Flatten latents to fit into VI framework
-        self._latent_obj = Independent(
+        self._parent = Independent(
             latents = f+W_vec,
             prior = True
         )
 
         self._input_dim = len(f)
-        self._output_dim = self._input_dim
+        self._output_dim = self.input_dim
 
     def forward(self, f):
         # f has the same ordering as self.latents
@@ -92,12 +97,14 @@ class GPRN_LDL(GPRN_Base):
         Q = self.input_dim
         tri = np.eye(P, Q)
 
-        latent_W = np.reshape(latent_W, [self.num_latents - self.input_dim])
+        num_latents = f.shape[0]
+
+        latent_W = np.reshape(latent_W, [num_latents - self.input_dim])
         latent_f = np.reshape(latent_f, [self.input_dim, 1])
 
-        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(latent_W)
+        mixing_matrix = tri.at[np.tril_indices(P, -1, Q)].set(latent_W)
 
-        return (mixing_matrix @ latent_f)[:, 0]
+        return (mixing_matrix @ latent_f)
 
 class GPRN_DRD(GPRN_Base):
 
@@ -125,7 +132,7 @@ class GPRN_DRD(GPRN_Base):
         self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance', train=True)
 
         # Flatten latents to fit into VI framework
-        self._latent_obj = Independent(
+        self._parent = Independent(
             latents = f+W_vec,
             prior = True
         )
@@ -133,11 +140,13 @@ class GPRN_DRD(GPRN_Base):
     def forward(self, f):
         # f has the same ordering as self.latents
 
+        num_latents = f.shape[0]
+
         latent_f = f[:self.input_dim]
         latent_W = f[self.input_dim:]
 
         latent_f = np.reshape(latent_f, [self.input_dim, 1])
-        latent_W = np.reshape(latent_W, [self.num_latents - self.input_dim])
+        latent_W = np.reshape(latent_W, [num_latents - self.input_dim])
 
         correlation_cholesky =  get_correlation_cholesky(
             correlation_transform(latent_W, self.a), 
@@ -147,7 +156,7 @@ class GPRN_DRD(GPRN_Base):
 
         var_diag = np.diag(self.variances.value)
 
-        return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
+        return (var_diag @ correlation_cholesky @ latent_f)
 
 class GPRN_DRD_EXP(GPRN_Base):
 
@@ -208,6 +217,10 @@ class LMC_Base(LinearTransform):
 
         self._input_dim = input_dim
         self._output_dim = output_dim
+
+    @property
+    def base_prior(self):
+        return self.parent
 
     @property
     def W(self):
@@ -291,6 +304,30 @@ class LMC(LMC_Base):
         # Setup correlation matrix variables
         self._W = Parameter(np.eye(self.output_dim, self.input_dim), name='W')
 
+
+    def transform_diagonal(self, mu, var):
+        """
+        Computes the pointwise of 
+            F_n = W U_n
+        This functions assumes that U_n are indepenent
+        Hence F_n ~ N(W mu_n, W diag(var_n) W.T)
+        The diagonal of this is given by:
+            W mu
+            W diag(sqrt(var))
+        """
+        W = self.W
+
+        # Mixing latent functions
+        mu = W @ mu[..., 0] 
+        var = batched_diagonal_from_XDXT(W, var[..., 0])
+
+
+        # fix shapes
+        mu = mu[..., None]
+        var = var[..., None]
+
+        return mu, var
+
     @property
     def W(self):
         return self._W.value
@@ -306,7 +343,7 @@ class LMC_Unit_Tri(LMC_Base):
         if type(latents) == list:
             latents = Independent(latents)
 
-        super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
+        super().__init__(latents, input_dim=latents.output_dim, output_dim=output_dim)
 
         self._num_latents = self.input_dim
 
@@ -320,7 +357,7 @@ class LMC_Unit_Tri(LMC_Base):
         Q = self.input_dim
 
         tri = np.eye(P, Q)
-        mixing_matrix = tri.at[jax.ops.index[np.tril_indices(P, -1, Q)]].set(self.z_arr.value)
+        mixing_matrix = tri.at[np.tril_indices(P, -1, Q)].set(self.z_arr.value)
 
         return mixing_matrix
 
@@ -338,9 +375,7 @@ class LMC_Corr(LMC_Base):
         if type(latents) == list:
             latents = Independent(latents)
 
-        super().__init__(latents, input_dim=latents.num_latents, output_dim=output_dim)
-
-        self._num_latents = self.input_dim
+        super().__init__(latents, input_dim=latents.output_dim, output_dim=output_dim)
 
         # When using LMC_corr the mixing matrix must be square
         self.P = self.output_dim

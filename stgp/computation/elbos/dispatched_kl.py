@@ -80,6 +80,7 @@ def kullback_leibler(approximate_posterior, prior, whiten):
 
     return np.sum(kl_arr)
 
+@dispatch(ApproximatePosterior, Transform, False)
 @dispatch(ApproximatePosterior, Transform, True)
 def kullback_leibler(approximate_posterior, prior, whiten):
     """

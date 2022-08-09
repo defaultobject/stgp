@@ -105,6 +105,13 @@ class LinearTransform(Transform):
     def __init__(self, latent):
         self._parent = latent
 
+    @property
+    def base_prior(self):
+        return self.parent
+
+    def get_sparsity_list(self):
+        return self.parent.get_sparsity_list()
+
 class Joint(Transform):
     @property
     def is_base(self):

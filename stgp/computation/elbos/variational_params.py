@@ -156,12 +156,14 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
-    latents_arr = prior.parent
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-    sparsity_arr = prior.get_sparsity_list()
-    likelihood_arr = likelihood.likelihood_arr
+    base_prior = prior.base_prior
+    num_latents = base_prior.output_dim
 
-    num_latents = prior.output_dim
+    latents_arr = base_prior.parent
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    sparsity_arr = base_prior.get_sparsity_list()
+
+    likelihood_arr = likelihood.likelihood_arr
 
     #TODO: assuming that all likelihoods are the same
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]

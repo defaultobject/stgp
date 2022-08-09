@@ -27,6 +27,7 @@ from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximat
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel
 
 
 # ================================== Dispatched q(f) ==============================
@@ -192,39 +193,39 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, True)
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
-    latents = prior.latent_obj
+    base_prior = prior.base_prior
 
-    num_latents = len(latents.latents)
+    output_dim = prior.output_dim
     N = data.X.shape[0]
 
     # Compute q(f) for each output
-    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, latents, whiten)(
-        data, q_m , q_S, approximate_posterior, likelihood, latents, whiten
+    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, base_prior, whiten)(
+        data, q_m , q_S, approximate_posterior, likelihood, base_prior, whiten
     )
 
     # Mix outputs by the linear transform defined in the prior
     marginal_mu, marginal_var = prior.transform_diagonal(marginal_mu, marginal_var)
 
-    chex.assert_shape(marginal_mu, [num_latents, N, 1])
-    chex.assert_shape(marginal_var, [num_latents, N, 1])
+    chex.assert_shape(marginal_mu, [output_dim, N, 1])
+    chex.assert_shape(marginal_var, [output_dim, N, 1])
 
     return marginal_mu, marginal_var
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearTransform, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearModel, False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     """ 
     Computation of the ELL with a non-linear transform is computed using monte-carlo. Therefore we return the (untransformed)
     latents here so they can be used to perform the monte-carlo approximation.
     """
-    latents = prior.latent_obj
+    latents = prior.parent
 
-    return   evoke('marginal', approximate_posterior, likelihood, latents)(
-        data, q_m, q_S, approximate_posterior, likelihood, latents
+    return   evoke('marginal', approximate_posterior, likelihood, latents, whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, latents, whiten
     ) 
 
 
@@ -266,6 +267,18 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     marginal_var = np.sum(np.sum(marginal_var, axis=2), axis=2)/(group_size*group_size)
 
     return (marginal_mu.T)[..., None], (marginal_var.T)[..., None]
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, False)
+def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
+
+    # find out if the model is linear or not
+    model_type = get_model_type(prior)
+
+    return   evoke('marginal', approximate_posterior, likelihood, model_type, whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, prior, whiten
+    ) 
 
 # ========================= Predictions =========================
 
@@ -319,8 +332,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
     return marginal_mu, marginal_var
 
 
-@dispatch('prediction', MeanFieldConjugateGaussian, ProductLikelihood, Independent)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', MeanFieldConjugateGaussian, ProductLikelihood, Independent, False)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
@@ -353,19 +366,19 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearTransform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearModel, False)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     if diagonal is False:
         raise NotImplementedError()
 
-    latents = prior.latent_obj
+    base_prior = prior.base_prior
 
-    num_latents = len(latents.latents)
+    num_latents = base_prior.output_dim
     N = XS.shape[0]
 
     # Compute q(f) for each output
-    marginal_mu, marginal_var = evoke('marginal', 'prediction', approximate_posterior, likelihood, latents)(
-        XS, data, approximate_posterior, likelihood, latents, inference, diagonal
+    marginal_mu, marginal_var = evoke('marginal', 'prediction', approximate_posterior, likelihood, base_prior, whiten)(
+        XS, data, approximate_posterior, likelihood, base_prior, inference, whiten, diagonal
     )
 
     # Mix outputs by the linear transform defined in the prior
@@ -376,8 +389,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Aggregate)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Aggregate, False)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     if diagonal is False:
         raise NotImplementedError()
 
@@ -419,17 +432,29 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return (marginal_mu.T)[..., None], (marginal_var.T)[..., None]
 
-@dispatch('samples', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearTransform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, True)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
+
+    # find out if the model is linear or not
+    model_type = get_model_type(prior)
+
+    return   evoke('marginal', 'prediction', approximate_posterior, likelihood, model_type, whiten)(
+        XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal
+    ) 
+
+@dispatch('samples', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, False)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
 
     if diagonal is False:
         raise NotImplementedError()
 
-    latents = prior.latent_obj
+    latents = prior.base_prior
+    model_type = get_model_type(prior)
 
     # compute predictions of the (Gaussian) latent functions
-    latent_mu, latent_var =  evoke('marginal', 'prediction', approximate_posterior, likelihood, latents)(
-        XS, data, approximate_posterior, likelihood, latents, inference, diagonal
+    latent_mu, latent_var =  evoke('marginal', 'prediction', approximate_posterior, likelihood, latents, whiten)(
+        XS, data, approximate_posterior, likelihood, latents, inference, whiten, diagonal
     ) 
 
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)
@@ -450,13 +475,15 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return mu
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearTransform)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal):
-    latents = prior.latent_obj
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, False)
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
+    base_prior = prior.base_prior
+
+    model_type = get_model_type(prior)
 
     #compute samples
-    mu =  evoke('marginal', 'samples', approximate_posterior, likelihood, prior)(
-        XS, data, approximate_posterior, likelihood, prior, inference, diagonal
+    mu =  evoke('marginal', 'samples', approximate_posterior, likelihood, model_type, whiten)(
+        XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal
     ) 
     
     second_moment =  mu**2
