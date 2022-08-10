@@ -332,7 +332,7 @@ class LMC(LMC_Base):
     def W(self):
         return self._W.value
 
-class LMC_Unit_Tri(LMC_Base):
+class LMC_LDL(LMC_Base):
     def __init__(
         self, 
         latents: Optional[Union[List['Model'], Transform]]=None, 
@@ -362,7 +362,7 @@ class LMC_Unit_Tri(LMC_Base):
         return mixing_matrix
 
 
-class LMC_Corr(LMC_Base):
+class LMC_DRD(LMC_Base):
     def __init__(
         self, 
         latents: Optional[Union[List['Model'], Transform]]=None, 

@@ -225,7 +225,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
 @dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, False)
 @dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, True)
-def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
 
     if diagonal is False:
         raise NotImplementedError()
@@ -258,6 +258,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
     if diagonal is False:
         raise NotImplementedError()
 
+    raise RuntimeError('There is a bug in the covariance here --- use predict latents instead')
+
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = _get_wrapped_base_prior(prior)
@@ -265,6 +267,11 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
     latent_mu, latent_var = evoke('marginal', 'latents', approximate_posterior, likelihood, base_prior, whiten)(
         XS, data, approximate_posterior, likelihood, base_prior, inference, whiten, diagonal
     )
+
+    chex.assert_rank(latent_mu, 2)
+    chex.assert_rank(latent_var, 3)
+    chex.assert_equal([latent_mu.shape[0], latent_var.shape[0]])
+    chex.assert_equal([latent_mu.shape[1], latent_var.shape[1], latent_var.shape[2]])
 
     # Compute transformed q(f)
     vmaped_prior_forard =  jax.vmap(prior.forward, [1], 0)

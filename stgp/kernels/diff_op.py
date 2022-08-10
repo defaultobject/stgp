@@ -2,19 +2,47 @@ from . import Kernel
 import jax
 import jax.numpy as np
 from jax import jacfwd, jacrev, grad
+from ..computation.matrix_ops import hessian
 
-def hessian(f, argnums):
-    return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
+import chex
+
+class DerivativeKernel(Kernel):
+    """
+    Accecpts a parent kernel OR a parent model
+    """
+    def __init__(self, parent_kernel = None, parent_model = None) :
+        self.parent_kernel = parent_kernel
+        self.parent_model = parent_model
+        self.active_dims = None
 
 
-class FirstOrderDerivativeKernel_1D(Kernel):
+        if parent_kernel is None and parent_model is None:
+            raise RuntimeError('Either a kernel or model must be passed!')
+
+        if parent_kernel is not None and parent_model is not None:
+            raise RuntimeError('Only a kernel or model must be passed!')
+
+        self.use_kernel = parent_kernel is not None
+
+    def base_K_scalar(self, X1, X2):
+        chex.assert_rank([X1, X2], [2, 2])
+        chex.assert_equal([X1.shape[0], X2.shape[0]], [1, 1])
+
+        if self.use_kernel:
+            var = self.parent_kernel.K(X1, X2)
+        else:
+            var = self.parent_model.covar(X1, X2)
+
+        return var
+
+class FirstOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(
             self, 
-            base_kernel
+            parent_kernel = None,
+            parent_model = None
         ):
 
-        self.base_kernel = base_kernel
-        self.active_dims = None
+        super(FirstOrderDerivativeKernel_1D, self).__init__(parent_kernel, parent_model)
         self.output_dim = 2
 
     def _compute_derivatives(self, x1, x2):
@@ -29,7 +57,7 @@ class FirstOrderDerivativeKernel_1D(Kernel):
             (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
 
         """
-        k = lambda x1, x2: self.base_kernel.K(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -77,14 +105,14 @@ class FirstOrderDerivativeKernel_1D(Kernel):
         return K_reshaped
 
 
-class SecondOrderDerivativeKernel_1D(Kernel):
+class SecondOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(
             self, 
-            base_kernel
+            parent_kernel = None,
+            parent_model = None
         ):
 
-        self.base_kernel = base_kernel
-        self.active_dims = None
+        super(SecondOrderDerivativeKernel_1D, self).__init__(parent_kernel, parent_model)
         self.output_dim = 3
 
     def _compute_derivatives(self, x1, x2):
@@ -99,7 +127,7 @@ class SecondOrderDerivativeKernel_1D(Kernel):
             (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
 
         """
-        k = lambda x1, x2: self.base_kernel.K(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -164,14 +192,14 @@ class SecondOrderDerivativeKernel_1D(Kernel):
         return K_reshaped
 
 
-class SecondOrderDerivativeKernel_2D(Kernel):
+class SecondOrderDerivativeKernel_2D(DerivativeKernel):
     def __init__(
             self, 
-            base_kernel
+            parent_kernel = None,
+            parent_model = None
         ):
 
-        self.base_kernel = base_kernel
-        self.active_dims = None
+        super(SecondOrderDerivativeKernel_2D, self).__init__(parent_kernel, parent_model)
         self.output_dim = 5
 
     def _compute_derivatives(self, x1, x2):
@@ -189,7 +217,7 @@ class SecondOrderDerivativeKernel_2D(Kernel):
 
         """
         # fix shapes
-        k = lambda x1, x2: self.base_kernel.K(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -267,19 +295,18 @@ class SecondOrderDerivativeKernel_2D(Kernel):
 
         return K_reshaped
 
-class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(SecondOrderDerivativeKernel_2D):
-
+class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(DerivativeKernel):
     def __init__(
             self, 
-            base_kernel
+            parent_kernel = None,
+            parent_model = None
         ):
 
-        self.base_kernel = base_kernel
-        self.active_dims = None
+        super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D, self).__init__(parent_kernel, parent_model)
         self.output_dim = 3
 
     def _K(self, X1, X2):
-        Kxx = self.base_kernel.K(X1, X2)
+        Kxx = self.base_K_scalar(X1, X2)
 
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
@@ -297,14 +324,14 @@ class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(SecondOrderDerivativeKer
         return K_reshaped
 
 
-class SecondOrderDerivativeKernel_3D(Kernel):
+class SecondOrderDerivativeKernel_3D(DerivativeKernel):
     def __init__(
             self, 
-            base_kernel
+            parent_kernel = None,
+            parent_model = None
         ):
 
-        self.base_kernel = base_kernel
-        self.active_dims = None
+        super(SecondOrderDerivativeKernel_3D, self).__init__(parent_kernel, parent_model)
         self.output_dim = 7
 
     def _compute_derivatives(self, x1, x2):
@@ -324,7 +351,7 @@ class SecondOrderDerivativeKernel_3D(Kernel):
 
         """
         # fix shapes
-        k = lambda x1, x2: self.base_kernel.K(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
 
 
         # compute blocks

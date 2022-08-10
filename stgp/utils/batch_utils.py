@@ -19,7 +19,8 @@ def batch_over_module_types(
     fn_params: list,
     fn_axes: list,
     dim: int,
-    out_dim :int
+    out_dim :int,
+    evoke_kwargs: dict = None,
 ):
     """ 
     Helper function to batch over a module.
@@ -30,6 +31,9 @@ def batch_over_module_types(
 
     if type(module_arr) != list:
         module_arr = [module_arr]
+
+    if evoke_kwargs == None:
+        evoke_kwargs = {}
 
     # make sure lists are of same dimension
     list_dim = len(module_arr[0])
@@ -42,11 +46,11 @@ def batch_over_module_types(
     #   and then we can batch it
     # otherwises we need the whole array and we will loop through them all
     if can_batch(module_arr):
-        pred_fn = evoke(evoke_name, *evoke_params, *get_modules_at_i(module_arr, 0))
+        pred_fn = evoke(evoke_name, *evoke_params, *get_modules_at_i(module_arr, 0), **evoke_kwargs)
         pred_axes = None
     else:
         pred_fn = [
-            evoke(evoke_name, *evoke_params, *get_modules_at_i(module_arr, i)) for i in range(list_dim)
+            evoke(evoke_name, *evoke_params, *get_modules_at_i(module_arr, i), **evoke_kwargs) for i in range(list_dim)
         ]
         pred_axes = 0
 

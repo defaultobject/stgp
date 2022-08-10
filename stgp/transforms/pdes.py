@@ -6,7 +6,8 @@ import chex
 from . import Transform, LinearTransform, Joint
 from ..computation.matrix_ops import get_block_diagonal
 from .. import Parameter
-
+from ..computation.matrix_ops import hessian
+from jax import jacfwd, jacrev, grad
 
 class DifferentialOperatorJoint(LinearTransform, Joint):
     """
@@ -15,7 +16,8 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def __init__(
         self,
         base_latent,
-        derivative_kernel
+        derivative_kernel,
+        is_base = True
     ):
         if base_latent is None:
             raise RuntimeError('Latent gp must be passed')
@@ -23,6 +25,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self._parent = base_latent
         self.derivative_kernel = derivative_kernel
         self._output_dim = self.derivative_kernel.output_dim
+        self._is_base = is_base
 
     def forward(self, f): return f
 
@@ -91,7 +94,12 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     @property
     def base_prior(self):
         """ DifferentialOperatorJoint is only used to construct a base prior""" 
-        return self
+        if self.is_base:
+            return self
+
+        return self.parent
+
+
 
 class PDE(Transform):
     pass

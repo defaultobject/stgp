@@ -182,14 +182,11 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     return q_m, q_S
 
-
 #================== DENSE FULL POSTERIOR ==========================
-
 @dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """  conjugate Full-posterior approximate posterior setting """
     return approximate_posterior.surrogate.posterior_blocks()
-
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, False)

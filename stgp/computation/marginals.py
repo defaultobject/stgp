@@ -161,7 +161,7 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
     mu = pred_mu
     var =  pred_var + B
 
-    return mu, pred_mu
+    return mu, var
 
 @jit
 def gaussian_conditional_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:

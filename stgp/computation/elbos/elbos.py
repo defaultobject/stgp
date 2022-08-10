@@ -22,7 +22,7 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         # TODO: minibatching only works when sparsity is used. Assert this.
         data.batch()
 
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, inference.whiten)(
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
@@ -56,7 +56,7 @@ def elbo(
     data, likelihood: Likelihood, prior: Independent, approximate_posterior: ApproximatePosterior, inference: 'Variational'
 ):
     # Compute KL term
-    KL = evoke('kullback_leibler', approximate_posterior, prior, inference.whiten)(
+    KL = evoke('kullback_leibler', approximate_posterior, prior, whiten=inference.whiten)(
         approximate_posterior, prior, inference.whiten
     )
 

@@ -112,7 +112,13 @@ class Model(objax.Module):
         return utils.get_fixed_params(self)
 
 class Prior(Model):
-    pass
+    def get_sparsity_list(self):
+        """ Return list of sparsity objects """
+        raise NotImplementedError()
+
+    def get_Z(self):
+        """ Return stacked inducing locations (output_dim x N x D) """
+        raise NotImplementedError()
 
 class Posterior(Model):
     def __init__(self, X=None, Y=None, data=None, latent_y=False, latent_x=False, **kwargs):

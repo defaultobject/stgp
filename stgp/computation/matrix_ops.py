@@ -5,6 +5,11 @@ import jax.numpy as np
 from jax import jit, grad
 from functools import partial
 import chex
+from jax import jacfwd, jacrev, grad
+
+
+def hessian(f, argnums):
+    return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 
 @jit
 def to_block_diag(A):

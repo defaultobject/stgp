@@ -39,3 +39,29 @@ def get_model_type(prior):
 
     return NonLinearModel(prior)
 
+def _get_linear_model_part(prior):
+
+    parent_prior = prior.parent
+
+    if prior.is_base:
+        return prior
+
+    if isinstance(prior, MultiOutput):
+        breakpoint()
+
+    if isinstance(prior, LinearTransform):
+        if isinstance(get_model_type(prior),LinearModel):
+            return prior
+
+    return _get_linear_model_part(parent_prior)
+
+
+def get_linear_model_part(prior):
+    """
+    A prior consists of a set of transformations like:
+        T_2(T_1(GP))
+    The linear part is the prior transformed after (potentially zero, in which case returns just the prior) a set of linear transforms.
+    """
+    linear_part = _get_linear_model_part(prior)
+
+    return linear_part

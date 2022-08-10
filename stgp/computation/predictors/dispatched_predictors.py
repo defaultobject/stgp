@@ -126,18 +126,18 @@ def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
     X = data.X
     Y = data.Y
 
-    num_latents = prior.num_latents
-    num_outputs = prior.num_outputs
+    num_latents = prior.output_dim
+    num_outputs = prior.output_dim
 
     # precompute batched kernels
     
-    K_xs = prior.covar(XS_1, XS_2)
-    K_xx = prior.covar(X, X)
-    K_xs_x = prior.covar(XS_1, X)
-    K_x_xs = prior.covar(X, XS_2)
-    mean_x = prior.mean(X)
-    mean_xs_1 = prior.mean(XS_1)
-    mean_xs_2 = prior.mean(XS_2)
+    K_xs = prior.covar_blocks(XS_1, XS_2)
+    K_xx = prior.covar_blocks(X, X)
+    K_xs_x = prior.covar_blocks(XS_1, X)
+    K_x_xs = prior.covar_blocks(X, XS_2)
+    mean_x = prior.mean_blocks(X)
+    mean_xs_1 = prior.mean_blocks(XS_1)
+    mean_xs_2 = prior.mean_blocks(XS_2)
 
     likelihood_arr = likelihood.likelihood_arr
 

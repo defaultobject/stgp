@@ -38,6 +38,7 @@ class GPPrior(Prior):
             self.sparsity = NoSparsity(self.X)
 
     def get_Z(self):
+        """ Unlike Independent / Joint models we do not returns a stacked inducing point """
         return self.sparsity.Z
 
     @property

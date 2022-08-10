@@ -132,6 +132,11 @@ class BatchGP(Posterior):
 
     def mean(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
+
+        mu = mu.T
+
+        chex.assert_shape(mu, [XS.shape[0] * self.output_dim, 1])
+
         return mu
 
     def var(self, XS):
@@ -145,7 +150,9 @@ class BatchGP(Posterior):
         var_arr =  self.inference.predictive_covar(
             XS_1, XS_2, self.data, self, self.likelihood, self.prior
         )
-        return var_arr
+
+        #TODO
+        return var_arr[0]
 
 
     def predict_f(self, XS,  diagonal=True, squeeze=True):

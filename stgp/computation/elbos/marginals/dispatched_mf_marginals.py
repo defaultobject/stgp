@@ -27,17 +27,17 @@ from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximat
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ....core.model_types import get_model_type, LinearModel, NonLinearModel
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part
 
 
 # ================================== Dispatched q(f) ==============================
 
-@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', False)
+@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ Catch all for single latent functions """
     return q_m, q_S
 
-@dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'NoSparsity', True)
+@dispatch(ApproximatePosterior, DiagonalLikelihood, 'GPPrior', 'NoSparsity', whiten=True)
 def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
     chex.assert_rank(q_S_chol, 2)
     chex.assert_shape(q_S_chol, [q_m.shape[0], q_m.shape[0]])
@@ -95,7 +95,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, spar
         data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity
     )
 
-@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, False)
+@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
     chex.assert_rank([m, S_chol], [2, 2])
@@ -113,7 +113,7 @@ def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, spar
         prior.mean(XS),
     )
 
-@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, True)
+@dispatch('prediction', 'GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, whiten=True)
 def marginal(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
     chex.assert_rank([m, S_chol], [2, 2])
@@ -159,8 +159,8 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     return mu, var
 
 
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     latents_arr = prior.parent
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -193,8 +193,8 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, True)
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
     base_prior = prior.base_prior
@@ -216,7 +216,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     return marginal_mu, marginal_var
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearModel, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, NonLinearModel, whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     """ 
     Computation of the ELL with a non-linear transform is computed using monte-carlo. Therefore we return the (untransformed)
@@ -269,12 +269,20 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior):
     return (marginal_mu.T)[..., None], (marginal_var.T)[..., None]
 
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, True)
-@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 
     # find out if the model is linear or not
     model_type = get_model_type(prior)
+
+    if isinstance(model_type, NonLinearModel):
+        # transform up to the last linear transform and then use sampling
+
+        linear_model_part = get_linear_model_part(prior.parent[1])
+
+    print(get_linear_model_part(prior.parent[1]))
+    breakpoint()
 
     return   evoke('marginal', approximate_posterior, likelihood, model_type, whiten)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, whiten
@@ -292,8 +300,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, diag
 
     return mu.T, var.T
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=True)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -332,7 +340,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
     return marginal_mu, marginal_var
 
 
-@dispatch('prediction', MeanFieldConjugateGaussian, ProductLikelihood, Independent, False)
+@dispatch('prediction', MeanFieldConjugateGaussian, ProductLikelihood, Independent, whiten=False)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     latents_arr = prior.latents
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -366,7 +374,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearModel, False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, LinearModel, whiten=False)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     if diagonal is False:
         raise NotImplementedError()
@@ -389,7 +397,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
 
     return marginal_mu, marginal_var
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Aggregate, False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Aggregate, whiten=False)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     if diagonal is False:
         raise NotImplementedError()
@@ -432,8 +440,8 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
 
     return (marginal_mu.T)[..., None], (marginal_var.T)[..., None]
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, False)
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, True)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, whiten=False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, Transform, whiten=True)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
 
     # find out if the model is linear or not
@@ -443,7 +451,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
         XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal
     ) 
 
-@dispatch('samples', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, False)
+@dispatch('samples', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, whiten=False)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
 
     if diagonal is False:
@@ -475,7 +483,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whit
 
     return mu
 
-@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, False)
+@dispatch('prediction', MeanFieldApproximatePosterior, ProductLikelihood, NonLinearModel, whiten=False)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal):
     base_prior = prior.base_prior
 
