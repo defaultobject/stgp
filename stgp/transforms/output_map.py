@@ -20,13 +20,20 @@ class _OutputMap(LinearTransform):
         res = self.parent.forward(f)
         return res[self.mapping]
 
-
     def transform(self, mu, var):
         base_mu, base_var = self.parent.transform(mu, var)
 
         t_mu = base_mu[self.mapping]
         t_var = var[self.mapping, :]
         t_var = t_var[:, self.mapping]
+
+        return t_mu, t_var
+
+    def transform_diagonal(self, mu, var):
+        base_mu, base_var = self.parent.transform_diagonal(mu, var)
+
+        t_mu = base_mu[self.mapping]
+        t_var = var[self.mapping, :]
 
         return t_mu, t_var
 

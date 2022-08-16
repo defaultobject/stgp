@@ -34,6 +34,7 @@ from ...sparsity import FreeSparsity, Sparsity
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ For computational reasons we return S_chol """
     mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol
@@ -42,7 +43,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 
     return mu, var_chol
 
-@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+#@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     Gaussian q(u). When the likelihood is Gaussian and no sparsity is used only the diagonal

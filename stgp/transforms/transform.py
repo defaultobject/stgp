@@ -31,6 +31,8 @@ class Transform(GPPrior):
 
     Linear Transforms must implement
         transform(mu, var): transform an input gaussian
+        in_block_dim: a property defining the size of the required blocks of covariance 
+        out_block_dim: a property defining the size of the transformed covariance block size
 
     When a transform defines a base prior it must additionally define
         get_sparsity_list
@@ -46,8 +48,8 @@ class Transform(GPPrior):
         self._parent = None
 
     def transform_diagonal(self, mu, var):
-        """ Transform a diagonal gaussian dist """
-        raise NotImplementedError()
+        """ Transform a diagonal gaussian dist. This should matain rank 2."""
+        raise NotImplementedError(f'{self}')
 
     def transform(self, mu, var):
         """ 
@@ -56,7 +58,7 @@ class Transform(GPPrior):
         mu and var are rank 2, should return rank 2.
         """
         
-        raise NotImplementedError()
+        raise NotImplementedError(f'{self}')
 
     def forward(self, x):
         """Compute f=T(x)."""
@@ -106,6 +108,14 @@ class LinearTransform(Transform):
         self._parent = latent
 
     @property
+    def in_block_dim(self):
+        return None
+
+    @property
+    def out_block_dim(self):
+        return None
+
+    @property
     def base_prior(self):
         return self.parent
 
@@ -149,6 +159,9 @@ class Independent(Transform):
 
         self._input_dim = self.output_dim
         self._parent = ensure_module_list(latents)
+
+    def transform_diagonal(self, mu, var): return mu, var
+    def transform(self, mu, var): return mu, var
 
     @property
     def latents(self):

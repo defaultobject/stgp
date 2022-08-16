@@ -43,17 +43,46 @@ def _get_linear_model_part(prior):
 
     parent_prior = prior.parent
 
-    if prior.is_base:
-        return prior
-
     if isinstance(prior, MultiOutput):
+        # when a multi output we simple get the linear part for each
+        #   output separetely
+        return [
+            _get_linear_model_part(m) for m in parent_prior
+        ]
         breakpoint()
 
-    if isinstance(prior, LinearTransform):
+    elif prior.is_base:
+        return prior
+
+    elif isinstance(prior, LinearTransform):
         if isinstance(get_model_type(prior),LinearModel):
             return prior
 
     return _get_linear_model_part(parent_prior)
+
+def _get_non_linear_model_part(prior):
+
+    if isinstance(prior, LinearTransform):
+        return None
+
+    parent_prior = prior.parent
+
+    # we need to check if multioutput before as the parent of a multioutput
+    #   is a module list
+    if isinstance(prior, MultiOutput):
+        # when a multi output we simple get the non linear part for each
+        #   output separetely
+        return [
+            _get_non_linear_model_part(m) for m in parent_prior
+        ]
+            
+    elif prior.is_base:
+        raise RuntimeError()
+
+    elif isinstance(get_model_type(parent_prior), LinearModel):
+        return prior
+
+    return _get_non_linear_model_part(parent_prior)
 
 
 def get_linear_model_part(prior):
@@ -65,3 +94,15 @@ def get_linear_model_part(prior):
     linear_part = _get_linear_model_part(prior)
 
     return linear_part
+
+
+def get_non_linear_model_part(prior):
+    """
+    A prior consists of a set of transformations like:
+        T_2(T_1(GP))
+    The non_linear part is the prior that transforms a linear part
+    """
+
+    non_linear_part = _get_non_linear_model_part(prior)
+
+    return non_linear_part

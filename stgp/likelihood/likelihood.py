@@ -9,6 +9,10 @@ class Likelihood(objax.Module):
     """Base likelihood class."""
 
     @property
+    def block_size(self):
+        return 1
+
+    @property
     def base(self):
         return self
 

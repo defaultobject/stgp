@@ -27,7 +27,7 @@ from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximat
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part
 
 
 # ================================== Dispatched q(f) ==============================
@@ -196,6 +196,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearModel, whiten=False)
 def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
+    breakpoint()
 
     base_prior = prior.base_prior
 
@@ -203,7 +204,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     N = data.X.shape[0]
 
     # Compute q(f) for each output
-    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, base_prior, whiten)(
+    marginal_mu, marginal_var = evoke('marginal', approximate_posterior, likelihood, base_prior, whiten=whiten)(
         data, q_m , q_S, approximate_posterior, likelihood, base_prior, whiten
     )
 
@@ -224,7 +225,7 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     """
     latents = prior.parent
 
-    return   evoke('marginal', approximate_posterior, likelihood, latents, whiten)(
+    return   evoke('marginal', approximate_posterior, likelihood, latents, whiten=whiten)(
         data, q_m, q_S, approximate_posterior, likelihood, latents, whiten
     ) 
 
@@ -276,17 +277,14 @@ def marginal(data, q_m, q_S, approximate_posterior, likelihood, prior, whiten):
     # find out if the model is linear or not
     model_type = get_model_type(prior)
 
-    if isinstance(model_type, NonLinearModel):
-        # transform up to the last linear transform and then use sampling
+    # when non linear we transform up to the last linear transform and then use sampling
+    linear_model_part = get_linear_model_part(prior)
 
-        linear_model_part = get_linear_model_part(prior.parent[1])
-
-    print(get_linear_model_part(prior.parent[1]))
-    breakpoint()
-
-    return   evoke('marginal', approximate_posterior, likelihood, model_type, whiten)(
-        data, q_m, q_S, approximate_posterior, likelihood, prior, whiten
+    # we are only processing the linear part so we can assume that it is linear
+    val = evoke('marginal', approximate_posterior, likelihood, LinearModel, whiten=whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, linear_model_part, whiten
     ) 
+    breakpoint()
 
 # ========================= Predictions =========================
 

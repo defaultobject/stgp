@@ -27,11 +27,27 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self._output_dim = self.derivative_kernel.output_dim
         self._is_base = is_base
 
+    @property
+    def is_base(self):
+        return self._is_base
+
+    @property
+    def out_block_dim(self):
+        return self.derivative_kernel.output_dim
+
+    @property
+    def in_block_dim(self):
+        return 1
+
     def forward(self, f): return f
 
     def transform(self, mu, var):
-        """ This is a base prior so no need to transform """
-        chex.assert_rank([mu, var], [2, 2])
+        if self.is_base:
+            # base prior so no need to transform
+            chex.assert_rank([mu, var], [2, 2])
+        else:
+            # compute 
+            pass
         return mu, var
 
     def get_sparsity_list(self):
@@ -97,7 +113,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         if self.is_base:
             return self
 
-        return self.parent
+        return self.parent.base_prior
 
 
 
