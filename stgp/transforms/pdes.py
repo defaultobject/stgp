@@ -16,14 +16,16 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def __init__(
         self,
         base_latent,
-        derivative_kernel,
+        mean = None,
+        kernel = None,
         is_base = True
     ):
         if base_latent is None:
             raise RuntimeError('Latent gp must be passed')
 
         self._parent = base_latent
-        self.derivative_kernel = derivative_kernel
+        self.derivative_mean = mean
+        self.derivative_kernel = kernel
         self._output_dim = self.derivative_kernel.output_dim
         self._is_base = is_base
 
