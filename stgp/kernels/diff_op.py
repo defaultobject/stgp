@@ -10,42 +10,29 @@ class DerivativeKernel(Kernel):
     """
     Accecpts a parent kernel OR a parent model
     """
-    def __init__(self, parent_kernel = None, parent_model = None) :
+    def __init__(self, parent_kernel = None) :
         self.parent_kernel = parent_kernel
-        self.parent_model = parent_model
         self.active_dims = None
 
+    def _K(self, X1, X2):
+        """ This is is being used a prior kernel therefore we can pass through the
+        kernel function """
 
-        if parent_kernel is None and parent_model is None:
-            raise RuntimeError('Either a kernel or model must be passed!')
+        return self._K_from_fn(X1, X2, self.parent_kernel.K)
 
-        if parent_kernel is not None and parent_model is not None:
-            raise RuntimeError('Only a kernel or model must be passed!')
-
-        self.use_kernel = parent_kernel is not None
-
-    def base_K_scalar(self, X1, X2):
-        chex.assert_rank([X1, X2], [2, 2])
-        chex.assert_equal([X1.shape[0], X2.shape[0]], [1, 1])
-
-        if self.use_kernel:
-            var = self.parent_kernel.K(X1, X2)
-        else:
-            var = self.parent_model.covar(X1, X2)
-
-        return var
+    def K_from_fn(self, X1, X2, var_fn):
+        return self._K_from_fn(X1, X2, var_fn)
 
 class FirstOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(
             self, 
             parent_kernel = None,
-            parent_model = None
         ):
 
-        super(FirstOrderDerivativeKernel_1D, self).__init__(parent_kernel, parent_model)
+        super(FirstOrderDerivativeKernel_1D, self).__init__(parent_kernel)
         self.output_dim = 2
 
-    def _compute_derivatives(self, x1, x2):
+    def _compute_derivatives(self, x1, x2, var_fn):
         """
         Let x1 have columns denotes by [t] then we use 
             Tto denote the differential operators d/dt
@@ -57,7 +44,7 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
             (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
 
         """
-        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -89,9 +76,9 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
 
         return K
 
-    def _K(self, X1, X2):
+    def _K_from_fn(self, X1, X2, var_fn):
         def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
@@ -109,13 +96,12 @@ class SecondOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(
             self, 
             parent_kernel = None,
-            parent_model = None
         ):
 
-        super(SecondOrderDerivativeKernel_1D, self).__init__(parent_kernel, parent_model)
+        super(SecondOrderDerivativeKernel_1D, self).__init__(parent_kernel)
         self.output_dim = 3
 
-    def _compute_derivatives(self, x1, x2):
+    def _compute_derivatives(self, x1, x2, var_fn):
         """
         Let x1 have columns denotes by [t] then we use 
             Tto denote the differential operators d/dt
@@ -127,7 +113,7 @@ class SecondOrderDerivativeKernel_1D(DerivativeKernel):
             (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
 
         """
-        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -175,9 +161,9 @@ class SecondOrderDerivativeKernel_1D(DerivativeKernel):
 
         return K
 
-    def _K(self, X1, X2):
+    def _K_from_fn(self, X1, X2, var_fn):
         def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
@@ -195,14 +181,13 @@ class SecondOrderDerivativeKernel_1D(DerivativeKernel):
 class SecondOrderDerivativeKernel_2D(DerivativeKernel):
     def __init__(
             self, 
-            parent_kernel = None,
-            parent_model = None
+            parent_kernel = None
         ):
 
-        super(SecondOrderDerivativeKernel_2D, self).__init__(parent_kernel, parent_model)
+        super(SecondOrderDerivativeKernel_2D, self).__init__(parent_kernel)
         self.output_dim = 5
 
-    def _compute_derivatives(self, x1, x2):
+    def _compute_derivatives(self, x1, x2, var_fn):
         """
         Let x1 have columns denotes by [t, s1] then we use 
             T, S1 to denote the differential operators d/dt, d/ds1
@@ -217,7 +202,7 @@ class SecondOrderDerivativeKernel_2D(DerivativeKernel):
 
         """
         # fix shapes
-        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
 
@@ -277,9 +262,9 @@ class SecondOrderDerivativeKernel_2D(DerivativeKernel):
 
         return K
 
-    def _K(self, X1, X2):
+    def _K_from_fn(self, X1, X2, var_fn):
         def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
@@ -298,18 +283,17 @@ class SecondOrderDerivativeKernel_2D(DerivativeKernel):
 class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(DerivativeKernel):
     def __init__(
             self, 
-            parent_kernel = None,
-            parent_model = None
+            parent_kernel = None
         ):
 
-        super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D, self).__init__(parent_kernel, parent_model)
+        super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D, self).__init__(parent_kernel)
         self.output_dim = 3
 
-    def _K(self, X1, X2):
-        Kxx = self.base_K_scalar(X1, X2)
+    def _K_from_fn(self, X1, X2, var_fn):
+        Kxx = var_fn(X1, X2)
 
         def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
@@ -327,14 +311,13 @@ class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(DerivativeKernel):
 class SecondOrderDerivativeKernel_3D(DerivativeKernel):
     def __init__(
             self, 
-            parent_kernel = None,
-            parent_model = None
+            parent_kernel = None
         ):
 
-        super(SecondOrderDerivativeKernel_3D, self).__init__(parent_kernel, parent_model)
+        super(SecondOrderDerivativeKernel_3D, self).__init__(parent_kernel)
         self.output_dim = 7
 
-    def _compute_derivatives(self, x1, x2):
+    def _compute_derivatives(self, x1, x2, var_fn):
         """
         Let x1 have columns denotes by [t, s1, s2] then we use 
             T, S1, S2 to denote the differential operators d/dt, d/ds1, d/ds2 
@@ -351,7 +334,7 @@ class SecondOrderDerivativeKernel_3D(DerivativeKernel):
 
         """
         # fix shapes
-        k = lambda x1, x2: self.base_K_scalar(x1[None, ...], x2[None, ...])[0, 0]
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
 
 
         # compute blocks
@@ -422,9 +405,9 @@ class SecondOrderDerivativeKernel_3D(DerivativeKernel):
 
         return K
 
-    def _K(self, X1, X2):
+    def _K_from_fn(self, X1, X2, var_fn):
         def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0))(x1, X2)
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 

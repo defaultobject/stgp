@@ -27,14 +27,13 @@ class SecondOrderDerivativeMean_1D(DiffOpMean):
     """
     Given mu(x) computes [mu(x), dmu(x)/dx, d^2mu(x)/dx^2]
     """
-    def __init__(self, parent_model):
-        self.parent = parent_model
-        chex.assert_equal(self.parent.output_dim, 1)
+    def __init__(self, parent_model = None):
         self.output_dim = 3
+        self.parent_model = parent_model
 
-    def mean_blocks(self, X):
+    def mean_blocks_from_fn(self, X, mean_fn):
         # assumes output dim is
-        fn = lambda XS: self.parent.mean(XS)[:, 0]
+        fn = lambda XS: mean_fn(XS)[:, 0]
 
         mu_x = fn(X)
         dmu_dx = jax.vmap(jacfwd(fn))(X[:, None, :])
@@ -50,6 +49,6 @@ class SecondOrderDerivativeMean_1D(DiffOpMean):
             d2mu_dx2
         ])[..., None]
 
-    def mean(self, X):
-        return np.vstack(self.mean_blocks(X))
+    def mean_from_fn(self, X, mean_fn):
+        return np.vstack(self.mean_blocks_from_fn(X, mean_fn))
 
