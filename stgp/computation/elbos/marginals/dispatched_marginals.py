@@ -108,14 +108,18 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
 
     # we must use the predictive distribution here 
-    mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
+    mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0][0]
 
     # assume that XS1 == XS2
-    var_fn = lambda XS1, XS2: fn(XS1, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[1]
+    var_fn = lambda XS1, XS2: fn(XS1, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[1][0]
 
-    print(mean_fn(data.X))
-    print(var_fn(data.X, data.X))
-    breakpoint()
+    mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
+    var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
+
+    mu = mu.T[None, ...]
+    var = var[None, ...]
+
+    return mu, var
 
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=False)
@@ -143,8 +147,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         mu_p, var_p  = evoke('marginal_blocks', approximate_posterior, likelihood, p, whiten=whiten)(
             data, q_m, q_S_chol, approximate_posterior, likelihood, p, out_block_dim, whiten
         ) 
+
         mu_list.append(mu_p)
-        var_list.append(var_list)
+        var_list.append(var_p)
 
     return mu_list, var_list
     
@@ -174,7 +179,9 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     val = evoke('marginal_blocks', approximate_posterior, likelihood, linear_model_part, whiten=whiten)(
         data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_size, whiten
     ) 
+
     breakpoint()
+    return val[0], val[1]
 
 
 
