@@ -116,7 +116,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
     var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
 
-    mu = mu.T[None, ...]
+    mu = np.transpose(mu, [2, 1, 0])
     var = var[None, ...]
 
     return mu, var
