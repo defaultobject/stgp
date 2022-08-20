@@ -44,7 +44,7 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    """ Catch all for single latent functions """
+    """ Catch all for single latent functions with no sparsity"""
     N = q_m.shape[0]
 
     if out_block_dim == 1:
@@ -92,8 +92,11 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         evoke_kwargs = {'whiten': whiten}
     )
 
-    chex.assert_shape(marginal_mu, [num_latents, N, 1])
-    chex.assert_shape(marginal_var, [num_latents, N, out_block_dim, out_block_dim])
+    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+
+    chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
+    chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
 
     return marginal_mu, marginal_var
 
@@ -108,16 +111,20 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
 
     # we must use the predictive distribution here 
-    mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0][0]
+    mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
 
     # assume that XS1 == XS2
-    var_fn = lambda XS1, XS2: fn(XS1, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[1][0]
+    var_fn = lambda XS1, XS2: fn(XS1, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[1][0, 0]
 
     mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
+
     var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
 
-    mu = np.transpose(mu, [2, 1, 0])
-    var = var[None, ...]
+    var = var[:, None, ...]
+
+    N = data.X.shape[0]
+    chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+    chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
 
     return mu, var
 
@@ -180,7 +187,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
         data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_size, whiten
     ) 
 
-    breakpoint()
     return val[0], val[1]
 
 

@@ -20,7 +20,7 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 
 from .linear_marginals import linear_marginal_blocks
 
-@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, whiten=False)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
     chex.assert_rank([m, S_chol], [2, 2])
@@ -38,7 +38,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
         prior.mean(XS),
     )
 
-@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', Sparsity, whiten=True)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
     chex.assert_rank([m, S_chol], [2, 2])
@@ -83,14 +83,19 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         evoke_kwargs = {'whiten': whiten}
     )
 
-    #chex.assert_shape(marginal_mu, [num_latents, N, 1])
-    #chex.assert_shape(marginal_var, [num_latents, N, 1])
+    # TODO: this should be fixed in the lower level predictoins but hacked here for now
+
+    marginal_var = marginal_var[..., None]
+
+
+    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+
+    chex.assert_shape(marginal_mu, [N, prior.output_dim,  out_block_dim])
+    chex.assert_shape(marginal_var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
 
     return marginal_mu, marginal_var
-
-
-
-    breakpoint()
 
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)

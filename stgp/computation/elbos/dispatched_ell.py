@@ -7,7 +7,7 @@ from ...dispatch import dispatch, evoke
 from ..matrix_ops import block_from_vec, block_from_mat, stack_rows
 
 from ...data import Data, TransformedData
-from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform, DataLatentPermutation
+from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform, DataLatentPermutation, MultiOutput
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
@@ -19,6 +19,12 @@ from ...core.model_types import get_model_type, LinearModel, NonLinearModel
 
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
+
+def get_block_type(lik_block_size, q_block_size):
+    if (lik_block_size == 1) and (q_block_size == 1):
+        return 'Diagonal'
+    
+    return 'Blocked'
 
 # ====================== SCALAR ELL COMPONENTS ===================
 @dispatch('scalar', Gaussian, GaussianApproximatePosterior)
@@ -333,17 +339,98 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
-@dispatch(Data, ProductLikelihood, Transform, MeanFieldApproximatePosterior)
-@dispatch(Data, ProductLikelihood, Transform, FullGaussianApproximatePosterior)
+@dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, 'Diagonal')
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
+    print('diagonal')
+    chex.assert_rank([q_f_mu, q_f_var], [3, 4])
+
+    N, P = Y.shape
+    chex.assert_equal([q_f_mu.shape[0], q_f_mu.shape[1]] , [N, P])
+    chex.assert_equal([q_f_var.shape[0], q_f_var.shape[1]] , [N, P])
+
+    model_type = get_model_type(prior)
+
+    if isinstance(model_type, LinearModel):
+        # check if closed form expression exists
+        print('linear')
+        pass
+    else:
+        print('non-linear')
+
+    # use sampling
+
+    return 0
+
+@dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
+    print('blocked')
+    chex.assert_rank([q_f_mu, q_f_var], [3, 4])
+
+    chex.assert_equal([q_f_var.shape[1]], [1])
+
+    model_type = get_model_type(prior)
+
+    if isinstance(model_type, LinearModel):
+        # check if closed form expression exists
+        print('linear')
+        pass
+    else:
+        print('non-linear')
+
+    return 0
+
+# ===============================================================================
+# ================================= Entry Point =================================
+# ===============================================================================
+
+@dispatch(Data, Likelihood, Transform, MeanFieldApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     base_prior = prior.base_prior
 
     # find out if the model is linear or not
     model_type = get_model_type(prior)
 
+    breakpoint()
+
     return evoke('expected_log_likelihood', data, likelihood, model_type, approximate_posterior)(
         data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
     )
+
+@dispatch(Data, ProductLikelihood, MultiOutput, MeanFieldApproximatePosterior)
+@dispatch(Data, ProductLikelihood, MultiOutput, FullGaussianApproximatePosterior)
+def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    Multioutput assumes that
+        Data Is 
+    """
+    ell_arr = []
+
+    # TODO: what about data?
+    for p in range(prior.output_dim):
+        prior_p = prior.parent[p]
+        likelihood_p = likelihood.likelihood_arr[p]
+        q_f_mu_p = q_f_mu_arr[p]
+        q_f_var_p = q_f_var_arr[p]
+
+        chex.assert_rank([q_f_mu_p, q_f_var_p], [3, 4])
+
+        q_block_size = q_f_var_p.shape[-1]
+        lik_block_size = likelihood.block_size
+
+        assert lik_block_size <= q_block_size
+
+        X_p = data.X
+        Y_p = data.Y[:, p][:, None]
+
+        block_type_p = get_block_type(lik_block_size, q_block_size)
+
+        ell_p =  evoke('expected_log_likelihood', data, likelihood_p, prior_p, approximate_posterior, block_type_p)(
+            X_p, Y_p, q_f_mu_p, q_f_var_p, likelihood_p, prior_p, approximate_posterior, inference, block_type_p
+        )
+        ell_arr.append(ell_p)
+
+    return np.sum(np.array(ell_arr))
+
 
 # ================================= Special Cases =================================
 

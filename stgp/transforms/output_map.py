@@ -18,10 +18,13 @@ class _OutputMap(LinearTransform):
 
     def forward(self, f):
         res = self.parent.forward(f)
+        raise NotImplementedError()
         return res[self.mapping]
 
     def transform(self, mu, var):
         base_mu, base_var = self.parent.transform(mu, var)
+
+        raise NotImplementedError()
 
         t_mu = base_mu[self.mapping]
         t_var = var[self.mapping, :]
@@ -32,8 +35,12 @@ class _OutputMap(LinearTransform):
     def transform_diagonal(self, mu, var):
         base_mu, base_var = self.parent.transform_diagonal(mu, var)
 
-        t_mu = base_mu[self.mapping]
-        t_var = var[self.mapping, :]
+        N, P, A = base_mu.shape
+
+        if A != 1: raise NotImplementedError()
+
+        t_mu = base_mu[:, self.mapping, :]
+        t_var = var[:, self.mapping, ...]
 
         return t_mu, t_var
 
@@ -42,6 +49,8 @@ class _OutputMap(LinearTransform):
         # compute mean from parent
         # will be shape P x N x 1
         parent_mean = self.parent.mean_blocks(X)
+
+        raise NotImplementedError()
 
         # only select and return the correct outputs
         sub_mean = parent_mean[self.mapping, ...]
@@ -66,6 +75,7 @@ class _OutputMap(LinearTransform):
         # compute full covariance of parent
         # will be P * N1 x P * N2
         parent_covar = self.parent.covar(X1, X2)
+        raise NotImplementedError()
 
         N1 = X1.shape[0]
         N2 = X2.shape[0]

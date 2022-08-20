@@ -32,6 +32,8 @@ class SecondOrderDerivativeMean_1D(DiffOpMean):
         self.parent_model = parent_model
 
     def mean_blocks_from_fn(self, X, mean_fn):
+        N = X.shape[0]
+
         # assumes output dim is
         fn = lambda XS: mean_fn(XS)[:, 0]
 
@@ -39,15 +41,21 @@ class SecondOrderDerivativeMean_1D(DiffOpMean):
         dmu_dx = jax.vmap(jacfwd(fn))(X[:, None, :])
         d2mu_dx2 = jax.vmap(hessian(fn, 0))(X[:, None, :])
 
+        mu_x = np.squeeze(mu_x)
         dmu_dx = np.squeeze(dmu_dx)
         d2mu_dx2 = np.squeeze(d2mu_dx2)
 
         # return rank 3 matrix
-        return np.array([
+        d_mu =  np.array([
             mu_x, 
             dmu_dx, 
             d2mu_dx2
         ])[..., None]
+
+        d_mu = np.transpose(d_mu, [1, 0, 2])
+        chex.assert_shape(d_mu, [N, self.output_dim, 1])
+
+        return d_mu
 
     def mean_from_fn(self, X, mean_fn):
         return np.vstack(self.mean_blocks_from_fn(X, mean_fn))
