@@ -15,7 +15,7 @@ from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, Dia
 from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, ApproximatePosterior
-from ...core.model_types import get_model_type, LinearModel, NonLinearModel
+from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_non_linear_model_part
 
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
@@ -215,31 +215,44 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     return ell_arr
 
 # Meanfield Approximate Posterior
-def compute_ell_for_sample(f, X, Y, prior, likelihood, approx_posteriors_arr):
-    chex.assert_rank(f, 2)
+def compute_ell_for_sample(f, X, Y, prior, likelihood, approximate_posterior):
+    """
+    Args:
+        f: N x P x B - sampled f
+        Y: N x P - data output
+
+    """
+
+    chex.assert_rank(f, 3)
     chex.assert_rank(Y, 2)
+
+    N, Q, B = f.shape
+    P = Y.shape[1]
 
     likelihood_arr = likelihood.likelihood_arr
     num_likelihoods = len(likelihood_arr)
 
-    N = Y.shape[0]
-    P = Y.shape[1]
+    chex.assert_equal(P, num_likelihoods)
 
-    # Reparameterise
-    # Transform through prior for each datapoint
-    transformed_f = jax.vmap(
-        prior.forward,
-        [1],
-        0
-    )(f)
+    non_linear_prior_part = get_non_linear_model_part(prior)
 
-    # we want f to have shape [N, P]
-    transformed_f = np.reshape(transformed_f, [N, num_likelihoods])
+    if non_linear_prior_part is not None:
+        transformed_f = f
+        for p in non_linear_prior_part:
+            # Reparameterise
+            # Transform through prior for each datapoint
+            transformed_f = jax.vmap(
+                p.forward,
+                [0],
+                0
+            )(transformed_f)
+    else:
+        transformed_f = f
+
 
     # Y and F must be rank 2 when they are passed to log_likelihood
     # When vmapping one dimension is lost so extent here
     Y = Y[..., None]
-    transformed_f = transformed_f[..., None]
     chex.assert_shape(transformed_f, Y.shape)
 
     # Get nan mask for output
@@ -297,7 +310,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         compute_ell_for_sample, 
         q_f_mu_arr, 
         q_f_var_arr, 
-        fn_args = [X, Y, prior, likelihood, approx_posteriors_arr],
+        fn_args = [X, Y, prior, likelihood, approximate_posterior],
         generator = inference.generator, 
         num_samples = inference.ell_samples
     )
@@ -339,23 +352,57 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         num_samples = inference.ell_samples
     )
 
+# ===============================================================================
+# ================================= ^^^ OLD ^^^ =================================
+# ===============================================================================
+
 @dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, 'Diagonal')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     print('diagonal')
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
 
-    N, P = Y.shape
+    N, P, B = q_f_mu.shape
+
     chex.assert_equal([q_f_mu.shape[0], q_f_mu.shape[1]] , [N, P])
     chex.assert_equal([q_f_var.shape[0], q_f_var.shape[1]] , [N, P])
 
     model_type = get_model_type(prior)
 
-    if isinstance(model_type, LinearModel):
+    if False and isinstance(model_type, LinearModel):
         # check if closed form expression exists
         print('linear')
         pass
     else:
         print('non-linear')
+
+        likelihood_arr = likelihood.likelihood_arr
+
+        # q_f_mu is of shape:
+        #   N x P x B
+        # q_v_var is of shape:
+        #   N x P x B x 1
+
+        num_likelihoods = len(likelihood_arr)
+        N, P = Y.shape
+        Q = prior.base_prior.output_dim
+
+        # Normalise shapes
+        q_f_var = q_f_var[..., 0]
+
+        ell =  mv_indepentdent_monte_carlo(
+            compute_ell_for_sample, 
+            q_f_mu, 
+            q_f_var, 
+            fn_args = [X, Y, prior, likelihood, approximate_posterior],
+            generator = inference.generator, 
+            num_samples = inference.ell_samples
+        )
+
+        chex.assert_shape(ell, [N, P, 1])
+
+        ell = np.sum(ell, axis=0)[:, 0]
+
+        return ell
 
     # use sampling
 
@@ -365,8 +412,10 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     print('blocked')
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
-
     chex.assert_equal([q_f_var.shape[1]], [1])
+
+    N, Q, B = q_f_mu.shape
+    P = Y.shape[1]
 
     model_type = get_model_type(prior)
 
@@ -376,6 +425,22 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         pass
     else:
         print('non-linear')
+
+        # TODO: error in q_f_var
+        ell = mv_block_monte_carlo(
+            compute_ell_for_sample, 
+            q_f_mu, 
+            q_f_var, 
+            fn_args = [X, Y, prior, likelihood, approximate_posterior],
+            generator = inference.generator, 
+            num_samples = inference.ell_samples
+        )
+
+        chex.assert_shape(ell, [N, P, 1])
+
+        ell = np.sum(ell, axis=0)[:, 0]
+
+        return ell
 
     return 0
 
@@ -389,8 +454,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     # find out if the model is linear or not
     model_type = get_model_type(prior)
-
-    breakpoint()
 
     return evoke('expected_log_likelihood', data, likelihood, model_type, approximate_posterior)(
         data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference

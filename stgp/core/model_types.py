@@ -60,29 +60,34 @@ def _get_linear_model_part(prior):
 
     return _get_linear_model_part(parent_prior)
 
-def _get_non_linear_model_part(prior):
-
-    if isinstance(prior, LinearTransform):
-        return None
-
+def _get_non_linear_model_part(prior) -> list:
     parent_prior = prior.parent
+    parent_model_type = get_model_type(parent_prior)
+    parent_is_linear = isinstance(get_model_type(parent_prior), LinearModel)
+
+    # checks for base of the recursion
+    if isinstance(prior, LinearTransform) and parent_is_linear:
+        return []
+    elif prior.is_base:
+        raise RuntimeError()
+
 
     # we need to check if multioutput before as the parent of a multioutput
     #   is a module list
     if isinstance(prior, MultiOutput):
         # when a multi output we simple get the non linear part for each
         #   output separetely
-        return [
+        return [[
             _get_non_linear_model_part(m) for m in parent_prior
-        ]
+        ], prior]
             
-    elif prior.is_base:
-        raise RuntimeError()
+    elif parent_is_linear:
+        return [prior]
 
-    elif isinstance(get_model_type(parent_prior), LinearModel):
-        return prior
-
-    return _get_non_linear_model_part(parent_prior)
+    # only here is parent is not linear 
+    parent_non_linear_part = _get_non_linear_model_part(parent_prior)
+    parent_non_linear_part.append(prior)
+    return parent_non_linear_part
 
 
 def get_linear_model_part(prior):
@@ -96,7 +101,7 @@ def get_linear_model_part(prior):
     return linear_part
 
 
-def get_non_linear_model_part(prior):
+def get_non_linear_model_part(prior) -> list:
     """
     A prior consists of a set of transformations like:
         T_2(T_1(GP))

@@ -314,3 +314,14 @@ class MultiOutput(Transform):
         return self.parent[0].base_prior
 
 
+class NonLinearIdentity(NonLinearTransform):
+    def __init__(self, parent):
+        super(NonLinearIdentity, self).__init__(parent)
+        self._output_dim = 1
+
+    """ For debugging purposes """
+    def forward(self, x):
+        return x
+
+    def inverse(self, f):
+        return f

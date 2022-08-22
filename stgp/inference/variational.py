@@ -38,8 +38,8 @@ class Variational(Inference):
             # TODO: minibatching only works when sparsity is used. Assert this.
             data.batch()
 
-        return evoke('marginal', 'latents', approximate_posterior, likelihood, prior, self.whiten)(
-            XS, data, approximate_posterior, likelihood, prior, self, self.whiten, diagonal
+        return evoke('marginal', 'latents', approximate_posterior, likelihood, prior, whiten=self.whiten)(
+            XS, data, approximate_posterior, likelihood, prior, self, 1, self.whiten
         )
 
     def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal):

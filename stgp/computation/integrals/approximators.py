@@ -16,10 +16,23 @@ def monte_carlo():
 def mv_indepentdent_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_samples=100, average=True):
     """
     multi-variate monte-carlo 
+
+    Args:
+        fn: Callable - 
+        mu_arr: N x P x B
+        var_arr: N x P x B
     """
+
+    if generator == None: raise RuntimeError()
+
     chex.assert_equal(mu_arr.shape, var_arr.shape)
+    chex.assert_rank(mu_arr, 3)
+
+    N, Q, B = mu_arr.shape
 
     white_samples = objax.random.normal([num_samples]+list(mu_arr.shape), mean=0.0, stddev=1.0, generator=generator)
+
+    chex.assert_shape(white_samples, [num_samples, N, Q, B])
 
     # Reparameterise
     def reparameterise(fn, samples, mu_arr, var_arr, *args):
@@ -45,13 +58,33 @@ def mv_indepentdent_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None
 
 
 def mv_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_samples=100, average=True):
-    chex.assert_equal(mu_arr.shape[0], var_arr.shape[0])
-    chex.assert_equal(mu_arr.shape[1], var_arr.shape[1])
-    chex.assert_equal(mu_arr.shape[1], var_arr.shape[2])
+    """
+    multi-variate monte-carlo 
+
+    Args:
+        fn: Callable - 
+        mu_arr: N x Q x B
+        var_arr: N x 1 x QB x QB
+    """
+
+    if generator == None: raise RuntimeError()
+    chex.assert_rank([mu_arr, var_arr], [3, 4])
+    chex.assert_equal(var_arr.shape[1], 1)
+
+    var_arr = var_arr[:, 0, :, :]
+
+    N, Q, B = mu_arr.shape
+
+    chex.assert_equal(var_arr.shape, (N, Q * B, Q*B))
+
+    # TODO: test reshaping of mu_arr
+    mu_arr = np.reshape(mu_arr, [N, Q * B])
 
     white_samples = objax.random.normal([num_samples]+list(mu_arr.shape), mean=0.0, stddev=1.0, generator=generator)
+    chex.assert_shape(white_samples, [num_samples, N, Q*B])
 
     if True:
+        # add jit for numerical stability when computing samples
         tiled_jit = np.tile(
             np.eye(var_arr.shape[1])*settings.jitter,
             [var_arr.shape[0], 1, 1]
@@ -60,17 +93,16 @@ def mv_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_s
     else:
         chol_arr = np.linalg.cholesky(var_arr)
 
-   # Reparameterise
+
     def reparameterise(fn, samples, mu_arr, chol_arr, *args):
         chex.assert_equal(samples.shape, mu_arr.shape)
-
         samples = samples[..., None]
         mu_arr = mu_arr[..., None]
 
+        # reparemeterise
         s = mu_arr + chol_arr @ samples 
 
-        s = s[..., 0].T
-
+        # TODO: fix blocks here
         return fn(s, *args)
 
 
