@@ -35,7 +35,7 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
         #if (block_size is None and num_blocks is None) or variance is None:
         #    raise NotImplementedError()
 
-        self.block_size = block_size
+        self._block_size = block_size
         self.num_blocks = num_blocks
 
         if variance is None:
@@ -50,6 +50,9 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
             name ='BlockGaussian/variance', 
             train=True
         )
+    @property
+    def block_size(self):
+        return self._block_size
 
     @property
     def variance(self) -> np.ndarray:
@@ -64,7 +67,7 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
 class ReshapedBlockDiagonalGaussian(BlockDiagonalGaussian):
     def __init__(self, bd_lik, block_size:int=None, num_blocks:int=None):
         self.bd_lik = bd_lik
-        self.block_size = block_size
+        self._block_size = block_size
         self.num_blocks = num_blocks
 
     @property
@@ -152,9 +155,13 @@ class ReshapedGaussian(Gaussian):
     def __init__(self, base,  num_blocks, block_size): 
         self._base = base
         self.num_blocks = num_blocks
-        self.block_size = block_size
+        self._block_size = block_size
 
         self.new_mat = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+    @property
+    def block_size(self):
+        return self._block_size
 
     @property
     def base(self):

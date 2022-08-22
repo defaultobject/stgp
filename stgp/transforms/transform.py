@@ -276,6 +276,18 @@ class Independent(Transform):
 
         return F, L, Qc, H, P_inf
 
+    def expm(self, dt, X_s):
+        A_blocks = batch_or_loop(
+            lambda d, x_s, latent:  latent.kernel.expm(dt, x_s),
+            [dt, X_s, self.parent],
+            [None, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+
+        return to_block_diag(A_blocks)
+
 
 
 class MultiOutput(Transform):
