@@ -286,11 +286,11 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         chex.assert_shape(ell, [N, P, 1])
 
-        ell = np.sum(ell, axis=0)[:, 0]
+        ell = np.sum(ell_arr)
 
         return ell
 
-    return 0
+    raise RuntimeError()
 
 @dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
@@ -308,23 +308,26 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         print('linear')
         pass
     else:
-        ell = mv_block_monte_carlo(
+
+        ell = approximate_expectation(
             compute_ell_for_sample, 
             q_f_mu, 
             q_f_var, 
+            prior = prior,
             fn_args = [X, Y, prior, likelihood, approximate_posterior],
             generator = inference.generator, 
-            num_samples = inference.ell_samples
+            num_samples = inference.ell_samples,
+            block_type = block_type,
+            average = True
         )
 
         chex.assert_shape(ell, [N, P, 1])
 
-        ell = np.sum(ell, axis=0)[:, 0]
+        ell = np.sum(ell)
 
         return ell
 
-    return 0
-
+    raise RuntimeError()
 # ===============================================================================
 # ================================= Entry Point =================================
 # ===============================================================================

@@ -77,20 +77,20 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
         return np.sum(w * const*res)
 
 def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, block_type, generator, average):
-    ell = mv_block_monte_carlo(
-        compute_ell_for_sample, 
-        q_f_mu, 
-        q_f_var, 
-        fn_args = [X, Y, prior, likelihood, approximate_posterior],
-        generator = inference.generator, 
-        num_samples = inference.ell_samples
+
+    wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
+
+    samples = mv_block_monte_carlo(
+        wrapped_fn,
+        mu, 
+        var, 
+        fn_args = fn_args,
+        generator = generator, 
+        num_samples = num_samples,
+        average = average
     )
 
-    chex.assert_shape(ell, [N, P, 1])
-
-    ell = np.sum(ell, axis=0)[:, 0]
-
-    return ell
+    return samples
 
 def approximate_expectation(fn, mu, var, prior, fn_args, num_samples = None, block_type = None, generator = None, average=True):
     if block_type is None: raise RuntimeError('Block type must be passed')
