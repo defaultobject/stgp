@@ -113,10 +113,12 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool):
     Ns = XS.shape[0]
     P = Y.shape[1]
 
-    mu_arr = mu_arr.reshape([P, Ns])
+    mu_arr = np.transpose(mu_arr, [1, 0, 2])
+
     if diagonal:
-        var_arr = var_arr.reshape([P, Ns])
+        var_arr = np.transpose(var_arr, [1, 0, 2])[..., None]
     else:
+        raise NotImplementedError()
         var_arr = var_arr.reshape([P, Ns, Ns])
 
     return mu_arr, var_arr
@@ -163,7 +165,7 @@ def predict(XS, data, gp, likelihood, prior, diagonal):
     X = data.X
     Y = data.Y
 
-    Ns = XS.shape[0]
+    NS = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
 
@@ -180,11 +182,16 @@ def predict(XS, data, gp, likelihood, prior, diagonal):
 
     if diagonal:
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+        mu = np.reshape(mu, [P, NS, 1])
+        var = np.reshape(var, [P, NS, 1])
+
+        mu = np.transpose(mu, [1, 0, 2])
+        var = np.transpose(var, [1, 0, 2])[..., None]
+
     else:
         mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+        raise NotImplementedError()
 
-    mu = mu.reshape([P, Ns])
-    var = var.reshape([P, Ns])
 
     return mu, var
 

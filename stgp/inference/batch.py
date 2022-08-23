@@ -26,6 +26,7 @@ class Batch(Inference):
         pred_mu, pred_var = evoke('predict_blocks', data, gp, likelihood, prior)(
             XS, data, group_size, block_size, gp, likelihood, prior, diagonal
         )
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
 
         return pred_mu, pred_var
 
