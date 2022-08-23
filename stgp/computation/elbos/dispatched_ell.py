@@ -27,14 +27,15 @@ def get_block_type(lik_block_size, q_block_size):
     return 'Blocked'
 
 # ====================== SCALAR ELL COMPONENTS ===================
-@dispatch('scalar', Gaussian, GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+@dispatch(Gaussian)
+def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Gaussian expected log likelihood component. """
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
-@dispatch('scalar', Likelihood, GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+@dispatch(Likelihood)
+def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Expected log likelihood component approximated through quadrature. """
+    # TODO: add this to settings
     num_quad_points = 10
 
     x, w = hermgauss(num_quad_points)
@@ -62,7 +63,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 # ====================== GAUSSIAN ELLs ===================
 
 @dispatch(BlockDiagonalGaussian, GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     # TODO: adding missing data masking
     block_size = likelihood.block_size
 
@@ -88,7 +89,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
 
 @dispatch("DiagonalGaussian", GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Special case for diagonal Gaussian"""
     N = X.shape[0]
 
@@ -121,9 +122,14 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     return ell
 
-@dispatch(DiagonalLikelihood, GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+@dispatch(DiagonalLikelihood)
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ For diagonal likelihoods adds support for missing data. """ 
+    chex.assert_rank([Y, q_f_mu, q_f_var], [2, 2, 3])
+
+    # q_f_var is diagional so we fix the shapes so all shapes batch
+    q_f_var = q_f_var[..., 0]
+    chex.assert_equal_shape([Y, q_f_mu, q_f_var])
 
     # Get nan mask for output
     mask = get_mask(Y)
@@ -131,12 +137,13 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     # Convert nans to zeros
     Y = mask_vector(Y, mask)
 
+    # Ensure rank 2 after batching
     X = X[:, None, ...]
     Y = Y[..., None]
     q_f_mu = q_f_mu[..., None]
     q_f_var = q_f_var[..., None]
 
-    fn = evoke('expected_log_likelihood', 'scalar', likelihood, 'GaussianApproximatePosterior')
+    fn = evoke('scalar_expected_log_likelihood', likelihood)
 
     # Compute ELL for each datapoint
     ell_arr = jax.vmap(
@@ -154,7 +161,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     return ell
 
 @dispatch(PowerLikelihood, GaussianApproximatePosterior)
-def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     scale_a = likelihood.a
 
     parent_lik = likelihood.parent
@@ -167,54 +174,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
 # ====================== ELL FOR DIFFERENT APPROXIMATE POSTERIORS ===================
 
-# Gaussian Approximate Posterior
-@dispatch(Data, Likelihood, 'GPPrior', GaussianApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu, q_f_var, likelihood, prior, approx_posterior, inference):
-    X, Y = data.X, data.Y
-
-    return evoke('expected_log_likelihood', likelihood, approx_posterior)(
-        X, Y, q_f_mu, q_f_var, likelihood
-    )
-
-@dispatch(Likelihood, 'GPPrior', GaussianApproximatePosterior)
-def expected_log_likelihood_with_xy(X, Y, q_f_mu, q_f_var, likelihood, prior, approx_posterior, inference):
-    return evoke('expected_log_likelihood', likelihood, approx_posterior)(
-        X, Y, q_f_mu, q_f_var, likelihood
-    )
-
-# Meanfield Approximate Posterior
-@dispatch(Data, ProductLikelihood, LinearModel, MeanFieldApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    """
-    When the prior is a linear transform the approximate posterior is Gaussian and 
-        q_f_mu, q_f_var will already be transformed if necessary
-    """
-
-    X, Y = data.X, data.Y
-
-    likelihood_arr = likelihood.likelihood_arr
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-
-    # TODO: this assumes an indepedent prior
-    latent_arr = prior.base_prior.parent
-
-    Y = Y[..., None]
-
-    ell_arr = batch_over_module_types(
-        evoke_name = 'expected_log_likelihood_with_xy',
-        evoke_params = [],
-        module_arr = [likelihood_arr, latent_arr, approx_posteriors_arr],
-        fn_params = [X, Y, q_f_mu_arr, q_f_var_arr, likelihood_arr, prior, approx_posteriors_arr, inference],
-        fn_axes = [None, 1, 0, 0, 0, None, 0, None],
-        dim = len(approx_posteriors_arr),
-        out_dim  = 1 
-    )
-
-    chex.assert_shape(ell_arr, [len(likelihood_arr)])
-
-    return ell_arr
-
-# Meanfield Approximate Posterior
 def compute_ell_for_sample(f, X, Y, prior, likelihood, approximate_posterior):
     """
     Args:
@@ -284,78 +243,6 @@ def compute_ell_for_sample(f, X, Y, prior, likelihood, approximate_posterior):
     #return np.sum(ll_arr)
     return ll_arr
 
-# Meanfield Gaussian with non-linear ELL Approximate Posterior
-@dispatch(Data, ProductLikelihood, NonLinearModel, MeanFieldApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    """
-    Samples from the approximate posteriors need to be transformed through the prior and then the 
-        ELL is approximated using monte-carlo
-    """
-
-    X, Y = data.X, data.Y
-
-    likelihood_arr = likelihood.likelihood_arr
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-
-    num_likelihoods = len(likelihood_arr)
-    N, P = Y.shape
-    Q = prior.base_prior.output_dim
-
-    # Normalise shapes
-    q_f_mu_arr = np.reshape(q_f_mu_arr, [Q, N])
-    q_f_var_arr = np.reshape(q_f_var_arr, [Q, N])
-
-
-    ell =  mv_indepentdent_monte_carlo(
-        compute_ell_for_sample, 
-        q_f_mu_arr, 
-        q_f_var_arr, 
-        fn_args = [X, Y, prior, likelihood, approximate_posterior],
-        generator = inference.generator, 
-        num_samples = inference.ell_samples
-    )
-
-    chex.assert_shape(ell, [N, P, 1])
-
-    ell = np.sum(ell, axis=0)[:, 0]
-
-    return ell
-
-# Full Gaussian ELL Approximate Posterior
-@dispatch(Data, ProductLikelihood, NonLinearModel, FullGaussianApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    """
-    Samples from the approximate posteriors need to be transformed through the prior and then the 
-        ELL is approximated using monte-carlo
-    """
-
-    X, Y = data.X, data.Y
-
-    Q = prior.base_prior.output_dim
-    N = Y.shape[0]
-
-    chex.assert_rank(q_f_var_arr, 3)
-    chex.assert_shape(q_f_mu_arr, [N, Q])
-    chex.assert_shape(q_f_var_arr, [N, Q, Q])
-
-    likelihood_arr = likelihood.likelihood_arr
-
-    num_likelihoods = len(likelihood_arr)
-    N = Y.shape[0]
-
-    return mv_block_monte_carlo(
-        compute_ell_for_sample, 
-        q_f_mu_arr, 
-        q_f_var_arr, 
-        fn_args = [X, Y, prior, likelihood, approximate_posterior],
-        generator = inference.generator, 
-        num_samples = inference.ell_samples
-    )
-
-# ===============================================================================
-# ================================= ^^^ OLD ^^^ =================================
-# ===============================================================================
-
 @dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, 'Diagonal')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     print('diagonal')
@@ -368,10 +255,31 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     model_type = get_model_type(prior)
 
-    if False and isinstance(model_type, LinearModel):
+    # TODO: there is a choice here between quadrature and monte-carlo estimation
+    if isinstance(model_type, LinearModel):
         # check if closed form expression exists
         print('linear')
-        pass
+
+        # batch over each output
+        likelihood_arr = likelihood.likelihood_arr
+
+        # Ensure rank 2 after batching
+        Y = Y[..., None]
+        ell_arr = batch_over_module_types(
+            evoke_name = 'single_output_expected_log_likelihood',
+            evoke_params = [],
+            module_arr = [likelihood_arr],
+            fn_params = [X, Y, q_f_mu, q_f_var, likelihood_arr],
+            fn_axes = [None, 1, 1, 1, 0],
+            dim = P,
+            out_dim  = 1 
+        )
+        chex.assert_shape(ell_arr, [P])
+
+        ell = np.sum(ell_arr)
+
+        return ell
+
     else:
         print('non-linear')
 
@@ -404,8 +312,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
 
-    # use sampling
-
     return 0
 
 @dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
@@ -424,9 +330,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         print('linear')
         pass
     else:
-        print('non-linear')
-
-        # TODO: error in q_f_var
         ell = mv_block_monte_carlo(
             compute_ell_for_sample, 
             q_f_mu, 

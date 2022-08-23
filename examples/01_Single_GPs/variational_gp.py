@@ -45,17 +45,17 @@ m = GP(
 
 # Train
 if True:
-    max_iters = 100
+    max_iters = 10
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+    trainer = ScipyTrainer(m, 'L-BFGS-B')
 
     ng_trainer.train(1.0, 1)
     for i in trange(max_iters):
-        trainer.train(1.0, 1)
-        ng_trainer.train(0.1, 1)
+        trainer.train(None, 1)
+        ng_trainer.train(1.0, 1)
 
 
 pred_mu, pred_var = m.predict_y(XS)
