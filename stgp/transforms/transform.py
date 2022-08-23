@@ -337,3 +337,39 @@ class NonLinearIdentity(NonLinearTransform):
 
     def inverse(self, f):
         return f
+
+class One2One(NonLinearTransform):
+    def __init__(self, parent: 'Transform', transform_arr: list):
+        self._parent = parent
+        self.transform_arr = objax.ModuleList(transform_arr)
+        self._output_dim = len(self.transform_arr)
+
+    def forward(self, f):
+        num_outputs = len(self.transform_arr)
+
+        f_prop = np.reshape(f, [num_outputs, 1])
+
+        f_transformed = batch_or_loop(
+            lambda t_fn, f_p: t_fn.forward(f_p),
+            [ self.transform_arr, f_prop ],
+            [ 0, 0],
+            dim = num_outputs,
+            out_dim = 1,
+            batch_type = get_batch_type(self.transform_arr)
+        )
+
+
+        f_transformed = np.reshape(f_transformed, [num_outputs, 1])
+
+        return f_transformed
+
+class LatentSpecific(Transform):
+    """ A transform that can only be applied to a single latent function """
+    pass
+
+class ElementWiseTransform(LatentSpecific):
+    def __init__(self):
+        super(ElementWiseTransform, self).__init__()
+        self._input_dim = 1
+        self._num_outputs = 1
+

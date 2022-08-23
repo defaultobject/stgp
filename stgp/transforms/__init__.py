@@ -1,5 +1,5 @@
 """Import all transforms."""
-from .transform import Transform, LinearTransform, NonLinearTransform, Independent, MultiOutput, Joint
+from .transform import Transform, LinearTransform, NonLinearTransform, Independent, MultiOutput, Joint, One2One, LatentSpecific, ElementWiseTransform
 #from .basic import Identity
 from .multi_output import LMC_Base, LMC_LDL, LMC_DRD
 from .data_latent_permutation import DataLatentPermutation, IndependentDataLatentPermutation, JointDataLatentPermutation
@@ -18,5 +18,8 @@ __all__ = [
     "LMC_Unit_Tri",
     "LMC_Corr",
     "DataLatentPermutation",
-    "Aggregate"
+    "Aggregate",
+    "One2One",
+    "LatentSpecific",
+    "ElementWiseTransform"
 ]

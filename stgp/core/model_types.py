@@ -111,3 +111,9 @@ def get_non_linear_model_part(prior) -> list:
     non_linear_part = _get_non_linear_model_part(prior)
 
     return non_linear_part
+
+def get_block_type(lik_block_size, q_block_size):
+    if (lik_block_size == 1) and (q_block_size == 1):
+        return 'Diagonal'
+    
+    return 'Blocked'

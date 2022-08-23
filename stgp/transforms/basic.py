@@ -1,5 +1,5 @@
 """Single input and outputs transforms."""
-from .transform import Transform, LinearTransform, ElementWiseTransform, LatentSpecific, ParentPassThrough
+from .transform import Transform, LinearTransform, ElementWiseTransform, LatentSpecific
 
 import jax.numpy as np
 import objax
@@ -7,7 +7,7 @@ from ..utils.utils import ensure_module_list
 from ..computation.parameter_transforms import softplus, inv_softplus, inv_probit
 from ..parameter import Parameter
 
-class InputMeanFunction(LinearTransform, LatentSpecific, ParentPassThrough):
+class InputMeanFunction(LinearTransform, LatentSpecific):
     def __init__(self, latent):
         self._parent = latent
 
@@ -77,7 +77,6 @@ class Softplus(ElementWiseTransform):
     def inverse(self, f):
         """Compute x=T^{-1}(f)."""
         return inv_softplus(f)
-
 
 class Affine(ElementWiseTransform):
     """Affine Function."""

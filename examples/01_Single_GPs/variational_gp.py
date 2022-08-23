@@ -1,4 +1,4 @@
-""" Batch Gaussian Process Regression """
+""" Variational Gaussian Process Regression """
 import sys
 sys.path.append('../')
 

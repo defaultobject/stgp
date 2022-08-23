@@ -16,7 +16,8 @@ from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximat
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part
+from ...integrals.samples import approximate_expectation
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_block_type
 
 from .linear_marginals import linear_marginal_blocks
 
@@ -124,11 +125,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity, out_block_dim, whiten
     ) 
 
-
     if isinstance(model_type, LinearModel):
         return val
     
-    breakpoint()
     raise NotImplementedError()
 
 # ========================= Predictions =========================
@@ -146,6 +145,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_
 
     return mu, var
 
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
 
@@ -155,14 +155,50 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         raise NotImplementedError()
 
     sparsity_list = prior.base_prior.get_sparsity_list()
-    latents = prior.base_prior
     q_m, q_S_chol = approximate_posterior.get_variational_params()
 
-    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, latents, sparsity_list[0], whiten=whiten)(
-        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, latents, sparsity_list, out_block_dim , whiten
+    # compute predictions of the part of linear model
+    linear_model_part = get_linear_model_part(prior)
+    model_type = get_model_type(prior)
+
+    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
     )
 
-    return mu, var
+    if isinstance(model_type, LinearModel):
+        # if the model is linear we can just return here
+        return mu, var
+
+    #otherwise we need to sample / use quadrature to compute the remaining integrals
+    block_type = get_block_type(1, out_block_dim)
+
+    mu = approximate_expectation(
+        lambda f: f, 
+        mu, 
+        var, 
+        prior = prior,
+        fn_args = [],
+        generator = inference.generator, 
+        num_samples = inference.prediction_samples,
+        block_type = block_type,
+        average = False
+    )
+    chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, out_block_dim))
+
+    second_moment =  mu**2
+
+    mu = np.mean(mu, axis=0)
+    second_moment = np.mean(second_moment, axis=0)
+
+    mu = np.transpose(mu, [1, 0, 2])
+    second_moment = np.transpose(second_moment, [1, 0, 2])
+
+
+    var = second_moment - np.square(mu)
+    
+    return mu, var[..., None]
+
+# ================================== Samples ==============================
 
 # ================================== Marginal Covars ==============================
 
