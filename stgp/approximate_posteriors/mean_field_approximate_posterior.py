@@ -77,3 +77,7 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             lambda latent:  latent.S_diag
         )
         return arr
+
+    def fix(self):
+        for q in self.approx_posteriors:
+            q.fix()

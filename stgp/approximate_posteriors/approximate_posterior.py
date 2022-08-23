@@ -10,3 +10,7 @@ class ApproximatePosterior(Posterior):
         super(ApproximatePosterior, self).__init__()
 
         self.generator = objax.random.Generator(seed=0)
+
+    def fix(self):
+        """ Hold all variational params for training """
+        raise NotImplementedError()

@@ -62,6 +62,10 @@ class GaussianApproximatePosterior(ApproximatePosterior):
     def S_diag(self):
         return diagonal_from_cholesky(self.S_chol)
 
+    def fix(self):
+        self._m.fix()
+        self._S_chol.fix()
+
 class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     def __init__(self, dim: int=None, m=None, S_diag=None, train=True):
         self._m = Parameter(
@@ -85,6 +89,8 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     @property
     def S_diag(self):
         return self._S_diag.value
+
+
 
 
 
