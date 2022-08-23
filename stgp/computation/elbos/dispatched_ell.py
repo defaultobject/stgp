@@ -35,6 +35,8 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 @dispatch(Likelihood)
 def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Expected log likelihood component approximated through quadrature. """
+    raise NotImplementedError('THIS NEEDS TO TRANSFORM F')
+
     # TODO: add this to settings
     num_quad_points = 10
 
