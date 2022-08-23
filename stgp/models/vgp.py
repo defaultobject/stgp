@@ -213,8 +213,9 @@ class VGP(Posterior):
             self.approximate_posterior,
             diagonal=diagonal
         )
+        chex.assert_rank([mean, var], [3, 4])
 
-        # ensure shap is [P, N]
+        # ensure shape is [P, N]
         P = self.prior.output_dim
         N = XS.shape[0]
 
@@ -236,8 +237,10 @@ class VGP(Posterior):
             self.approximate_posterior,
             diagonal=diagonal
         )
+        chex.assert_rank([mu_arr, var_arr], [3, 4])
+
         # ensure shap is [P, N]
-        P = mu_arr.shape[0]
+        P = self.prior.output_dim
         N = XS.shape[0]
 
         mu_arr = np.reshape(mu_arr, [P, N])

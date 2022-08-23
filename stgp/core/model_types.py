@@ -40,7 +40,6 @@ def get_model_type(prior):
     return NonLinearModel(prior)
 
 def _get_linear_model_part(prior):
-
     parent_prior = prior.parent
 
     if isinstance(prior, MultiOutput):
@@ -49,7 +48,6 @@ def _get_linear_model_part(prior):
         return [
             _get_linear_model_part(m) for m in parent_prior
         ]
-        breakpoint()
 
     elif prior.is_base:
         return prior
@@ -61,6 +59,8 @@ def _get_linear_model_part(prior):
     return _get_linear_model_part(parent_prior)
 
 def _get_non_linear_model_part(prior) -> list:
+    if prior.is_base: return []
+
     parent_prior = prior.parent
     parent_model_type = get_model_type(parent_prior)
     parent_is_linear = isinstance(get_model_type(parent_prior), LinearModel)

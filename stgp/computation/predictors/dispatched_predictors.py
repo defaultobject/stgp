@@ -394,8 +394,6 @@ def predict_blocks(XS, data, group_size, block_size, gp, likelihood, prior, diag
 @dispatch(Likelihood, Transform, ApproximatePosterior, True)
 @dispatch(Likelihood, Transform, ApproximatePosterior, False)
 def predict(XS, data, likelihood, prior, approximate_posterior, inference, whiten, diagonal):
-
-
-    return  evoke('marginal', 'prediction', approximate_posterior, likelihood, prior, whiten)(
-        XS, data, approximate_posterior, likelihood, prior, inference, whiten, diagonal
+    return  evoke('marginal_prediction', approximate_posterior, likelihood, prior, whiten=whiten)(
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
     )

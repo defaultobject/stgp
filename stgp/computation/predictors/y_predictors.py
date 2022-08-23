@@ -15,19 +15,28 @@ from ...core import Posterior
 # Gaussian Likelihoods
 @dispatch(Posterior, 'Gaussian')
 def predict_y_full(XS, likelihood, post_mu, post_var):
+    chex.assert_rank([post_mu, post_var], [2, 3])
+    breakpoint()
     return post_mu, add_jitter(post_var, likelihood.variance)
 
 @dispatch(Posterior, 'Gaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+    chex.assert_rank([post_mu, post_var], [2, 3])
+    chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
+
     return post_mu, post_var + likelihood.variance
 
 @dispatch(Posterior, 'ReshapedGaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+    chex.assert_rank([post_mu, post_var], [2, 3])
+    chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
 
     return post_mu, post_var + likelihood.base.variance
 
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+
+    chex.assert_rank([post_mu, post_var], [3, 4])
 
     if diagonal:
         evoke_name = 'predict_y_diagonal'
@@ -43,7 +52,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         [gp],
         likelihood_arr,
         [XS, likelihood_arr, post_mu, post_var],
-        [None, 0, 0, 0],
+        [None, 0, 1, 1],
         num_outputs,
         2
     )

@@ -146,6 +146,24 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_
 
     return mu, var
 
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+
+    if diagonal == True:
+        out_block_dim = 1
+    else:
+        raise NotImplementedError()
+
+    sparsity_list = prior.base_prior.get_sparsity_list()
+    latents = prior.base_prior
+    q_m, q_S_chol = approximate_posterior.get_variational_params()
+
+    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, latents, sparsity_list[0], whiten=whiten)(
+        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, latents, sparsity_list, out_block_dim , whiten
+    )
+
+    return mu, var
+
 # ================================== Marginal Covars ==============================
 
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)

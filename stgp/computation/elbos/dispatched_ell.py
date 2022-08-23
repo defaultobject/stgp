@@ -450,13 +450,17 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
 @dispatch(Data, Likelihood, Transform, MeanFieldApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 4])
     base_prior = prior.base_prior
 
-    # find out if the model is linear or not
-    model_type = get_model_type(prior)
+    # get correct ELL corresponding to the blocks
+    q_block_size = q_f_var_arr.shape[-1]
+    lik_block_size = likelihood.block_size
 
-    return evoke('expected_log_likelihood', data, likelihood, model_type, approximate_posterior)(
-        data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
+    block_type_p = get_block_type(lik_block_size, q_block_size)
+
+    return evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior, block_type_p)(
+        data.X, data.Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference, block_type_p
     )
 
 @dispatch(Data, ProductLikelihood, MultiOutput, MeanFieldApproximatePosterior)
