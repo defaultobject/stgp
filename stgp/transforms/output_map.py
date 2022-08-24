@@ -17,14 +17,13 @@ class _OutputMap(LinearTransform):
         self._output_dim = len(mapping)
 
     def forward(self, f):
-        res = self.parent.forward(f)
         raise NotImplementedError()
         return res[self.mapping]
 
-    def transform(self, mu, var):
-        base_mu, base_var = self.parent.transform(mu, var)
+    def transform(self, base_mu, base_var):
 
-        raise NotImplementedError()
+        breakpoint()
+        raise RuntimeError()
 
         t_mu = base_mu[self.mapping]
         t_var = var[self.mapping, :]
@@ -32,15 +31,13 @@ class _OutputMap(LinearTransform):
 
         return t_mu, t_var
 
-    def transform_diagonal(self, mu, var):
-        base_mu, base_var = self.parent.transform_diagonal(mu, var)
-
-        N, P, A = base_mu.shape
+    def transform_diagonal(self, base_mu, base_var):
+        P, A = base_mu.shape
 
         if A != 1: raise NotImplementedError()
 
-        t_mu = base_mu[:, self.mapping, :]
-        t_var = var[:, self.mapping, ...]
+        t_mu = base_mu[self.mapping, :]
+        t_var = base_var[self.mapping, ...]
 
         return t_mu, t_var
 

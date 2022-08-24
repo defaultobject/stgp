@@ -59,6 +59,27 @@ def _get_linear_model_part(prior):
 
     return _get_linear_model_part(parent_prior)
 
+def _get_linear_model_part_list(prior):
+    if prior.is_base: return []
+
+    parent_prior = prior.parent
+
+    if isinstance(prior, MultiOutput):
+        # when a multi output we simple get the linear part for each
+        #   output separetely
+        return [[
+            _get_linear_model_part_list(m) for m in parent_prior
+        ]]
+
+    elif isinstance(prior, LinearTransform):
+        if isinstance(get_model_type(prior),LinearModel):
+
+            res =  _get_linear_model_part_list(parent_prior)
+            res.append(prior)
+            return res
+
+    return []
+
 def _get_non_linear_model_part(prior) -> list:
     if prior.is_base: return []
 
@@ -98,6 +119,16 @@ def get_linear_model_part(prior):
     The linear part is the prior transformed after (potentially zero, in which case returns just the prior) a set of linear transforms.
     """
     linear_part = _get_linear_model_part(prior)
+
+    return linear_part
+
+def get_linear_model_part_list(prior) -> list:
+    """
+    A prior consists of a set of transformations like:
+        T_2(T_1(GP))
+    The linear part is the prior transformed after (potentially zero, in which case returns just the prior) a set of linear transforms.
+    """
+    linear_part = _get_linear_model_part_list(prior)
 
     return linear_part
 

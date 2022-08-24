@@ -88,6 +88,10 @@ class VGP(Posterior):
 
         if type(self.likelihood) == list:
             self._likelihood = get_product_likelihood(self._likelihood)
+        elif type(self.likelihood).__name__ == 'Gaussian':
+            # Internally we only deal with product likelihoods and independent objects
+            self._likelihood = get_product_likelihood([self._likelihood])
+
 
     def set_defaults(self):
         # Figure out which prior mode is being used (kernel vs prior)
@@ -132,6 +136,7 @@ class VGP(Posterior):
         if self.likelihood == None:
             # Default Gaussian liklelihood
             self._likelihood = get_default_likelihood(self.output_dim)
+
 
         if self.approximate_posterior is None:
             # Assume independent latents and that they have the same dimension
@@ -225,8 +230,6 @@ class VGP(Posterior):
 
         mean = mean.T
         var = var.T
-
-        breakpoint()
 
         if squeeze:
             return np.squeeze(mean), np.squeeze(var)

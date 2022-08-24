@@ -45,7 +45,7 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    """ Catch all for single latent functions with no sparsity"""
+    """ Catch all for single latent functions with no sparsity and no whitening"""
     N = q_m.shape[0]
 
     if out_block_dim == 1:
@@ -61,6 +61,26 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return q_m, q_S
 
+@dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=True)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    """ Catch all for single latent functions with no sparsity but with whitening"""
+    N = q_m.shape[0]
+    chex.assert_rank(q_S_chol, 2)
+    chex.assert_shape(q_S_chol, [q_m.shape[0], q_m.shape[0]])
+
+    Kzz = prior.covar(sparsity.Z, sparsity.Z)
+    Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    if out_block_dim == 1:
+        q_m = Kzz_chol @ q_m
+        q_S = diagonal_from_cholesky(Kzz_chol @ q_S_chol)
+    else:
+        raise NotImplementedError()
+
+    # ensure correct shape
+    q_S = np.reshape(q_S, [N, out_block_dim, out_block_dim])
+
+    return q_m, q_S
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
@@ -116,7 +136,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
 
     # we have reparemeterised the approximate posterior so we can now treat it as unwhitened
-    fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity[0], False)
+    fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False)
 
     return fn(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, False
@@ -190,6 +210,12 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         out_dim  = 2,
         evoke_kwargs = {'whiten': whiten}
     )
+
+    # fix shapes
+    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
+    #   and reshape into the proper shape
+    marginal_mu = marginal_mu[..., 0]
+    marginal_var = marginal_var[..., 0]
 
     marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
     marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])

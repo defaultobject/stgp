@@ -99,8 +99,8 @@ def test__vgp__with_whitening(seed, N, NS, regression_1d_data, lik_var, rbf_ls, 
     stgp_elbo = m_stgp.get_objective()
 
     # collect predictions
-    gpflow_pred_mu, gpflow_pred_var = m_gpflow.predict_f(XS)
-    stgp_pred_mu, stgp_pred_var = m_stgp.predict_f(XS)
+    gpflow_pred_mu, gpflow_pred_var = m_gpflow.predict_y(XS)
+    stgp_pred_mu, stgp_pred_var = m_stgp.predict_y(XS)
 
     # === Assert  ===
 
@@ -118,7 +118,7 @@ def test__vgp__no_whitening(seed, N, NS, regression_1d_data, lik_var, rbf_ls, rb
     # ==== Arrange ====
     np.random.seed(0)
 
-    settings.jitter = 1e-7
+    settings.jitter = 1e-6
 
     X, Y = regression_1d_data
     XS = np.linspace(0, 1, NS)[:, None]

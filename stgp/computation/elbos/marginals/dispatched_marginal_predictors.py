@@ -11,7 +11,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
-from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
@@ -28,7 +28,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
     chex.assert_rank([m, S_chol], [2, 2])
     chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
 
-    return gaussian_conditional_diagional(
+    mu, var = gaussian_conditional_diagional(
         XS, 
         data.X, 
         prior.covar(sparsity.Z, sparsity.Z), 
@@ -40,6 +40,12 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
         prior.mean(XS),
     )
 
+    # fix shapes
+    mu = mu[..., None]
+    var = var[..., None, None]
+
+    return mu, var
+
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
@@ -47,7 +53,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
     chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
 
     #TODO: only works with zero mean gps
-    return whitened_gaussian_conditional_diagional(
+    mu, var = whitened_gaussian_conditional_diagional(
         XS, 
         data.X, 
         prior.covar(sparsity.Z, sparsity.Z), 
@@ -56,6 +62,12 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
         m,
         S_chol
     )
+
+    # fix shapes
+    mu = mu[..., None]
+    var = var[..., None, None]
+
+    return mu, var
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
@@ -176,15 +188,17 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         evoke_kwargs = {'whiten': whiten}
     )
 
-    # TODO: this should be fixed in the lower level predictoins but hacked here for now
-
-    marginal_var = marginal_var[..., None]
+    # fix shapes
+    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
+    #   and reshape into the proper shape
+    marginal_mu = marginal_mu[..., 0]
+    marginal_var = marginal_var[..., 0]
 
     marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    chex.assert_shape(marginal_mu, [N, prior.output_dim,  out_block_dim])
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
 
     # Mean field so we do not capture the correlations between Q
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+    chex.assert_shape(marginal_mu, [N, prior.output_dim,  out_block_dim])
     chex.assert_shape(marginal_var, [N, prior.output_dim, out_block_dim, out_block_dim])
 
     return marginal_mu, marginal_var

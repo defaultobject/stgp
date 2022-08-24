@@ -11,11 +11,12 @@ import scipy
 
 import stgp
 from stgp import settings
+from stgp.models import GP
 from stgp.computation.elbos.kullback_leiblers import gaussian_cholesky_kl, gaussian_kl, whitened_gaussian_kl
 from stgp.dispatch import evoke
 from stgp.sparsity import NoSparsity
 from stgp.transforms.pdes import DifferentialOperatorJoint
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior, MeanFieldApproximatePosterior
 from stgp.kernels import RBF, ScaleKernel
 from stgp.likelihood import Gaussian
 from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D
@@ -60,6 +61,9 @@ def gp(regression_1d_data, lik_var, rbf_ls, rbf_var):
 @pytest.mark.parametrize('rbf_ls', [0.1])
 @pytest.mark.parametrize('rbf_var', [2.3])
 def test__gp_and_vgp_match_after_natgrad(seed, N, NS, vgp, gp):
+    """
+    After a natural gradient a variational GP and batch GP are equivalent
+    """
     settings.jitter = 1e-5
     settings.ng_jitter = 1e-7
     # ==== Arrange ====
@@ -73,12 +77,120 @@ def test__gp_and_vgp_match_after_natgrad(seed, N, NS, vgp, gp):
     gp_elbo = gp.get_objective()
 
     # collect predictions
-    vgp_pred_mu, vgp_pred_var = vgp.predict_f(XS)
-    gp_pred_mu, gp_pred_var = gp.predict_f(XS)
+    vgp_pred_mu, vgp_pred_var = vgp.predict_y(XS)
+    gp_pred_mu, gp_pred_var = gp.predict_y(XS)
 
     # === Assert  ===
     np.testing.assert_allclose(vgp_elbo, gp_elbo, rtol=1e-5)
     np.testing.assert_allclose(gp_pred_mu, vgp_pred_mu, rtol=1e-3)
     np.testing.assert_allclose(gp_pred_var, vgp_pred_var, rtol=1e-3)
 
+@pytest.mark.parametrize('seed', [0])
+@pytest.mark.parametrize('N', [50])
+@pytest.mark.parametrize('NS', [100])
+def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
+    # ==== Arrange ====
+    X, Y = regression_1d_data
+    data = stgp.data.Data(X, Y)
 
+    # ==== Act ====
+
+    def implicit_method():
+        m = GP(data=data, inference='Variational')
+        return m
+
+    def implicit_meanfield_method():
+        m = stgp.models.GP(
+            data = data, 
+            kernel=RBF(lengthscales=[1.0]),
+            likelihood = Gaussian(variance=1.0),
+            inference='Variational'
+        )
+        return m
+
+    def explicit_meanfield_method():
+        m = stgp.models.GP(
+            data = data, 
+            kernel=RBF(lengthscales=[1.0]),
+            likelihood = [Gaussian(variance=1.0)],
+            inference='Variational',
+            approximate_posterior = MeanFieldApproximatePosterior(dim_list=[X.shape[0]])
+        )
+        return m
+
+    def explicit_prior_meanfield_method():
+        ind_prior = stgp.transforms.Independent([
+            stgp.models.GP(
+                sparsity = stgp.sparsity.NoSparsity(X),
+                kernel = RBF(lengthscales=[1.0]),
+                prior = True
+            )
+        ])
+        m = stgp.models.GP(
+            data = data, 
+            likelihood = [Gaussian(variance=1.0)],
+            inference='Variational',
+            approximate_posterior = MeanFieldApproximatePosterior(dim_list=[X.shape[0]])
+        )
+        return m
+
+    def implicit_ind_prior_meanfield_method():
+        ind_prior = stgp.models.GP(
+            sparsity = stgp.sparsity.NoSparsity(X),
+            kernel = RBF(lengthscales=[1.0]),
+            prior = True
+        )
+
+        m = stgp.models.GP(
+            data = data, 
+            likelihood = Gaussian(variance=1.0),
+            inference='Variational'
+        )
+        return m
+
+    def explicit_full_posterior_method():
+        m = stgp.models.GP(
+            data = data, 
+            kernel=RBF(lengthscales=[1.0]),
+            likelihood = [Gaussian(variance=1.0)],
+            inference='Variational',
+            approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0])
+        )
+        return m
+
+    m_implicit = implicit_method()
+    m_implicit_mf = implicit_meanfield_method()
+    m_explicit_meanfield_method = explicit_meanfield_method()
+    m_explicit_prior_meanfield_method = explicit_prior_meanfield_method()
+    m_implicit_ind_prior_meanfield_method = implicit_ind_prior_meanfield_method()
+    m_explicit_full_posterior_method = explicit_full_posterior_method()
+
+    base_model = m_implicit
+
+    # === Assert  ===
+
+    base_model_obj = base_model.get_objective()
+    base_pred_mu, base_pred_var = base_model.predict_y(X)
+
+    def assert_equal(m):
+        m_pred_mu, m_pred_var = m.predict_y(X)
+
+        np.testing.assert_allclose(
+            base_model_obj, 
+            m.get_objective()
+        )
+
+        np.testing.assert_allclose(
+            base_pred_mu, 
+            m_pred_mu
+        )
+        np.testing.assert_allclose(
+            base_pred_var, 
+            m_pred_var
+        )
+
+    assert_equal(m_implicit_mf)
+    assert_equal(m_explicit_meanfield_method)
+    assert_equal(m_explicit_prior_meanfield_method)
+    assert_equal(m_implicit_ind_prior_meanfield_method)
+    assert_equal(m_explicit_full_posterior_method)
