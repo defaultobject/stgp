@@ -189,7 +189,7 @@ class JointDataLatentPermutation(DataLatentPermutation):
     """
     def __init__(self, latents):
 
-        super(JointDataLatentPermutation, self).__init_(latents)
+        super(JointDataLatentPermutation, self).__init__(latents)
 
         self._p = latents
 

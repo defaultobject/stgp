@@ -27,6 +27,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self.derivative_mean = mean
         self.derivative_kernel = kernel
         self._output_dim = self.derivative_kernel.output_dim
+        self._input_dim = 1
         self._is_base = is_base
 
     @property

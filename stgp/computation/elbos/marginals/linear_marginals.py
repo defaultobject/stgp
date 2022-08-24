@@ -22,8 +22,7 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
     """ Recursively compute the transformed linear marginal. """
 
     # TODO: this is assuming only one transform
-
-    parent_prior = prior.parent
+    parent_prior = prior.base_prior
 
     if prior.in_block_dim is None:
         # we do not need to worry about the block size
@@ -48,21 +47,26 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         breakpoint()
 
     # and transform 
+
+    prior_list = get_linear_model_part_list(prior)
     if var_parent.shape[-1] == 1 and out_block_dim == 1:
         chex.assert_rank([mu_parent, var_parent], [3, 4])
 
         # mu_parent, var_parent are the mean and variance of the base GP.
         # we now transform them through the linear prior
-
-        prior_list = get_linear_model_part_list(prior)
-
         mu_p, var_p = mu_parent, var_parent
         for p in prior_list:
             # We batch over N, so the transform should support mu of rank 2, and var of rank 3
             mu_p, var_p = jax.vmap(prior.transform_diagonal, [0, 0])(mu_p, var_p)
 
-    elif var_parent.shape[-1] == prior.output_dim:
-        mu_p, var_p = jax.vmap(prior.transform, [0, 0])(mu_parent, var_parent)
+    elif var_parent.shape[-1] > 1:
+
+        # mu_parent, var_parent are the mean and variance of the base GP.
+        # we now transform them through the linear prior
+
+        mu_p, var_p = mu_parent, var_parent
+        for p in prior_list:
+            mu_p, var_p = jax.vmap(p.transform, [0, 0])(mu_p, var_p)
     else:
         breakpoint()
         raise NotImplementedError()

@@ -21,13 +21,11 @@ class _OutputMap(LinearTransform):
         return res[self.mapping]
 
     def transform(self, base_mu, base_var):
-
-        breakpoint()
-        raise RuntimeError()
+        chex.assert_rank([base_mu, base_var], [2, 3])
 
         t_mu = base_mu[self.mapping]
-        t_var = var[self.mapping, :]
-        t_var = t_var[:, self.mapping]
+        t_var = base_var[:, self.mapping, :]
+        t_var = t_var[:, :, self.mapping]
 
         return t_mu, t_var
 

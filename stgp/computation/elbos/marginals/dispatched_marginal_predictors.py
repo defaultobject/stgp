@@ -10,7 +10,7 @@ from ...marginals import gaussian_conditional_diagional, gaussian_conditional, g
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
 
 # Import Types
-from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
+from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
@@ -69,8 +69,10 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=False)
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ 
     approximate_posterior is already is in latent data format and so needs to be converted to data-latent format. 
@@ -136,7 +138,6 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     # Compute q(F) = \int p(F | U) q(U) dU
     # Comput blocks of
     #val = K_xx - Kxz_p @ cholesky_solve(K_chol, Kxz_p.T)
-
 
     # TODO: assuming mean is zero
     _m, _S =  gaussian_conditional_blocks(
@@ -237,11 +238,17 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 # ========================= Predictions =========================
 
 @dispatch('latents', MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
+@dispatch('latents', MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
+@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
+@dispatch('latents', FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_block_dim, whiten):
 
     sparsity_list = prior.base_prior.get_sparsity_list()
     latents = prior.base_prior
-    q_m, q_S_chol = approximate_posterior.get_variational_params()
+
+    q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, latents, whiten)(
+        data, approximate_posterior, likelihood, latents, whiten
+    )
 
     mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, latents, sparsity_list[0], whiten=whiten)(
         XS, data, q_m, q_S_chol, approximate_posterior, likelihood, latents, sparsity_list, out_block_dim , whiten

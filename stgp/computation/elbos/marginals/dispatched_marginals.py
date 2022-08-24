@@ -46,6 +46,7 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Catch all for single latent functions with no sparsity and no whitening"""
+    breakpoint()
     N = q_m.shape[0]
 
     if out_block_dim == 1:
@@ -54,7 +55,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         raise RuntimeError()
     elif q_S_chol.shape[-1] > out_block_dim:
         # TODO: subsample
-        pass
+        raise RuntimeError()
 
     # ensure correct shape
     q_S = np.reshape(q_S, [N, out_block_dim, out_block_dim])
@@ -118,7 +119,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=True)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     # first reparameterise and then we can treat as use
-    breakpoint()
 
     # reparameterise
     base_prior = prior.base_prior
@@ -139,7 +139,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False)
 
     return fn(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, False
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, False
     ) 
 
 
@@ -228,33 +228,46 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 @dispatch(ApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
-    assert out_block_dim == 1
+    if prior.is_base:
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
 
-    sparsity_arr = prior.base_prior.get_sparsity_list()
-    sparsity_type = sparsity_arr[0]
+        base_prior = get_permutated_prior(prior)
 
-    fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten)
 
-    var_distpatched_fn = evoke('marginal_prediction_covar', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
+        mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block_dim, whiten)
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
-    # we must use the predictive distribution here 
-    mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
+    else:
+        assert out_block_dim == 1
 
-    # assume that XS1 == XS2
-    # TODO: is this correct?
-    var_fn = lambda XS1, XS2: var_distpatched_fn(XS1, XS2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0, 0]
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
 
-    mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
+        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
 
-    var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
+        var_distpatched_fn = evoke('marginal_prediction_covar', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
 
-    var = var[:, None, ...]
+        # we must use the predictive distribution here 
+        mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
 
-    N = data.X.shape[0]
-    chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
-    chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+        # assume that XS1 == XS2
+        # TODO: is this correct?
+        var_fn = lambda XS1, XS2: var_distpatched_fn(XS1, XS2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0, 0]
 
-    return mu, var
+        mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
+
+        var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
+
+        var = var[:, None, ...]
+
+        N = data.X.shape[0]
+        chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+        chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+        return mu, var
 
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=False)
