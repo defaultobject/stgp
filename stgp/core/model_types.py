@@ -1,6 +1,7 @@
 """ Helper functions and classes for classifying if a model is linear or non linear """
 from .models import Model
-from ..transforms import LinearTransform, NonLinearTransform, MultiOutput
+from ..transforms import LinearTransform, NonLinearTransform, MultiOutput, Joint, Independent
+from ..transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
 from .gp_prior import GPPrior
 
 class LinearModel(Model):
@@ -117,3 +118,15 @@ def get_block_type(lik_block_size, q_block_size):
         return 'Diagonal'
     
     return 'Blocked'
+
+
+def get_permutated_prior(prior):
+    base_prior = prior.base_prior
+    if isinstance(base_prior, Joint):
+        base_prior = JointDataLatentPermutation(base_prior)
+    elif isinstance(base_prior, Independent):
+        base_prior = IndependentDataLatentPermutation(base_prior)
+    else:
+        raise RuntimeError()
+
+    return base_prior

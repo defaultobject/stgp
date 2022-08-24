@@ -21,6 +21,8 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool, XS=None, sparsity=None):
     """ Recursively compute the transformed linear marginal. """
 
+    # TODO: this is assuming only one transform
+
     parent_prior = prior.parent
 
     if prior.in_block_dim is None:
@@ -40,12 +42,20 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
             XS, data, q_m, q_S, approximate_posterior, likelihood, parent_prior, sparsity, parent_out_block_dim, whiten
         ) 
 
+    chex.assert_rank([mu_parent, var_parent], [3, 4])
+
     if prior.out_block_dim != None:
         breakpoint()
 
     # and transform 
     if var_parent.shape[-1] == 1 and out_block_dim == 1:
-        mu_p, var_p = prior.transform_diagonal(mu_parent, var_parent)
+        chex.assert_rank([mu_parent, var_parent], [3, 4])
+
+        # TODO: should this be looping through the transforms??
+        mu_p, var_p = jax.vmap(prior.transform_diagonal, [0, 0])(mu_parent, var_parent)
+
+    elif var_parent.shape[-1] == prior.output_dim:
+        mu_p, var_p = jax.vmap(prior.transform, [0, 0])(mu_parent, var_parent)
     else:
         breakpoint()
         raise NotImplementedError()

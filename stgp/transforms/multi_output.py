@@ -286,6 +286,40 @@ class LMC_Base(LinearTransform):
         f = np.reshape(f, [-1, 1])
         return (self.W @ f)[:, 0]
 
+    def transform_diagonal(self, mu, var):
+        """
+        Computes the pointwise of 
+            F_n = W U_n
+        This functions assumes that U_n are indepenent
+        Hence F_n ~ N(W mu_n, W diag(var_n) W.T)
+        The diagonal of this is given by:
+            W mu
+            W diag(sqrt(var))
+        """
+        chex.assert_rank([mu, var], [2, 3])
+
+        W = self.W
+
+        # Mixing latent functions
+        mu = W @ mu 
+        var = batched_diagonal_from_XDXT(W, var[..., 0])
+
+        # fix shapes
+        var = var[..., None]
+
+        return mu, var
+
+
+    def transform(self, mu, var):
+        chex.assert_rank([mu, var], [2, 3])
+        chex.assert_equal([mu.shape[1], var.shape[0]], [1, 1])
+        chex.assert_equal([var.shape[1], var.shape[2]], [mu.shape[0], mu.shape[0]])
+
+        W = self.W
+
+        return W @ mu, (W @ var[0] @ W.T)[None, ...]
+
+
 # TODO: implement ICM
 
 class LMC(LMC_Base):
@@ -305,28 +339,6 @@ class LMC(LMC_Base):
         self._W = Parameter(np.eye(self.output_dim, self.input_dim), name='W')
 
 
-    def transform_diagonal(self, mu, var):
-        """
-        Computes the pointwise of 
-            F_n = W U_n
-        This functions assumes that U_n are indepenent
-        Hence F_n ~ N(W mu_n, W diag(var_n) W.T)
-        The diagonal of this is given by:
-            W mu
-            W diag(sqrt(var))
-        """
-        W = self.W
-
-        # Mixing latent functions
-        mu = W @ mu[..., 0] 
-        var = batched_diagonal_from_XDXT(W, var[..., 0])
-
-
-        # fix shapes
-        mu = mu[..., None]
-        var = var[..., None]
-
-        return mu, var
 
     @property
     def W(self):

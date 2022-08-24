@@ -33,11 +33,12 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_permutated_prior
 
 from .linear_marginals import linear_marginal_blocks
 # ================================== Dispatched q(f) ==============================
@@ -60,6 +61,68 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return q_m, q_S
 
+
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+
+    assert isinstance(prior, DataLatentPermutation)
+
+    m = q_m
+    S = q_S_chol @ q_S_chol.T
+
+    Ns = m.shape[0]
+
+    # Use the base prior as the transformation happens in thre ELL for Full posteriors
+    num_latents = prior.base_prior.output_dim
+
+    # X is shaped so that all outputs are grouped together
+    # We need to instead group by each input
+
+    m_p = prior.permute_vec(m, num_latents)
+    S_p = prior.permute_mat(S, num_latents)
+
+    m_p = np.reshape(m_p, [-1, num_latents])
+
+    # Extract block diagonals
+    S_blocks = get_block_diagonal(S_p, num_latents)
+
+    m_p = m_p[..., None]
+    S_blocks = S_blocks[:, None, ...]
+
+    # Assert shapes are correct
+    chex.assert_shape(m_p, [Ns/num_latents, num_latents, 1])
+    chex.assert_shape(S_blocks, [Ns/num_latents, 1, num_latents, num_latents])
+
+    return m_p, S_blocks
+
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=True)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    # first reparameterise and then we can treat as use
+    breakpoint()
+
+    # reparameterise
+    base_prior = prior.base_prior
+
+    Z = base_prior.get_Z()
+    chex.assert_rank(Z, 3)
+
+    Kzz = base_prior.b_covar(Z, Z)
+    chex.assert_rank(Kzz, 2)
+
+    Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+    chex.assert_equal_shape([Kzz_chol, q_S_chol])
+
+    q_m, q_S_chol =  Kzz_chol @ q_m, Kzz_chol @ q_S_chol
+
+
+    # we have reparemeterised the approximate posterior so we can now treat it as unwhitened
+    fn = evoke('marginal', approximate_posterior, likelihood, prior, sparsity[0], False)
+
+    return fn(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, False
+    ) 
+
+
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Catch all for single latent functions with no sparsity"""
@@ -73,13 +136,30 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten
     )
 
-    N = mu.shape[0]
-
-    # ensure correct shape
-    var = np.reshape(var, [N, out_block_dim, out_block_dim])
+    chex.assert_rank([mu, var], [3, 4])
 
     return mu, var
 # ================================== Dispatched q(f) ==============================
+
+@dispatch(FullGaussianApproximatePosterior, ProductLikelihood, Independent, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, ProductLikelihood, Independent, whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten):
+
+    # TODO: assuming that sparsity is the same across latents
+    sparsity_arr = prior.base_prior.get_sparsity_list()
+
+    base_prior = get_permutated_prior(prior)
+
+    fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
+
+    mu, var = fn(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block_dim, whiten
+    ) 
+    chex.assert_rank([mu, var], [3, 4])
+
+    return mu, var
+
+
 
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=False)
@@ -212,7 +292,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     return val[0], val[1]
 
 
-
 # ============================ FULL GAUSSIAN APPROXIMATE POSTERIOR ENTRY POINT ============================
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
@@ -229,10 +308,9 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
         prior.base_prior.output_dim
     )
 
-    breakpoint()
-
     # we are only processing the linear part so we can assume that it is linear
     val = evoke('marginal_blocks', approximate_posterior, likelihood, linear_model_part, whiten=whiten)(
         data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_size, whiten
     ) 
-    breakpoint()
+
+    return val[0], val[1]

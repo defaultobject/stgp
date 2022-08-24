@@ -29,35 +29,12 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Gaussian expected log likelihood component. """
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
-@dispatch(Likelihood)
-def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
-    """ Expected log likelihood component approximated through quadrature. """
-    raise NotImplementedError('THIS NEEDS TO TRANSFORM F')
+# TODO: rename this
+@dispatch(GaussianProductLikelihood, 'Blocked')
+def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+    lik_var = np.diag(likelihood.variance)
+    return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
 
-    # TODO: add this to settings
-    num_quad_points = 10
-
-    x, w = hermgauss(num_quad_points)
-    const = np.pi**-0.5
-
-    q_f_var = np.squeeze(q_f_var)
-    q_f_mu = np.squeeze(q_f_mu)
-    Y = np.squeeze(Y)
-
-    # change of variable
-    f = 2.0**0.5*np.sqrt(q_f_var)*x + q_f_mu  
-
-    chex.assert_shape(f, [num_quad_points])
-
-    res = jax.vmap(
-        likelihood.log_likelihood_scalar, 
-        [None, 0], 
-        0
-    )(Y, f)
-
-    chex.assert_shape(res, [num_quad_points])
-    
-    return np.sum(w * const*res)
 
 # ====================== GAUSSIAN ELLs ===================
 
@@ -121,7 +98,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     return ell
 
-@dispatch(DiagonalLikelihood)
+@dispatch(DiagonalLikelihood, 'Diagonal')
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ For diagonal likelihoods adds support for missing data. """ 
     chex.assert_rank([Y, q_f_mu, q_f_var], [2, 2, 3])
@@ -170,6 +147,36 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     )
 
     return parent_ell * scale_a
+
+
+@dispatch(ProductLikelihood, 'Blocked')
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
+    chex.assert_rank([Y, q_f_mu, q_f_var], [2, 3, 4])
+
+    # As this ELL does not decompose across latents and datapoints
+    #   the nan-handling must be handled lower down
+
+    # Ensure rank 2 after batching
+    X = X[:, None, ...]
+    Y = Y[..., None]
+    q_f_var = q_f_var[:, 0, ...]
+
+    fn = evoke('element_expected_log_likelihood', likelihood, block_type)
+
+    # Compute ELL for each datapoint
+    ell_arr = jax.vmap(
+        fn,
+        [0, 0, 0, 0, None],
+        0
+    )(X, Y, q_f_mu, q_f_var, likelihood)
+
+
+    # Only sums the ELL terms without missing data
+    ell = np.sum(ell_arr)
+
+    return ell
+
+
 
 # ====================== ELL FOR DIFFERENT APPROXIMATE POSTERIORS ===================
 
@@ -243,12 +250,14 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         # batch over each output
         likelihood_arr = likelihood.likelihood_arr
 
+        block_arr = [block_type for l in likelihood_arr]
+
         # Ensure rank 2 after batching
         Y = Y[..., None]
         ell_arr = batch_over_module_types(
             evoke_name = 'single_output_expected_log_likelihood',
             evoke_params = [],
-            module_arr = [likelihood_arr],
+            module_arr = [likelihood_arr, block_arr],
             fn_params = [X, Y, q_f_mu, q_f_var, likelihood_arr],
             fn_axes = [None, 1, 1, 1, 0],
             dim = P,
@@ -286,7 +295,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         chex.assert_shape(ell, [N, P, 1])
 
-        ell = np.sum(ell_arr)
+        ell = np.sum(ell)
 
         return ell
 
@@ -303,10 +312,15 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     model_type = get_model_type(prior)
 
-    if isinstance(model_type, LinearModel):
+    if  isinstance(model_type, LinearModel):
         # check if closed form expression exists
-        print('linear')
-        pass
+        ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
+           X, Y, q_f_mu, q_f_var, likelihood, block_type
+        )
+
+        ell = np.sum(ell)
+
+        return ell
     else:
 
         ell = approximate_expectation(
@@ -328,11 +342,14 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         return ell
 
     raise RuntimeError()
+
+
 # ===============================================================================
 # ================================= Entry Point =================================
 # ===============================================================================
 
 @dispatch(Data, Likelihood, Transform, MeanFieldApproximatePosterior)
+@dispatch(Data, Likelihood, Transform, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 4])
     base_prior = prior.base_prior

@@ -15,8 +15,7 @@ from stgp.kernels import RBF
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data
 from stgp.transforms import Independent
-from tqdm import trange
-
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.transforms import One2One
 from stgp.transforms.basic import InvProbit
 from stgp.computation.parameter_transforms import identity
@@ -24,6 +23,7 @@ import stgp
 from stgp.models import GP
 
 from tqdm import trange
+
 import matplotlib.pyplot as plt
 
 # Generate data
@@ -31,7 +31,7 @@ Q = 3
 P = 3
 N = 50
 
-XS, X, Y = multi_output_timeseries(P, N, 500, seed=0)
+XS, X, Y = multi_output_timeseries(P, N, 10, seed=0)
 
 X_test = np.copy(X)
 Y_test = np.copy(Y)
@@ -59,30 +59,52 @@ prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
 m = stgp.models.GP(
     data=Data(X, Y), 
     likelihood=[Gaussian(), Gaussian(), Gaussian()],
-    inference='Batch',
-    prior=prior
+    inference='Variational',
+    prior=prior,
+    approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
 )
 
-print(m.get_objective())
+pred_mu, pred_var = m.predict_f(XS)
 
-# Train
 if False:
-    max_iters = 200
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+    max_iters = 500
+
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+    ng_trainer.train(1.0, 1)
+    print(m.get_objective())
+
+    for i in trange(max_iters):
+        trainer.train(0.01, 1)
+        ng_trainer.train(1.0, 1)
+
+    print(m.get_objective())
 elif True:
     max_iters = 200
+
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+
     trainer = ScipyTrainer(m, 'L-BFGS-B')
+
+    ng_trainer.train(1.0, 1)
     for i in trange(max_iters):
         trainer.train(None, 1)
-else:
-    max_iters = 500
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-    trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
+        ng_trainer.train(1.0, 1)
 
-print(m.get_objective())
+    print(m.get_objective())
+elif True:
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+    ng_trainer.train(1.0, 1)
 
-pred_mu, pred_var = m.predict_y(XS)
+    print(m.get_objective())
+    breakpoint()
+
+pred_mu, pred_var = m.predict_f(XS)
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 
@@ -101,6 +123,7 @@ for p in range(P):
 
     axes[p].legend()
 plt.show()
+
 
 
 

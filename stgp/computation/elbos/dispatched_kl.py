@@ -16,9 +16,11 @@ from ...core import GPPrior
 from ...transforms import DataLatentPermutation, Joint
 
 @dispatch(GaussianApproximatePosterior, Joint, whiten=False)
-def kullback_leibler(approximate_posterior, prior, whiten):
+@dispatch(FullGaussianApproximatePosterior, GPPrior, whiten=False)
+def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
     Z = prior.get_Z()
+    chex.assert_rank(Z, 3)
 
     covar_2 = prior.b_covar(Z, Z)
 
@@ -32,7 +34,7 @@ def kullback_leibler(approximate_posterior, prior, whiten):
     )
 
 @dispatch(GaussianApproximatePosterior, GPPrior, whiten=True)
-def kullback_leibler(approximate_posterior, prior, whiten):
+def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Whitened KL between Gaussian approximate posterior and Gaussian prior"""
     return whitened_gaussian_kl(
         approximate_posterior.m,
@@ -40,10 +42,11 @@ def kullback_leibler(approximate_posterior, prior, whiten):
     )
 
 @dispatch(GaussianApproximatePosterior, GPPrior, whiten=False)
-def kullback_leibler(approximate_posterior, prior, whiten):
+def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
 
     Z = prior.get_Z()
+    chex.assert_rank(Z, 2)
 
     covar_2 = prior.covar(Z, Z)
 
@@ -58,7 +61,7 @@ def kullback_leibler(approximate_posterior, prior, whiten):
 
 @dispatch(MeanFieldApproximatePosterior, Independent, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Independent, whiten=False)
-def kullback_leibler(approximate_posterior, prior, whiten):
+def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between mean-field Gaussian approximate posterior and mean-field Gaussian prior"""
 
     latents_arr = prior.parent
@@ -70,7 +73,7 @@ def kullback_leibler(approximate_posterior, prior, whiten):
     kwarg_arr = {'whiten': whiten}
 
     kl_arr = batch_over_module_types(
-        evoke_name = 'kullback_leibler',
+        evoke_name = 'latent_kullback_leibler',
         evoke_params = [],
         module_arr = [approx_posteriors_arr, latents_arr],
         fn_params = [approx_posteriors_arr, latents_arr, whiten],
@@ -84,6 +87,11 @@ def kullback_leibler(approximate_posterior, prior, whiten):
 
     return np.sum(kl_arr)
 
+# ===============================================================================
+# ================================= Entry Point =================================
+# ===============================================================================
+
+
 @dispatch(ApproximatePosterior, Transform, whiten=False)
 @dispatch(ApproximatePosterior, Transform, whiten=True)
 def kullback_leibler(approximate_posterior, prior, whiten):
@@ -93,7 +101,7 @@ def kullback_leibler(approximate_posterior, prior, whiten):
     # use base prior as that is where the latent GPs are defined
     base_prior = prior.base_prior
 
-    return evoke('kullback_leibler', approximate_posterior, base_prior, whiten=whiten)(
+    return evoke('latent_kullback_leibler', approximate_posterior, base_prior, whiten=whiten)(
         approximate_posterior, base_prior, whiten
     )
 

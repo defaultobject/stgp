@@ -219,9 +219,14 @@ class VGP(Posterior):
         P = self.prior.output_dim
         N = XS.shape[0]
 
+        # fix shapes
+        mean = np.squeeze(mean)
+        var = np.squeeze(var)
 
-        mean = np.reshape(mean, [P, N])
-        var = np.reshape(var, [P, N])
+        mean = mean.T
+        var = var.T
+
+        breakpoint()
 
         if squeeze:
             return np.squeeze(mean), np.squeeze(var)

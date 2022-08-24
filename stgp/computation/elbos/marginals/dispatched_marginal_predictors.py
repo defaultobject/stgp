@@ -6,18 +6,19 @@ import objax
 from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...integrals.samples import approximate_expectation
-from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_block_type
+from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_block_type, get_permutated_prior
 
 from .linear_marginals import linear_marginal_blocks
 
@@ -39,7 +40,6 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
         prior.mean(XS),
     )
 
-
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
@@ -57,6 +57,95 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
         S_chol
     )
 
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
+def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    """ 
+    approximate_posterior is already is in latent data format and so needs to be converted to data-latent format. 
+    """
+    prior = get_permutated_prior(prior)
+    assert isinstance(prior, DataLatentPermutation)
+
+    if whiten:
+        base_prior = prior.base_prior
+        Z = base_prior.get_Z()
+        chex.assert_rank(Z, 3)
+
+        Kzz = base_prior.b_covar(Z, Z)
+        chex.assert_rank(Kzz, 2)
+
+        Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+        chex.assert_equal_shape([Kzz_chol, q_S])
+
+        q_m, q_S =  Kzz_chol @ q_m, Kzz_chol @ q_S
+
+
+    base_prior = prior.base_prior
+
+    Q = base_prior.output_dim
+    M = sparsity[0].shape[0]
+    D = XS.shape[-1]
+    NS = XS.shape[0]
+
+    # Variational parameters are in latent-data format
+    chex.assert_shape(q_m, [M * Q, 1])
+    chex.assert_shape(q_S, [M * Q, M * Q])
+
+    # Get all Z in latent-data format
+    Z_all = base_prior.get_Z()
+    chex.assert_shape(Z_all, [Q, M, D])
+
+    # Convert XS to latent_data format
+    XS_tiled = np.tile(XS, [Q, 1, 1])
+
+    # Z does not need to be ordered, only X
+    # Compute non permuted full covariance - this will be block diagonal
+    K_zz = prior.np_b_covar(Z_all, Z_all)
+    chex.assert_shape(K_zz, [Q*M, Q*M])
+
+    # Compute Kxz with x permutated into data-latent format
+    # Left permute x, and do not permute Z
+    Kxz_p = prior.lp_rb_covar(XS, Z_all)
+    chex.assert_shape(Kxz_p, [Q*NS, Q*M])
+
+    # Compute the block diagonals of the permutated Kxx
+    # TODO: stop tiling XS here
+    K_xx_p = prior.b_full_var_blocks(
+        XS_tiled,
+        1,
+        Q
+    )
+
+    chex.assert_shape(K_xx_p, [NS, Q, Q])
+
+    mean_Z = prior.b_mean(Z_all)
+    mean_XS = prior.mean(XS)
+
+    # Compute q(F) = \int p(F | U) q(U) dU
+    # Comput blocks of
+    #val = K_xx - Kxz_p @ cholesky_solve(K_chol, Kxz_p.T)
+
+
+    # TODO: assuming mean is zero
+    _m, _S =  gaussian_conditional_blocks(
+        1, 
+        Q, 
+        XS, 
+        Z_all, 
+        K_zz, 
+        Kxz_p, 
+        K_xx_p, 
+        q_m,
+        q_S,
+        mean_Z,
+        mean_XS,
+    )
+
+    # fix shapes
+    _m = _m[..., None]
+    _S = _S[:, None, ...]
+
+    return _m, _S
 
 
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=True)
@@ -91,18 +180,19 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 
     marginal_var = marginal_var[..., None]
 
-
     marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-
     chex.assert_shape(marginal_mu, [N, prior.output_dim,  out_block_dim])
-    chex.assert_shape(marginal_var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
 
+    # Mean field so we do not capture the correlations between Q
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+    chex.assert_shape(marginal_var, [N, prior.output_dim, out_block_dim, out_block_dim])
 
     return marginal_mu, marginal_var
 
-@dispatch(ApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
-@dispatch(ApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
 
     return linear_marginal_blocks(
@@ -197,6 +287,37 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
     var = second_moment - np.square(mu)
     
     return mu, var[..., None]
+
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+    out_block_dim = prior.output_dim
+
+    sparsity_list = prior.base_prior.get_sparsity_list()
+
+    q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior, whiten)(
+        data, approximate_posterior, likelihood, prior, whiten
+    )
+
+    # compute predictions of the part of linear model
+    linear_model_part = get_linear_model_part(prior)
+    model_type = get_model_type(prior)
+
+    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+    )
+
+    if isinstance(model_type, LinearModel):
+        # if the model is linear we can just return here
+
+        if diagonal:
+            var = np.transpose(np.diagonal(var, axis1=2, axis2=3), [0, 2, 1])[..., None]
+        else:
+            breakpoint()
+        return mu, var
+
+    breakpoint()
+
 
 # ================================== Samples ==============================
 

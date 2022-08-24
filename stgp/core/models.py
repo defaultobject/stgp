@@ -96,6 +96,9 @@ class Model(objax.Module):
         for k, v in param_dict.items():
             print(f'{k}: {v}')
 
+    def print_fixed_params(self):
+        print(utils.get_fixed_params(self))
+
     def checkpoint(self, name=None):
         if name is None:
             name = self.name

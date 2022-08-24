@@ -9,33 +9,13 @@ from batchjax import batch_or_loop, BatchType
 import chex
 from functools import partial
 
-from . import Transform
+from . import Transform, LinearTransform
 from ..computation.matrix_ops import block_from_mat, v_get_block_diagonal, to_block_diag, get_block_diagonal
 from ..computation.permutations import data_order_to_output_order, permute_vec_blocks, permute_vec, permute_mat, lp_blocks, permute_blocks, left_permute_mat, right_permute_mat
 from ..utils.utils import ensure_module_list, get_batch_type
 
 
-class DataLatentPermutation(Transform):
-    pass
-
-class IndependentDataLatentPermutation(DataLatentPermutation):
-    pass
-
-class JointDataLatentPermutation(DataLatentPermutation):
-    """
-    Converts a prior from latent-data format to data-latent format.
-    This is required when using a FullApproximatePosterior .
-
-    Assumes that parent is a full prior
-
-    Function name syntax:
-        p: permute
-        lp: left permute
-        rp: left permute
-        np: no permute
-        s: static (ie the input should not be batched over)
-        b: batched (ie the input should be batched over)
-    """
+class DataLatentPermutation(LinearTransform):
     def __init__(self, latents):
 
         # Allow passing a list of prior models and transformed model
@@ -44,15 +24,8 @@ class JointDataLatentPermutation(DataLatentPermutation):
         else:
             self._parent = latents 
 
-        self._parent = self.parent.base_prior
-
-        self._latent = latents
-
-        self._output_dim = self._latent.output_dim 
-        self._input_dim = self.parent.output_dim
-
-    def forward(self, *args, **kwargs): 
-        return self._latent.forward(*args, **kwargs)
+        self._output_dim = self.parent.output_dim
+        self._input_dim = self.parent.input_dim
 
     def np_mean_blocks(self, X): 
         """ Computes the mean across all latents keeping X fixed """
@@ -195,3 +168,35 @@ class JointDataLatentPermutation(DataLatentPermutation):
 
 
         return K_blocks
+
+class IndependentDataLatentPermutation(DataLatentPermutation):
+    pass
+
+class JointDataLatentPermutation(DataLatentPermutation):
+    """
+    Converts a prior from latent-data format to data-latent format.
+    This is required when using a FullApproximatePosterior .
+
+    Assumes that parent is a full prior
+
+    Function name syntax:
+        p: permute
+        lp: left permute
+        rp: left permute
+        np: no permute
+        s: static (ie the input should not be batched over)
+        b: batched (ie the input should be batched over)
+    """
+    def __init__(self, latents):
+
+        super(JointDataLatentPermutation, self).__init_(latents)
+
+        self._p = latents
+
+        self._output_dim = self.parent.output_dim 
+        self._input_dim = self.parent.input_dim
+
+    def forward(self, *args, **kwargs): 
+        return self.parent.forward(*args, **kwargs)
+
+

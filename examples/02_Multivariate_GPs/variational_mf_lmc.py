@@ -23,7 +23,6 @@ from stgp.computation.parameter_transforms import identity
 import stgp
 from stgp.models import GP
 
-from tqdm import trange
 import matplotlib.pyplot as plt
 
 # Generate data
@@ -59,28 +58,22 @@ prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
 m = stgp.models.GP(
     data=Data(X, Y), 
     likelihood=[Gaussian(), Gaussian(), Gaussian()],
-    inference='Batch',
+    inference='Variational',
     prior=prior
 )
 
-print(m.get_objective())
+if True:
+    max_iters = 200
 
-# Train
-if False:
-    max_iters = 200
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+
     trainer = ScipyTrainer(m, 'L-BFGS-B')
-    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
-elif True:
-    max_iters = 200
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
+
+    ng_trainer.train(1.0, 1)
     for i in trange(max_iters):
         trainer.train(None, 1)
-else:
-    max_iters = 500
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-    trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
-
-print(m.get_objective())
+        ng_trainer.train(1.0, 1)
 
 pred_mu, pred_var = m.predict_y(XS)
 
@@ -101,6 +94,7 @@ for p in range(P):
 
     axes[p].legend()
 plt.show()
+
 
 
 

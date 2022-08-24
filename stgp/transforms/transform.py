@@ -123,6 +123,10 @@ class LinearTransform(Transform):
         return self.parent.get_sparsity_list()
 
 class Joint(Transform):
+    def __init__(self, parent):
+        super(Joint, self).__init__()
+        self._parent = parent
+
     @property
     def is_base(self):
         return True
@@ -231,6 +235,38 @@ class Independent(Transform):
         c_blocks = self.covar_blocks(X1, X2)
         return to_block_diag(c_blocks)
 
+    def b_covar(self, X1, X2):
+        c_blocks = batch_or_loop(
+            lambda x1, x2, latent:  latent.covar(x1, x2),
+            [X1, X2, self.parent],
+            [0, 0, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+        return to_block_diag(c_blocks)
+
+    def b_mean(self, X1):
+        mean_blocks = batch_or_loop(
+            lambda x1, latent:  latent.mean(x1),
+            [X1, self.parent],
+            [0, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+        return np.vstack(mean_blocks)
+
+    def b_mean_blocks(self, X1):
+        mean_blocks = batch_or_loop(
+            lambda x1, latent:  latent.mean_blocks(x1),
+            [X1, self.parent],
+            [0, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+        return np.vstack(mean_blocks)
 
     def var_blocks(self, X1: np.ndarray) -> np.ndarray:
         var = batch_or_loop(
