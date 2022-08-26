@@ -46,7 +46,6 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ Catch all for single latent functions with no sparsity and no whitening"""
-    breakpoint()
     N = q_m.shape[0]
 
     if out_block_dim == 1:
@@ -58,7 +57,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         raise RuntimeError()
 
     # ensure correct shape
-    q_S = np.reshape(q_S, [N, out_block_dim, out_block_dim])
+    
+    q_m = q_m[..., None]
+    q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
 
     return q_m, q_S
 
@@ -79,7 +80,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         raise NotImplementedError()
 
     # ensure correct shape
-    q_S = np.reshape(q_S, [N, out_block_dim, out_block_dim])
+    q_m = q_m[..., None]
+    q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
 
     return q_m, q_S
 
@@ -211,6 +213,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         evoke_kwargs = {'whiten': whiten}
     )
 
+    chex.assert_rank([marginal_mu, marginal_var], [4, 5])
     # fix shapes
     # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
     #   and reshape into the proper shape

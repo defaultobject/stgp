@@ -280,7 +280,7 @@ class SecondOrderDerivativeKernel_2D(DerivativeKernel):
 
         return K_reshaped
 
-class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(DerivativeKernel):
+class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(SecondOrderDerivativeKernel_2D):
     def __init__(
             self, 
             parent_kernel = None
