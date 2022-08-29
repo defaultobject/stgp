@@ -54,6 +54,9 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
             likelihood = surrogate_likelihood
         )
 
+    def fix(self):
+        self.surrogate.likelihood.fix()
+
 class DiagonalConjugateGaussian(ConjugateApproximatePosterior):
     def __init__(self, dim: int=None, surrogate_model: 'Model' = None):
 

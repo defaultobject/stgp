@@ -115,7 +115,7 @@ def _get_mf_params(model, diagonal=True):
 
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = batch_or_loop(
-        lambda q: (q.surrogate.data.base.Y, q.surrogate.likelihood.base.variance),
+        lambda q: (q.surrogate.data.base.Y, q.surrogate.likelihood.likelihood_arr[0].base.variance),
         [q_list],
         [0],
         dim=len(q_list),
@@ -132,7 +132,7 @@ def _get_mf_params(model, diagonal=True):
     q_mu_z, q_var_z = batch_or_loop(
         fn,
         [q_list],
-        [0, 0],
+        [0],
         dim = Q,
         out_dim=2,
         batch_type = get_batch_type(q_list)
@@ -448,7 +448,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
-    sparsity_arr = prior.latent_obj.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
     # TODO: assuming sparsity is constant across all latents
     return evoke('natural_gradients', model, q, sparsity_arr[0])(

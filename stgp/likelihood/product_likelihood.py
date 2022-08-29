@@ -20,6 +20,10 @@ class ProductLikelihood(Likelihood):
 
             self.likelihood_arr = objax.ModuleList(likelihood_arr)
 
+    def fix(self):
+        for lik in self.likelihood_arr:
+            lik.fix()
+
 
 class GaussianProductLikelihood(ProductLikelihood):
 

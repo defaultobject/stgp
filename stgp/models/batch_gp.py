@@ -186,12 +186,11 @@ class BatchGP(Posterior):
         mu_arr, var_arr =  self.inference.predict_f_blocks(
             XS, 
             self.data,
-            group_size, 
-            block_size, 
             self, 
             self.likelihood, 
             self.prior, 
-            diagonal=diagonal
+            group_size, 
+            block_size
         )
 
         if squeeze:

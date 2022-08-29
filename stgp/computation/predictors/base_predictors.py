@@ -107,12 +107,6 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
 
     chex.assert_equal(mu.shape, sig.shape)
 
-    #K_xs - np.diag(K_Cs_x @ cholesky_solve(k_chol, K_xs_x.T))
-    #K_xs_x @ cholesky_solve(k_chol, Y)
-
-    #np.sum(np.abs((K_xs - np.diag(K_xs_x @ cholesky_solve(k_chol, K_xs_x.T)))-sig[:, 0]))
-    #np.sum(np.abs(K_xs_x @ cholesky_solve(k_chol, Y)-mu))
-
     return mu, sig
 
 #@partial(jit, static_argnums=(0, 1))

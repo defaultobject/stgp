@@ -38,8 +38,11 @@ def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
 # ====================== GAUSSIAN ELLs ===================
 
-@dispatch(BlockDiagonalGaussian, GaussianApproximatePosterior)
-def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+@dispatch(BlockDiagonalGaussian, 'Blocked')
+@dispatch(BlockDiagonalGaussian, 'Diagonal')
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
+    N = Y.shape[0]
+
     # TODO: adding missing data masking
     block_size = likelihood.block_size
 
@@ -49,10 +52,11 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     # Ensure correct shapes after vmap
     Y_blocks = Y_blocks[..., None]
-    #q_f_mu = q_f_mu[..., None]
+    q_f_mu = np.reshape(q_f_mu, [N, block_size, block_size])
 
     lik_var = likelihood.variance
 
+    breakpoint()
     ell_arr = jax.vmap(
         full_gaussian_expected_log_likelihood,
         [0, 0, 0, 0, 0],
@@ -64,7 +68,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     return ell
 
 
-@dispatch("DiagonalGaussian", GaussianApproximatePosterior)
+#@dispatch("DiagonalGaussian", GaussianApproximatePosterior)
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Special case for diagonal Gaussian"""
     N = X.shape[0]
@@ -99,7 +103,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     return ell
 
 @dispatch(DiagonalLikelihood, 'Diagonal')
-def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     """ For diagonal likelihoods adds support for missing data. """ 
     chex.assert_rank([Y, q_f_mu, q_f_var], [2, 2, 3])
 
@@ -136,14 +140,15 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     return ell
 
-@dispatch(PowerLikelihood, GaussianApproximatePosterior)
-def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
+@dispatch(PowerLikelihood, 'Blocked')
+@dispatch(PowerLikelihood, 'Diagonal')
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     scale_a = likelihood.a
 
     parent_lik = likelihood.parent
 
-    parent_ell =  evoke('expected_log_likelihood', parent_lik, approx_posterior)(
-        X, Y, q_f_mu, q_f_var, parent_lik
+    parent_ell =  evoke('expected_log_likelihood', parent_lik, block_type)(
+        X, Y, q_f_mu, q_f_var, parent_lik, block_type
     )
 
     return parent_ell * scale_a
@@ -232,6 +237,25 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     #return np.sum(ll_arr)
     return ll_arr
 
+@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, 'Diagonal')
+def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
+    chex.assert_rank([q_f_mu, q_f_var], [3, 4])
+    chex.assert_equal([q_f_mu.shape[1], q_f_var.shape[1]], [1, 1])
+
+    if False: 
+        # use monte carlo / quadrature
+        pass
+    else:
+        # single output already 
+        ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
+            X, Y, q_f_mu[:, 0, ...], q_f_var[:, 0, ...], likelihood, block_type
+        )
+
+        return ell
+
+    breakpoint()
+
+
 @dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, 'Diagonal')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
@@ -245,6 +269,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
 
     # TODO: there is a choice here between quadrature and monte-carlo estimation
+    # TODO: need to check if a likelihood has a closed form ELL
     if isinstance(model_type, LinearModel):
         # check if closed form expression exists
         # batch over each output
@@ -258,8 +283,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
             evoke_name = 'single_output_expected_log_likelihood',
             evoke_params = [],
             module_arr = [likelihood_arr, block_arr],
-            fn_params = [X, Y, q_f_mu, q_f_var, likelihood_arr],
-            fn_axes = [None, 1, 1, 1, 0],
+            fn_params = [X, Y, q_f_mu, q_f_var, likelihood_arr, block_arr],
+            fn_axes = [None, 1, 1, 1, 0, 0],
             dim = P,
             out_dim  = 1 
         )
@@ -348,8 +373,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 # ================================= Entry Point =================================
 # ===============================================================================
 
-@dispatch(Data, Likelihood, Transform, MeanFieldApproximatePosterior)
-@dispatch(Data, Likelihood, Transform, FullGaussianApproximatePosterior)
+@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior)
+@dispatch(Data, Likelihood, Transform, ApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 4])
     base_prior = prior.base_prior
@@ -398,121 +423,3 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         ell_arr.append(ell_p)
 
     return np.sum(np.array(ell_arr))
-
-
-# ================================= Special Cases =================================
-
-@dispatch(Data, GaussianProductLikelihood, LinearModel, FullGaussianApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    """
-    Both q_f_mu_arr and q_f_var_arr are already in data-latent format
-    We just need to mix them by W and call full_gaussian_expected_log_likelihood
-    """
-
-    chex.assert_rank([q_f_mu_arr, q_f_var_arr], [2, 3])
-
-    X, Y = data.X, data.Y
-
-    if False:
-        breakpoint()
-        if isinstance(prior, DataLatentPermutation):
-            W = prior.parent.W
-        else:
-            W = prior.W
-
-        # Ensure rank 2 after batching
-        q_f_mu_arr = q_f_mu_arr[..., None]
-        Y = Y[..., None]
-
-        # Mix outputs by the linear transform defined in the prior
-        q_f_mu_arr = jax.vmap(lambda W, f: W @ f, [None, 0])(W, q_f_mu_arr)
-        q_f_var_arr = jax.vmap(lambda W, S: W @ S @ W.T, [None, 0])(W, q_f_var_arr)
-    else:
-        # Ensure rank 2 after batching
-        q_f_mu_arr = q_f_mu_arr[..., None]
-
-        q_f_mu_arr, q_f_var_arr = jax.vmap(lambda p, mu, var: prior.transform(mu, var), [None, 0, 0])(prior, q_f_mu_arr, q_f_var_arr)
-
-        chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 3])
-
-        # Ensure rank 2 after batching
-        Y = Y[..., None]
-        chex.assert_rank(Y, 3)
-
-    variance = np.diag(likelihood.variance)
-
-    # ELL is the sum of the individual blocks
-    ell_blocks = jax.vmap(
-        full_gaussian_expected_log_likelihood,
-        [None, 0, None, 0, 0],
-        0
-    )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
-
-    chex.assert_shape(ell_blocks, [q_f_mu_arr.shape[0]])
-
-    return np.sum(ell_blocks)
-
-@dispatch(Data, BlockDiagonalGaussian, Transform, FullGaussianApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    X, Y = data.X, data.Y
-
-    # TODO
-    # Y has shape Nt x Ns x P
-    # At each timestep we need latent-data order because of how the state space is representated
-    # To convert to latent-data order we just need to stack each spatials observations
-    Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, data.Ns*data.P]) 
-
-    # Ensure rank 2 after batching
-    Y = Y[..., None]
-
-    # X should be P x N x D
-    #chex.assert_rank(X, 3)
-
-    # Y should be N x P x 1
-    chex.assert_rank(Y, 3)
-
-    N, P, _ = Y.shape
-
-    variance = likelihood.variance
-
-    num_blocks = likelihood.num_blocks
-    block_size = likelihood.block_size
-
-    #Y_vec = stack_rows(Y)
-    #Y = block_from_vec(Y_vec, block_size)
-
-    # X is in latent-data order. First we transpose to convert to data-latent order and then
-    # stack the rows through the reshape
-    #X = np.reshape(np.transpose(X, [1, 0, 2]), [num_blocks, -1, X.shape[-1]])
-
-    # Ensure correct dimensions after batching
-    q_f_mu_arr = q_f_mu_arr[..., None]
-
-    # ELL is the sum of the individual blocks
-    ell_blocks = jax.vmap(
-        full_gaussian_expected_log_likelihood,
-        [None, 0, 0, 0, 0],
-        0
-    )(X, Y, variance, q_f_mu_arr, q_f_var_arr)
-
-    chex.assert_shape(ell_blocks, [num_blocks])
-
-    return np.sum(ell_blocks)
-
-
-@dispatch(TransformedData, Likelihood, Transform, ApproximatePosterior)
-def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
-    base_data = data.base_data
-
-    base_ell =  evoke('expected_log_likelihood', base_data, likelihood, prior, approximate_posterior)(
-        data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
-    )
-
-    log_jac = data.log_jacobian(data.Y_base)
-
-    # Ignores nans
-    log_jac = np.nan_to_num(log_jac, 0.0)
-    log_jac = np.sum(log_jac)
-
-    return base_ell + log_jac
-

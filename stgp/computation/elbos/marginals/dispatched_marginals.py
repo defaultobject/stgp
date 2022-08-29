@@ -34,7 +34,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -42,6 +42,15 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 
 from .linear_marginals import linear_marginal_blocks
 # ================================== Dispatched q(f) ==============================
+@dispatch(ConjugateApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = q_m.shape[0]
+
+    # ensure correct shape
+    q_m = np.reshape(q_m, [N, 1, out_block_dim])
+    q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
+
+    return q_m, q_S
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
@@ -310,6 +319,26 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 # ===============================================================================================
 # ===============================================================================================
 
+# ============================ SINGLE OUTPUT APPROXIMATE POSTERIOR ENTRY POINT ============================
+@dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=True)
+@dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=False)
+def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool):
+    """
+    tbd.
+    """
+
+    out_block_size = likelihood.block_size
+
+    sparsity = prior.sparsity
+
+    # we are only processing the linear part so we can assume that it is linear
+    mu, var = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity, whiten=whiten)(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_size, whiten
+    ) 
+
+    chex.assert_rank([mu, var], [3, 4])
+
+    return mu, var
 
 # ============================ MEANFIELD APPROXIMATE POSTERIOR ENTRY POINT ============================
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)

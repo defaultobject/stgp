@@ -26,10 +26,15 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
+
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
     )
+
+    print('compute_expected_log_liklihood_with_variational_params')
+    print(ELL, likelihood, np.sum(data.Y), np.sum(q_f_mu), np.sum(q_f_var))
+    #breakpoint()
 
     if data.minibatch:
         #chex.assert_shape(ELL, [prior.output_dim])
@@ -63,31 +68,42 @@ def elbo(
     # Compute expected log likelihood term
     ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
+    print('ELL: ', ELL)
+    print('KL: ', KL)
+
     return  ELL - KL
 
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
 def elbo(
-    data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
+    data, likelihood: Likelihood, prior: Transform, approx_posterior: ConjugateApproximatePosterior, inference: 'Variational'
 ):
     # Compute ELL
-    ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
+    ELL = compute_expected_log_liklihood(data, likelihood, prior, approx_posterior, inference)
 
     # Compute surrogate ELL
     # TODO: this needs to be generalised to map across all X
-    surrogate_ell_fn = lambda q, q_p, inf: compute_expected_log_liklihood(q.surrogate.data, q.surrogate.likelihood, q_p, q, inf)
 
-    q_list = q.approx_posteriors
+    surrogate_ell_fn = lambda q, q_p, inf: compute_expected_log_liklihood(q.surrogate.data, q.surrogate.likelihood.likelihood_arr[0], q_p, q, inf)
 
+    q_list = approx_posterior.approx_posteriors
+
+    # TODO: assume q(u) is an independent
     ELL_surrogate =  batch_or_loop(
         surrogate_ell_fn,
-        [q_list, prior.latent_obj.latents, inference],
+        [q_list, prior.base_prior.parent, inference],
         [0, 0, None],
-        dim=len(q.approx_posteriors),
+        dim=len(q_list),
         out_dim=1,
         batch_type = get_batch_type(q_list)
     )
 
+    #q_list[0].surrogate.data.Y
+    #q_list[0].surrogate.likelihood.likelihood_arr[0]
+    breakpoint()
+
     ELL_surrogate = np.sum(ELL_surrogate)
+
+    #q_list[0].surrogate.data.Y.shape
 
     # get_ojective returns the negative log liklihood
     # We require the (postive) log liklihood
@@ -102,8 +118,10 @@ def elbo(
 
     ML_surrogate = np.sum(ML_arr)
 
+    print('ELL: ', ELL)
+    print('KL: ', ELL_surrogate, ML_surrogate, ELL_surrogate + ML_surrogate)
+
     return ELL - ELL_surrogate + ML_surrogate
-    #return ELL 
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(

@@ -1,7 +1,6 @@
 """
 Collects the required parts of q(u) for a given ELBO.
 
-
 By convention in the single output / diagonal settings the output will be:
     mu: M x 1
     var: M x 1
@@ -11,6 +10,12 @@ Let B = the block size, N_b the number of blocks then In the multi-output/block 
     var: N_b x B x B
 
 When required we enforce these conventations through assertions.
+
+The way the variational parameters are returns also depends on the type of approximate posterior.
+
+    - In the Meanfield/FullPosterior case we return the mean and cholesky of the variance.
+
+    - For a ConjugateApproximatePosterior we only return the required blocks for computed the ELL terms.
 
 """
 import chex
@@ -25,7 +30,7 @@ from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diago
 # Import Types
 from ...transforms import Transform, LinearTransform, Independent, NonLinearTransform
 from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, FullConjugateGaussian
-from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
+from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood, Gaussian
 from ...sparsity import FreeSparsity, Sparsity
 
 # ================================== Dispatched q(u) ==============================
@@ -43,22 +48,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 
     return mu, var_chol
 
-#@dispatch('GaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
-    """
-    Gaussian q(u). When the likelihood is Gaussian and no sparsity is used only the diagonal
-    of q(u) is required.
-
-    output:
-        mu: Mx1
-        var: Mx1
-    """
-    mu, var =  approximate_posterior.m, diagonal_from_cholesky(approximate_posterior.S_chol)
-
-    chex.assert_rank(mu, 2)
-    chex.assert_equal_shape([mu, var])
-
-    return mu, var
 
 @dispatch('DiagonalGaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
@@ -90,6 +79,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     block_size = likelihood.block_size
     return  block_from_vec(approximate_posterior.m, block_size), block_diagonal_from_cholesky(approximate_posterior.S_chol, block_size)
 
+@dispatch('ConjugateGaussian', Gaussian, 'GPPrior', 'NoSparsity', False)
 @dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
@@ -105,6 +95,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 
     return mu, var
 
+@dispatch('ConjugateGaussian', Gaussian, 'GPPrior', 'SpatialSparsity', False)
 @dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """

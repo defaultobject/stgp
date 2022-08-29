@@ -50,6 +50,10 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
             name ='BlockGaussian/variance', 
             train=True
         )
+
+    def fix(self):
+        self.variance_param.fix()
+
     @property
     def block_size(self):
         return self._block_size
@@ -104,6 +108,9 @@ class DiagonalGaussian(DiagonalLikelihood):
             train=True
         )
 
+    def fix(self):
+        self.variance_param.fix()
+
     @property
     def variance(self) -> np.ndarray:
         return np.squeeze(self.variance_param.value)
@@ -132,6 +139,9 @@ class Gaussian(DiagonalGaussian):
             name ='Gaussian/variance', 
             train=True
         )
+
+    def fix(self):
+        self.variance_param.fix()
 
     @property
     def variance(self) -> np.ndarray:

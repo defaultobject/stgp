@@ -42,7 +42,7 @@ class GPPrior(Prior):
         return self.sparsity.Z
 
     @property
-    def latent_obj(self):
+    def base_prior(self):
         return self
 
     @property

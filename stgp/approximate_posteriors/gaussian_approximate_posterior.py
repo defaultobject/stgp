@@ -13,9 +13,12 @@ class GaussianApproximatePosterior(ApproximatePosterior):
 
         if dim is None and m is None:
             raise RuntimeError('Either dim or m must be passed')
+
         if m is None:
             m = 0.01*np.ones([dim, 1])
             #m = np.ones([dim, 1])
+
+        chex.assert_rank(m, 2)
 
         if S is None and S_chol_vec is None:
             warnings.warn('Approximate posterior ')

@@ -13,7 +13,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -68,6 +68,20 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
     var = var[..., None, None]
 
     return mu, var
+
+
+@dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = XS.shape[0]
+
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
+
+    mu = np.reshape(mu, [N, 1, 1])
+    var = np.reshape(var, [N, 1, 1, 1])
+
+    return mu, var
+
+
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
@@ -266,7 +280,10 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         raise NotImplementedError()
 
     sparsity_list = prior.base_prior.get_sparsity_list()
-    q_m, q_S_chol = approximate_posterior.get_variational_params()
+
+    q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
+        data, approximate_posterior, likelihood, prior.base_prior, whiten
+    )
 
     # compute predictions of the part of linear model
     linear_model_part = get_linear_model_part(prior)
@@ -338,6 +355,9 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         return mu, var
 
     breakpoint()
+
+
+
 
 
 # ================================== Samples ==============================

@@ -127,8 +127,6 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
 
 #@partial(jit, static_argnums=(0, 1))
 def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, K_xz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
-
-
     M = X.shape[1]
     N = XS.shape[0]
     Q = block_size

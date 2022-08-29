@@ -25,6 +25,8 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 # Will use default RBF kernel and Gaussian Likelihood
 m = GP(X, Y)
 
+pred_mu, pred_var = m.predict_y(XS)
+
 # Train
 max_iters = 100
 trainer = ScipyTrainer(m, 'L-BFGS-B')

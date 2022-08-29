@@ -21,12 +21,11 @@ class Batch(Inference):
 
         return pred_mu, pred_var
 
-    def predict_f_blocks(self, XS, data, group_size, block_size, gp, likelihood, prior, diagonal: bool):
+    def predict_f_blocks(self, XS, data, gp, likelihood, prior, group_size, block_size):
 
         pred_mu, pred_var = evoke('predict_blocks', data, gp, likelihood, prior)(
-            XS, data, group_size, block_size, gp, likelihood, prior, diagonal
+            XS, data, gp, likelihood, prior, block_size
         )
-        chex.assert_rank([pred_mu, pred_var], [3, 4])
 
         return pred_mu, pred_var
 

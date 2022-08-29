@@ -112,7 +112,6 @@ def log_gaussian_scalar(Y, mu, variance):
 
     return ll
 
-
 @jit
 def log_gaussian_diagonal(Y, mu, variance):
     # TODO: just vmap log_gaussian_scalar

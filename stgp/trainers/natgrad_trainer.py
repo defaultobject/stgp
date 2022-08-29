@@ -44,7 +44,7 @@ def get_vars_to_update(model, vc):
 
 
         for q in approx_posterior.approx_posteriors:
-            lik_var = q.surrogate.likelihood.variance_param
+            lik_var = q.surrogate.likelihood.likelihood_arr[0].variance_param
 
             Y_name = get_var_name_with_id(model, id(q.surrogate.data._Y.raw_var), param_dict)
             V_chol_name = get_var_name_with_id(model, id(lik_var.raw_var), param_dict)
@@ -88,7 +88,7 @@ def update_vars(model, vars_to_update, params):
         new_params = []
         for q in range(len(q_arr)):
 
-            lik_var = q_arr[q].surrogate.likelihood.variance_param
+            lik_var = q_arr[q].surrogate.likelihood.likelihood_arr[0].variance_param
 
             new_params += [params[0][q], lik_var.inv_transform(params[1][q])]
 

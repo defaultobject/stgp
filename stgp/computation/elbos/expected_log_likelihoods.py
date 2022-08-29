@@ -86,7 +86,7 @@ def diagonal_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:
     chex.assert_rank(ell, 0)
     return ell
 
-@jit
+#@jit
 def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar:np.ndarray) ->  np.ndarray:
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
@@ -94,6 +94,7 @@ def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.n
     chex.assert_equal(Y.shape[1], 1)
     chex.assert_equal(Y.shape, q_mu.shape)
     chex.assert_shape(q_covar, [Y.shape[0], Y.shape[0]])
+    chex.assert_shape(noise, q_covar.shape)
 
     noise_chol = cholesky(add_jitter(noise, settings.jitter))
 
