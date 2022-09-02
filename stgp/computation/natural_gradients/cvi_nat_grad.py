@@ -182,6 +182,8 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
     var_grads = np.reshape(var_grads, [Q, N, B, B])
 
+    breakpoint()
+
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(
         jax.vmap(cvi_block_update, [0, 0, 0, 0, 0, 0, None, None]),

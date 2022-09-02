@@ -59,13 +59,9 @@ m = GP(
     inference='Variational'
 )
 
-
-print(m.get_objective())
-
-
 # Train
-if False:
-    max_iters = 200
+if True:
+    max_iters = 500
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
@@ -81,15 +77,6 @@ if False:
 
     plt.plot(lc_arr)
     plt.show()
-
-    print(m.approximate_posterior.approx_posteriors[0].surrogate.likelihood.likelihood_arr[0].variance)
-
-else:
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-    trainer.train(None, 100)
-
-breakpoint()
-
 
 pred_mu, pred_var = m.predict_y(XS)
 

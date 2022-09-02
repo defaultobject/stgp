@@ -56,7 +56,6 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     lik_var = likelihood.variance
 
-    breakpoint()
     ell_arr = jax.vmap(
         full_gaussian_expected_log_likelihood,
         [0, 0, 0, 0, 0],

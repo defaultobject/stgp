@@ -79,8 +79,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     block_size = likelihood.block_size
     return  block_from_vec(approximate_posterior.m, block_size), block_diagonal_from_cholesky(approximate_posterior.S_chol, block_size)
 
-@dispatch('ConjugateGaussian', Gaussian, 'GPPrior', 'NoSparsity', False)
-@dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
+@dispatch('ConjugateGaussian', Likelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     output:

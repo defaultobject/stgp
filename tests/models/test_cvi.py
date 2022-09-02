@@ -11,6 +11,7 @@ import numpy as np
 import scipy
 
 import stgp
+from stgp import settings
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
@@ -62,7 +63,10 @@ def test__vgp_and_cvi_match_with_same_init(regression_1d_data, seed, N, NS, rbf_
     # ==== Arrange ====
     X, Y = regression_1d_data
 
+    settings.jitter = 1e-7
+
     mu_post, var_post = cvi_gp.approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False)
+    var_post = var_post + np.eye(var_post.shape[0])*settings.jitter
 
     # ==== Act ====
 
@@ -89,6 +93,6 @@ def test__vgp_and_cvi_match_with_same_init(regression_1d_data, seed, N, NS, rbf_
     cvi_mu, cvi_var = cvi_gp.predict_f(X)
 
     # === Assert  ===
-    np.testing.assert_allclose(vgp_elbo, cvi_elbo)
+    np.testing.assert_allclose(vgp_elbo, cvi_elbo, rtol=1e-5)
     np.testing.assert_allclose(vgp_mu, cvi_mu, rtol=1e-5)
     np.testing.assert_allclose(vgp_var, cvi_var,rtol=1e-3)

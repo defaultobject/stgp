@@ -49,7 +49,6 @@ def latent_kullback_leibler(approximate_posterior, prior, whiten):
     chex.assert_rank(Z, 2)
 
     covar_2 = prior.covar(Z, Z)
-
     covar_chol_2 = cholesky(add_jitter(covar_2, settings.jitter))
 
     return gaussian_cholesky_kl(
@@ -90,7 +89,6 @@ def latent_kullback_leibler(approximate_posterior, prior, whiten):
 # ===============================================================================
 # ================================= Entry Point =================================
 # ===============================================================================
-
 
 @dispatch(ApproximatePosterior, Transform, whiten=False)
 @dispatch(ApproximatePosterior, Transform, whiten=True)

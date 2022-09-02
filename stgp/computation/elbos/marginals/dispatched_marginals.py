@@ -265,8 +265,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         # we must use the predictive distribution here 
         mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
 
-        # assume that XS1 == XS2
-        # TODO: is this correct?
         var_fn = lambda XS1, XS2: var_distpatched_fn(XS1, XS2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0, 0]
 
         mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)

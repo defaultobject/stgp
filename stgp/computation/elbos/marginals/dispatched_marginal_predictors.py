@@ -382,6 +382,19 @@ def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, li
         S_chol
     )
 
+@dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
+def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+
+    # TODO: this is hack, refactor later
+    # this is required as we need gradients wrt m, S_chol
+
+    prior = approximate_posterior.surrogate
+
+    lik_var = prior.likelihood.likelihood_arr[0].full_variance
+
+    breakpoint()
+    return gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
+    #return approximate_posterior.surrogate.covar(X1, X2)
 
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=False)

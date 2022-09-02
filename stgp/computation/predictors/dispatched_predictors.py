@@ -115,6 +115,56 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, 
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+@dispatch('BatchGP', Gaussian)
+def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
+    lik_var = np.eye(K_xx.shape[0]) * likelihood.variance
+
+    return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
+
+@dispatch('BatchGP', BlockDiagonalGaussian)
+def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
+    lik_var = likelihood.full_variance
+
+    return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
+
+@dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
+def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
+    X = data.X
+    Y = data.Y
+
+    num_latents = prior.output_dim
+    num_outputs = prior.output_dim
+
+    # precompute batched kernels
+    
+    K_xs = prior.covar_blocks(XS_1, XS_2)
+    K_xx = prior.covar_blocks(X, X)
+    K_xs_x = prior.covar_blocks(XS_1, X)
+    K_x_xs = prior.covar_blocks(X, XS_2)
+    mean_x = prior.mean_blocks(X)
+    mean_xs_1 = prior.mean_blocks(XS_1)
+    mean_xs_2 = prior.mean_blocks(XS_2)
+
+    likelihood_arr = likelihood.likelihood_arr
+
+    # Ensure Y is rank 2 after batching
+    Y = Y[..., None]
+
+    var_arr =  batch_over_module_types(
+        'predict_covar',
+        [gp],
+        likelihood_arr,
+        [XS_1, XS_2, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs_1],
+        [None, None, None, 1, 0, 0, 0, 0, 0, 0, 0],
+        num_latents,
+        1
+    )
+
+    chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
+
+    return var_arr
+
+
 @dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     """ 
