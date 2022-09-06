@@ -121,7 +121,7 @@ class ScipyTrainer(Trainer):
 
         self.objective_fn = objective_fn
 
-    def train(self, learning_rate, epochs, callback=None):
+    def train(self, learning_rate, epochs, callback=None, ng_trainer = False, ng_lr = None):
         """ For consistency we accept learning_rate here although it is not used. """
 
         x0 = self.trainable_vc.tensors()
@@ -129,6 +129,14 @@ class ScipyTrainer(Trainer):
 
         def fun_flat(x_flat):
             self.trainable_vc.assign(unravel(x_flat))
+
+            if ng_trainer:
+                # In variational models with natural gradients the ELL term will not change
+                # until q(f) has been updated, therefore we take a natural gradient step to incorporate the new x_flat. 
+                # TODO: this seems to be quite unstable, cant use ng_lr = 1?
+                obj, _ = ng_trainer.train(ng_lr, 1)
+                return np.squeeze(obj)
+
             return self.objective_fn()
 
         def grad_flat(x_flat):
@@ -157,7 +165,7 @@ class ScipyTrainer(Trainer):
             callback = callback_wrapper,
             options = {
                 'disp': False,
-                'maxiter': epochs
+                'maxiter': epochs,
             }
         )
 

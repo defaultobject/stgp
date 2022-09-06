@@ -29,7 +29,7 @@ pred_mu, pred_var = m.predict_y(XS)
 
 # Train
 max_iters = 100
-trainer = ScipyTrainer(m, 'L-BFGS-B')
+trainer = ScipyTrainer(m, 'CG')
 trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 pred_mu, pred_var = m.predict_y(XS)

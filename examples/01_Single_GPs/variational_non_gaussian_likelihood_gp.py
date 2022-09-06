@@ -56,7 +56,7 @@ m = GP(
 )
 
 # Train
-max_iters = 100
+max_iters = 10
 
 ng_trainer = NatGradTrainer(m)
 m.approximate_posterior.fix()

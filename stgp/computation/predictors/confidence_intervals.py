@@ -6,31 +6,34 @@ from ...dispatch import evoke, dispatch
 
 # Import types
 from ...core import Model
-from ...transforms import Transform, LinearTransform, NonLinearTransform, DataLatentPermutation
-from ...likelihood import ProductLikelihood
+from ...transforms import Transform, LinearTransform, NonLinearTransform, DataLatentPermutation, Independent
+from ...likelihood import ProductLikelihood, Likelihood
 from ...data import Data, TransformedData
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
+from ...core.model_types import get_model_type, LinearModel, NonLinearModel
 
-@dispatch(Data, Model, ProductLikelihood, DataLatentPermutation)
-@dispatch(Data, Model, ProductLikelihood, NonLinearTransform)
+@dispatch(Data, Model, ProductLikelihood, NonLinearModel)
 def confidence_intervals(XS, m):
-    latents = m.prior.latent_obj
+    # TODO: this is assuming a variational model
+    latents = m.prior.base_prior
 
-    mu =  evoke('marginal', 'samples', m.approximate_posterior, m.likelihood, m.prior)(
-        XS, m.data, m.approximate_posterior, m.likelihood, m.prior, m.inference, True
-    ) 
+    out_block_dim = 1
+
+    mu = evoke('marginal_prediction_samples', m.approximate_posterior, m.likelihood, m.prior, whiten=m.inference.whiten)(
+        XS, m.data, m.approximate_posterior, m.likelihood, m.prior, m.inference, out_block_dim, m.inference.whiten
+    )
 
     # Ensure correct shape
     mu = np.reshape(mu, [m.inference.prediction_samples, XS.shape[0], m.prior.output_dim])
 
-    ci_lower = jax.numpy.percentile(mu, 2.5, axis=0)
-    median = jax.numpy.percentile(mu, 50, axis=0)
-    ci_upper = jax.numpy.percentile(mu, 97.5, axis=0)
+    ci_lower = np.percentile(mu, 2.5, axis=0)
+    median = np.percentile(mu, 50, axis=0)
+    ci_upper = np.percentile(mu, 97.5, axis=0)
 
     # ensure shape is [P, N]
     return median.T, ci_lower.T, ci_upper.T
 
-@dispatch(Data, Model, ProductLikelihood, LinearTransform)
+@dispatch(Data, Model, Likelihood, LinearModel)
 def confidence_intervals(XS, m):
     mu, var = m.predict_y(XS, squeeze=False, diagonal=True)
 
@@ -42,14 +45,15 @@ def confidence_intervals(XS, m):
 
     return mu, mu-1.96*np.sqrt(var), mu+1.96*np.sqrt(var)
 
-@dispatch(TransformedData, Model, ProductLikelihood, LinearTransform)
-@dispatch(TransformedData, Model, ProductLikelihood, NonLinearTransform)
-@dispatch(TransformedData, Model, ProductLikelihood, DataLatentPermutation)
+@dispatch(TransformedData, Model, Likelihood, LinearModel)
+@dispatch(TransformedData, Model, Likelihood, NonLinearModel)
 def confidence_intervals(XS, m):
     base_data = m.data.base_data
 
+    model_type = get_model_type(m.prior)
+
     median, lower_ci, upper_ci = evoke(
-        'confidence_intervals', base_data, m, m.likelihood, m.prior         
+        'confidence_intervals', base_data, m, m.likelihood, model_type         
     )(XS, m)
 
     median = m.data.inverse_transform(median.T).T
@@ -58,12 +62,15 @@ def confidence_intervals(XS, m):
 
     return median, lower_ci, upper_ci
 
+# =========================== Entry Point  ===========================
 @dispatch(Model)
 def confidence_intervals(XS, m):
     if m.data.minibatch:
         # TODO: minibatching only works when sparsity is used. Assert this.
         m.data.batch()
 
+    model_type = get_model_type(m.prior)
+
     return evoke(
-        'confidence_intervals', m.data, m, m.likelihood, m.prior         
+        'confidence_intervals', m.data, m, m.likelihood, model_type         
     )(XS, m)

@@ -9,6 +9,7 @@ from .sequential import order_sequentially_np, pad_with_nan_to_make_grid
 from .. import Parameter
 from batchjax import batch_or_loop, BatchType
 from ..utils.utils import get_batch_type
+from ..utils.nan_utils import get_same_shape_mask
 
 class Input(objax.Module):
     """ Base class for storing Input X.  """
@@ -197,7 +198,14 @@ class TransformedData(Data):
 
         P = Y_base.shape[1]
 
-        Y_transformed = self.forward_transform(Y_base)
+        Y_base_mask =  get_same_shape_mask(Y_base)
+        Y_base_no_nan = np.nan_to_num(Y_base, nan=0.0)
+
+        # remove nans for the transform
+        Y_transformed = self.forward_transform(Y_base_no_nan)
+
+        # add back nans
+        Y_transformed = Y_transformed + 0 * Y_base
 
         return Y_transformed
 

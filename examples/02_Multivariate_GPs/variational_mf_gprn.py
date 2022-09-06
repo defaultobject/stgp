@@ -20,6 +20,7 @@ from tqdm import trange
 from stgp.transforms import One2One
 from stgp.transforms.basic import InvProbit
 from stgp.computation.parameter_transforms import identity
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 import stgp
 from stgp.models import GP
 
@@ -72,10 +73,13 @@ m = stgp.models.GP(
     prediction_samples = 1000
 )
 
+print(m.confidence_intervals(X))
+breakpoint()
+
 print(m.get_objective())
 print(m.predict_f(X))
 
-if True:
+if False:
     max_iters = 50
 
     ng_trainer = NatGradTrainer(m)

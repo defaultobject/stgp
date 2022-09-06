@@ -273,6 +273,99 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+    if diagonal == True:
+        out_block_dim = 1
+    else:
+        raise NotImplementedError()
+
+    model_type = get_model_type(prior)
+
+    if isinstance(model_type, LinearModel):
+        # if the model is linear we can just return here
+        sparsity_list = prior.base_prior.get_sparsity_list()
+
+        q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
+            data, approximate_posterior, likelihood, prior.base_prior, whiten
+        )
+
+        # compute predictions of the part of linear model
+        linear_model_part = get_linear_model_part(prior)
+
+        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+        )
+
+        return mu, var
+    else:
+        mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
+        )
+
+
+        chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, out_block_dim))
+
+        second_moment =  mu**2
+
+        mu = np.mean(mu, axis=0)
+        second_moment = np.mean(second_moment, axis=0)
+
+        mu = np.transpose(mu, [1, 0, 2])
+        second_moment = np.transpose(second_moment, [1, 0, 2])
+
+
+        var = second_moment - np.square(mu)
+        
+        return mu, var[..., None]
+
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+
+    model_type = get_model_type(prior)
+    if isinstance(model_type, LinearModel):
+        sparsity_list = prior.base_prior.get_sparsity_list()
+
+        q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior, whiten)(
+            data, approximate_posterior, likelihood, prior, whiten
+        )
+
+        # compute predictions of the part of linear model
+        linear_model_part = get_linear_model_part(prior)
+
+        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+        )
+
+        if diagonal:
+            var = np.transpose(np.diagonal(var, axis1=2, axis2=3), [0, 2, 1])[..., None]
+        else:
+            breakpoint()
+
+        return mu, var
+    else:
+        mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
+        )
+        # TODO: fix shapes with aggregation blocks?
+        chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, 1))
+
+        second_moment =  mu**2
+
+        mu = np.mean(mu, axis=0)
+        second_moment = np.mean(second_moment, axis=0)
+
+        mu = np.transpose(mu, [1, 0, 2])
+        second_moment = np.transpose(second_moment, [1, 0, 2])
+
+        var = second_moment - np.square(mu)
+
+        return mu, var[..., None]
+
+# ================================== Samples ==============================
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
 
     if diagonal == True:
         out_block_dim = 1
@@ -293,9 +386,6 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
     )
 
-    if isinstance(model_type, LinearModel):
-        # if the model is linear we can just return here
-        return mu, var
 
     #otherwise we need to sample / use quadrature to compute the remaining integrals
     block_type = get_block_type(1, out_block_dim)
@@ -311,24 +401,11 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         block_type = block_type,
         average = False
     )
-    chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, out_block_dim))
-
-    second_moment =  mu**2
-
-    mu = np.mean(mu, axis=0)
-    second_moment = np.mean(second_moment, axis=0)
-
-    mu = np.transpose(mu, [1, 0, 2])
-    second_moment = np.transpose(second_moment, [1, 0, 2])
-
-
-    var = second_moment - np.square(mu)
-    
-    return mu, var[..., None]
+    return mu
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
     out_block_dim = prior.output_dim
 
     sparsity_list = prior.base_prior.get_sparsity_list()
@@ -345,22 +422,24 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
     )
 
-    if isinstance(model_type, LinearModel):
-        # if the model is linear we can just return here
+    #otherwise we need to sample / use quadrature to compute the remaining integrals
+    block_type = get_block_type(1, out_block_dim)
 
-        if diagonal:
-            var = np.transpose(np.diagonal(var, axis1=2, axis2=3), [0, 2, 1])[..., None]
-        else:
-            breakpoint()
-        return mu, var
+    mu = approximate_expectation(
+        lambda f: f, 
+        mu, 
+        var, 
+        prior = prior,
+        fn_args = [],
+        generator = inference.generator, 
+        num_samples = inference.prediction_samples,
+        block_type = block_type,
+        average = False
+    )
+    # TODO: fix shapes with aggregation blocks?
+    chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, 1))
 
-    breakpoint()
-
-
-
-
-
-# ================================== Samples ==============================
+    return mu
 
 # ================================== Marginal Covars ==============================
 

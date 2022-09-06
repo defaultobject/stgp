@@ -111,8 +111,31 @@ class Affine(ElementWiseTransform):
         return (f - self.b) / self.a
 
 
-class Boxcox(ElementWiseTransform):
-    """Boxcox Function."""
+class BoxCox(ElementWiseTransform):
+    """
+    Boxcox Function
+
+        fk = (f0^lam - 1)/lam
+
+    where lam > 0.
+    """
+
+    def __init__(self, lam, train=True):
+
+        self.lam_param = Parameter(
+            np.array(lam), 
+            constraint='positive', 
+            name ='BoxCox/lam', 
+            train=train
+        )
+
+    def forward(self, x):
+        lam = self.lam_param.value
+        return (np.power(x, lam) - 1)/lam
+
+    def inverse(self, f):
+        lam = self.lam_param.value
+        return np.power((f*lam)+1, 1./lam )
 
 
 class Sinh_Arcsinh(ElementWiseTransform):

@@ -82,27 +82,6 @@ if False:
         ng_trainer.train(1.0, 1)
 
     print(m.get_objective())
-elif True:
-    max_iters = 200
-
-    ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
-
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-
-    ng_trainer.train(1.0, 1)
-    for i in trange(max_iters):
-        trainer.train(None, 1)
-        ng_trainer.train(1.0, 1)
-
-    print(m.get_objective())
-elif True:
-    ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
-    ng_trainer.train(1.0, 1)
-
-    print(m.get_objective())
-    breakpoint()
 
 pred_mu, pred_var = m.predict_f(XS)
 

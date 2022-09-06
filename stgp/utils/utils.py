@@ -41,7 +41,7 @@ def can_batch(module_list):
     return False
 
 def get_batch_type(module_list):
-    return BatchType.LOOP
+    #return BatchType.LOOP
 
     if can_batch(module_list):
         return BatchType.OBJAX

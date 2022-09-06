@@ -379,6 +379,11 @@ class One2One(NonLinearTransform):
         self._parent = parent
         self.transform_arr = objax.ModuleList(transform_arr)
         self._output_dim = len(self.transform_arr)
+        self._input_dim = self.output_dim
+
+    @property
+    def base_prior(self):
+        return self.parent.base_prior
 
     def forward(self, f):
         num_outputs = len(self.transform_arr)
