@@ -86,7 +86,7 @@ def diagonal_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:
     chex.assert_rank(ell, 0)
     return ell
 
-#@jit
+@jit
 def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar:np.ndarray) ->  np.ndarray:
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
@@ -121,7 +121,9 @@ def scalar_poisson_expected_log_likelihood(X:np.ndarray, Y:np.ndarray,  binsize:
         Let a = E[f] = m and b = E[exp(f)] = exp(m+v/2) then
             E[log Poisson(y | exp(f)*binsize)] = Y log binsize  + E[Y * log exp(f)] - E[binsize * exp(f)] - log Y!
                                                = Y log binsize + Y * m - binsize * exp(m + v/2) - log Y!
+
     """
+    #TODO: this is assuming an exp link function -- assert this 
 
     chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)

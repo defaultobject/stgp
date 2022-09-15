@@ -15,23 +15,23 @@ from stgp.kernels import RBF
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data
 from stgp.transforms import Independent
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from tqdm import trange
+
 from stgp.transforms import One2One
 from stgp.transforms.basic import InvProbit
 from stgp.computation.parameter_transforms import identity
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 import stgp
 from stgp.models import GP
-
-from tqdm import trange
 
 import matplotlib.pyplot as plt
 
 # Generate data
 Q = 3
 P = 3
-N = 50
+N = 10
 
-XS, X, Y = multi_output_timeseries(P, N, 10, seed=0)
+XS, X, Y = multi_output_timeseries(P, N, 500, seed=0)
 
 X_test = np.copy(X)
 Y_test = np.copy(Y)
@@ -50,50 +50,56 @@ if False:
 Z = [stgp.sparsity.NoSparsity(X) for q in range(Q)]
 
 # Construct Latent GPs
-latent_kernels = [RBF(lengthscales=[0.1]) for q in range(Q)]
-latent_gps = [
-    stgp.models.GP(sparsity=Z[q], kernel=latent_kernels[q]) for q in range(Q)
+
+latent_W_gps = [
+    [
+        stgp.models.GP(sparsity=stgp.sparsity.NoSparsity(X), kernel=RBF(lengthscales=[0.1])) 
+        for q in range(Q)
+    ]
+    for p in range(P)
 ] 
-prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
+
+latent_f_gps = [
+    stgp.models.GP(sparsity=stgp.sparsity.NoSparsity(X), kernel=RBF(lengthscales=[0.1])) for q in range(Q)
+] 
+prior = stgp.transforms.multi_output.GPRN(latent_W_gps, latent_f_gps, output_dim = P)
 
 m = stgp.models.GP(
     data=Data(X, Y), 
     likelihood=[Gaussian(), Gaussian(), Gaussian()],
     inference='Variational',
     prior=prior,
+    ell_samples = 10,
+    prediction_samples = 1000,
     approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
+
 )
-
-print(m.predict_f(X, diagonal=False)[1])
-print(m.predict_f(X, diagonal=True)[1])
+pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
 breakpoint()
-
-
-#print('NLPD: ', m.nlpd(X, Y))
-
-pred_mu, pred_var = m.predict_f(XS)
+print(m.confidence_intervals(X))
+print(m.get_objective())
+print(m.predict_f(X))
+print('NLPD: ', m.nlpd(X, Y))
 
 if True:
-    max_iters = 500
+    max_iters = 100
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
+    #trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    ng_trainer.train(1.0, 1)
-    print(m.get_objective())
-
+    ng_trainer.train(0.01, 10)
     for i in trange(max_iters):
         trainer.train(0.01, 1)
-        ng_trainer.train(1.0, 1)
-
-    print(m.get_objective())
-
+        ng_trainer.train(0.1, 1)
 
 print('NLPD: ', m.nlpd(X, Y))
 
-pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
+pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
+
+breakpoint()
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

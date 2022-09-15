@@ -18,7 +18,6 @@ def data_order_to_output_order(num_outputs: int, N: int):
 
     return permutation
 
-
 @jit
 def permute_vec_blocks(v_blocks):
     """

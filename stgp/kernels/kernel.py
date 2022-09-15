@@ -232,7 +232,7 @@ class ScaleKernel(Kernel):
         else:
             ensure_float(variance)
 
-        self.variance_param = Parameter(variance, constraint='positive')
+        self.variance_param = Parameter(variance, constraint='positive', name='ScaleKernel/Variance')
 
     @property
     def variance(self) -> np.ndarray:
@@ -244,15 +244,31 @@ class ScaleKernel(Kernel):
     def _K(self, X1, X2):
         return self.variance * self.parent_kernel.K(X1, X2)
 
+    def fix(self):
+        self.variance_param.fix()
+
+    def release(self):
+        self.variance_param.release()
+
+
 class StationaryKernel(Kernel):
     def __init__(
         self,
         lengthscales: Optional[np.ndarray] = None,
         input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
+        additive = False,
+        name = None
     ) -> None:
+        if lengthscales is None and input_dim is None:
+            raise RuntimeError('Input dim must be passed')
+
+        if input_dim is None:
+            input_dim = len(lengthscales)
 
         super(StationaryKernel, self).__init__(input_dim, active_dims)
+
+
 
         if lengthscales is None:
             lengthscales = np.array([1.0] * input_dim)
@@ -262,7 +278,25 @@ class StationaryKernel(Kernel):
         chex.assert_shape(lengthscales, [input_dim])
 
         # register lengthscales and variances
-        self.lengthscale_param = Parameter(lengthscales, constraint='positive', name='Kernel/Lengthscale')
+        if name is None:
+            name = 'Kernel'
+
+        self.base_name = name
+
+        if active_dims is None:
+            name = f'{name}/Lengthscale({additive})'
+        else:
+            name = f'{name}/Lengthscale({additive})[{active_dims}]'
+
+        self.lengthscale_param = Parameter(lengthscales, constraint='positive', name=name)
+
+        self.additive = additive
+
+    def fix(self):
+        self.lengthscale_param.fix()
+
+    def release(self):
+        self.lengthscale_param.release()
 
     @property
     def lengthscales(self) -> np.ndarray:
@@ -270,7 +304,10 @@ class StationaryKernel(Kernel):
 
     def K_diag(self, X1):
         #TODO: this needs to be multiplied by D, or var is only used once!
-        return np.ones(X1.shape[0])
+        if self.additive:
+            return np.ones(X1.shape[0]) * self.input_dim
+        else:
+            return np.ones(X1.shape[0])
 
     def _K(self, X1, X2):
         D = X1.shape[1]
@@ -287,7 +324,10 @@ class StationaryKernel(Kernel):
 
             chex.assert_equal(k_d1_d2.shape[0], D)
 
-            k_xx =  np.product(k_d1_d2)
+            if self.additive:
+                k_xx =  np.sum(k_d1_d2)
+            else:
+                k_xx =  np.product(k_d1_d2)
 
             chex.assert_rank(k_xx, 0)
 

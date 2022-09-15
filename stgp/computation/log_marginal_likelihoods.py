@@ -126,6 +126,11 @@ def log_marginal_likelihood(
 
 # ====================================== Linear Transforms ======================================
 
+@dispatch(Data, Model, Likelihood, LinearModel)
+def log_marginal_likelihood( data, gp, likelihood, prior):
+    #TODO: fix this
+    breakpoint()
+
 
 # ====================================== NonLinear Models ======================================
 @dispatch(Data, Model, Likelihood, NonLinearModel)

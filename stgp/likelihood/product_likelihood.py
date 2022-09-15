@@ -24,6 +24,9 @@ class ProductLikelihood(Likelihood):
         for lik in self.likelihood_arr:
             lik.fix()
 
+    def release(self):
+        for lik in self.likelihood_arr:
+            lik.release()
 
 class GaussianProductLikelihood(ProductLikelihood):
 

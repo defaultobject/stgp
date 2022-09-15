@@ -127,6 +127,8 @@ class GPRN_DRD(GPRN_Base):
         # Set defaults
         if variances is None:
             variances = np.ones(self.P)
+        else:
+            variances = np.array(variances)
 
         # Setup Parameters
         self.variances = Parameter(variances, constraint='positive', name='GPRN_DRD/variance', train=True)

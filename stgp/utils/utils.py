@@ -1,7 +1,9 @@
 import jax
 import jax.numpy as np
 import objax
+import chex
 from .. import Parameter
+from .. import settings
 from batchjax import BatchType
 import numpy as onp
 
@@ -41,7 +43,8 @@ def can_batch(module_list):
     return False
 
 def get_batch_type(module_list):
-    #return BatchType.LOOP
+    if settings.use_loop_mode:
+        return BatchType.LOOP
 
     if can_batch(module_list):
         return BatchType.OBJAX
@@ -162,8 +165,8 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=F
 
     return parameters
 
-def get_fixed_params(m):
-    param_dict =  get_parameters(m, scope='', only_fixed=True, replace_name=False)
+def get_fixed_params(m, replace_name=False):
+    param_dict =  get_parameters(m, scope='', only_fixed=True, replace_name=replace_name)
 
     return list(param_dict.keys())
 
@@ -177,4 +180,46 @@ def get_var_name_with_id(model, _id, param_dict=None):
             return k
 
     raise RuntimeError(f'Did not find var with id {_id}')
+
+
+def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = False):
+    chex.assert_rank([mu, var], [3, 4])
+
+    N = mu.shape[0]
+    P = mu.shape[1]
+
+    if mu.shape[2] != 1:
+        breakpoint()
+        raise NotImplementedError()
+
+    if diagonal: 
+        var = np.diagonal(var, axis1=2, axis2=3)
+
+        # remove extra dimension (fix when aggregating)
+        mu = mu[..., 0]
+        var = var[..., 0]
+
+        if output_first:
+            mu = mu.T
+            var = var.T
+            chex.assert_shape(
+                [mu, var],
+                [[P, N], [P, N]],
+            )
+        else:
+            chex.assert_shape(
+                [mu, var],
+                [[N, P], [N, P]],
+            ) 
+    else:
+        mu = mu[..., 0]
+        var = var[:, 0, ...]
+
+        if output_first:
+            raise RuntimeError()
+
+    if squeeze:
+        mu, var = np.squeeze(mu), np.squeeze(var) 
+
+    return mu, var
 

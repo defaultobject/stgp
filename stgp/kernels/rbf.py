@@ -4,6 +4,9 @@ import jax.numpy as np
 import chex
 
 class RBF(StationaryKernel):
+    def __init__(self, *args, **kwargs):
+        super(RBF, self).__init__(*args, **kwargs, name='RBF')
+
     def _K_scaler(self, x1, x2, lengthscale):
         #ensure scalar inputs
         chex.assert_rank(x1, 0)

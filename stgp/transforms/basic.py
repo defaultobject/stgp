@@ -7,6 +7,22 @@ from ..utils.utils import ensure_module_list
 from ..computation.parameter_transforms import softplus, inv_softplus, inv_probit
 from ..parameter import Parameter
 
+class CompositeTransform(Transform):
+    def __init__(self, transform_arr):
+        self.transform_arr = transform_arr
+
+    def forward(self, x):
+        res = x
+        for t in self.transform_arr:
+            res = t.forward(res)
+        return res
+
+    def inverse(self, x):
+        res = x
+        for t in self.transform_arr[::-1]:
+            res = t.inverse(res)
+        return res
+
 class InputMeanFunction(LinearTransform, LatentSpecific):
     def __init__(self, latent):
         self._parent = latent
@@ -15,7 +31,7 @@ class InputMeanFunction(LinearTransform, LatentSpecific):
         return X[:, 0][:, None]
 
 
-class Identity(LinearTransform):
+class Identity(ElementWiseTransform):
     def forward(self, x):
         return x
 
@@ -82,6 +98,7 @@ class Affine(ElementWiseTransform):
     """Affine Function."""
     def __init__(self, a, b, train=True):
 
+        # a is std, b is mean
         self.a_param = Parameter(
             np.array(a), 
             constraint=None, 
@@ -149,3 +166,4 @@ class InvProbit(ElementWiseTransform):
     """Sinh_Arcsinh Function."""
     def forward(self, x):
         return inv_probit(x)
+

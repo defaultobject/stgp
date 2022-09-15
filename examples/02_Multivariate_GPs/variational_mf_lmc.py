@@ -62,20 +62,24 @@ m = stgp.models.GP(
     prior=prior
 )
 
+print('NLPD: ', m.nlpd(X, Y))
+
 if True:
     max_iters = 200
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     ng_trainer.train(1.0, 1)
     for i in trange(max_iters):
-        trainer.train(None, 1)
+        trainer.train(1e-2, 1)
         ng_trainer.train(1.0, 1)
 
-pred_mu, pred_var = m.predict_y(XS)
+print('NLPD: ', m.nlpd(X, Y))
+
+pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

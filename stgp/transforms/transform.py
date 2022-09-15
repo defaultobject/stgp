@@ -236,6 +236,7 @@ class Independent(Transform):
         return to_block_diag(c_blocks)
 
     def b_covar(self, X1, X2):
+
         c_blocks = batch_or_loop(
             lambda x1, x2, latent:  latent.covar(x1, x2),
             [X1, X2, self.parent],
@@ -244,7 +245,10 @@ class Independent(Transform):
             out_dim = 1,
             batch_type = get_batch_type(self.parent)
         )
-        return to_block_diag(c_blocks)
+
+        res = to_block_diag(c_blocks)
+
+        return res
 
     def b_mean(self, X1):
         mean_blocks = batch_or_loop(

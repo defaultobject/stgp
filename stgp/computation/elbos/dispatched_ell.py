@@ -217,7 +217,7 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     # batch over outputs
     # log likelihood for each outout
     ll_arr = batch_or_loop(
-        lambda y, f, lik: lik.log_likelihood(y, f),
+        lambda y, f, lik: np.squeeze(lik.log_likelihood(y, f)),
         [Y, transformed_f, likelihood_arr],
         [1, 1, 0],
         dim = num_likelihoods,
@@ -327,7 +327,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
 @dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
-    print('blocked')
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
     chex.assert_equal([q_f_var.shape[1]], [1])
 

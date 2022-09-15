@@ -91,10 +91,16 @@ class Model(objax.Module):
         raise NotImplementedError()
 
     def print(self):
+        #dicts should be the same ordering
         param_dict = utils.get_parameters(self)
 
+        fixed_params = utils.get_fixed_params(self, replace_name=True)
+
         for k, v in param_dict.items():
-            print(f'{k}: {v}')
+            if k in fixed_params:
+                print(f'(fixed) {k}: {v}')
+            else:
+                print(f'{k}: {v}')
 
     def print_fixed_params(self):
         print(utils.get_fixed_params(self))
@@ -151,11 +157,35 @@ class Posterior(Model):
         raise NotImplementedError()
 
     def predict_f(self, XS: np.ndarray, *args, **kwargs):
-        """ Predict p(f^* | data) """
+        """ 
+        Predict p(f^* | data) 
+
+        Should support kwargs: 
+            diagonal: bool
+            squeeze: bool
+
+        Typical Output Shapes:
+            diagonal == True:
+                mean: N x P
+                var: N x P
+
+            diagonal == False:
+                mean: N x P x 1
+                var: N x P x P
+
+        Optional kwargs:
+            output_first:
+                diagonal == True:
+                    mean: P x N
+                    var: P x N
+                diagonal == False:
+                    n/a
+
+        """
         raise NotImplementedError()
 
     def predict_y(self, XS: np.ndarray, *args, **kwargs):
-        """ Predict p(y^* | data) """
+        """ Predict p(y^* | data). For output shapes see <predict_f>."""
         raise NotImplementedError()
 
     def posterior_blocks(self, *args, **kwargs):
@@ -169,6 +199,12 @@ class Posterior(Model):
     def confidence_intervals(self, XS):
         """ Returns the median and the 95% confidence intervals. """
         raise NotImplementedError()
+
+    def npld(self, XS, YS):
+        """ Returns the negative log predictive likelihood """
+        raise NotImplementedError()
+
+
         
 
 

@@ -12,11 +12,9 @@ from ...data import Data, TransformedData
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...core.model_types import get_model_type, LinearModel, NonLinearModel
 
-@dispatch(Data, Model, ProductLikelihood, NonLinearModel)
+@dispatch(Data, Model, Likelihood, NonLinearModel)
 def confidence_intervals(XS, m):
     # TODO: this is assuming a variational model
-    latents = m.prior.base_prior
-
     out_block_dim = 1
 
     mu = evoke('marginal_prediction_samples', m.approximate_posterior, m.likelihood, m.prior, whiten=m.inference.whiten)(

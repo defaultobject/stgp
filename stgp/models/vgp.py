@@ -20,7 +20,7 @@ from ..likelihood import get_product_likelihood
 from ..kernels import RBF
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 from ..sparsity import NoSparsity
-from ..utils.utils import ensure_module_list
+from ..utils.utils import ensure_module_list, fix_prediction_shapes
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 
 
@@ -208,7 +208,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_f(self, XS, diagonal=True, squeeze=True):
+    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False):
 
         mean, var = self.inference.predict_f(
             XS, 
@@ -220,23 +220,20 @@ class VGP(Posterior):
         )
         chex.assert_rank([mean, var], [3, 4])
 
-        # ensure shape is [P, N]
-        P = self.prior.output_dim
-        N = XS.shape[0]
-
-        # fix shapes
-        mean = np.squeeze(mean)
-        var = np.squeeze(var)
-
-        mean = mean.T
-        var = var.T
-
-        if squeeze:
-            return np.squeeze(mean), np.squeeze(var)
+        mean, var = fix_prediction_shapes(
+            mean, 
+            var,
+            diagonal = diagonal,
+            squeeze = squeeze,
+            output_first = output_first
+        )
 
         return mean, var
 
-    def predict_y(self, XS, diagonal=True, squeeze=True):
+    def predict_y(self, XS, diagonal=True, squeeze=True, output_first = False):
+        P = self.prior.output_dim
+        N = XS.shape[0]
+
         mu_arr, var_arr =  self.inference.predict_y(
             XS, 
             self.data, 
@@ -245,17 +242,17 @@ class VGP(Posterior):
             self.approximate_posterior,
             diagonal=diagonal
         )
+
         chex.assert_rank([mu_arr, var_arr], [3, 4])
 
-        # ensure shap is [P, N]
-        P = self.prior.output_dim
-        N = XS.shape[0]
+        mu_arr, var_arr = fix_prediction_shapes(
+            mu_arr, 
+            var_arr,
+            diagonal = diagonal,
+            squeeze = squeeze,
+            output_first = output_first
+        )
 
-        mu_arr = np.reshape(mu_arr, [P, N])
-        var_arr = np.reshape(var_arr, [P, N])
-
-        if squeeze:
-            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
 
         return mu_arr, var_arr
 
@@ -274,3 +271,6 @@ class VGP(Posterior):
     def confidence_intervals(self, XS):
         """ Returns the median and the 95% confidence intervals. """
         return evoke('confidence_intervals', self)(XS, self)
+
+    def nlpd(self, XS, YS):
+        return evoke('nlpd', self)(XS, YS, self)

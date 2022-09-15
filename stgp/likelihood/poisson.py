@@ -9,11 +9,14 @@ from ..computation.general import log_poisson
 class Poisson(DiagonalLikelihood):
     """Poisson likelihood."""
 
-    def __init__(self, binsize):
+    def __init__(self, binsize, link_fn = None):
         self.binsize = binsize
-        self.link_fn = np.exp
+        if link_fn is None:
+            link_fn = np.exp
 
-    def log_likelihood(self, y, f):
+        self.link_fn = link_fn
+
+    def log_likelihood_scalar(self, y, f):
         ll = log_poisson(y, self.link_fn(f) * self.binsize)
         return ll
 

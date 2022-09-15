@@ -13,7 +13,17 @@ def hessian(f, argnums):
 
 @jit
 def to_block_diag(A):
-    return jax.scipy.linalg.block_diag(*A)
+    if True:
+        blocks = A.shape[0]
+        A_stacked = np.vstack(A)
+
+        A_full = np.tile(A_stacked, [1, blocks])
+        mask = np.kron(np.eye(blocks), np.ones_like(A[0]))
+        res_1 =  A_full * mask
+        return res_1
+    else:
+        res =  jax.scipy.linalg.block_diag(*A)
+        return res
 
 @partial(jit, static_argnums=(1))
 def get_block_diagonal(A, block_size):

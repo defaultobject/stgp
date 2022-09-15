@@ -74,13 +74,12 @@ m = stgp.models.GP(
 )
 
 print(m.confidence_intervals(X))
-breakpoint()
-
 print(m.get_objective())
 print(m.predict_f(X))
+print('NLPD: ', m.nlpd(X, Y))
 
-if False:
-    max_iters = 50
+if True:
+    max_iters = 100
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
@@ -93,9 +92,11 @@ if False:
         trainer.train(0.01, 1)
         ng_trainer.train(0.1, 1)
 
-pred_mu, pred_var = m.predict_f(XS)
-pred_mu = np.squeeze(pred_mu).T
-pred_var = np.squeeze(pred_var).T
+print('NLPD: ', m.nlpd(X, Y))
+
+pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
+
+breakpoint()
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

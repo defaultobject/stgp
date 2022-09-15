@@ -54,6 +54,9 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
     def fix(self):
         self.variance_param.fix()
 
+    def release(self):
+        self.variance_param.release()
+
     @property
     def block_size(self):
         return self._block_size
@@ -142,6 +145,8 @@ class Gaussian(DiagonalGaussian):
 
     def fix(self):
         self.variance_param.fix()
+    def release(self):
+        self.variance_param.release()
 
     @property
     def variance(self) -> np.ndarray:

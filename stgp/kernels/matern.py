@@ -62,6 +62,9 @@ class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
 
 
 class Matern32(StationaryKernel, MarkovKernel):
+    def __init__(self, *args, **kwargs):
+        super(Matern32, self).__init__(*args, **kwargs, name='Matern32')
+
     def to_ss(self, X_spatial=None):
         """ Return state space representation """
         chex.assert_equal(self.input_dim, 1)
@@ -115,18 +118,16 @@ class Matern32(StationaryKernel, MarkovKernel):
         return  (1.0 + sqrt3 * r) * np.exp(-sqrt3 * r)
 
 class Matern12(StationaryKernel, MarkovKernel):
+    def __init__(self, *args, **kwargs):
+        super(Matern12, self).__init__(*args, **kwargs, name='Matern12')
+
     def cf_to_ss_temporal(self):
         chex.assert_equal(self.input_dim, 1)
         raise NotImplementedError()
 
-    def _K(self, X1, X2):
+    def _K_scaler(self, x1, x2, lengthscale):
         """
         K(X1, X2) = σ²  exp{-|X1-X2|/l}
         """
 
-        diff = X1 - X2.T
-        r2 = np.square(diff / self.lengthscales)
-        r = np.sqrt(np.clip(r2, 1e-36))
-
-
-        return self.variance * np.exp(-  r)
+        return np.exp(- np.abs(x1-x2) / lengthscale)

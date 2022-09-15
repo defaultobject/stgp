@@ -1,6 +1,6 @@
 """ Helper functions and classes for classifying if a model is linear or non linear """
 from .models import Model
-from ..transforms import LinearTransform, NonLinearTransform, MultiOutput, Joint, Independent
+from ..transforms import LinearTransform, NonLinearTransform, MultiOutput, Joint, Independent, CompositeTransform
 from ..transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
 from .gp_prior import GPPrior
 
@@ -22,6 +22,13 @@ def _is_prior_linear(prior):
             if _is_prior_linear(p) == False:
                 return False
         return True
+
+    if isinstance(prior, CompositeTransform):
+        # only linear if each component is linear
+        for t in prior.transform_arr:
+            if _is_prior_linear(t) == False:
+                return False
+            return True
 
     if isinstance(prior, LinearTransform):
         # is prior is linear, then one of its parents might be non-linear so we need to keep checking

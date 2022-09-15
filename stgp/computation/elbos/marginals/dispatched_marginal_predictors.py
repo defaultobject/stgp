@@ -67,6 +67,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
     mu = mu[..., None]
     var = var[..., None, None]
 
+
     return mu, var
 
 
@@ -133,7 +134,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
     # Compute Kxz with x permutated into data-latent format
     # Left permute x, and do not permute Z
+    #TODO: IS THIS CAUSING JIT ISSUES??
     Kxz_p = prior.lp_rb_covar(XS, Z_all)
+
     chex.assert_shape(Kxz_p, [Q*NS, Q*M])
 
     # Compute the block diagonals of the permutated Kxx
@@ -301,7 +304,6 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
             XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
         )
 
-
         chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, out_block_dim))
 
         second_moment =  mu**2
@@ -314,12 +316,17 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
 
         var = second_moment - np.square(mu)
-        
+
+        # fix shapes back to data-latent format
+        mu = np.transpose(mu, [1, 0, 2])
+        var = np.transpose(var, [1, 0, 2])
+
         return mu, var[..., None]
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+    out_block_dim = prior.output_dim
 
     model_type = get_model_type(prior)
     if isinstance(model_type, LinearModel):
@@ -335,11 +342,13 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
             XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
         )
+        chex.assert_rank([mu, var], [3, 4])
 
         if diagonal:
             var = np.transpose(np.diagonal(var, axis1=2, axis2=3), [0, 2, 1])[..., None]
         else:
-            breakpoint()
+            # no action required as var will already be of the correct shape
+            pass
 
         return mu, var
     else:
@@ -358,6 +367,13 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         second_moment = np.transpose(second_moment, [1, 0, 2])
 
         var = second_moment - np.square(mu)
+
+        # fix shapes back to data-latent format
+        mu = np.transpose(mu, [1, 0, 2])
+        var = np.transpose(var, [1, 0, 2])
+
+        if diagonal == False:
+            breakpoint()
 
         return mu, var[..., None]
 
@@ -401,6 +417,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         block_type = block_type,
         average = False
     )
+
     return mu
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)

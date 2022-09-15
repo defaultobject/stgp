@@ -56,6 +56,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
         mu: Mx1
         var: Mx1
     """
+
+    breakpoint()
     mu, var =  approximate_posterior.m, approximate_posterior.S_diag
     var = var[:, None]
 

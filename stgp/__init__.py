@@ -16,6 +16,7 @@ from .computation.natural_gradients import *
 from .computation.spatial_conditionals import *
 
 from .data import *
+from .metrics import *
 
 #from .computation import *
 

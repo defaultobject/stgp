@@ -26,6 +26,8 @@ from stgp.models import GP
 from tqdm import trange
 import matplotlib.pyplot as plt
 
+from stgp.metrics.nlpd import nlpd
+
 # Generate data
 Q = 3
 P = 3
@@ -63,6 +65,9 @@ m = stgp.models.GP(
     prior=prior
 )
 
+print('NLPD: ', nlpd(X, Y, m))
+
+
 print(m.get_objective())
 
 # Train
@@ -81,6 +86,7 @@ else:
     trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
 
 print(m.get_objective())
+print('NLPD: ', nlpd(X, Y, m))
 
 pred_mu, pred_var = m.predict_y(XS)
 

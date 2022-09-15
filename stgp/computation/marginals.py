@@ -131,14 +131,15 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
     N = XS.shape[0]
     Q = block_size
 
-    chex.assert_shape(Kzz, [M*Q, M*Q])
-    chex.assert_shape(K_xz, [N*Q, M*Q])
     chex.assert_shape(Kxx, [N, Q, Q])
-    chex.assert_shape(m, [M*Q, 1])
-    chex.assert_shape(S_chol, [M*Q, M*Q])
+    chex.assert_equal(Kzz.shape[0], Kzz.shape[1])
+    chex.assert_equal(K_xz.shape[0], N*Q)
+    chex.assert_equal(K_xz.shape[1], Kzz.shape[0])
+    chex.assert_shape(m, [Kzz.shape[0], 1])
+    chex.assert_shape(S_chol, Kzz.shape)
 
     # Add jitter to help the cholesy solve
-    jit_arr = np.eye(Kzz.shape[0])*1e-3
+    jit_arr = np.eye(Kzz.shape[0])*settings.jitter
 
     # pred_mu = Kxz(Kzz+jit)^{-1}m
     # pred_var = Kxx - Kxz(Kzz+jit)^{-1}Kxz.T
@@ -151,7 +152,9 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
 
     # Compute KxzKzz^{-1}SKzz^{-1}Kxz.T
     K_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
     A = cholesky_solve(K_chol, K_xz.T)
+
     A2 = S_chol.T @ A 
 
     B = block_diagonal_from_cholesky(A2.T, block_size)

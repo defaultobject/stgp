@@ -27,7 +27,7 @@ import objax
 from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
 
 # Import Types
@@ -255,8 +255,55 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     else:
         assert out_block_dim == 1
 
+        # TODO: move into dispatched_marginal_predictors
+        # TODO: check and fix permutations
+
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
+
+        prior.base_prior.get_Z()
+
+        Z = sparsity_arr[0].Z
+        Q = prior.derivative_kernel.output_dim
+
+        XS = data.X
+
+        var_fn = prior.base_prior.covar
+
+        K_xx_diag = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(XS)
+        K_xz = prior.derivative_kernel.K_from_fn(XS, Z, var_fn)
+        K_zz = var_fn(Z, Z)
+
+        H = np.eye(K_xz.shape[0], K_zz.shape[0])
+
+        # tile Z
+        Z_tiled = np.tile(Z[None, ...], [Q, 1, 1])
+
+        # TODO: assuming mean is zero
+        mu, var =  gaussian_conditional_blocks(
+            1, 
+            Q, 
+            XS, 
+            Z_tiled, 
+            K_zz, 
+            K_xz @ H, 
+            K_xx_diag, 
+            q_m[0],
+            q_S_chol[0],
+            np.zeros_like(q_m),
+            np.zeros([XS.shape[0], 1]),
+        )
+
+        mu = mu[..., None]
+        var = var[:, None, ...]
+
+        N = XS.shape[0]
+        chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+        chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+
+        return mu, var
+
 
         fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
 
