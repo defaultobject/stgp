@@ -138,6 +138,11 @@ class NatGradTrainer(Trainer):
             vc
         )
 
+        if False:
+            print(self.m.get_objective())
+            print(self.objective_fn())
+            breakpoint()
+
 
         if (schedule is None) or (schedule == 'none'):
             schedule = 'constant'

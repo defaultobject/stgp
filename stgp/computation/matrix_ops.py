@@ -127,11 +127,17 @@ def batched_diagonal_from_XDXT(X, D):
     return res
 
 
-#@partial(jit, static_argnums=(1))
+@partial(jit, static_argnums=(1))
 def block_diagonal_from_cholesky(L, block_size):
     """
     Extracts block diagonals from L L^T
     """
+
+    if False:
+        R = L @ L.T
+
+        return get_block_diagonal(R, block_size)
+
 
     if False:
         N = int(L.shape[0]/block_size)

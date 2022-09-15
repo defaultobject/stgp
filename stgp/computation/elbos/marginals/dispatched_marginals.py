@@ -27,8 +27,9 @@ import objax
 from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve
+from ...permutations import left_permute_mat
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -261,23 +262,65 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
 
-        prior.base_prior.get_Z()
-
         Z = sparsity_arr[0].Z
         Q = prior.derivative_kernel.output_dim
 
         XS = data.X
+        NS = XS.shape[0]
 
         var_fn = prior.base_prior.covar
 
+        # in data-latent format
         K_xx_diag = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(XS)
+
+
+        # latent-data forma
         K_xz = prior.derivative_kernel.K_from_fn(XS, Z, var_fn)
+
+        K_xz = left_permute_mat(K_xz, Q)
+
+        # latent-data format but Z does not need to be permuted
         K_zz = var_fn(Z, Z)
 
-        H = np.eye(K_xz.shape[0], K_zz.shape[0])
+        H = np.eye(K_xz.shape[1], K_zz.shape[0])
+        K_xz = K_xz @ H
 
         # tile Z
         Z_tiled = np.tile(Z[None, ...], [Q, 1, 1])
+
+        if True:
+
+            if True:
+                if whiten:
+                    mu, var = whitened_gaussian_conditional_full(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0])
+                else:
+                    mu, var = gaussian_conditional(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0], np.zeros_like(q_m[0]), np.zeros([NS * Q, 1]))
+
+                var = K_xx_diag + get_block_diagonal(var, Q)
+                 
+                mu = block_from_vec(mu, 3)
+
+                return mu[..., None], var[:, None, ...]
+
+
+            if True:
+                # TODO: this is not as fast as it should be but it is at least jit friendly
+                # TODO: figure out why
+
+                K_zz_chol = cholesky(add_jitter(K_zz, settings.jitter))
+                A = triangular_solve(K_zz_chol, K_xz.T, lower=True) # M x N
+                A1 = triangular_solve(K_zz_chol.T, A, lower=False) # M x N
+
+                A2 = (q_S_chol[0].T @ A1).T # N x M 
+
+                mu = A1.T @ q_m[0] # N x 1
+                var = A.T @ A - A2 @ A2.T #N x N
+
+                var = K_xx_diag - get_block_diagonal(var, Q)
+                 
+                mu = block_from_vec(mu, 3)
+
+                return mu[..., None], var[:, None, ...]
 
         # TODO: assuming mean is zero
         mu, var =  gaussian_conditional_blocks(
@@ -286,7 +329,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
             XS, 
             Z_tiled, 
             K_zz, 
-            K_xz @ H, 
+            K_xz , 
             K_xx_diag, 
             q_m[0],
             q_S_chol[0],
@@ -301,30 +344,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
         chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
 
-
         return mu, var
 
-
-        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
-
-        var_distpatched_fn = evoke('marginal_prediction_covar', approximate_posterior, likelihood, prior.parent, sparsity_type, whiten=whiten)
-
-        # we must use the predictive distribution here 
-        mean_fn = lambda XS: fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0]
-
-        var_fn = lambda XS1, XS2: var_distpatched_fn(XS1, XS2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior.parent, sparsity_arr, out_block_dim, whiten)[0, 0]
-
-        mu = prior.derivative_mean.mean_blocks_from_fn(data.X, mean_fn)
-
-        var = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(data.X)
-
-        var = var[:, None, ...]
-
-        N = data.X.shape[0]
-        chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
-        chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
-
-        return mu, var
 
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=False)
