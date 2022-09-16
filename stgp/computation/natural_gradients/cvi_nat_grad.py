@@ -63,6 +63,9 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_t
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
     elif enforce_psd_type == 'retraction':
         lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2, -2*beta*grad_2)/(-2)
+    elif enforce_psd_type == 'riemannian':
+        #TODO
+        raise NotImplementedError()
     else:
         raise NotImplementedError()
 
@@ -181,8 +184,6 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
     var_grads = np.reshape(var_grads, [Q, N, B, B])
-
-    breakpoint()
 
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(

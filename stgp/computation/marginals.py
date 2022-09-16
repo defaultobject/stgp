@@ -14,7 +14,7 @@ from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
-from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky
+from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky, get_block_diagonal, block_from_vec
 
 from .predictors.base_predictors import gaussian_prediction_blocks
 
@@ -127,6 +127,23 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
 
 @partial(jit, static_argnums=(0, 1))
 def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, K_xz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+
+    if True:
+        NS  = XS.shape[0]
+        N = X.shape[0]
+        Q = block_size
+        # slow but is jittable
+        mu, var = gaussian_conditional(XS, X, Kzz, K_xz, np.zeros([NS * Q, NS * Q]), m, S_chol, np.zeros_like(m), np.zeros([NS * Q, 1]))
+
+        var = Kxx + get_block_diagonal(var, Q)
+                     
+        mu = block_from_vec(mu, 3)
+
+        return mu, var
+
+
+
+    #TODO: THERE IS A JIT BUG IN HERE SOMEWHERE
     M = X.shape[1]
     N = XS.shape[0]
     Q = block_size

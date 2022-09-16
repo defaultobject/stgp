@@ -131,7 +131,7 @@ def _natural_gradient(model, beta: float) -> np.ndarray:
 
 
 
-def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad):
+def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -173,8 +173,6 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
     partial_s_chol_flattened = s_grad
     partial_s_chol = lower_triangle(partial_s_chol_flattened, M)
 
-
-
     # Calculate ∂L/∂μ = ∂L/∂ξ ∂ξ/∂μ
 
     # calculate ∂ξ/μ 
@@ -183,31 +181,29 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
     res_u = u((partial_m, partial_s_chol))
     partial_mu_1, partial_mu_2 = res_u[0], res_u[1]
 
-    # compute (∂ξ/∂λ)^T
-
     # Compute (∂L/∂μ) (∂ξ/∂λ)^T
-    y, u = vjp(lambda_to_xi, lambda_1_init, lambda_2_init)
-    res = u((partial_mu_1, partial_mu_2))
+    if True:
+        y, u = vjp(lambda_to_xi, lambda_1_init, lambda_2_init)
+        res = u((partial_mu_1, partial_mu_2))
 
-    #y, res = jvp(lambda_to_xi, (lambda_1_init, lambda_2_init), (partial_mu_1, partial_mu_2))
+    if False:
+        #y, res = jvp(lambda_to_xi, (lambda_1_init, lambda_2_init), (partial_mu_1, partial_mu_2))
 
-    u_1 = np.ones_like(mu1)
-    u_2 = np.ones_like(mu2)
+        u_1 = np.ones_like(mu1)
+        u_2 = np.ones_like(mu2)
 
-    y1, _pb = vjp(lambda_to_xi, lambda_1_init, lambda_2_init)
-    pb = lambda u1, u2: _pb((u1, u2)) 
-    y2, res = jvp(pb, (u_1, u_2), (partial_mu_1, partial_mu_2))
-    #res = pb((partial_mu_1, partial_mu_2))
-    #pb((u_1, u_2))
-    #f = lambda x: lambda_to_xi(x, lambda_1_init)
+        y1, _pb = vjp(lambda_to_xi, lambda_1_init, lambda_2_init)
+        pb = lambda u1, u2: _pb((u1, u2)) 
+        y2, res = jvp(pb, (u_1, u_2), (partial_mu_1, partial_mu_2))
+        #res = pb((partial_mu_1, partial_mu_2))
+        #pb((u_1, u_2))
+        #f = lambda x: lambda_to_xi(x, lambda_1_init)
 
-    J  = jacfwd(lambda_to_xi, argnums=(0, 1))(lambda_1_init, lambda_2_init)
+        #J  = jacfwd(lambda_to_xi, argnums=(0, 1))(lambda_1_init, lambda_2_init)
 
-
-    breakpoint()
-    #uu = lambda u1, u2 : jvp(lambda_to_xi, (lambda_1_init, lambda_2_init), (u1, u2))[1]
-    #y1, pb = vjp(uu, u_1, u_2)
-    #res_1 = pb((partial_mu_1, partial_mu_2))
+        #uu = lambda u1, u2 : jvp(lambda_to_xi, (lambda_1_init, lambda_2_init), (u1, u2))[1]
+        #y1, pb = vjp(uu, u_1, u_2)
+        #res_1 = pb((partial_mu_1, partial_mu_2))
 
     grad_1 = res[0]
     grad_2 = res[1]
@@ -216,8 +212,6 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
     S_chol_new = S_chol - beta * grad_2
 
     S_chol_new_vec = to_lower_triangular_vec(S_chol_new)
-
-    breakpoint()
 
     return [m_new, S_chol_new_vec]
 
