@@ -294,6 +294,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
                 if whiten:
                     mu, var = whitened_gaussian_conditional_full(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0])
                 else:
+                    breakpoint()
                     mu, var = gaussian_conditional(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0], np.zeros_like(q_m[0]), np.zeros([NS * Q, 1]))
 
                 var = K_xx_diag + get_block_diagonal(var, Q)
@@ -356,6 +357,15 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten, XS=None
     )
 
+
+    
+# ===============================================================================================
+# ===============================================================================================
+# ========================================  ENTRY POINTs ========================================
+# ===============================================================================================
+# ===============================================================================================
+
+
 # list of linear priors
 @dispatch(ApproximatePosterior, Likelihood, list, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, list, whiten=False)
@@ -378,14 +388,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         var_list.append(var_p)
 
     return mu_list, var_list
-    
-# ===============================================================================================
-# ===============================================================================================
-# ========================================  ENTRY POINTs ========================================
-# ===============================================================================================
-# ===============================================================================================
 
 # ============================ SINGLE OUTPUT APPROXIMATE POSTERIOR ENTRY POINT ============================
+
 @dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=True)
 @dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=False)
 def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool):

@@ -208,7 +208,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False):
+    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False, fix_shapes = True):
 
         mean, var = self.inference.predict_f(
             XS, 
@@ -218,15 +218,16 @@ class VGP(Posterior):
             self.approximate_posterior,
             diagonal=diagonal
         )
-        chex.assert_rank([mean, var], [3, 4])
+        if fix_shapes:
+            chex.assert_rank([mean, var], [3, 4])
 
-        mean, var = fix_prediction_shapes(
-            mean, 
-            var,
-            diagonal = diagonal,
-            squeeze = squeeze,
-            output_first = output_first
-        )
+            mean, var = fix_prediction_shapes(
+                mean, 
+                var,
+                diagonal = diagonal,
+                squeeze = squeeze,
+                output_first = output_first
+            )
 
         return mean, var
 

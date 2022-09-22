@@ -131,7 +131,7 @@ def _natural_gradient(model, beta: float) -> np.ndarray:
 
 
 
-def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
+def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -215,7 +215,7 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
 
     return [m_new, S_chol_new_vec]
 
-def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
+def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -265,6 +265,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     #calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ
     u = u((partial_m, partial_s_chol))
     lambda_1, lambda_2 = u[0], u[1]
+    _lambda_2 = lambda_2
 
     #symmetrize gradient
     # This is the same problem as in gpytorch - see
@@ -283,6 +284,24 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         lambda_2 = lambda_2_init + beta*(-lambda_2)
     elif enforce_psd == 'retraction':
         lambda_2 = psd_retraction_map(-2*lambda_2_init, 2*beta*lambda_2)/(-2)
+
+    elif enforce_psd == 'riemannian':
+
+        lambda_2_new = lambda_2_init + beta*(-lambda_2)
+        lambda_to_theta(lambda_1, lambda_2)
+
+        cholesky(lambda_2+1e-3)
+
+        breakpoint()
+        # update precision
+        precision = -2 * lambda_2
+        G = precision - grad_2
+
+        S_chol = cholesky(add_jitter(-2*lambda_2, settings.ng_jitter))/(-2)
+        A1 = cholesky_solve(S_chol, G)
+        A = G @ A1
+        lambda_2_new = (1-beta)*lambda_2  + beta* grad_2 + (beta **2)/2 * A
+
     else:
         raise NotImplementedError()
 
