@@ -343,20 +343,28 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
             return  model.likelihood.conditional_var(f)
 
 
+        kl_grad = objax.Jacobian(kl, vars_to_diff)()
+        kl_partial_s_chol = lower_triangle(kl_grad[1], M)
+
+        if False:
+            # using this causes memory issues :(
+            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
+        else:
+            if model.inference.whiten:
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
+            else:
+                # closed form KL derivative
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                K_chol = cholesky(add_jitter(model.prior.base_prior.covar(XS, XS), settings.jitter))
+                K_inv = cholesky_solve(K_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
+
         pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
         pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
         conditional_mean_grad = pred_fn_diag_grad(model.data.X)
 
         conditional_var = likelihood_conditional_var(model.data.X)[0]
-
-
-        kl_grad = objax.Jacobian(kl, vars_to_diff)()
-
-        kl_partial_s_chol = lower_triangle(kl_grad[1], M)
-
-        kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
-
-
         # assuming a single  latent function
         # TODO: generalise to multiple
         conditional_mean_grad = conditional_mean_grad[0][:, 0, 0, :, 0]

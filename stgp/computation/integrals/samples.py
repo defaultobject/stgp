@@ -40,6 +40,7 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
     if True:
         if num_samples == 1:
             return wrapped_fn(mu,  *fn_args)[None, ...]
+
         ell =  mv_indepentdent_monte_carlo(
             wrapped_fn,
             mu, 

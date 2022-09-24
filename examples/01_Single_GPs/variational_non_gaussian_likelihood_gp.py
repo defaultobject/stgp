@@ -5,7 +5,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
@@ -53,7 +53,8 @@ m = GP(
     likelihood = ProductLikelihood([Bernoulli(link_fn=identity)]),
     inference='Variational',
     ell_samples=10,
-    prediction_samples=1
+    prediction_samples=1,
+    whiten=True
 )
 
 # Train
@@ -64,10 +65,11 @@ m.approximate_posterior.fix()
 
 trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-#ng_trainer.train(0.01, 10)
+ng_trainer.train(0.01, 10)
+
 for i in trange(max_iters):
     trainer.train(0.01, 1)
-    #ng_trainer.train(0.1, 1)
+    ng_trainer.train(0.1, 1)
 
 # Predict
 pred_mu, pred_var = m.predict_f(X)
