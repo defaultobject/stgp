@@ -46,18 +46,19 @@ class SecondOrderDerivativeMean_1D(DiffOpMean):
         d2mu_dx2 = np.squeeze(d2mu_dx2)
 
         # return rank 3 matrix
-        d_mu =  np.array([
+        _d_mu =  np.array([
             mu_x, 
             dmu_dx, 
             d2mu_dx2
         ])[..., None]
 
-        d_mu = np.transpose(d_mu, [1, 0, 2])
+        d_mu = np.transpose(_d_mu, [1, 0, 2])
         chex.assert_shape(d_mu, [N, self.output_dim, 1])
 
         return d_mu
 
     def mean_from_fn(self, X, mean_fn):
+        """ return in data-latent format"""
         return np.vstack(self.mean_blocks_from_fn(X, mean_fn))
 
 

@@ -168,7 +168,7 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter_and_smooth(self, data, prior, R):
+    def filter_and_smooth(self, data, prior, R, full_state=False):
         _, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
@@ -178,7 +178,8 @@ class BASE_SDE_GP(Posterior):
         return rts_smoother.smoother_loop(
             data, 
             prior,
-            kf_res
+            kf_res,
+            full_state=full_state
         )
 
     def posterior_blocks(self):
@@ -190,25 +191,28 @@ class BASE_SDE_GP(Posterior):
         mu = np.reshape(mu, [mu.shape[0], mu.shape[1]])
         return mu, var
 
-    def posterior(self, diagonal=True):
+    def posterior(self, diagonal=True, full_state=False):
 
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
-            self.likelihood.variance,
+            self.get_likelihood_for_prediction(self.data),
+            full_state = full_state
         )
 
 
-        # mu, var are in time - space format
-        # Therefore we just need to stack them
-        mu = np.reshape(mu, [-1, 1])
+        # only fix shapes is not returning the full-state
+        if full_state is False:
+            # mu, var are in time - space format
+            # Therefore we just need to stack them
+            mu = np.reshape(mu, [-1, 1])
 
-        # only keep diagonals
-        if diagonal:
-            var_diag = np.diagonal(var, axis1=1, axis2=2)
-            var_diag = np.reshape(var_diag, [-1, 1])
+            # only keep diagonals
+            if diagonal:
+                var_diag = np.diagonal(var, axis1=1, axis2=2)
+                var_diag = np.reshape(var_diag, [-1, 1])
 
-            return mu, var_diag
+                return mu, var_diag
 
         return mu, var
 
@@ -275,6 +279,7 @@ class T_SDE_GP(BASE_SDE_GP):
         # Jax will silently wraps around in this setting if less data is passed through
 
         R = self.likelihood.variance
+        #R = self.likelihood.likelihood_arr[0].variance
 
         out_dim = R.shape[-1]
 

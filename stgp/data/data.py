@@ -448,7 +448,7 @@ class DataReshape(SpatioTemporalData):
         return getattr(self.data, name)
 
 class TemporalData(SequentialData):
-    def __init__(self, X, Y, sort=True):
+    def __init__(self, X, Y, sort=True, train_y = False):
         """
         There are two cases supported:
 
@@ -488,7 +488,7 @@ class TemporalData(SequentialData):
         chex.assert_rank(X_sorted, 2)
         chex.assert_rank(Y_sorted, 3)
 
-        self._Y = Parameter(np.array(Y_sorted), train=False, name='Y')
+        self._Y = Parameter(np.array(Y_sorted), train=train_y, name='Y')
         self.save_X(X_sorted, train=False)
 
         # Useful statistcs of the data

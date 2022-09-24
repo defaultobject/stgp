@@ -37,7 +37,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
     return m, P
 
 @dispatch('LTI_SDE')
-def rts_step(prior, carry, x, X_s):
+def rts_step(prior, carry, x, X_s, full_state=False):
     P_inf = prior.P_inf(None, X_s, None)
     H_k = prior.H(None, X_s, None)
 
@@ -60,14 +60,23 @@ def rts_step(prior, carry, x, X_s):
         Q_k
 
     )
-    return {
+    m_res =  {
         'm': m, 'P': P 
-    }, {
-        'm': H_k @ m, 'P': H_k @ P @ H_k.T
     }
 
+    if full_state:
+        p_res = {
+            'm': m, 'P':  P 
+        }
+    else:
+        p_res = {
+            'm': H_k @ m, 'P': H_k @ P @ H_k.T
+        }
+
+    return m_res, p_res
+
 @dispatch(SDE)
-def rts_step(model, carry, x, X_s):
+def rts_step(model, carry, x, X_s, full_state=False):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
 
@@ -93,21 +102,34 @@ def rts_step(model, carry, x, X_s):
         Sigma
 
     )
-    return {
+    m_res =  {
         'm': m, 'P': P 
-    }, {
-        'm': H_k @ m, 'P': H_k @ P @ H_k.T
     }
 
-def step_wrapper(data, m):
+    if full_state:
+        p_res = {
+            'm': m, 'P':  P 
+        }
+    else:
+        p_res = {
+            'm': H_k @ m, 'P': H_k @ P @ H_k.T
+        }
+
+    return m_res, p_res
+
+def step_wrapper(data, m, full_state=False):
     rts_fn = evoke('rts_step', m)
 
     def _fn(carry, x):
-        return rts_fn(m, carry, x, data.X_space)
+        return rts_fn(m, carry, x, data.X_space, full_state=full_state)
 
     return _fn
 
-def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict):
+def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False):
+    """
+    Args:
+        full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
+    """
     # Set up data
     X_t = data.X_time
     X_s =  data.X_space
@@ -122,7 +144,7 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict):
     # TODO: fix this
     dt = np.hstack([dt, np.zeros(1)])
 
-    step_wrap = step_wrapper(data, model)
+    step_wrap = step_wrapper(data, model, full_state=full_state)
     H_k = model.H(None, X_s, None)
 
     m_init = filter_res['m'][-1]
@@ -145,8 +167,13 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict):
     m = ys['m']
     P = ys['P']
 
-    m = np.vstack([(H_k @ m_init)[None, ...], m])
-    P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
+    if full_state:
+        m = np.vstack([(m_init)[None, ...], m])
+        P = np.vstack([(P_init)[None, ...], P])
+
+    else:
+        m = np.vstack([(H_k @ m_init)[None, ...], m])
+        P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
 
     return np.flip(m, axis=0), np.flip(P, axis=0)
 

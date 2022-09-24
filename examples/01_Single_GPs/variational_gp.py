@@ -46,29 +46,11 @@ m = GP(
 
 # Train
 max_iters = 100
-if False:
 
-    ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
+ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+m.approximate_posterior.fix()
 
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-
-    ng_trainer.train(1.0, 1)
-    for i in trange(max_iters):
-        trainer.train(None, 1)
-        ng_trainer.train(1.0, 1)
-else:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-    m.approximate_posterior.fix()
-
-    trainer = ScipyTrainer(m, 'CG')
-
-    pg_callback = progress_bar_callback(max_iters)
-
-    ng_trainer.train(1.0, 1)
-    lc, _ = trainer.train(None, max_iters, callback=pg_callback, ng_trainer = ng_trainer, ng_lr=1.0)
-
-
+ng_trainer.train(1.0, 1)
 
 pred_mu, pred_var = m.predict_y(XS)
 

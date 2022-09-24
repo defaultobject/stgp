@@ -256,96 +256,217 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     else:
         assert out_block_dim == 1
 
+        # get D(t) from the kalman filter here
+        # and compute D(s) manually -- since K is separable
+
+        # need a linear approximation of the kalman filter 
+        #to approximate dL/dm wrt with dL/dY^tilde dY^tilde/dm
+
         # TODO: move into dispatched_marginal_predictors
         # TODO: check and fix permutations
 
-        sparsity_arr = prior.base_prior.get_sparsity_list()
-        sparsity_type = sparsity_arr[0]
-
-        Z = sparsity_arr[0].Z
-        Q = prior.derivative_kernel.output_dim
-
-        XS = data.X
-        NS = XS.shape[0]
-
-        var_fn = prior.base_prior.covar
-
-        # in data-latent format
-        K_xx_diag = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(XS)
-
-
-        # latent-data forma
-        K_xz = prior.derivative_kernel.K_from_fn(XS, Z, var_fn)
-
-        K_xz = left_permute_mat(K_xz, Q)
-
-        # latent-data format but Z does not need to be permuted
-        K_zz = var_fn(Z, Z)
-
-        H = np.eye(K_xz.shape[1], K_zz.shape[0])
-        K_xz = K_xz @ H
-
-        # tile Z
-        Z_tiled = np.tile(Z[None, ...], [Q, 1, 1])
-
         if True:
 
+            mu, var = approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False, full_state=True)
+
+            # only pick the first Q dimensions
+
+            var = var[:, None, ...]
+
+
+            XS = data.X
+            N = XS.shape[0]
+            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+            return mu, var
+
+            sparsity_arr = prior.base_prior.get_sparsity_list()
+            sparsity_type = sparsity_arr[0]
+
+            Z = sparsity_arr[0].Z
+            Q = prior.derivative_kernel.output_dim
+
+            XS = data.X
+            NS = XS.shape[0]
+
+            var_fn = prior.base_prior.covar
+
+            # in data-latent format
+            K_xx_diag = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(XS)
+
+            # in data-latent format
+            K_xz = jax.vmap(lambda x, z: prior.derivative_kernel.K_from_fn(x[None, ...], z[None, ...], var_fn), [0, 0])(XS, Z)
+
+            # in data-latent format
+            K_zz = jax.vmap(lambda x: var_fn(x[None, ...], x[None, ...]))(Z)
+
+            #mu, var = gaussian_conditional(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0], np.zeros_like(q_m[0]), np.zeros([NS * Q, 1]))
+
+            # compute marginal q(f) \int p(f | u) q(u) df 
+            fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
+
+            q_m, q_S = fn(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block_dim, whiten
+            ) 
+            chex.assert_rank([q_m, q_S], [3, 4])
+           
+            if whiten:
+                raise NotImplementedError()
+            else:
+                #breakpoint()
+                #sqrt as gaussian_conditional requires the cholesky of q_S
+                kzz = K_zz[0]
+                kxz = K_xz[0]
+                print(kxz @ np.eye(kxz.shape[1], kzz.shape[0]) @ q_m[0])
+                breakpoint()
+
+                mu, var = jax.vmap(
+                    lambda x, z, kzz, kxz, kxx, qm, qs, muz, mux:
+                        gaussian_conditional(x[None, ...], z[None, ...], kzz, kxz @ np.eye(kxz.shape[1], kzz.shape[0]), kxx, qm, np.sqrt(qs), muz, mux),
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0]
+                )(data.X, Z, K_zz, K_xz, K_xx_diag, q_m, q_S[..., 0], np.zeros_like(q_m), np.zeros([NS, Q, 1]))
+
+                var = var[:, None, ...]
+                breakpoint()
+
+            N = XS.shape[0]
+            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+            return mu, var
+
+        if False:
+            sparsity_arr = prior.base_prior.get_sparsity_list()
+            sparsity_type = sparsity_arr[0]
+
+            Z = sparsity_arr[0].Z
+            Q = prior.derivative_kernel.output_dim
+
+            XS = data.X
+            NS = XS.shape[0]
+
+            var_fn = prior.base_prior.covar
+
+            # compute marginal q(f) \int p(f | u) q(u) df 
+            fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
+
+            q_m, q_S = fn(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block_dim, whiten
+            ) 
+            chex.assert_rank([q_m, q_S], [3, 4])
+
+            if whiten:
+                raise NotImplementedError()
+            else:
+
+                def mean_fn(XX):
+                    return jax.vmap(
+                        lambda x, z, qm, qs:
+                            gaussian_conditional(
+                                x,
+                                z,
+                                prior.base_prior.covar(z, z), 
+                                prior.base_prior.covar(x, z), 
+                                prior.base_prior.covar(x, x), 
+                                qm, 
+                                np.sqrt(qs),
+                                np.zeros_like(z), 
+                                np.zeros_like(x)
+                            ),
+                        [0, 0, 0, 0]
+                        )(XX[:, None, ...], Z[:, None, ...], q_m, q_S[..., 0])[0][..., 0]
+
+
+                print(mean_fn(XS))
+                print(jax.jacrev(mean_fn)(XS))
+                breakpoint()
+                mu = prior.derivative_mean.mean_blocks_from_fn(XS, mean_fn)
+                breakpoint()
+
+                var_fn = lambda : jax.vmap(
+                    lambda x, z, kzz, kxz, kxx, qm, qs, muz, mux:
+                        gaussian_conditional(x[None, ...], z[None, ...], kzz, kxz @ np.eye(kxz.shape[1], kzz.shape[0]), kxx, qm, np.sqrt(qs), muz, mux),
+                    [0, 0, 0, 0, 0, 0, 0, 0, 0]
+                )(data.X, Z, K_zz, K_xz, K_xx_diag, q_m, q_S[..., 0], np.zeros_like(q_m), np.zeros([NS, Q, 1]))[0]
+
+                breakpoint()
+
+                var = var[:, None, ...]
+
+            N = XS.shape[0]
+            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+            return mu, var
+            
+        if False:
+            sparsity_arr = prior.base_prior.get_sparsity_list()
+            sparsity_type = sparsity_arr[0]
+
+            Z = sparsity_arr[0].Z
+            Q = prior.derivative_kernel.output_dim
+
+            XS = data.X
+            NS = XS.shape[0]
+
+            var_fn = prior.base_prior.covar
+
+            # in data-latent format
+            K_xx_diag = jax.vmap(lambda x: prior.derivative_kernel.K_from_fn(x[None, ...], x[None, ...], var_fn))(XS)
+
+            # latent-data forma
+            K_xz = prior.derivative_kernel.K_from_fn(XS, Z, var_fn)
+
+            K_xz = left_permute_mat(K_xz, Q)
+
+            # latent-data format but Z does not need to be permuted
+            K_zz = var_fn(Z, Z)
+
+            H = np.eye(K_xz.shape[1], K_zz.shape[0])
+            K_xz = K_xz @ H
+
+            # tile Z
+            Z_tiled = np.tile(Z[None, ...], [Q, 1, 1])
+
             if True:
-                if whiten:
-                    mu, var = whitened_gaussian_conditional_full(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0])
-                else:
-                    breakpoint()
-                    mu, var = gaussian_conditional(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0], np.zeros_like(q_m[0]), np.zeros([NS * Q, 1]))
 
-                var = K_xx_diag + get_block_diagonal(var, Q)
-                 
-                mu = block_from_vec(mu, 3)
+                if True:
+                    if whiten:
+                        mu, var = whitened_gaussian_conditional_full(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0])
+                    else:
+                        breakpoint()
+                        mu, var = gaussian_conditional(data.X, Z, K_zz, K_xz, np.zeros([NS * Q, NS * Q]), q_m[0], q_S_chol[0], np.zeros_like(q_m[0]), np.zeros([NS * Q, 1]))
 
-                return mu[..., None], var[:, None, ...]
+                    var = K_xx_diag + get_block_diagonal(var, Q)
+                     
+                    mu = block_from_vec(mu, 3)
 
+                    return mu[..., None], var[:, None, ...]
 
-            if True:
-                # TODO: this is not as fast as it should be but it is at least jit friendly
-                # TODO: figure out why
+            # TODO: assuming mean is zero
+            mu, var =  gaussian_conditional_blocks(
+                1, 
+                Q, 
+                XS, 
+                Z_tiled, 
+                K_zz, 
+                K_xz , 
+                K_xx_diag, 
+                q_m[0],
+                q_S_chol[0],
+                np.zeros_like(q_m),
+                np.zeros([XS.shape[0], 1]),
+            )
 
-                K_zz_chol = cholesky(add_jitter(K_zz, settings.jitter))
-                A = triangular_solve(K_zz_chol, K_xz.T, lower=True) # M x N
-                A1 = triangular_solve(K_zz_chol.T, A, lower=False) # M x N
+            mu = mu[..., None]
+            var = var[:, None, ...]
 
-                A2 = (q_S_chol[0].T @ A1).T # N x M 
+            N = XS.shape[0]
+            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
 
-                mu = A1.T @ q_m[0] # N x 1
-                var = A.T @ A - A2 @ A2.T #N x N
-
-                var = K_xx_diag - get_block_diagonal(var, Q)
-                 
-                mu = block_from_vec(mu, 3)
-
-                return mu[..., None], var[:, None, ...]
-
-        # TODO: assuming mean is zero
-        mu, var =  gaussian_conditional_blocks(
-            1, 
-            Q, 
-            XS, 
-            Z_tiled, 
-            K_zz, 
-            K_xz , 
-            K_xx_diag, 
-            q_m[0],
-            q_S_chol[0],
-            np.zeros_like(q_m),
-            np.zeros([XS.shape[0], 1]),
-        )
-
-        mu = mu[..., None]
-        var = var[:, None, ...]
-
-        N = XS.shape[0]
-        chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
-        chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
-
-        return mu, var
+            return mu, var
 
 
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)

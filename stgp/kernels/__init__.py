@@ -11,7 +11,7 @@ from .kernel import (
     ScaleKernel,
     Linear
 )
-from .matern import Matern32, ScaledMatern32
+from .matern import Matern32, ScaledMatern32, Matern52, ScaledMatern52
 from .rbf import RBF
 from .approximate_markov import ApproximateMarkovKernel
 from .deep_kernels import DeepStationary
@@ -25,6 +25,7 @@ __all__ = [
     "ProductKernel",
     "RBF",
     "Matern32",
+    "Matern52",
     "ApproximateMarkovKernel",
     "WhiteNoiseKernel",
     "DeepStationary",
@@ -34,6 +35,7 @@ __all__ = [
     "Linear",
     "RQ",
     "ScaledMatern32",
+    "ScaledMatern52",
     "Periodic",
     "ApproxSDEPeriodic"
 ]

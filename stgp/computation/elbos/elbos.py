@@ -43,7 +43,7 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
 
 def compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference):
 
-    # We use the abse prior because we want to get the latent prior, not the transformed ones
+    # We use the base prior because we want to get the latent prior, not the transformed ones
     q_m, q_S = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, inference.whiten)(
         data, approximate_posterior, likelihood, prior, inference.whiten
     )

@@ -2,6 +2,7 @@ import jax
 import jax.numpy as np
 from jax import  grad, jit, jacfwd, vjp
 import chex
+import objax
 from batchjax import batch_or_loop, BatchType
 from functools import partial
 
@@ -62,9 +63,9 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_t
     if enforce_psd_type == None:
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
     elif enforce_psd_type == 'retraction':
-        #lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2, -2*beta*grad_2)/(-2)
+        lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2, -2*beta*grad_2)/(-2)
         #lambda_2_new = m_grad @ m_grad.T
-        lambda_2_new = (1-beta)*lambda_2 -  beta * np.sqrt((grad_1 @ grad_1.T))
+        #lambda_2_new = (1-beta)*lambda_2 -  beta * np.sqrt((grad_1 @ grad_1.T))
     elif enforce_psd_type == 'riemannian':
         #breakpoint()
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
@@ -115,6 +116,32 @@ def reparametise_vec_grad(m, m_grad, prior):
 
     return m_grad
 
+def _get_surrogate_params_vc(model):
+
+    q_list = model.approximate_posterior.approx_posteriors
+
+    #for q in q_list:
+    #    y_tilde = q.surrogate.data._Y
+    #    v_tilde = q.surrogate.likelihood.likelihood_arr[0].variance_param
+
+    all_var_names = model.vars().keys()
+
+    Y_name = None
+    V_name = None
+    for n in all_var_names:
+        if 'surrogate' in n:
+            if '_Y' in n:
+                Y_name  = n
+            elif '(BlockDiagonalGaussian).variance_param' in n:
+                V_name = n
+
+    if Y_name == None or V_name == None:
+        raise RuntimeError()
+
+    return vc_keep_vars(model.vars(), [Y_name, V_name])
+
+
+
 def _get_mf_params(model, diagonal=True):
     """ Helper function to wrap up batching over the latent GPs to collect variational parameters"""
     q = model.approximate_posterior
@@ -150,6 +177,16 @@ def _get_mf_params(model, diagonal=True):
 
     return Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z
 
+def _get_marginals(model):
+    q_m, q_S = evoke('variational_params', model.approximate_posterior, model.likelihood, model.prior.base_prior, model.inference.whiten)(
+        model.data, model.approximate_posterior, model.likelihood, model.prior, model.inference.whiten
+    )
+
+    q_f_mu, q_f_var = evoke('marginal', model.approximate_posterior, model.likelihood, model.prior, whiten=model.inference.whiten)(
+        model.data, q_m, q_S, model.approximate_posterior, model.likelihood, model.prior, model.inference.whiten
+    )
+    return q_f_mu, q_f_var 
+
 def partial_ell(m, q_m, q_S):
     """ Helper function to compute the expected log likelihood using the variational paramters q_m, q_S"""
     return compute_expected_log_liklihood_with_variational_params(
@@ -173,26 +210,60 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     Q, N, B, _ = V_tilde_arr.shape
 
-    # Fix shapes for ELL
-    q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
-    q_var_z = np.reshape(q_var_z, [Q, N, 1])
 
-    # Compute dELL/dm, dEll/dS
-    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
-        model, q_mu_z, q_var_z
-    )
+    if enforce_psd_type == 'test':
+        def ell(model, q_f_mu, q_f_var):
 
-    breakpoint()
+            # Compute Expected Log Likelihood   
+            ELL = evoke('expected_log_likelihood', model.data, model.likelihood, model.prior, model.approximate_posterior)(
+                model.data, q_f_mu, q_f_var, model.likelihood, model.prior, model.approximate_posterior, model.inference
+            )
 
-    # Fix shapes for Natgrads
-    Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
-    V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
+            #return np.sum(ELL)
+            return ELL
 
-    q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
-    q_var_z = np.reshape(q_var_z, [Q, N, B, B])
+        mu_marginal, var_marginals = _get_marginals(model)
 
-    mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
-    var_grads = np.reshape(var_grads, [Q, N, B, B])
+        mu_grads, var_grads = jax.grad(ell, (1, 2))(
+            model, mu_marginal, var_marginals
+        )
+
+        mu_grads = (mu_grads[0][:, 0, :] + mu_grads[1][:, 0, :])[:, None, :]
+        var_grads = (var_grads[0][:, :, 0, 0] + var_grads[1][:, :, 0, 0])[:, :, None, None]
+        #mu_grads = (mu_grads[0][:, 0, :] )[:, None, :]
+        #var_grads = (var_grads[0][:, :, 0, 0] )[:, :, None, None]
+
+        # Fix shapes for Natgrads
+        Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
+        V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
+
+        q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
+        q_var_z = np.reshape(q_var_z, [Q, N, B, B])
+
+        mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
+        var_grads = np.reshape(var_grads, [Q, N, B, B])
+        
+        enforce_psd_type = None
+
+    else:
+        # Fix shapes for ELL
+        q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
+        q_var_z = np.reshape(q_var_z, [Q, N, 1])
+
+        # Compute dELL/dm, dEll/dS
+        mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+            model, q_mu_z, q_var_z
+        )
+
+        # Fix shapes for Natgrads
+        Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
+        V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
+
+        q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
+        q_var_z = np.reshape(q_var_z, [Q, N, B, B])
+
+        mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
+        var_grads = np.reshape(var_grads, [Q, N, B, B])
 
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(

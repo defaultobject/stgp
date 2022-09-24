@@ -131,3 +131,142 @@ class Matern12(StationaryKernel, MarkovKernel):
         """
 
         return np.exp(- np.abs(x1-x2) / lengthscale)
+
+
+class Matern52(StationaryKernel, MarkovKernel):
+    def __init__(self, *args, **kwargs):
+        super(Matern52, self).__init__(*args, **kwargs, name='Matern52')
+        self.variance = 1.0
+
+    def to_ss(self, X_spatial=None):
+        """ Return state space representation """
+        chex.assert_equal(self.input_dim, 1)
+
+        var = self.variance
+        ls = self.lengthscales[0]
+
+
+        lam = 5.0**0.5 / ls
+        F = np.array(
+            [
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [-(lam**3.0), -3.0 * lam**2.0, -3.0 * lam],
+            ]
+        )
+        L = np.array([[0.0], [0.0], [1.0]])
+        Qc = np.array(
+            [[var * 400.0 * 5.0**0.5 / 3.0 / ls**5.0]]
+        )
+        H = np.array([[1.0, 0.0, 0.0]])
+        kappa = 5.0 / 3.0 * var / ls**2.0
+        Pinf = np.array(
+            [
+                [var, 0.0, -kappa],
+                [0.0, kappa, 0.0],
+                [-kappa, 0.0, 25.0 * var / ls**4.0],
+            ]
+        )
+        return F, L, Qc, H, Pinf
+
+    def state_size(self):
+        return 3
+
+
+    def expm(self, dt, X_spatial=None):
+        """
+        Calculation of the discrete-time state transition matrix A = expm(FΔt) for the Matern-5/2 prior.
+        :param dt: step size(s), Δtₙ = tₙ - tₙ₋₁ [scalar]
+        :return: state transition matrix A [3, 3]
+        """
+        ls = self.lengthscales[0]
+
+        lam = np.sqrt(5.0) / ls
+        dtlam = dt * lam
+        A = np.exp(-dtlam) * (
+            dt
+            * np.array(
+                [
+                    [lam * (0.5 * dtlam + 1.0), dtlam + 1.0, 0.5 * dt],
+                    [-0.5 * dtlam * lam**2, lam * (1.0 - dtlam), 1.0 - 0.5 * dtlam],
+                    [
+                        lam**3 * (0.5 * dtlam - 1.0),
+                        lam**2 * (dtlam - 3),
+                        lam * (0.5 * dtlam - 2.0),
+                    ],
+                ]
+            )
+            + np.eye(3)
+        )
+        return A
+
+    def _K_scaler(self, x1, x2, lengthscale):
+        raise NotImplementedError()
+
+
+class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
+    def to_ss(self, X_spatial=None):
+        """ Return state space representation """
+        chex.assert_equal(self.input_dim, 1)
+
+        var = self.variance
+        ls = self.lengthscales[0]
+
+
+        lam = 5.0**0.5 / ls
+        F = np.array(
+            [
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [-(lam**3.0), -3.0 * lam**2.0, -3.0 * lam],
+            ]
+        )
+        L = np.array([[0.0], [0.0], [1.0]])
+        Qc = np.array(
+            [[var * 400.0 * 5.0**0.5 / 3.0 / ls**5.0]]
+        )
+        H = np.array([[1.0, 0.0, 0.0]])
+        kappa = 5.0 / 3.0 * var / ls**2.0
+        Pinf = np.array(
+            [
+                [var, 0.0, -kappa],
+                [0.0, kappa, 0.0],
+                [-kappa, 0.0, 25.0 * var / ls**4.0],
+            ]
+        )
+        return F, L, Qc, H, Pinf
+
+    def state_size(self):
+        return 3
+
+
+    def expm(self, dt, X_spatial=None):
+        """
+        Calculation of the discrete-time state transition matrix A = expm(FΔt) for the Matern-5/2 prior.
+        :param dt: step size(s), Δtₙ = tₙ - tₙ₋₁ [scalar]
+        :return: state transition matrix A [3, 3]
+        """
+        ls = self.lengthscales[0]
+
+        lam = np.sqrt(5.0) / ls
+        dtlam = dt * lam
+        A = np.exp(-dtlam) * (
+            dt
+            * np.array(
+                [
+                    [lam * (0.5 * dtlam + 1.0), dtlam + 1.0, 0.5 * dt],
+                    [-0.5 * dtlam * lam**2, lam * (1.0 - dtlam), 1.0 - 0.5 * dtlam],
+                    [
+                        lam**3 * (0.5 * dtlam - 1.0),
+                        lam**2 * (dtlam - 3),
+                        lam * (0.5 * dtlam - 2.0),
+                    ],
+                ]
+            )
+            + np.eye(3)
+        )
+        return A
+
+    def _K_scaler(self, x1, x2, lengthscale):
+        raise NotImplementedError()
+

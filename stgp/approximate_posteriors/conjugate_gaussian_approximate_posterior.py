@@ -15,7 +15,7 @@ class ConjugateApproximatePosterior(ApproximatePosterior):
     pass
 
 class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePosterior):
-    def __init__(self, X, block_size: int, surrogate_model: 'Model' = None):
+    def __init__(self, X, block_size: int, Y_tilde = None, surrogate_model: 'Model' = None):
         """
         A conjugate gaussian represents the approximate posterior as:
             q(u) \propto N(Y_tilde | u, V_tilde) p(u)
@@ -31,7 +31,10 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         self.block_size = block_size
         self.num_blocks = int(self.dim/self.block_size)
 
-        Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size, 1])
+        if Y_tilde is not None:
+            Y_tilde = np.array(Y_tilde)
+        else:
+            Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size, 1])
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
         if False:

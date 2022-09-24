@@ -28,7 +28,7 @@ class GaussianApproximatePosterior(ApproximatePosterior):
             dim = m.shape[0]
 
         self._m = Parameter(
-            m,
+            np.array(m),
             constraint=None,
             name='GaussianApproxPosterior/m',
             train=train
@@ -38,7 +38,7 @@ class GaussianApproximatePosterior(ApproximatePosterior):
             S_chol_vec = lower_triangular_cholesky(S)
 
         self._S_chol = Parameter(
-            S_chol_vec,
+            np.array(S_chol_vec),
             constraint=None,
             name='GaussianApproxPosterior/S_chol',
             train=train

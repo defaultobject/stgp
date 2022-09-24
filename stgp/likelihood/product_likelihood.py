@@ -1,3 +1,4 @@
+import jax.numpy as np
 import objax
 from batchjax import batch_or_loop, BatchType
 
@@ -46,5 +47,19 @@ class GaussianProductLikelihood(ProductLikelihood):
 
 
 class BlockGaussianProductLikelihood(ProductLikelihood):
-    pass
+
+    @property
+    def variance(self):
+        output_dim = len(self.likelihood_arr)
+        var_arr = batch_or_loop(
+            lambda lik:  lik.variance,
+            [self.likelihood_arr],
+            [0],
+            dim = output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.likelihood_arr)
+        )
+
+
+        return np.vstack(var_arr)
 
