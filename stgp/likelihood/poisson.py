@@ -11,6 +11,7 @@ class Poisson(DiagonalLikelihood):
 
     def __init__(self, binsize, link_fn = None):
         self.binsize = binsize
+
         if link_fn is None:
             link_fn = np.exp
 

@@ -23,6 +23,12 @@ class Likelihood(objax.Module):
 
         return jax.vmap(self.log_likelihood_scalar, (0, 0), 0)(Y[:, 0], F[:, 0])
 
+    def conditional_var(self, f):
+        raise NotImplementedError()
+
+    def conditional_mean(self, f):
+        raise NotImplementedError()
+
 class FullLikelihood(Likelihood):
     """Likelihood that does not decompose """
 

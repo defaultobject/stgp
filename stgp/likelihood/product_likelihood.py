@@ -29,6 +29,24 @@ class ProductLikelihood(Likelihood):
         for lik in self.likelihood_arr:
             lik.release()
 
+    def conditional_var(self, f):
+        var_arr = []
+        for lik in self.likelihood_arr:
+            var_arr.append(
+                lik.conditional_var(f)
+            )
+
+        return var_arr
+
+    def conditional_mean(self, f):
+        mu_arr = []
+        for lik in self.likelihood_arr:
+            mu_arr.append(
+                lik.conditional_mean(f)
+            )
+
+        return mu_arr
+
 class GaussianProductLikelihood(ProductLikelihood):
 
     @property

@@ -20,7 +20,8 @@ class Bernoulli(DiagonalLikelihood):
         return self.conditional_mean(f)
 
     def conditional_mean(self, f):
-        return self.link_fn(f)
+        sig_f = self.link_fn(f)
+        return sig_f * (1 - sig_f)
 
 
 

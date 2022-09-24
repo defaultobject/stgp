@@ -6,7 +6,8 @@ from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldAp
 from ..parameter_transforms import psd_retraction_map
 
 from ..elbos.elbos import compute_expected_log_liklihood
-from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, lambda_to_xi, xi_to_lambda
+from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, lambda_to_xi, xi_to_lambda, reparametise_cholesky_grad
+
 
 import chex
 from batchjax import batch_or_loop, BatchType
@@ -19,6 +20,22 @@ from functools import partial
 import objax
 
 from typing import List
+
+def _get_mf_params_names(model):
+    approx_posteriors = model.approximate_posterior.approx_posteriors
+    param_dict = get_parameters(model, replace_name=False, return_id=True)
+
+    m_name_list = []
+    S_chol_list = []
+    for q in approx_posteriors:
+
+        m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
+        S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
+
+        m_name_list.append(m_name)
+        S_chol_list.append(S_chol_name)
+
+    return m_name_list, S_chol_list
 
 def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad):
     """
@@ -131,7 +148,7 @@ def _natural_gradient(model, beta: float) -> np.ndarray:
 
 
 
-def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
+def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -215,7 +232,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
     return [m_new, S_chol_new_vec]
 
-def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
+def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -265,7 +282,6 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
     #calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ
     u = u((partial_m, partial_s_chol))
     lambda_1, lambda_2 = u[0], u[1]
-    _lambda_2 = lambda_2
 
     #symmetrize gradient
     # This is the same problem as in gpytorch - see
@@ -274,6 +290,7 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
     # TODO: double check that this is actually what is going on
     lambda_2 = lambda_2/2 
     lambda_2 = lambda_2 + lambda_2.T
+    _lambda_2 = lambda_2
 
     #gradient update
     #∂L/μ has been calculated with the negative ELBO however the natural gradients are defined on the orginal ELBO
@@ -302,6 +319,54 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
         A = G @ A1
         lambda_2_new = (1-beta)*lambda_2  + beta* grad_2 + (beta **2)/2 * A
 
+    elif enforce_psd == 'laplace_gauss_newton':
+
+        def kl():
+            # Compute KL term
+            KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
+                model.approximate_posterior, model.prior, model.inference.whiten
+            )
+
+            return KL
+
+        m_name_list, S_chol_list = _get_mf_params_names(model)
+        f_vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list])
+        vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list, *S_chol_list])
+
+        XS = model.data.X
+        def likelihood_conditional_mean(X):
+            f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+            return model.likelihood.conditional_mean(f)
+
+        def likelihood_conditional_var(X):
+            f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+            return  model.likelihood.conditional_var(f)
+
+
+        pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+        pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
+        conditional_mean_grad = pred_fn_diag_grad(model.data.X)
+
+        conditional_var = likelihood_conditional_var(model.data.X)[0]
+
+
+        kl_grad = objax.Jacobian(kl, vars_to_diff)()
+
+        kl_partial_s_chol = lower_triangle(kl_grad[1], M)
+
+        kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
+
+
+        # assuming a single  latent function
+        # TODO: generalise to multiple
+        conditional_mean_grad = conditional_mean_grad[0][:, 0, 0, :, 0]
+
+        conditional_var = np.squeeze(1/conditional_var)
+
+        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
+        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
+
+        lambda_2 = lambda_2_init + beta*(-lambda_2)
     else:
         raise NotImplementedError()
 
@@ -313,22 +378,15 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
 
     return [xi1, xi2]
 
+
+
+
 @dispatch('VGP', 'MeanFieldApproximatePosterior')
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     approx_posteriors = model.approximate_posterior.approx_posteriors
     num_q = len(approx_posteriors)
 
-    param_dict = get_parameters(model, replace_name=False, return_id=True)
-
-    m_name_list = []
-    S_chol_list = []
-    for q in approx_posteriors:
-
-        m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
-        S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
-
-        m_name_list.append(m_name)
-        S_chol_list.append(S_chol_name)
+    m_name_list, S_chol_list = _get_mf_params_names(model)
 
     # Precompute all gradients
     # Then vmap through them

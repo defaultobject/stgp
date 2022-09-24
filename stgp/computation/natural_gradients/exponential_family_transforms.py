@@ -3,8 +3,9 @@ from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter,
 
 import jax
 import jax.numpy as np
-from jax import  jit
+from jax import  jit, vjp
 import chex
+from functools import partial
 
 @jit
 def xi_to_theta(xi1, xi2):
@@ -87,4 +88,27 @@ def expectation_to_xi(mu1, mu2):
     return mu1, xi2
 
 
+
+@partial(jit, static_argnums=(3))
+def reparametise_cholesky_grad(s, s_chol_grad, prior, permute_flag):
+    #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
+
+    if prior is None:
+        x, u = vjp(
+            lambda A: cholesky(add_jitter(A, settings.ng_jitter)), 
+            s
+        )
+    else:
+        x, u = vjp(
+            lambda A: cholesky(add_jitter(prior.unpermute_mat(A), settings.ng_jitter)), 
+            s
+        )
+
+    s_grad = u(s_chol_grad)[0]
+
+    # Symmetrize gradient (in case jax.scipy.linalg.cholesky is used)
+    s_grad = s_grad/2 
+    s_grad = s_grad + s_grad.T
+
+    return s_grad
 

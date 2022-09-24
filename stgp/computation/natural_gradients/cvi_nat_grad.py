@@ -17,7 +17,7 @@ from ..parameter_transforms import psd_retraction_map
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior
 from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
-from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal
+from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad
 
 @partial(jit, static_argnums=(7))
 def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
@@ -82,28 +82,6 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_t
 
     return theta_1, theta_2
 
-@partial(jit, static_argnums=(3))
-def reparametise_cholesky_grad(s, s_chol_grad, prior, permute_flag):
-    #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
-
-    if prior is None:
-        x, u = vjp(
-            lambda A: cholesky(add_jitter(A, settings.ng_jitter)), 
-            s
-        )
-    else:
-        x, u = vjp(
-            lambda A: cholesky(add_jitter(prior.unpermute_mat(A), settings.ng_jitter)), 
-            s
-        )
-
-    s_grad = u(s_chol_grad)[0]
-
-    # Symmetrize gradient (in case jax.scipy.linalg.cholesky is used)
-    s_grad = s_grad/2 
-    s_grad = s_grad + s_grad.T
-
-    return s_grad
 
 @jit
 def reparametise_vec_grad(m, m_grad, prior):

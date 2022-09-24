@@ -5,6 +5,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', True)
 import objax
 import numpy as np
 
@@ -12,7 +13,7 @@ from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import RBF 
+from stgp.kernels import RBF, ScaleKernel
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data
 from stgp.transforms import Independent
@@ -34,23 +35,20 @@ m = GP(
     prior = Independent([
         GP(
             sparsity = stgp.sparsity.NoSparsity(Z = data.X), 
-            kernel = RBF(input_dim=1, lengthscales=[1.0]),
+            kernel = ScaleKernel(RBF(input_dim=1, lengthscales=[0.1]), 0.2),
             prior = True
         )
     ]),
-    likelihood = ProductLikelihood([Gaussian()]),
-    inference='Variational',
-    ell_samples=100,
-    prediction_samples=1000
+    likelihood = ProductLikelihood([Gaussian(0.1)]),
+    inference='Variational'
 )
 
 # Train
-max_iters = 100
+if True:
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    m.approximate_posterior.fix()
 
-ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-m.approximate_posterior.fix()
-
-ng_trainer.train(1.0, 1)
+    ng_trainer.train(1.0, 1)
 
 pred_mu, pred_var = m.predict_y(XS)
 

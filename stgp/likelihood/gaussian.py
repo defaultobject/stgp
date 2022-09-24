@@ -161,7 +161,7 @@ class Gaussian(DiagonalGaussian):
         return ll
 
     def conditional_var(self, f):
-        return self.variance
+        return self.variance * np.ones_like(f)
 
     def conditional_mean(self, f):
         return f
