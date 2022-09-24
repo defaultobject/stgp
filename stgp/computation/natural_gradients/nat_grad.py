@@ -37,6 +37,17 @@ def _get_mf_params_names(model):
 
     return m_name_list, S_chol_list
 
+def _get_fp_params_names(model):
+    q = model.approximate_posterior
+    param_dict = get_parameters(model, replace_name=False, return_id=True)
+
+
+    m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
+    S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
+
+    return m_name, S_chol_name
+
+
 def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
@@ -323,6 +334,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         # use gauss newton approximation of lambda_2
         lambda_2 = lambda_2_init + beta*(-approx_hessian)
 
+
     #convert from natural parameters to the raw parameters
     theta_1, theta_2 = lambda_to_theta(lambda_1, lambda_2)
 
@@ -331,11 +343,79 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
     return [xi1, xi2]
 
+def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta):
+    approx_posterior = model.approximate_posterior
+
+    m = approx_posterior.m
+    S_chol = approx_posterior.S_chol
+    M = m.shape[0]
+    Z = model.prior.base_prior.get_Z()
+
+    def kl():
+        # Compute KL term
+        KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
+            model.approximate_posterior, model.prior, model.inference.whiten
+        )
+
+        return KL
+
+    m_name, S_chol_name = _get_fp_params_names(model)
+    f_vars_to_diff = vc_keep_vars(model.vars(), [m_name])
+    S_vars_to_diff = vc_keep_vars(model.vars(), [S_chol_name])
+
+    XS = model.data.X
+    def likelihood_conditional_mean(X):
+        f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+        return model.likelihood.conditional_mean(f)
+
+    def likelihood_conditional_var(X):
+        f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+        return  model.likelihood.conditional_var(f)
+
+
+    def compute_kl_grad(S_chol, kl_s_grad, K):
+
+        if False:
+            kl_partial_s_chol = lower_triangle(kl_s_grad, M)
+            # using this causes memory issues :(
+            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_s_grad, None, False))
+        else:
+            # TODO: add checks to see when this is allowed
+            if model.inference.whiten:
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
+            else:
+                # closed form KL derivative
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                K_chol = cholesky(add_jitter(K, settings.jitter))
+                K_inv = cholesky_solve(K_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
+
+        return kl_partial_s
+
+    KL_grad_arr = compute_kl_grad(S_chol, None,  model.prior.base_prior.b_covar(Z, Z))
+
+    pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
+    conditional_mean_grad = pred_fn_diag_grad(model.data.X)
+
+    def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
+        conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
+        conditional_var = np.squeeze(1/conditional_var)
+
+        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
+        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
+        return lambda_2
+
+    conditional_var = likelihood_conditional_var(model.data.X)[0]
+
+    return compute_lambda(conditional_mean_grad[0], np.hstack(conditional_var), KL_grad_arr)
+
+
 
 def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta):
     approx_posterior = model.approximate_posterior
     Q = len(approx_posterior.approx_posteriors)
-
 
     m = approx_posterior.m
     S_chol = approx_posterior.S_chol
@@ -369,10 +449,9 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
     def compute_kl_grad(S_chol, kl_s_grad, K):
         kl_partial_s_chol = lower_triangle(kl_s_grad, M)
 
-
         if False:
             # using this causes memory issues :(
-            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
+            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_s_grad, None, False))
         else:
             # TODO: add checks to see when this is allowed
             if model.inference.whiten:
@@ -405,9 +484,8 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
         conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
         conditional_var = np.squeeze(1/conditional_var)
 
-
         # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
-        lambda_2 =  ((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
+        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
         return lambda_2
 
     conditional_var = likelihood_conditional_var(model.data.X)[0]
@@ -420,6 +498,7 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
         out_dim=1,
         batch_type = get_batch_type(approx_posterior.approx_posteriors)
     )
+
 
     return lambda_2_arr
  
@@ -475,7 +554,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         [None, beta_axis, 0, 0, 0, None, 0],
         dim = num_q,
         out_dim=2,
-        batch_type = get_batch_type(approx_posteriors)
+        batch_type = BatchType.LOOP
     )
 
 
@@ -504,7 +583,12 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     m_grad = gradients[0]
     S_grad = gradients[1]
 
-    xi1, xi2 = natural_gradient_update_for_gaussian_approx_posterior(model, beta, q, m_grad, S_grad, enforce_psd_type)
+    if enforce_psd_type == 'laplace_gauss_newton':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta)
+    else:
+        approx_hessian = None
+
+    xi1, xi2 = natural_gradient_update_for_gaussian_approx_posterior(model, beta, q, m_grad, S_grad, enforce_psd_type, approx_hessian)
 
     return xi1, xi2
 

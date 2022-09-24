@@ -4,6 +4,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
@@ -68,14 +69,17 @@ if True:
     max_iters = 200
 
     ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m)
+
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    ng_trainer.train(1.0, 1)
-    for i in trange(max_iters):
-        trainer.train(1e-2, 1)
-        ng_trainer.train(1.0, 1)
+    ng_trainer.train(0.5, 10)
+    if False:
+        for i in trange(max_iters):
+            trainer.train(1e-2, 1)
+            ng_trainer.train(1.0, 1)
 
 print('NLPD: ', m.nlpd(X, Y))
 

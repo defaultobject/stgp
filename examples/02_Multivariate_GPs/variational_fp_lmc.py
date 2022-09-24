@@ -4,6 +4,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', True)
 import objax
 import numpy as np
 
@@ -64,9 +65,6 @@ m = stgp.models.GP(
     approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
 )
 
-print(m.predict_f(X, diagonal=False)[1])
-print(m.predict_f(X, diagonal=True)[1])
-breakpoint()
 
 
 #print('NLPD: ', m.nlpd(X, Y))
@@ -76,19 +74,21 @@ pred_mu, pred_var = m.predict_f(XS)
 if True:
     max_iters = 500
 
-    ng_trainer = NatGradTrainer(m)
+    #ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     ng_trainer.train(1.0, 1)
-    print(m.get_objective())
+    if False:
+        print(m.get_objective())
 
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
-        ng_trainer.train(1.0, 1)
+        for i in trange(max_iters):
+            trainer.train(0.01, 1)
+            ng_trainer.train(1.0, 1)
 
-    print(m.get_objective())
+        print(m.get_objective())
 
 
 print('NLPD: ', m.nlpd(X, Y))
