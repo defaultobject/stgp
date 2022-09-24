@@ -235,7 +235,7 @@ class Independent(Transform):
         c_blocks = self.covar_blocks(X1, X2)
         return to_block_diag(c_blocks)
 
-    def b_covar(self, X1, X2):
+    def b_covar_blocks(self, X1, X2):
 
         c_blocks = batch_or_loop(
             lambda x1, x2, latent:  latent.covar(x1, x2),
@@ -245,6 +245,12 @@ class Independent(Transform):
             out_dim = 1,
             batch_type = get_batch_type(self.parent)
         )
+
+        return c_blocks
+
+    def b_covar(self, X1, X2):
+
+        c_blocks = self.b_covar_blocks(X1, X2)
 
         res = to_block_diag(c_blocks)
 

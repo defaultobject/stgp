@@ -67,7 +67,7 @@ print('NLPD: ', m.nlpd(X, Y))
 if True:
     max_iters = 200
 
-    ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)

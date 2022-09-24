@@ -232,7 +232,7 @@ def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_p
 
     return [m_new, S_chol_new_vec]
 
-def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
+def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd, approx_hessian = None):
     """
         Implments Natural gradients for q(u) with a general likelihood and Gaussian approximate posterior. 
             For further details see: 
@@ -320,63 +320,8 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         lambda_2_new = (1-beta)*lambda_2  + beta* grad_2 + (beta **2)/2 * A
 
     elif enforce_psd == 'laplace_gauss_newton':
-
-        def kl():
-            # Compute KL term
-            KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
-                model.approximate_posterior, model.prior, model.inference.whiten
-            )
-
-            return KL
-
-        m_name_list, S_chol_list = _get_mf_params_names(model)
-        f_vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list])
-        vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list, *S_chol_list])
-
-        XS = model.data.X
-        def likelihood_conditional_mean(X):
-            f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-            return model.likelihood.conditional_mean(f)
-
-        def likelihood_conditional_var(X):
-            f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-            return  model.likelihood.conditional_var(f)
-
-
-        kl_grad = objax.Jacobian(kl, vars_to_diff)()
-        kl_partial_s_chol = lower_triangle(kl_grad[1], M)
-
-        if False:
-            # using this causes memory issues :(
-            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
-        else:
-            if model.inference.whiten:
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
-            else:
-                # closed form KL derivative
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                K_chol = cholesky(add_jitter(model.prior.base_prior.covar(XS, XS), settings.jitter))
-                K_inv = cholesky_solve(K_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
-
-        pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
-        pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
-        conditional_mean_grad = pred_fn_diag_grad(model.data.X)
-
-        conditional_var = likelihood_conditional_var(model.data.X)[0]
-        # assuming a single  latent function
-        # TODO: generalise to multiple
-        conditional_mean_grad = conditional_mean_grad[0][:, 0, 0, :, 0]
-
-        conditional_var = np.squeeze(1/conditional_var)
-
-        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
-        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
-
-        lambda_2 = lambda_2_init + beta*(-lambda_2)
-    else:
-        raise NotImplementedError()
+        # use gauss newton approximation of lambda_2
+        lambda_2 = lambda_2_init + beta*(-approx_hessian)
 
     #convert from natural parameters to the raw parameters
     theta_1, theta_2 = lambda_to_theta(lambda_1, lambda_2)
@@ -386,6 +331,98 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
     return [xi1, xi2]
 
+
+def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta):
+    approx_posterior = model.approximate_posterior
+    Q = len(approx_posterior.approx_posteriors)
+
+
+    m = approx_posterior.m
+    S_chol = approx_posterior.S_chol
+    M = m.shape[1]
+    Z = model.prior.base_prior.get_Z()
+
+    def kl():
+        # Compute KL term
+        KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
+            model.approximate_posterior, model.prior, model.inference.whiten
+        )
+
+        return KL
+
+    m_name_list, S_chol_list = _get_mf_params_names(model)
+    f_vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list])
+    S_vars_to_diff = vc_keep_vars(model.vars(), [*S_chol_list])
+
+    XS = model.data.X
+    def likelihood_conditional_mean(X):
+        f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+        return model.likelihood.conditional_mean(f)
+
+    def likelihood_conditional_var(X):
+        f = model.predict_f(X, squeeze=False, diagonal=True)[0]
+        return  model.likelihood.conditional_var(f)
+
+
+    kl_S_grad = objax.Jacobian(kl, S_vars_to_diff)()
+
+    def compute_kl_grad(S_chol, kl_s_grad, K):
+        kl_partial_s_chol = lower_triangle(kl_s_grad, M)
+
+
+        if False:
+            # using this causes memory issues :(
+            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_partial_s_chol, None, False))
+        else:
+            # TODO: add checks to see when this is allowed
+            if model.inference.whiten:
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
+            else:
+                # closed form KL derivative
+                S_inv = cholesky_solve(S_chol, np.eye(M))
+                K_chol = cholesky(add_jitter(K, settings.jitter))
+                K_inv = cholesky_solve(K_chol, np.eye(M))
+                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
+
+        return kl_partial_s
+
+    K_arr = model.prior.base_prior.b_covar_blocks(Z, Z)
+    KL_grad_arr = batch_or_loop(
+        compute_kl_grad,
+        [S_chol, np.array(kl_S_grad), K_arr],
+        [0, 0, 0],
+        dim = Q,
+        out_dim=1,
+        batch_type = get_batch_type(approx_posterior.approx_posteriors)
+    )
+
+    pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
+    conditional_mean_grad = pred_fn_diag_grad(model.data.X)
+
+    def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
+        conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
+        conditional_var = np.squeeze(1/conditional_var)
+
+
+        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
+        lambda_2 =  ((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
+        return lambda_2
+
+    conditional_var = likelihood_conditional_var(model.data.X)[0]
+
+    lambda_2_arr = batch_or_loop(
+        compute_lambda,
+        [np.array(conditional_mean_grad), np.array(conditional_var), KL_grad_arr],
+        [0, 1, 0],
+        dim = Q,
+        out_dim=1,
+        batch_type = get_batch_type(approx_posterior.approx_posteriors)
+    )
+
+    return lambda_2_arr
+ 
 
 
 
@@ -426,10 +463,16 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     else:
         beta_axis = None
 
+
+    if enforce_psd_type == 'laplace_gauss_newton':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta)
+    else:
+        approx_hessian = [None for q in range(num_q)]
+
     xi1_arr, xi2_arr = batch_or_loop(
-        lambda m, b, q, m_grad, s_grad, enforce_psd, : natural_gradient_update_for_gaussian_approx_posterior(m, b, q, m_grad, s_grad, enforce_psd),
-        [model, beta, approx_posteriors, np.array(m_grads), np.array(S_grads), enforce_psd_type],
-        [None, beta_axis, 0, 0, 0, None],
+        lambda m, b, q, m_grad, s_grad, enforce_psd, approx_hessian: natural_gradient_update_for_gaussian_approx_posterior(m, b, q, m_grad, s_grad, enforce_psd, approx_hessian),
+        [model, beta, approx_posteriors, np.array(m_grads), np.array(S_grads), enforce_psd_type, approx_hessian],
+        [None, beta_axis, 0, 0, 0, None, 0],
         dim = num_q,
         out_dim=2,
         batch_type = get_batch_type(approx_posteriors)
