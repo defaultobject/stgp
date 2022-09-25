@@ -54,11 +54,13 @@ latent_kernels = [RBF(lengthscales=[0.1]) for q in range(Q)]
 latent_gps = [
     stgp.models.GP(sparsity=Z[q], kernel=latent_kernels[q]) for q in range(Q)
 ] 
+
 prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
+
 
 m = stgp.models.GP(
     data=Data(X, Y), 
-    likelihood=[Gaussian(), Gaussian(), Gaussian()],
+    likelihood=[Gaussian(0.1), Gaussian(1.0), Gaussian(2.0)],
     inference='Variational',
     prior=prior
 )
@@ -75,11 +77,11 @@ if True:
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    ng_trainer.train(0.5, 10)
-    if False:
+    ng_trainer.train(0.9, 1)
+    if True:
         for i in trange(max_iters):
             trainer.train(1e-2, 1)
-            ng_trainer.train(1.0, 1)
+            ng_trainer.train(0.9, 1)
 
 print('NLPD: ', m.nlpd(X, Y))
 

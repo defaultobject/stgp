@@ -81,7 +81,7 @@ def permute_blocks(A_blocks, num_latents):
 
     return lp_A @ right_P.T
 
-#@partial(jit, static_argnums=(1))
+@partial(jit, static_argnums=(1))
 def left_permute_mat(A, num_latents):
     chex.assert_rank(A, 2)
 

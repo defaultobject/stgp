@@ -31,21 +31,21 @@ class ProductLikelihood(Likelihood):
 
     def conditional_var(self, f):
         var_arr = []
-        for lik in self.likelihood_arr:
+        for i, lik in enumerate(self.likelihood_arr):
             var_arr.append(
-                lik.conditional_var(f)
+                lik.conditional_var(f[:, i][:, None])
             )
 
-        return var_arr
+        return np.array(var_arr)
 
     def conditional_mean(self, f):
         mu_arr = []
-        for lik in self.likelihood_arr:
+        for i, lik in enumerate(self.likelihood_arr):
             mu_arr.append(
-                lik.conditional_mean(f)
+                lik.conditional_mean(f[:, i][:, None])
             )
 
-        return mu_arr
+        return np.array(mu_arr)
 
 class GaussianProductLikelihood(ProductLikelihood):
 

@@ -1,9 +1,11 @@
 from ... import settings
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_lower_triangular_vec
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
+from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior
 from ..parameter_transforms import psd_retraction_map
+from ..permutations import right_permute_mat, permute_mat
 
 from ..elbos.elbos import compute_expected_log_liklihood
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, lambda_to_xi, xi_to_lambda, reparametise_cholesky_grad
@@ -302,6 +304,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     lambda_2 = lambda_2/2 
     lambda_2 = lambda_2 + lambda_2.T
     _lambda_2 = lambda_2
+    _lambda_2_new = lambda_2_init + beta*(-lambda_2)
 
     #gradient update
     #∂L/μ has been calculated with the negative ELBO however the natural gradients are defined on the orginal ELBO
@@ -333,6 +336,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     elif enforce_psd == 'laplace_gauss_newton':
         # use gauss newton approximation of lambda_2
         lambda_2 = lambda_2_init + beta*(-approx_hessian)
+        theta_1, theta_2 = lambda_to_theta(lambda_1, _lambda_2_new)
 
 
     #convert from natural parameters to the raw parameters
@@ -349,7 +353,9 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     m = approx_posterior.m
     S_chol = approx_posterior.S_chol
     M = m.shape[0]
+    P = model.prior.output_dim
     Z = model.prior.base_prior.get_Z()
+    Q = model.prior.base_prior.input_dim
 
     def kl():
         # Compute KL term
@@ -364,14 +370,22 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     S_vars_to_diff = vc_keep_vars(model.vars(), [S_chol_name])
 
     XS = model.data.X
+    N = XS.shape[0]
     def likelihood_conditional_mean(X):
         f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-        return model.likelihood.conditional_mean(f)
+        #flatten output
+        stacked_mean =  np.vstack(model.likelihood.conditional_mean(f))
+        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
+        # we want zeros where Y is nan so we can mask stacked_mean
+        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
+
+        chex.assert_equal_shape([stacked_mean, nan_mask])
+        return stacked_mean * nan_mask
 
     def likelihood_conditional_var(X):
         f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-        return  model.likelihood.conditional_var(f)
-
+        stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
+        return stacked_covar 
 
     def compute_kl_grad(S_chol, kl_s_grad, K):
 
@@ -396,20 +410,28 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     KL_grad_arr = compute_kl_grad(S_chol, None,  model.prior.base_prior.b_covar(Z, Z))
 
     pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
-    pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
-    conditional_mean_grad = pred_fn_diag_grad(model.data.X)
+
 
     def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
-        conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
-        conditional_var = np.squeeze(1/conditional_var)
+        #conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
+        conditional_var = np.squeeze(1/conditional_var)[:, None]
+
+        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
+        # we want zeros where Y is nan so we can mask stacked_mean
+        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
+        chex.assert_equal_shape([conditional_var, nan_mask])
+        conditional_var = conditional_var * nan_mask
 
         # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
         lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
         return lambda_2
 
-    conditional_var = likelihood_conditional_var(model.data.X)[0]
+    conditional_var = likelihood_conditional_var(model.data.X)
+    J = pred_fn_grad(XS)[0][:, 0, :, 0]
 
-    return compute_lambda(conditional_mean_grad[0], np.hstack(conditional_var), KL_grad_arr)
+    lambda_2 =  compute_lambda(J, np.hstack(conditional_var), KL_grad_arr)
+
+    return lambda_2
 
 
 
@@ -437,11 +459,18 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
     XS = model.data.X
     def likelihood_conditional_mean(X):
         f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-        return model.likelihood.conditional_mean(f)
+        cond_f =  model.likelihood.conditional_mean(f)
+
+        nan_mask = (get_same_shape_mask(model.data.Y).T)[..., None]
+
+        chex.assert_equal_shape([cond_f, nan_mask])
+
+        return cond_f * nan_mask
 
     def likelihood_conditional_var(X):
         f = model.predict_f(X, squeeze=False, diagonal=True)[0]
-        return  model.likelihood.conditional_var(f)
+        stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
+        return stacked_covar 
 
 
     kl_S_grad = objax.Jacobian(kl, S_vars_to_diff)()
@@ -477,28 +506,33 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
     )
 
     pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
-    pred_fn_diag_grad = jax.vmap(lambda x: pred_fn_grad(x[None, ...]), [0])
-    conditional_mean_grad = pred_fn_diag_grad(model.data.X)
+    J = pred_fn_grad(model.data.X)
 
     def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
-        conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
-        conditional_var = np.squeeze(1/conditional_var)
+        conditional_mean_grad = np.reshape(conditional_mean_grad[:, :, 0, :, 0], [conditional_var.shape[0], -1])
+        conditional_var = np.squeeze(1/conditional_var)[:, None]
+
+        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
+        # we want zeros where Y is nan so we can mask stacked_mean
+        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
+        chex.assert_equal_shape([conditional_var, nan_mask])
+        conditional_var = conditional_var * nan_mask
+
 
         # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
         lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
         return lambda_2
 
-    conditional_var = likelihood_conditional_var(model.data.X)[0]
+    conditional_var = likelihood_conditional_var(model.data.X)
 
     lambda_2_arr = batch_or_loop(
         compute_lambda,
-        [np.array(conditional_mean_grad), np.array(conditional_var), KL_grad_arr],
-        [0, 1, 0],
+        [np.array(J), np.array(conditional_var), KL_grad_arr],
+        [0, None, 0],
         dim = Q,
         out_dim=1,
         batch_type = get_batch_type(approx_posterior.approx_posteriors)
     )
-
 
     return lambda_2_arr
  

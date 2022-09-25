@@ -137,7 +137,7 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
 
         var = Kxx + get_block_diagonal(var, Q)
                      
-        mu = block_from_vec(mu, 3)
+        mu = block_from_vec(mu, block_size)
 
         return mu, var
 

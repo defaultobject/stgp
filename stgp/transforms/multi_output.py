@@ -337,8 +337,10 @@ class LMC(LMC_Base):
 
         super().__init__(latents, input_dim=latents.input_dim, output_dim=output_dim)
 
+        if W is None:
+            W = np.eye(self.output_dim, self.input_dim)
         # Setup correlation matrix variables
-        self._W = Parameter(np.eye(self.output_dim, self.input_dim), name='W')
+        self._W = Parameter(np.array(W), name='W')
 
 
 

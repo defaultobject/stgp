@@ -294,9 +294,14 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         # compute predictions of the part of linear model
         linear_model_part = get_linear_model_part(prior)
 
-        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
-            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
-        )
+        if False:
+            mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
+            )
+        else:
+            mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+                XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+            )
 
         return mu, var
     else:
@@ -339,9 +344,14 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         # compute predictions of the part of linear model
         linear_model_part = get_linear_model_part(prior)
 
-        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
-            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
-        )
+        if False:
+            mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
+            )
+        else:
+            mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+                XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+            )
         chex.assert_rank([mu, var], [3, 4])
 
         if diagonal:
