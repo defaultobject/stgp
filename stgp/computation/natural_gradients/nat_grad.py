@@ -23,6 +23,26 @@ import objax
 
 from typing import List
 
+# Copies objax implementation of Jacobian except it uses jacrev instead of jacfwd
+#  For some reason jacrev seems more computational stable than jacfwd?
+class RevJac(objax.gradient._DerivativeBase):
+    """The Jacobian module computes Jacobian matrix of a function."""
+
+    def __init__(self,
+                 f,
+                 variables,
+                 input_argnums = None):
+        """Constructs an instance to compute the Jacobian of f w.r.t. variables and arguments.
+        Args:
+            f: the function for which to compute Jacobian.
+            variables: the variables for which to compute gradients.
+            input_argnums: input indexes, if any, on which to compute gradients.
+        """
+        super().__init__(lambda f_func: jax.jacrev(f_func, has_aux=True),
+                         f=f,
+                         variables=variables,
+                         input_argnums=input_argnums)
+
 def _get_mf_params_names(model):
     approx_posteriors = model.approximate_posterior.approx_posteriors
     param_dict = get_parameters(model, replace_name=False, return_id=True)
@@ -336,7 +356,6 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     elif enforce_psd == 'laplace_gauss_newton':
         # use gauss newton approximation of lambda_2
         lambda_2 = lambda_2_init + beta*(-approx_hessian)
-        theta_1, theta_2 = lambda_to_theta(lambda_1, _lambda_2_new)
 
 
     #convert from natural parameters to the raw parameters
@@ -387,29 +406,24 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
         stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
         return stacked_covar 
 
-    def compute_kl_grad(S_chol, kl_s_grad, K):
-
-        if False:
-            kl_partial_s_chol = lower_triangle(kl_s_grad, M)
-            # using this causes memory issues :(
-            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_s_grad, None, False))
+    def compute_kl_grad(S_chol, K):
+        # TODO: add checks to see when this is allowed
+        if model.inference.whiten:
+            S_inv = cholesky_solve(S_chol, np.eye(M))
+            kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
         else:
-            # TODO: add checks to see when this is allowed
-            if model.inference.whiten:
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
-            else:
-                # closed form KL derivative
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                K_chol = cholesky(add_jitter(K, settings.jitter))
-                K_inv = cholesky_solve(K_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
+            # closed form KL derivative
+            S_inv = cholesky_solve(S_chol, np.eye(M))
+            K_chol = cholesky(add_jitter(K, settings.jitter))
+            K_inv = cholesky_solve(K_chol, np.eye(M))
+            kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
 
         return kl_partial_s
 
-    KL_grad_arr = compute_kl_grad(S_chol, None,  model.prior.base_prior.b_covar(Z, Z))
+    KL_grad_arr = compute_kl_grad(S_chol,  model.prior.base_prior.b_covar(Z, Z))
 
-    pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    #pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    pred_fn_grad = RevJac(likelihood_conditional_mean, f_vars_to_diff)
 
 
     def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
@@ -473,40 +487,35 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
         return stacked_covar 
 
 
-    kl_S_grad = objax.Jacobian(kl, S_vars_to_diff)()
+    def compute_kl_grad(S_chol, K):
 
-    def compute_kl_grad(S_chol, kl_s_grad, K):
-        kl_partial_s_chol = lower_triangle(kl_s_grad, M)
-
-        if False:
-            # using this causes memory issues :(
-            kl_partial_s = np.squeeze(reparametise_cholesky_grad( S_chol @ S_chol.T , kl_s_grad, None, False))
+        # TODO: add checks to see when this is allowed
+        if model.inference.whiten:
+            S_inv = cholesky_solve(S_chol, np.eye(M))
+            kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
         else:
-            # TODO: add checks to see when this is allowed
-            if model.inference.whiten:
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
-            else:
-                # closed form KL derivative
-                S_inv = cholesky_solve(S_chol, np.eye(M))
-                K_chol = cholesky(add_jitter(K, settings.jitter))
-                K_inv = cholesky_solve(K_chol, np.eye(M))
-                kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
+            # closed form KL derivative
+            S_inv = cholesky_solve(S_chol, np.eye(M))
+            K_chol = cholesky(add_jitter(K, settings.jitter))
+            K_inv = cholesky_solve(K_chol, np.eye(M))
+            kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
 
         return kl_partial_s
 
     K_arr = model.prior.base_prior.b_covar_blocks(Z, Z)
     KL_grad_arr = batch_or_loop(
         compute_kl_grad,
-        [S_chol, np.array(kl_S_grad), K_arr],
-        [0, 0, 0],
+        [S_chol,  K_arr],
+        [0, 0],
         dim = Q,
         out_dim=1,
         batch_type = get_batch_type(approx_posterior.approx_posteriors)
     )
 
-    pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    #pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
+    pred_fn_grad = RevJac(likelihood_conditional_mean, f_vars_to_diff)
     J = pred_fn_grad(model.data.X)
+
 
     def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
         conditional_mean_grad = np.reshape(conditional_mean_grad[:, :, 0, :, 0], [conditional_var.shape[0], -1])
