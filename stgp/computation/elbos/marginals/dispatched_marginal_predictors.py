@@ -275,7 +275,11 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+
+    if num_samples is None:
+        num_samples = inference.prediction_samples
+
     if diagonal == True:
         out_block_dim = 1
     else:
@@ -306,10 +310,10 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         return mu, var
     else:
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
-            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples
         )
 
-        chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, out_block_dim))
+        chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, out_block_dim))
 
         second_moment =  mu**2
 
@@ -330,7 +334,11 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+
+    if num_samples is None:
+        num_samples = inference.prediction_samples
+
     out_block_dim = prior.output_dim
 
     model_type = get_model_type(prior)
@@ -363,10 +371,10 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         return mu, var
     else:
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
-            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples
         )
         # TODO: fix shapes with aggregation blocks?
-        chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, 1))
+        chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
         second_moment =  mu**2
 
@@ -391,7 +399,10 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = None):
+
+    if num_samples is None:
+        num_samples = inference.prediction_samples 
 
     if diagonal == True:
         out_block_dim = 1
@@ -423,16 +434,21 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         prior = prior,
         fn_args = [],
         generator = inference.generator, 
-        num_samples = inference.prediction_samples,
+        num_samples = num_samples,
         block_type = block_type,
         average = False
     )
+
 
     return mu
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten):
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+
+    if num_samples is None:
+        num_samples = inference.prediction_samples 
+
     out_block_dim = prior.output_dim
 
     sparsity_list = prior.base_prior.get_sparsity_list()
@@ -459,12 +475,12 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         prior = prior,
         fn_args = [],
         generator = inference.generator, 
-        num_samples = inference.prediction_samples,
+        num_samples = num_samples,
         block_type = block_type,
         average = False
     )
     # TODO: fix shapes with aggregation blocks?
-    chex.assert_shape(mu, (inference.prediction_samples, XS.shape[0], prior.output_dim, 1))
+    chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
     return mu
 

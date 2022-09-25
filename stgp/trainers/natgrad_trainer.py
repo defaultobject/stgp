@@ -116,7 +116,8 @@ class NatGradTrainer(Trainer):
         m,
         schedule = None,
         total_epochs = None,
-        enforce_psd_type=None
+        enforce_psd_type=None,
+        prediction_samples=None,
     ):
         """
         Args
@@ -130,7 +131,7 @@ class NatGradTrainer(Trainer):
         self.natgrad_fn = objax.Jit(
             self.m.natural_gradient_update,
             vc,
-            static_argnums=(1,)
+            static_argnums=[1, 2]
         )
 
         self.objective_fn = objax.Jit(
@@ -154,6 +155,8 @@ class NatGradTrainer(Trainer):
         self.total_epochs = total_epochs
 
         self.enforce_psd_type = enforce_psd_type
+
+        self.prediction_samples = prediction_samples
 
     def train(
         self, 
@@ -184,7 +187,7 @@ class NatGradTrainer(Trainer):
             if verbose:
                 print(f'{i} / {epochs} -- {global_i} / {self.total_epochs} -- {lr}')
 
-            params = self.natgrad_fn(lr, self.enforce_psd_type)
+            params = self.natgrad_fn(lr, self.enforce_psd_type, self.prediction_samples)
 
             if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
                 raise RuntimeError('NaN encountered whilst natgrad training!')

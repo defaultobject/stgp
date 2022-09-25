@@ -75,7 +75,6 @@ m = stgp.models.GP(
 
 )
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
-breakpoint()
 print(m.confidence_intervals(X))
 print(m.get_objective())
 print(m.predict_f(X))
@@ -84,10 +83,10 @@ print('NLPD: ', m.nlpd(X, Y))
 if True:
     max_iters = 100
 
-    ng_trainer = NatGradTrainer(m)
+    #ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton', prediction_samples=10)
     m.approximate_posterior.fix()
 
-    #trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     ng_trainer.train(0.01, 10)
@@ -99,7 +98,6 @@ print('NLPD: ', m.nlpd(X, Y))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
 
-breakpoint()
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

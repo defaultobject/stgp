@@ -208,7 +208,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False, fix_shapes = True):
+    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False, fix_shapes = True, num_samples = None):
 
         mean, var = self.inference.predict_f(
             XS, 
@@ -216,7 +216,8 @@ class VGP(Posterior):
             self.likelihood, 
             self.prior,
             self.approximate_posterior,
-            diagonal=diagonal
+            diagonal=diagonal,
+            num_samples = num_samples
         )
         if fix_shapes:
             chex.assert_rank([mean, var], [3, 4])
@@ -231,7 +232,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_y(self, XS, diagonal=True, squeeze=True, output_first = False):
+    def predict_y(self, XS, diagonal=True, squeeze=True, output_first = False, num_samples = None):
         P = self.prior.output_dim
         N = XS.shape[0]
 
@@ -241,7 +242,8 @@ class VGP(Posterior):
             self.likelihood, 
             self.prior,
             self.approximate_posterior,
-            diagonal=diagonal
+            diagonal=diagonal,
+            num_samples = num_samples
         )
 
         chex.assert_rank([mu_arr, var_arr], [3, 4])
@@ -257,13 +259,14 @@ class VGP(Posterior):
 
         return mu_arr, var_arr
 
-    def natural_gradient_update(self, learning_rate, enforce_psd_type=None):
+    def natural_gradient_update(self, learning_rate, enforce_psd_type=None, prediction_samples=None):
         natgrad_fn = evoke('natural_gradients', self, self.approximate_posterior)
 
         return natgrad_fn(
             self,
             learning_rate,
-            enforce_psd_type
+            enforce_psd_type,
+            prediction_samples
         )
 
     def natural_gradient(self, learning_rate):

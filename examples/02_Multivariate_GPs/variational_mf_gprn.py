@@ -4,6 +4,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
@@ -73,18 +74,18 @@ m = stgp.models.GP(
     prediction_samples = 1000
 )
 
-print(m.confidence_intervals(X))
-print(m.get_objective())
-print(m.predict_f(X))
-print('NLPD: ', m.nlpd(X, Y))
+#print(m.confidence_intervals(X))
+#print(m.get_objective())
+#print(m.predict_f(X))
+#print('NLPD: ', m.nlpd(X, Y))
 
 if True:
     max_iters = 100
 
-    ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton', prediction_samples=10)
+    #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
-    #trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     ng_trainer.train(0.01, 10)

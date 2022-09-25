@@ -21,14 +21,14 @@ class Variational(Inference):
         self.ell_samples=ell_samples
         self.prediction_samples=prediction_samples
 
-    def predict_f(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
+    def predict_f(self, XS, data, likelihood, prior, approximate_posterior, diagonal, num_samples=None):
 
         if data.minibatch:
             # TODO: minibatching only works when sparsity is used. Assert this.
             data.batch()
 
         mu, var = evoke('predict', likelihood, prior, approximate_posterior, self.whiten)(
-            XS, data, likelihood, prior, approximate_posterior, self, self.whiten, diagonal
+            XS, data, likelihood, prior, approximate_posterior, self, self.whiten, diagonal, num_samples = num_samples
         )
 
         return mu, var
@@ -42,8 +42,8 @@ class Variational(Inference):
             XS, data, approximate_posterior, likelihood, prior, self, 1, self.whiten
         )
 
-    def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
-        pred_mu, pred_var = self.predict_f(XS, data, likelihood, prior, approximate_posterior, diagonal)
+    def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal,  num_samples=None):
+        pred_mu, pred_var = self.predict_f(XS, data, likelihood, prior, approximate_posterior, diagonal, num_samples = num_samples)
 
         if True:
             pred_y_mu, pred_y_var = evoke('predict_y', approximate_posterior, likelihood, prior)(

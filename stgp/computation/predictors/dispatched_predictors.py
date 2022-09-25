@@ -310,7 +310,7 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool):
 
 @dispatch(Likelihood, Transform, ApproximatePosterior, True)
 @dispatch(Likelihood, Transform, ApproximatePosterior, False)
-def predict(XS, data, likelihood, prior, approximate_posterior, inference, whiten, diagonal):
+def predict(XS, data, likelihood, prior, approximate_posterior, inference, whiten, diagonal, **kwargs):
     return  evoke('marginal_prediction', approximate_posterior, likelihood, prior, whiten=whiten)(
-        XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten
+        XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, **kwargs
     )
