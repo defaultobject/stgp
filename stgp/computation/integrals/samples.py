@@ -83,6 +83,9 @@ def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, bl
 
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
 
+    if num_samples == 1:
+        return wrapped_fn(mu,  *fn_args)[None, ...]
+
     samples = mv_block_monte_carlo(
         wrapped_fn,
         mu, 

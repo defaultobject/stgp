@@ -122,3 +122,70 @@ def mv_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_s
         return fn_samples
 
 
+
+def mv_mean_field_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_samples=100, average=True):
+    """
+    multi-variate monte-carlo
+
+    Computes blocked samples across Q
+
+    Args:
+        fn: Callable - 
+        mu_arr: N x Q x B
+        var_arr: N x Q x B x B
+
+
+    """
+
+    if generator == None: raise RuntimeError()
+    chex.assert_rank([mu_arr, var_arr], [3, 4])
+
+    N, Q, B = mu_arr.shape
+
+    chex.assert_equal(var_arr.shape, (N, Q, B, B))
+
+    white_samples = objax.random.normal([num_samples]+list(mu_arr.shape), mean=0.0, stddev=1.0, generator=generator)
+    chex.assert_shape(white_samples, [num_samples, N, Q, B])
+
+
+    if True:
+        # add jit for numerical stability when computing samples
+        tiled_jit = np.tile(
+            np.eye(B)*settings.jitter,
+            [N, Q, 1, 1]
+        )
+        chol_arr = np.linalg.cholesky(var_arr+tiled_jit)
+    else:
+        chol_arr = np.linalg.cholesky(var_arr)
+
+
+    def reparameterise(fn, samples, mu_arr, chol_arr, *args):
+        chex.assert_equal(mu_arr.shape, (N, Q, B))
+        chex.assert_equal(chol_arr.shape, (N, Q, B, B))
+        chex.assert_equal_shape([samples, mu_arr])
+
+        samples = samples[..., None]
+        mu_arr = mu_arr[..., None]
+
+        # reparemeterise
+        s = mu_arr + chol_arr @ samples 
+
+        return fn(s, *args)
+
+
+    num_args = len(fn_args)
+
+    # batch over samples and Q
+    fn_samples = jax.vmap(
+        reparameterise,
+        [None, 0, None, None] + [None]*num_args,
+        0
+    )(fn, white_samples, mu_arr, chol_arr, *fn_args)
+
+    if average:
+        # Return average across all samples
+        return np.mean(fn_samples, axis=0)
+    else: 
+        return fn_samples
+
+

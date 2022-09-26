@@ -1,11 +1,13 @@
 from ... import settings
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_lower_triangular_vec
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_lower_triangular_vec, vectorized_cholesky_to_psd
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior
 from ..parameter_transforms import psd_retraction_map
 from ..permutations import right_permute_mat, permute_mat
+from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo
+from ..matrix_ops import lower_triangle
 
 from ..elbos.elbos import compute_expected_log_liklihood
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, lambda_to_xi, xi_to_lambda, reparametise_cholesky_grad
@@ -353,7 +355,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         A = G @ A1
         lambda_2_new = (1-beta)*lambda_2  + beta* grad_2 + (beta **2)/2 * A
 
-    elif enforce_psd == 'laplace_gauss_newton':
+    elif enforce_psd in ['laplace_gauss_newton', 'gauss_newton']:
         # use gauss newton approximation of lambda_2
         lambda_2 = lambda_2_init + beta*(-approx_hessian)
 
@@ -391,9 +393,12 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     XS = model.data.X
     N = XS.shape[0]
     def likelihood_conditional_mean(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples)[0]
+        f = model.predict_f(X, squeeze=False, fix_shapes=False, num_samples=prediction_samples, posterior=True)[0]
+
+        f = np.squeeze(f)
         #flatten output
         stacked_mean =  np.vstack(model.likelihood.conditional_mean(f))
+
         stacked_Y = np.reshape(model.data.Y, [-1], order='F')
         # we want zeros where Y is nan so we can mask stacked_mean
         nan_mask = get_same_shape_mask(stacked_Y)[:, None]
@@ -402,7 +407,8 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
         return stacked_mean * nan_mask
 
     def likelihood_conditional_var(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples)[0]
+        f = model.predict_f(X, squeeze=False, fix_shapes=False, num_samples=prediction_samples, posterior=True)[0]
+        f = np.squeeze(f)
         stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
         return stacked_covar 
 
@@ -425,7 +431,6 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     #pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
     pred_fn_grad = RevJac(likelihood_conditional_mean, f_vars_to_diff)
 
-
     def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
         #conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
         conditional_var = np.squeeze(1/conditional_var)[:, None]
@@ -445,8 +450,44 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
 
     lambda_2 =  compute_lambda(J, np.hstack(conditional_var), KL_grad_arr)
 
+    #objax.Grad(model.get_objective, f_vars_to_diff)()
+
     return lambda_2
 
+def gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
+    if prediction_samples is None:
+        raise RuntimeError()
+    
+    laplace_samples = 1
+
+    m_name, S_chol_name = _get_fp_params_names(model)
+    f_vars_to_diff = vc_keep_vars(model.vars(), [m_name])
+    S_vars_to_diff = vc_keep_vars(model.vars(), [S_chol_name])
+
+    # keep orignal values 
+    f_values = f_vars_to_diff.tensors()
+    S_chol_values = S_vars_to_diff.tensors()
+
+    M = f_values[0].shape[0]
+
+    f_val = f_values[0][None, ...]
+    S_chol_val = lower_triangle(S_chol_values[0], M)
+    var_val = S_chol_val @ S_chol_val.T
+    var_val = var_val[None, None, ...]
+    
+    #sample 
+    def wrapped_fn(f):
+        f_vars_to_diff.assign([f[0]])
+
+        return laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, laplace_samples)
+
+
+    lam = mv_block_monte_carlo(wrapped_fn, f_val, var_val, generator = model.inference.generator, num_samples = prediction_samples)
+
+    # assign back original values
+    f_vars_to_diff.assign(f_values)
+
+    return lam
 
 
 def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, prediction_samples):
@@ -472,7 +513,7 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
 
     XS = model.data.X
     def likelihood_conditional_mean(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples)[0]
+        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples, posterior=True)[0]
         cond_f =  model.likelihood.conditional_mean(f)
 
         nan_mask = (get_same_shape_mask(model.data.Y).T)[..., None]
@@ -482,7 +523,7 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
         return cond_f * nan_mask
 
     def likelihood_conditional_var(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples)[0]
+        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples, posterior=True)[0]
         stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
         return stacked_covar 
 
@@ -545,6 +586,46 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
 
     return lambda_2_arr
  
+def gauss_newton_natural_gradient_for_mean_field_approx_posterior(model, beta, prediction_samples):
+    if prediction_samples is None:
+        raise RuntimeError()
+
+    laplace_samples = 1
+
+    m_name_list, S_chol_name_list = _get_mf_params_names(model)
+    f_vars_to_diff = vc_keep_vars(model.vars(), m_name_list)
+    S_vars_to_diff = vc_keep_vars(model.vars(), S_chol_name_list)
+    Q = len(m_name_list)
+
+    # keep orignal values 
+    f_values = np.array(f_vars_to_diff.tensors())
+    S_chol_values = np.array(S_vars_to_diff.tensors())
+
+
+    M = f_values[0].shape[0]
+
+    f_val = f_values[..., None]
+    S_chol_val = vectorized_lower_triangular(S_chol_values, M)
+    var_val = vectorized_cholesky_to_psd(S_chol_val)
+
+    var_val = var_val[None, ...]
+    f_val = f_val[None, ..., 0, 0]
+    
+    #sample 
+    def wrapped_fn(f):
+        chex.assert_equal(f.shape, (1, Q, M, 1))
+        f_vars_to_diff.assign(f[0])
+
+        return laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, laplace_samples)
+
+
+    lam = mv_mean_field_block_monte_carlo(wrapped_fn, f_val, var_val, generator = model.inference.generator, num_samples = prediction_samples)
+
+
+    # assign back original values
+    f_vars_to_diff.assign(f_values)
+
+    return lam
 
 
 
@@ -588,6 +669,10 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
 
     if enforce_psd_type == 'laplace_gauss_newton':
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, prediction_samples)
+
+    elif enforce_psd_type == 'gauss_newton':
+        approx_hessian =  gauss_newton_natural_gradient_for_mean_field_approx_posterior(model, beta, prediction_samples)
+
     else:
         approx_hessian = [None for q in range(num_q)]
 
@@ -628,6 +713,9 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
 
     if enforce_psd_type == 'laplace_gauss_newton':
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
+
+    elif enforce_psd_type == 'gauss_newton':
+        approx_hessian =  gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
     else:
         approx_hessian = None
 

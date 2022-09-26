@@ -70,7 +70,8 @@ print('NLPD: ', m.nlpd(X, Y))
 if True:
     max_iters = 200
 
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
     #ng_trainer = NatGradTrainer(m)
 
     m.approximate_posterior.fix()

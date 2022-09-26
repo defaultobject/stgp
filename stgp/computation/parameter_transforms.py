@@ -73,6 +73,7 @@ def correlation_transform(val, a):
 
 @jit
 def inv_correlation_transform(val, a):
+    # TODO: need to use probit here
     return inv_sigmoid((val + 1) / 2) / a
 
 

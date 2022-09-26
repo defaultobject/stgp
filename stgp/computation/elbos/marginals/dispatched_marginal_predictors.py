@@ -275,7 +275,7 @@ def marginal(XS, data, approximate_posterior, likelihood, prior, inference, out_
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
     if num_samples is None:
         num_samples = inference.prediction_samples
@@ -298,7 +298,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         # compute predictions of the part of linear model
         linear_model_part = get_linear_model_part(prior)
 
-        if False:
+        if posterior:
             mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
                 data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
             )
@@ -310,7 +310,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         return mu, var
     else:
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
-            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
         )
 
         chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, out_block_dim))
@@ -334,7 +334,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
     if num_samples is None:
         num_samples = inference.prediction_samples
@@ -352,7 +352,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         # compute predictions of the part of linear model
         linear_model_part = get_linear_model_part(prior)
 
-        if False:
+        if posterior:
             mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
                 data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
             )
@@ -371,8 +371,9 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         return mu, var
     else:
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
-            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples
+            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
         )
+
         # TODO: fix shapes with aggregation blocks?
         chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
@@ -399,7 +400,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = None):
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = None, posterior=False):
 
     if num_samples is None:
         num_samples = inference.prediction_samples 
@@ -419,10 +420,14 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
     linear_model_part = get_linear_model_part(prior)
     model_type = get_model_type(prior)
 
-    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
-        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
-    )
-
+    if posterior:
+        mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
+            data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
+        )
+    else:
+        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+        )
 
     #otherwise we need to sample / use quadrature to compute the remaining integrals
     block_type = get_block_type(1, out_block_dim)
@@ -444,7 +449,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
-def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None):
+def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
     if num_samples is None:
         num_samples = inference.prediction_samples 
@@ -461,9 +466,14 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
     linear_model_part = get_linear_model_part(prior)
     model_type = get_model_type(prior)
 
-    mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
-        XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
-    )
+    if posterior:
+        mu, var = evoke('marginal', approximate_posterior, likelihood,  linear_model_part, whiten=whiten)(
+            data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
+        )
+    else:
+        mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block_dim , whiten
+        )
 
     #otherwise we need to sample / use quadrature to compute the remaining integrals
     block_type = get_block_type(1, out_block_dim)

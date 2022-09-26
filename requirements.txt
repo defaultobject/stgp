@@ -1,5 +1,5 @@
 protobuf==3.19.0
-objax
+git+https://github.com/google/objax.git
 git+https://github.com/defaultobject/batchjax
 chex
 multipledispatch

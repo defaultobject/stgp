@@ -1,6 +1,8 @@
 FROM nvidia/cuda:11.1.1-devel-ubuntu18.04
 
 RUN apt-get update 
+RUN apt-get update 
+
 
 RUN apt-get install -y curl
 
@@ -13,15 +15,16 @@ RUN ln -sf /usr/bin/python3.8 /usr/bin/python
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 RUN python get-pip.py
 
+#git required to pip install from git repo's
+RUN apt-get install -y git
+
 # install jax and jaxlib
 
 RUN pip --no-cache-dir install --upgrade pip setuptools_rust
 
 # Install ML Packages built with CUDA11 support
-RUN pip install --upgrade jax jaxlib==0.3.7+cuda11.cudnn805 -f https://storage.googleapis.com/jax-releases/jax_releases.html
+RUN pip install "jax[cuda11_cudnn805]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
-#git required to pip install from git repo's
-RUN apt-get install -y git
 
 #run requirements in order
 #required because scipy needs numpy to already be installed. see https://stackoverflow.com/questions/51399515/docker-cannot-build-scipy.

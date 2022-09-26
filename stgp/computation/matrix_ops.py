@@ -226,6 +226,22 @@ def vectorized_lower_triangular_cholesky(A:np.ndarray) -> np.ndarray:
 
     return A_chol_flattened
 
+@jit
+def vectorized_cholesky_to_psd(A:np.ndarray) -> np.ndarray:
+    """
+    Computes L @ L.T along the first axis
+    """
+    chex.assert_rank(A, 3)
+    chex.assert_equal(A.shape[1], A.shape[2])
+
+    A_psd = jax.vmap(
+        lambda L: L @ L.T,
+        [0],
+        0
+    )(A)
+
+    return A_psd
+
 @partial(jit, static_argnums=(1,))
 def lower_triangle(val, N):
     tri = np.zeros((N, N))
