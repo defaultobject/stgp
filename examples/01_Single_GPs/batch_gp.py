@@ -32,6 +32,8 @@ max_iters = 100
 trainer = ScipyTrainer(m, 'CG')
 trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
+print('NLPD: ', m.nlpd(X, Y))
+
 pred_mu, pred_var = m.predict_y(XS)
 
 plt.fill_between(
@@ -41,6 +43,8 @@ plt.fill_between(
     facecolor=colors.LINE_COL, 
     alpha=0.3
 )
+
+
 plt.plot(XS, pred_mu, color=colors.LINE_COL, label='GP Fit')
 plt.scatter(X, Y, color='black', label='Training Data')
 plt.legend()

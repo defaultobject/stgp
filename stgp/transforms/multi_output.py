@@ -161,7 +161,6 @@ class GPRN_DRD(GPRN_Base):
         return (var_diag @ correlation_cholesky @ latent_f)
 
 class GPRN_DRD_EXP(GPRN_Base):
-
     def __init__(self, v, W_vec, f, a=None, variances =  None, input_dim: int = None, output_dim: int = None):
 
         #super(GPRN_DRD, self).__init__()
@@ -177,7 +176,7 @@ class GPRN_DRD_EXP(GPRN_Base):
             self.a = 1.0
 
         # Flatten latents to fit into VI framework
-        self._latent_obj = Independent(
+        self._parent = Independent(
             latents = v+f+W_vec,
             prior = True
         )
@@ -339,9 +338,9 @@ class LMC(LMC_Base):
 
         if W is None:
             W = np.eye(self.output_dim, self.input_dim)
+
         # Setup correlation matrix variables
         self._W = Parameter(np.array(W), name='W')
-
 
 
     @property

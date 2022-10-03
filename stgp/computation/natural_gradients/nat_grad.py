@@ -90,8 +90,6 @@ def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior
             and expectation parameters:
                 
                 μ = (m, mm^T + S⁻¹)
-
-
     """
     m = approx_posterior._m.value
     S_chol_flattened = approx_posterior._S_chol.value
@@ -180,7 +178,6 @@ def _natural_gradient(model, beta: float) -> np.ndarray:
 
 
     return xi1_arr, xi2_arr
-
 
 
 def _natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad, enforce_psd):
@@ -325,8 +322,10 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     # TODO: double check that this is actually what is going on
     lambda_2 = lambda_2/2 
     lambda_2 = lambda_2 + lambda_2.T
-    _lambda_2 = lambda_2
-    _lambda_2_new = lambda_2_init + beta*(-lambda_2)
+
+    if False:
+        _lambda_2 = lambda_2
+        _lambda_2_new = lambda_2_init + beta*(-lambda_2)
 
     #gradient update
     #∂L/μ has been calculated with the negative ELBO however the natural gradients are defined on the orginal ELBO
@@ -342,8 +341,6 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
         lambda_2_new = lambda_2_init + beta*(-lambda_2)
         lambda_to_theta(lambda_1, lambda_2)
-
-        cholesky(lambda_2+1e-3)
 
         breakpoint()
         # update precision

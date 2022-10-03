@@ -14,7 +14,7 @@ from ..utils.utils import get_batch_type
 from ..utils.nan_utils import get_same_shape_mask
 from .permutations import data_order_to_output_order
 from ..core.models import Model
-from ..core.model_types import LinearModel, NonLinearModel
+from ..core.model_types import get_model_type, LinearModel, NonLinearModel
 
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
@@ -127,12 +127,38 @@ def log_marginal_likelihood(
 # ====================================== Linear Transforms ======================================
 
 @dispatch(Data, Model, Likelihood, LinearModel)
-def log_marginal_likelihood( data, gp, likelihood, prior):
-    #TODO: fix this
-    breakpoint()
+def log_marginal_likelihood( data, m, likelihood, prior):
+    X, Y = data.X, data.Y
+    N, P = Y.shape
+
+    #in latent-data format
+    Kxx = prior.covar(X, X)
+    mean = prior.mean(X)
+
+    # put Y in latent-data format
+    Y_vec = Y.reshape([-1], order='F')[..., None]
+
+    # construct Likelihood
+    lik_var = likelihood.variance
+    lik_var = np.tile(lik_var, [N,  1])
+    lik_var_vec = lik_var.reshape([-1], order='F')
+    lik_var_diag = np.diag(lik_var_vec)
+
+    return log_gaussian_with_nans(Y_vec, mean, Kxx + lik_var_diag)
 
 
 # ====================================== NonLinear Models ======================================
 @dispatch(Data, Model, Likelihood, NonLinearModel)
 def log_marginal_likelihood( data, gp, likelihood, prior):
     raise RuntimeError('Batch Inference is not supported for Nonlinear Models. Try using Variational inference instead.')
+
+# ======================================  Models ======================================
+
+@dispatch(Data, Model, GaussianProductLikelihood, Transform)
+def log_marginal_likelihood( data, m, likelihood, prior):
+
+    model_type = get_model_type(prior)
+
+    return  evoke('log_marginal_likelihood', data, m, likelihood, model_type)(
+        data, m, likelihood, prior 
+    )

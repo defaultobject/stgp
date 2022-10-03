@@ -278,5 +278,5 @@ class VGP(Posterior):
         """ Returns the median and the 95% confidence intervals. """
         return evoke('confidence_intervals', self)(XS, self)
 
-    def nlpd(self, XS, YS):
-        return evoke('nlpd', self)(XS, YS, self)
+    def nlpd(self, XS, YS, num_samples=None):
+        return evoke('nlpd', self)(XS, YS, self, num_samples=num_samples)

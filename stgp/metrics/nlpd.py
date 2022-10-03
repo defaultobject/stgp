@@ -42,7 +42,8 @@ from ..core.model_types import get_model_type, LinearModel, NonLinearModel
 from ..models import VGP
 
 @dispatch(Data, 'VGP', ProductLikelihood, NonLinearModel, 'Variational')
-def nlpd(XS, YS, m, prior):
+@dispatch(Data, 'VGP', ProductLikelihood, LinearModel, 'Variational')
+def nlpd(XS, YS, m, prior, num_samples = None):
     """
     For each n:
         NLPD = - log p(Y*_n | X, Y)
@@ -59,12 +60,13 @@ def nlpd(XS, YS, m, prior):
     # shape will be [n_samples, N, P, 1] or [n_samples, N, P]
 
     mu = evoke('marginal_prediction_samples', m.approximate_posterior, m.likelihood, m.prior, whiten=m.inference.whiten)(
-        XS, m.data, m.approximate_posterior, m.likelihood, m.prior, m.inference, 1, m.inference.whiten
+        XS, m.data, m.approximate_posterior, m.likelihood, m.prior, m.inference, 1, m.inference.whiten, num_samples = num_samples
     )
 
     P = YS.shape[1]
     N = XS.shape[0]
     n_samples = mu.shape[0]
+
 
     # ensure consistent shape
     mu = np.reshape(mu, [n_samples, N, P])
@@ -79,6 +81,7 @@ def nlpd(XS, YS, m, prior):
         out_dim=1,
         batch_type = get_batch_type(lik_arr)
     )
+    chex.assert_shape(ll_arr, [P, n_samples, N])
     # ll_arr will have shape [P, n_samples, N]
     # average over n_samples for each N
     ll_arr = ll_arr
@@ -91,7 +94,16 @@ def nlpd(XS, YS, m, prior):
 
     res = res + np.log(1/n_samples)
 
+    # vmap of N, sum of P and logsumexp over n_samples
+    res_global = jax.vmap(
+        lambda l: logsumexp(np.sum(l, axis=0)),  #sum of N
+        [2]
+    )(ll_arr)
+    res_global = res_global + np.log(1/n_samples)
+    res_global = res_global[..., None]
+
     chex.assert_shape(res, [P, N])
+    chex.assert_shape(res_global, [N, 1])
 
     # N x P
     res = res.T
@@ -99,56 +111,69 @@ def nlpd(XS, YS, m, prior):
     # mask res
     res = res * mask
 
+    # mask joint res
+    mask_global = np.prod(mask, axis=1)[:, None]
+    res_global = res_global * mask_global
+
     # Average over N, ignoring the missing data
-    return - np.sum(res, axis=0) / np.sum(mask, axis=0)
+    return - np.sum(res, axis=0) / np.sum(mask, axis=0), - np.sum(res_global, axis=0) / np.sum(mask_global, axis=0)
 
 @dispatch(Data, Model, GaussianProductLikelihood, LinearModel, Inference)
-def nlpd(XS, YS, m, prior):
+def nlpd(XS, YS, m, prior, num_samples=None):
     """ Closed form Gaussian NLPD """
 
     N, P = YS.shape
 
-    if False:
+    if True:
         pred_mu, pred_var = m.predict_y(XS, diagonal=False, squeeze=False)
-
-        chex.assert_rank([YS, pred_mu, pred_var], [2, 2, 3])
-        chex.assert_equal_shape([YS, pred_mu])
-        chex.assert_shape(pred_var, [N, P, P])
-
-        mask = get_same_shape_mask(YS)
-        Y_masked = np.nan_to_num(YS, nan=0.0)
-
-        # TODO: compute the point-wise and the GLOBAL ones
-        res = jax.vmap(
-            log_gaussian,
-            [0, 0, 0]
-        )(Y_masked[..., None], pred_mu[..., None], pred_var) # ensure rank 2 after batching
-
-        # mask res
-        res = res * mask
-
-        # Average over N, ignoring the missing data
-        return - np.sum(res, axis=0) / np.sum(mask, axis=0)
+        pred_var_diag = np.diagonal(pred_var, axis1=1, axis2=2)
     else:
-        #compute NLPD independtly for each likelihood
-        pred_mu, pred_var = m.predict_y(XS, diagonal=True, squeeze=False)
+        pred_mu, pred_var_diag = m.predict_y(XS, diagonal=True, squeeze=False)
+        pred_var = pred_var_diag[..., 0]
+        pred_var_diag = pred_var_diag[..., 0, 0]
+        pred_mu = pred_mu[..., 0]
 
-        chex.assert_rank([YS, pred_mu, pred_var], [2, 2, 2])
-        chex.assert_equal_shape([YS, pred_mu, pred_var])
+    #compute NLPD independtly for each likelihood
 
-        mask = get_same_shape_mask(YS)
-        Y_masked = np.nan_to_num(YS, nan=0.0)
+    chex.assert_rank([YS, pred_mu, pred_var_diag], [2, 2, 2])
+    chex.assert_equal_shape([YS, pred_mu, pred_var_diag])
 
-        res = jax.vmap(
-            jax.vmap(log_gaussian_scalar, [0, 0, 0]),
-            [0, 0, 0]
-        )(Y_masked, pred_mu, pred_var)
+    mask = get_same_shape_mask(YS)
+    Y_masked = np.nan_to_num(YS, nan=0.0)
 
-        # mask res
-        res = res * mask
+    res = jax.vmap(
+        jax.vmap(log_gaussian_scalar, [0, 0, 0]),
+        [0, 0, 0]
+    )(Y_masked, pred_mu, pred_var_diag)
 
-        # Average over N, ignoring the missing data
-        return - np.sum(res, axis=0) / np.sum(mask, axis=0)
+    # mask res
+    res = res * mask
+
+    # compute joint NLPD
+    chex.assert_rank([YS, pred_mu, pred_var], [2, 2, 3])
+    chex.assert_equal_shape([YS, pred_mu])
+    chex.assert_shape(pred_var, [N, P, P])
+
+    mask = get_same_shape_mask(YS)
+    Y_masked = np.nan_to_num(YS, nan=0.0)
+
+    # TODO: compute the point-wise and the GLOBAL ones
+    res_global = jax.vmap(
+        log_gaussian,
+        [0, 0, 0]
+    )(Y_masked[..., None], pred_mu[..., None], pred_var) # ensure rank 2 after batching
+    res_global = res_global[..., None]
+
+    mask_global = np.prod(mask, axis=1)[:, None]
+
+    chex.assert_equal_shape([res_global, mask_global])
+
+    # mask res
+    res_global = res_global * mask_global
+
+    # Average over N, ignoring the missing data
+    return - np.sum(res, axis=0) / np.sum(mask, axis=0), - np.sum(res_global, axis=0) / np.sum(mask_global, axis=0)
+
 
 @dispatch(TransformedData, Model, Likelihood, LinearModel, Inference)
 @dispatch(TransformedData, Model, Likelihood, NonLinearModel, Inference)
@@ -158,6 +183,7 @@ def nlpd(XS, YS, model, prior):
 
          - (1/N) \sum^N_n [ \log p(T(YS_n)) + log |dT(YS_n) / d YS_2| ]
     """
+    raise NotImplementedError('Figure out joint NLPD')
 
     model_type = get_model_type(model.prior)
 
@@ -184,7 +210,8 @@ def nlpd(XS, YS, model, prior):
 
 # =========================== Batch Models  ===========================
 @dispatch('BatchGP')
-def nlpd(XS, YS, model):
+def nlpd(XS, YS, model, num_samples = None):
+    # samples not required for these models
 
     model_type = get_model_type(model.prior)
 
@@ -197,7 +224,7 @@ def nlpd(XS, YS, model):
 
 # =========================== Variational Models  ===========================
 @dispatch('VGP')
-def nlpd(XS, YS, model):
+def nlpd(XS, YS, model, num_samples = None):
     """ 
     In the variational setting the NLPD is approximated as:
     NLPD = - log p(Y*_n | X, Y) =  - log ∫ p(Y*_n | F*_n) q(F*_n) d F*_n
@@ -209,13 +236,14 @@ def nlpd(XS, YS, model):
         XS,
         YS,
         model,
-        model.prior
+        model.prior,
+        num_samples = num_samples
     )
 
 # =========================== Entry Point  ===========================
-def nlpd(XS, YS, model):
+def nlpd(XS, YS, model, num_samples = None):
     if model.data.minibatch:
         model.data.batch()
 
-    return evoke('nlpd', model)( XS, YS, model)
+    return evoke('nlpd', model)( XS, YS, model, num_samples=num_samples)
 

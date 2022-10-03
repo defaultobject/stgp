@@ -65,7 +65,7 @@ m = stgp.models.GP(
     prior=prior
 )
 
-print('NLPD: ', m.nlpd(X, Y))
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 if True:
     max_iters = 200
@@ -84,7 +84,7 @@ if True:
             trainer.train(1e-2, 1)
             ng_trainer.train(0.9, 1)
 
-print('NLPD: ', m.nlpd(X, Y))
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
 

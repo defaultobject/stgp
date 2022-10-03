@@ -26,6 +26,7 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
     chex.assert_rank([post_mu, post_var], [2, 3])
     N, P = post_mu.shape
 
+    breakpoint()
     lik_var = np.diag(likelihood.variance)
     chex.assert_shape(lik_var, [P, P])
 

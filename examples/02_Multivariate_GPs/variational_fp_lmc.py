@@ -70,12 +70,13 @@ m = stgp.models.GP(
 )
 
 
-#print('NLPD: ', m.nlpd(X, Y))
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
+
 
 pred_mu, pred_var = m.predict_f(XS)
 
 if True:
-    max_iters = 100
+    max_iters = 200
 
     #ng_trainer = NatGradTrainer(m)
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
@@ -85,7 +86,7 @@ if True:
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     ng_trainer.train(1.0, 1)
-    if False:
+    if True:
         print(m.get_objective())
 
         for i in trange(max_iters):
@@ -95,7 +96,7 @@ if True:
         print(m.get_objective())
 
 
-print('NLPD: ', m.nlpd(X, Y))
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
 

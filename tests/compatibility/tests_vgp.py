@@ -118,7 +118,7 @@ def test__vgp__no_whitening(seed, N, NS, regression_1d_data, lik_var, rbf_ls, rb
     # ==== Arrange ====
     np.random.seed(0)
 
-    settings.jitter = 1e-6
+    settings.jitter = 1e-5
 
     X, Y = regression_1d_data
     XS = np.linspace(0, 1, NS)[:, None]
@@ -137,7 +137,8 @@ def test__vgp__no_whitening(seed, N, NS, regression_1d_data, lik_var, rbf_ls, rb
         kernel=ScaleKernel(RBF(lengthscales=[rbf_ls]), rbf_var),
         likelihood = [Gaussian(variance=lik_var)],
         inference='Variational',
-        approximate_posterior = mf_q
+        approximate_posterior = mf_q,
+        whiten=False
     )
 
     # construct gpflow mode
@@ -177,11 +178,12 @@ def test__vgp__no_whitening(seed, N, NS, regression_1d_data, lik_var, rbf_ls, rb
 @pytest.mark.parametrize('rbf_var', [2.3])
 @pytest.mark.parametrize('epochs', [1000])
 @pytest.mark.parametrize('lr', [0.01])
-def test__vgp__no_whittening_after_adam(seed, epochs, lr, N, NS, regression_1d_data, lik_var, rbf_ls, rbf_var):
+@pytest.mark.parametrize('whiten', [True, False])
+def test__vgp__after_adam(seed, epochs, lr, N, NS, regression_1d_data, lik_var, rbf_ls, rbf_var, whiten):
     # ==== Arrange ====
     np.random.seed(0)
 
-    settings.jitter = 1e-6
+    settings.jitter = 1e-5
 
     X, Y = regression_1d_data
     XS = np.linspace(0, 1, NS)[:, None]
@@ -200,7 +202,8 @@ def test__vgp__no_whittening_after_adam(seed, epochs, lr, N, NS, regression_1d_d
         kernel=ScaleKernel(RBF(lengthscales=[rbf_ls]), rbf_var),
         likelihood = [Gaussian(variance=lik_var)],
         inference='Variational',
-        approximate_posterior = mf_q
+        approximate_posterior = mf_q,
+        whiten=whiten
     )
 
     # construct gpflow mode
@@ -210,13 +213,16 @@ def test__vgp__no_whittening_after_adam(seed, epochs, lr, N, NS, regression_1d_d
         kernel = gpflow.kernels.RBF(lengthscales=rbf_ls, variance=rbf_var),
         likelihood = gpflow.likelihoods.Gaussian(variance=lik_var),
         inducing_variable = inducing_variable,
-        whiten = False ,
+        whiten = whiten ,
         q_mu=m_rand, 
         q_sqrt=np.array([S_sqrt])
     )
 
     # ==== Act ====
 
+    # collect elbos
+    gpflow_elbo_before = -m_gpflow.elbo((X, Y)).numpy()
+    stgp_elbo_before = m_stgp.get_objective()
     # train stgp
 
     _, _ = GradDescentTrainer(
@@ -231,7 +237,7 @@ def test__vgp__no_whittening_after_adam(seed, epochs, lr, N, NS, regression_1d_d
     # train gpflow
 
     data = (X, Y)
-    adam_optimizer = tf.optimizers.Adam(lr)
+    adam_optimizer = tf.optimizers.Adam(lr, epsilon=1e-8) # make parameters match objax Adam
     svgp_natgrad_loss = m_gpflow.training_loss_closure(data)
     for i in range(epochs):
         adam_optimizer.minimize(svgp_natgrad_loss, m_gpflow.trainable_variables)
@@ -246,6 +252,7 @@ def test__vgp__no_whittening_after_adam(seed, epochs, lr, N, NS, regression_1d_d
 
     # === Assert  ===
 
+    np.testing.assert_allclose(gpflow_elbo_before, stgp_elbo_before, rtol=1e-04)
     np.testing.assert_allclose(gpflow_elbo, stgp_elbo, rtol=1e-04)
     np.testing.assert_allclose(np.squeeze(gpflow_pred_mu), np.squeeze(stgp_pred_mu), rtol=1e-04)
     np.testing.assert_allclose(np.squeeze(gpflow_pred_var), np.squeeze(stgp_pred_var), rtol=1e-04)

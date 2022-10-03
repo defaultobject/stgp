@@ -146,7 +146,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     q_m, q_S_chol =  Kzz_chol @ q_m, Kzz_chol @ q_S_chol
 
-
     # we have reparemeterised the approximate posterior so we can now treat it as unwhitened
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False)
 

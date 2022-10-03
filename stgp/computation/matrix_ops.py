@@ -13,7 +13,7 @@ def hessian(f, argnums):
 
 @jit
 def to_block_diag(A):
-    if True:
+    if False:
         blocks = A.shape[0]
         A_stacked = np.vstack(A)
 

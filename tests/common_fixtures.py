@@ -12,6 +12,7 @@ from stgp.transforms import DataLatentPermutation
 from stgp.transforms.pdes import DifferentialOperatorJoint, HeatEquation2D
 from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from stgp.computation.parameter_transforms import correlation_transform, get_correlation_cholesky
 
 @pytest.fixture
 def regression_1d_data(N):
@@ -30,6 +31,55 @@ def regression_2d_data(N):
 
     y = np.sin(X[:, 0]) + np.sin(X[:, 1]) + 0.1*np.random.randn(N)
     return X, y[:, None]
+
+@pytest.fixture
+def multi_output_timeseries(P, N, seed=0):
+    np.random.seed(seed)
+
+    x = np.linspace(0, 1, N)
+    X = x[:, None]
+
+    Q = int(P*(P-1)/2)
+    z = correlation_transform(np.random.randn(Q)*1.0, 1.0)
+
+    # Random correlation cholesky
+    L = np.array(get_correlation_cholesky(z, P, Q))
+    R = L @ L.T
+
+    # Random (postive) variances
+    V = np.exp(np.random.uniform(0, 1, P))
+
+    # Get random covariance cholesky
+    W = np.diag(V) @ L
+
+    # Random lengthscales for latent functions
+    lengthscales = 0.05*np.random.random(P)
+
+    # Random output noise for each output
+    lik_noise = np.random.random(P)*0.1
+
+    #Get P samples from GPs with unit variance
+    latent_fn = []
+    for i in range(P):
+        K= stgp.kernels.RBF(
+            lengthscales=np.array([lengthscales[i]]), 
+        )
+        K_xx = K.K(X, X) + np.eye(N)*1e-7
+        latent = np.random.multivariate_normal(np.zeros(N), K_xx)
+        latent_fn.append(latent[:, None])
+
+    latents = np.concatenate(latent_fn, axis=1)
+
+    #Create correlatation between the P samples
+    correlated_latents = (W @ latents.T).T
+
+    #Add output specific noise
+    for i in range(P):
+        correlated_latents[:, i] = correlated_latents[:, i] + lik_noise[i]*np.random.randn(N)
+
+    Y = correlated_latents
+
+    return X, Y
 
 @pytest.fixture
 def gaussian_likelihood(lik_var):

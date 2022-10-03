@@ -208,3 +208,6 @@ class BatchGP(Posterior):
 
     def posterior(self, diagonal=True):
         return self.predict_f(self.data.X, diagonal=diagonal)
+
+    def nlpd(self, XS, YS, num_samples=None):
+        return evoke('nlpd', self)(XS, YS, self, num_samples=num_samples)

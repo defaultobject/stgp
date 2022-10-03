@@ -60,13 +60,12 @@ prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
 
 m = stgp.models.GP(
     data=Data(X, Y), 
-    likelihood=[Gaussian(), Gaussian(), Gaussian()],
+    likelihood=[Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)],
     inference='Batch',
     prior=prior
 )
 
 print('NLPD: ', nlpd(X, Y, m))
-
 
 print(m.get_objective())
 
@@ -75,20 +74,18 @@ if False:
     max_iters = 200
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
-elif True:
-    max_iters = 200
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-    for i in trange(max_iters):
-        trainer.train(None, 1)
+
 else:
     max_iters = 500
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
     trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
 
 print(m.get_objective())
-print('NLPD: ', nlpd(X, Y, m))
+#print('NLPD: ', nlpd(X, Y, m))
 
 pred_mu, pred_var = m.predict_y(XS)
+pred_mu = pred_mu.T
+pred_var = pred_var.T
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 
