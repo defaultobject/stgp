@@ -124,7 +124,7 @@ def nlpd(XS, YS, m, prior, num_samples=None):
 
     N, P = YS.shape
 
-    if True:
+    if False:
         pred_mu, pred_var = m.predict_y(XS, diagonal=False, squeeze=False)
         pred_var_diag = np.diagonal(pred_var, axis1=1, axis2=2)
     else:

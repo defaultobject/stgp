@@ -114,19 +114,8 @@ def log_gaussian_scalar(Y, mu, variance):
 
 @jit
 def log_gaussian_diagonal(Y, mu, variance):
-    # TODO: just vmap log_gaussian_scalar
+    return jax.vmap(
+        log_gaussian_scalar, 
+        [0, 0, 0]
+    )(np.squeeze(Y), np.squeeze(mu), np.squeeze(variance))
 
-    raise NotImplementedError()
-
-    N = Y.shape[0]
-
-    # log |diag(var)| = \sum \log variance
-    log_det = np.sum(np.log(variance))
-
-    c1 = -0.5 * N * np.log(2 * np.pi) - 0.5 * log_det
-
-    err = Y - mu
-    inv_variance = 1 / variance
-    mahal = err.T @ np.multiply(inv_variance, err)
-
-    return c1 - 0.5 * mahal
