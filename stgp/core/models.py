@@ -130,7 +130,7 @@ class Prior(Model):
         raise NotImplementedError()
 
 class Posterior(Model):
-    def __init__(self, X=None, Y=None, data=None, latent_y=False, latent_x=False):
+    def __init__(self, X=None, Y=None, data=None, latent_y=False, latent_x=False, **kwargs):
         if X is not None and Y is not None:
             if data is None:
                 data = Data(X, Y)

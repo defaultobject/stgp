@@ -15,7 +15,8 @@ class GPPrior(Prior):
         self, 
         X: np.ndarray = None, 
         kernel: Optional['Kernel'] = None,
-        sparsity: Optional['Sparsity'] = None
+        sparsity: Optional['Sparsity'] = None,
+        **kwargs
     ):
         super(GPPrior, self).__init__()
 
