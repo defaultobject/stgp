@@ -117,6 +117,11 @@ class GPPrior(Prior):
         return k
 
     def b_covar(self, X1, X2):
+        # for compatability with Independent X1/X2 and can either be of rank 3 or 2
+        if len(X1.shape) == 2 and len(X2.shape) == 2:
+            X1 = X1[None, ...]
+            X2 = X2[None, ...]
+
         chex.assert_rank([X1, X2], [3, 3])
         chex.assert_equal(X1.shape[0], 1)
         chex.assert_equal(X2.shape[0], 1)

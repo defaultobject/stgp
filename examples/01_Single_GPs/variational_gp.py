@@ -46,6 +46,7 @@ m = GP(
 # Train
 if True:
     ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
     ng_trainer.train(1.0, 1)

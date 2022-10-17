@@ -75,7 +75,7 @@ print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 pred_mu, pred_var = m.predict_f(XS)
 
-if False:
+if True:
     max_iters = 200
 
     #ng_trainer = NatGradTrainer(m)

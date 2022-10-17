@@ -12,6 +12,8 @@ from ..matrix_ops import lower_triangle
 from ..elbos.elbos import compute_expected_log_liklihood
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, lambda_to_xi, xi_to_lambda, reparametise_cholesky_grad
 
+from .nat_grad_utils import RevJac, _get_mf_params_names, _get_fp_params_names
+from .ng_hessian_approximations import get_full_gaussian_hessian_approximation, get_mean_field_gaussian_hessian_approximation
 
 import chex
 from batchjax import batch_or_loop, BatchType
@@ -24,53 +26,6 @@ from functools import partial
 import objax
 
 from typing import List
-
-# Copies objax implementation of Jacobian except it uses jacrev instead of jacfwd
-#  For some reason jacrev seems more computational stable than jacfwd?
-class RevJac(objax.gradient._DerivativeBase):
-    """The Jacobian module computes Jacobian matrix of a function."""
-
-    def __init__(self,
-                 f,
-                 variables,
-                 input_argnums = None):
-        """Constructs an instance to compute the Jacobian of f w.r.t. variables and arguments.
-        Args:
-            f: the function for which to compute Jacobian.
-            variables: the variables for which to compute gradients.
-            input_argnums: input indexes, if any, on which to compute gradients.
-        """
-        super().__init__(lambda f_func: jax.jacrev(f_func, has_aux=True),
-                         f=f,
-                         variables=variables,
-                         input_argnums=input_argnums)
-
-def _get_mf_params_names(model):
-    approx_posteriors = model.approximate_posterior.approx_posteriors
-    param_dict = get_parameters(model, replace_name=False, return_id=True)
-
-    m_name_list = []
-    S_chol_list = []
-    for q in approx_posteriors:
-
-        m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
-        S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
-
-        m_name_list.append(m_name)
-        S_chol_list.append(S_chol_name)
-
-    return m_name_list, S_chol_list
-
-def _get_fp_params_names(model):
-    q = model.approximate_posterior
-    param_dict = get_parameters(model, replace_name=False, return_id=True)
-
-
-    m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
-    S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
-
-    return m_name, S_chol_name
-
 
 def natural_gradient_for_gaussian_approx_posterior(model, beta, approx_posterior, m_grad, s_grad):
     """
@@ -365,264 +320,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
     return [xi1, xi2]
 
-def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
-    approx_posterior = model.approximate_posterior
 
-    m = approx_posterior.m
-    S_chol = approx_posterior.S_chol
-    M = m.shape[0]
-    P = model.prior.output_dim
-    Z = model.prior.base_prior.get_Z()
-    Q = model.prior.base_prior.input_dim
-
-    def kl():
-        # Compute KL term
-        KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
-            model.approximate_posterior, model.prior, model.inference.whiten
-        )
-
-        return KL
-
-    m_name, S_chol_name = _get_fp_params_names(model)
-    f_vars_to_diff = vc_keep_vars(model.vars(), [m_name])
-    S_vars_to_diff = vc_keep_vars(model.vars(), [S_chol_name])
-
-    XS = model.data.X
-    N = XS.shape[0]
-    def likelihood_conditional_mean(X):
-        f = model.predict_f(X, squeeze=False, fix_shapes=False, num_samples=prediction_samples, posterior=True)[0]
-
-        f = np.squeeze(f)
-        #flatten output
-        stacked_mean =  np.vstack(model.likelihood.conditional_mean(f))
-
-        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
-        # we want zeros where Y is nan so we can mask stacked_mean
-        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
-
-        chex.assert_equal_shape([stacked_mean, nan_mask])
-        return stacked_mean * nan_mask
-
-    def likelihood_conditional_var(X):
-        f = model.predict_f(X, squeeze=False, fix_shapes=False, num_samples=prediction_samples, posterior=True)[0]
-        f = np.squeeze(f)
-        stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
-        return stacked_covar 
-
-    def compute_kl_grad(S_chol, K):
-        # TODO: add checks to see when this is allowed
-        if model.inference.whiten:
-            S_inv = cholesky_solve(S_chol, np.eye(M))
-            kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
-        else:
-            # closed form KL derivative
-            S_inv = cholesky_solve(S_chol, np.eye(M))
-            K_chol = cholesky(add_jitter(K, settings.jitter))
-            K_inv = cholesky_solve(K_chol, np.eye(M))
-            kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
-
-        return kl_partial_s
-
-    KL_grad_arr = compute_kl_grad(S_chol,  model.prior.base_prior.b_covar(Z, Z))
-
-    #pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
-    pred_fn_grad = RevJac(likelihood_conditional_mean, f_vars_to_diff)
-
-    def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
-        #conditional_mean_grad = conditional_mean_grad[:, 0, 0, :, 0]
-        conditional_var = np.squeeze(1/conditional_var)[:, None]
-
-        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
-        # we want zeros where Y is nan so we can mask stacked_mean
-        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
-        chex.assert_equal_shape([conditional_var, nan_mask])
-        conditional_var = conditional_var * nan_mask
-
-        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
-        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
-        return lambda_2
-
-    conditional_var = likelihood_conditional_var(model.data.X)
-    J = pred_fn_grad(XS)[0][:, 0, :, 0]
-
-    lambda_2 =  compute_lambda(J, np.hstack(conditional_var), KL_grad_arr)
-
-    #objax.Grad(model.get_objective, f_vars_to_diff)()
-
-    return lambda_2
-
-def gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
-    if prediction_samples is None:
-        raise RuntimeError()
-    
-    laplace_samples = 1
-
-    m_name, S_chol_name = _get_fp_params_names(model)
-    f_vars_to_diff = vc_keep_vars(model.vars(), [m_name])
-    S_vars_to_diff = vc_keep_vars(model.vars(), [S_chol_name])
-
-    # keep orignal values 
-    f_values = f_vars_to_diff.tensors()
-    S_chol_values = S_vars_to_diff.tensors()
-
-    M = f_values[0].shape[0]
-
-    f_val = f_values[0][None, ...]
-    S_chol_val = lower_triangle(S_chol_values[0], M)
-    var_val = S_chol_val @ S_chol_val.T
-    var_val = var_val[None, None, ...]
-    
-    #sample 
-    def wrapped_fn(f):
-        f_vars_to_diff.assign([f[0]])
-
-        return laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, laplace_samples)
-
-
-    lam = mv_block_monte_carlo(wrapped_fn, f_val, var_val, generator = model.inference.generator, num_samples = prediction_samples)
-
-    # assign back original values
-    f_vars_to_diff.assign(f_values)
-
-    return lam
-
-
-def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, prediction_samples):
-    approx_posterior = model.approximate_posterior
-    Q = len(approx_posterior.approx_posteriors)
-
-    m = approx_posterior.m
-    S_chol = approx_posterior.S_chol
-    M = m.shape[1]
-    Z = model.prior.base_prior.get_Z()
-
-    def kl():
-        # Compute KL term
-        KL = evoke('kullback_leibler', model.approximate_posterior, model.prior, whiten=model.inference.whiten)(
-            model.approximate_posterior, model.prior, model.inference.whiten
-        )
-
-        return KL
-
-    m_name_list, S_chol_list = _get_mf_params_names(model)
-    f_vars_to_diff = vc_keep_vars(model.vars(), [*m_name_list])
-    S_vars_to_diff = vc_keep_vars(model.vars(), [*S_chol_list])
-
-    XS = model.data.X
-    def likelihood_conditional_mean(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples, posterior=True)[0]
-        cond_f =  model.likelihood.conditional_mean(f)
-
-        nan_mask = (get_same_shape_mask(model.data.Y).T)[..., None]
-
-        chex.assert_equal_shape([cond_f, nan_mask])
-
-        return cond_f * nan_mask
-
-    def likelihood_conditional_var(X):
-        f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples, posterior=True)[0]
-        stacked_covar =  np.vstack(model.likelihood.conditional_var(f))
-        return stacked_covar 
-
-
-    def compute_kl_grad(S_chol, K):
-
-        # TODO: add checks to see when this is allowed
-        if model.inference.whiten:
-            S_inv = cholesky_solve(S_chol, np.eye(M))
-            kl_partial_s =  -(0.5*S_inv - 0.5*np.eye(M))
-        else:
-            # closed form KL derivative
-            S_inv = cholesky_solve(S_chol, np.eye(M))
-            K_chol = cholesky(add_jitter(K, settings.jitter))
-            K_inv = cholesky_solve(K_chol, np.eye(M))
-            kl_partial_s =  -(0.5*S_inv - 0.5*K_inv)
-
-        return kl_partial_s
-
-    K_arr = model.prior.base_prior.b_covar_blocks(Z, Z)
-    KL_grad_arr = batch_or_loop(
-        compute_kl_grad,
-        [S_chol,  K_arr],
-        [0, 0],
-        dim = Q,
-        out_dim=1,
-        batch_type = get_batch_type(approx_posterior.approx_posteriors)
-    )
-
-    #pred_fn_grad = objax.Jacobian(likelihood_conditional_mean, f_vars_to_diff)
-    pred_fn_grad = RevJac(likelihood_conditional_mean, f_vars_to_diff)
-    J = pred_fn_grad(model.data.X)
-
-
-    def compute_lambda(conditional_mean_grad, conditional_var, kl_partial_s):
-        conditional_mean_grad = np.reshape(conditional_mean_grad[:, :, 0, :, 0], [conditional_var.shape[0], -1])
-        conditional_var = np.squeeze(1/conditional_var)[:, None]
-
-        stacked_Y = np.reshape(model.data.Y, [-1], order='F')
-        # we want zeros where Y is nan so we can mask stacked_mean
-        nan_mask = get_same_shape_mask(stacked_Y)[:, None]
-        chex.assert_equal_shape([conditional_var, nan_mask])
-        conditional_var = conditional_var * nan_mask
-
-
-        # compute np.diag(conditional_var) @ conditional_mean_grad efficiently
-        lambda_2 =  -((-0.5 * conditional_mean_grad.T  @ (conditional_var * conditional_mean_grad)) - ( kl_partial_s))
-        return lambda_2
-
-    conditional_var = likelihood_conditional_var(model.data.X)
-
-    lambda_2_arr = batch_or_loop(
-        compute_lambda,
-        [np.array(J), np.array(conditional_var), KL_grad_arr],
-        [0, None, 0],
-        dim = Q,
-        out_dim=1,
-        batch_type = get_batch_type(approx_posterior.approx_posteriors)
-    )
-
-    return lambda_2_arr
- 
-def gauss_newton_natural_gradient_for_mean_field_approx_posterior(model, beta, prediction_samples):
-    if prediction_samples is None:
-        raise RuntimeError()
-
-    laplace_samples = 1
-
-    m_name_list, S_chol_name_list = _get_mf_params_names(model)
-    f_vars_to_diff = vc_keep_vars(model.vars(), m_name_list)
-    S_vars_to_diff = vc_keep_vars(model.vars(), S_chol_name_list)
-    Q = len(m_name_list)
-
-    # keep orignal values 
-    f_values = np.array(f_vars_to_diff.tensors())
-    S_chol_values = np.array(S_vars_to_diff.tensors())
-
-
-    M = f_values[0].shape[0]
-
-    f_val = f_values[..., None]
-    S_chol_val = vectorized_lower_triangular(S_chol_values, M)
-    var_val = vectorized_cholesky_to_psd(S_chol_val)
-
-    var_val = var_val[None, ...]
-    f_val = f_val[None, ..., 0, 0]
-    
-    #sample 
-    def wrapped_fn(f):
-        chex.assert_equal(f.shape, (1, Q, M, 1))
-        f_vars_to_diff.assign(f[0])
-
-        return laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, laplace_samples)
-
-
-    lam = mv_mean_field_block_monte_carlo(wrapped_fn, f_val, var_val, generator = model.inference.generator, num_samples = prediction_samples)
-
-
-    # assign back original values
-    f_vars_to_diff.assign(f_values)
-
-    return lam
 
 
 
@@ -663,15 +361,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
     else:
         beta_axis = None
 
-
-    if enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, beta, prediction_samples)
-
-    elif enforce_psd_type == 'gauss_newton':
-        approx_hessian =  gauss_newton_natural_gradient_for_mean_field_approx_posterior(model, beta, prediction_samples)
-
-    else:
-        approx_hessian = [None for q in range(num_q)]
+    approx_hessian = get_mean_field_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type)
 
     xi1_arr, xi2_arr = batch_or_loop(
         lambda m, b, q, m_grad, s_grad, enforce_psd, approx_hessian: natural_gradient_update_for_gaussian_approx_posterior(m, b, q, m_grad, s_grad, enforce_psd, approx_hessian),
@@ -708,13 +398,9 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
     m_grad = gradients[0]
     S_grad = gradients[1]
 
-    if enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
+    approx_hessian = get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type)
 
-    elif enforce_psd_type == 'gauss_newton':
-        approx_hessian =  gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
-    else:
-        approx_hessian = None
+
 
     xi1, xi2 = natural_gradient_update_for_gaussian_approx_posterior(model, beta, q, m_grad, S_grad, enforce_psd_type, approx_hessian)
 
