@@ -181,6 +181,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     base_prior = get_permutated_prior(prior)
 
+
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
 
     mu, var = fn(

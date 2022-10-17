@@ -121,11 +121,13 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     chex.assert_shape(q_S, [M * Q, M * Q])
 
     # Get all Z in latent-data format
-    Z_all = base_prior.get_Z()
-    chex.assert_shape(Z_all, [Q, M, D])
+    Z_all = base_prior.get_Z_stacked()
+    Q1, Q2, _, _ = Z_all.shape
+
+    chex.assert_shape(Z_all, [Q1, Q2, M, D])
 
     # Convert XS to latent_data format
-    XS_tiled = np.tile(XS, [Q, 1, 1])
+    XS_tiled = np.tile(XS, [Q1, Q2, 1, 1])
 
     # Z does not need to be ordered, only X
     # Compute non permuted full covariance - this will be block diagonal
@@ -135,7 +137,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     # Compute Kxz with x permutated into data-latent format
     # Left permute x, and do not permute Z
     #TODO: IS THIS CAUSING JIT ISSUES??
-    Kxz_p = prior.lp_rb_covar(XS, Z_all)
+    Kxz_p = prior.lp_rb_covar(XS_tiled[0], Z_all)
 
     chex.assert_shape(Kxz_p, [Q*NS, Q*M])
 

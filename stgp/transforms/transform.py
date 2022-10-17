@@ -157,7 +157,7 @@ class Independent(Transform):
             latents = [latent]
 
         if prior:
-            self._output_dim = len(latents)
+            self._output_dim = sum([p.output_dim for p in latents])
         else:
             self._output_dim = latent.output_dim
 
@@ -180,11 +180,15 @@ class Independent(Transform):
         return self
 
     def get_sparsity_list(self):
-        return [p.sparsity for p in self.parent]
+        """ Collect all sparsity objects of all latents in a flat list """
+        sparsity_list = []
+        for p in self.parent:
+            sparsity_list += p.get_sparsity_list()
+        return sparsity_list
 
-    def get_Z(self):
+    def get_Z_stacked(self):
         Z_arr = batch_or_loop(
-            lambda latent:  latent.get_Z(),
+            lambda latent:  latent.get_Z_blocks(),
             [self.parent],
             [0],
             dim = self.output_dim,
@@ -192,7 +196,29 @@ class Independent(Transform):
             batch_type = get_batch_type(self.parent)
         )
 
+        # each latent.get_b_Z() is of rank 3
+        chex.assert_rank(Z_arr, 4)
+
         return Z_arr
+
+    def get_Z_blocks(self):
+        Z_arr = self.get_Z_stacked()
+
+        # each latent.get_b_Z() is of rank 3
+        chex.assert_rank(Z_arr, 4)
+
+        # convert to rank 3 by stacking
+        Z_arr = np.vstack(Z_arr)
+
+        chex.assert_rank(Z_arr, 3)
+        return Z_arr
+
+    def get_Z(self):
+        Z_arr = self.get_Z_blocks()
+        Z =  np.vstack(Z_arr)
+        chex.assert_rank(Z, 2)
+
+        return Z
 
     def mean_blocks(self, X1: np.ndarray) -> np.ndarray:
         mean = batch_or_loop(
@@ -236,9 +262,11 @@ class Independent(Transform):
         return to_block_diag(c_blocks)
 
     def b_covar_blocks(self, X1, X2):
-
+        # Independent can be over a list of latent GPs or priors
+        #  hence we call latent.b_covar, which in the case of a single gp is the same
+        #  sa latent.covar
         c_blocks = batch_or_loop(
-            lambda x1, x2, latent:  latent.covar(x1, x2),
+            lambda x1, x2, latent:  latent.b_covar(x1, x2),
             [X1, X2, self.parent],
             [0, 0, 0],
             dim = self.output_dim,
@@ -258,7 +286,7 @@ class Independent(Transform):
 
     def b_mean(self, X1):
         mean_blocks = batch_or_loop(
-            lambda x1, latent:  latent.mean(x1),
+            lambda x1, latent:  latent.b_mean(x1),
             [X1, self.parent],
             [0, 0],
             dim = self.output_dim,
@@ -269,7 +297,7 @@ class Independent(Transform):
 
     def b_mean_blocks(self, X1):
         mean_blocks = batch_or_loop(
-            lambda x1, latent:  latent.mean_blocks(x1),
+            lambda x1, latent:  latent.b_mean_blocks(x1),
             [X1, self.parent],
             [0, 0],
             dim = self.output_dim,
@@ -338,12 +366,26 @@ class Independent(Transform):
 
 class MultiOutput(Transform):
     def __init__(self, parent):
-        # all objects in parent must share the SAME base prior
+        """
+        Construct a multi-output prior by stacking f horizontally
+
+        However all objects in parent must share the SAME base prior
+        """
+        # assert that all base_priors in parent are the same
+        self.check_base_priors_are_same(parent)
+
         self._parent = objax.ModuleList(
             parent
         )
 
         self._output_dim = sum([p.output_dim for p in self.parent])
+
+    def check_base_priors_are_same(self, parent):
+        base_prior_list = [p.base_prior for p in parent]
+        all_equal = np.all(np.array([base_prior_list[i] == base_prior_list[i-1] for i in range(1, len(base_prior_list))]))
+
+        if not all_equal:
+            raise RuntimeError('All elements passed to MultiOutput must share the same base prior')
 
     def transform(self, mu, var):
         mu_arr = []

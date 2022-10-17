@@ -38,8 +38,22 @@ class GPPrior(Prior):
             self.sparsity = NoSparsity(self.X)
 
     def get_Z(self):
-        """ Unlike Independent / Joint models we do not returns a stacked inducing point """
-        return self.sparsity.Z
+        """ Unlike Independent / Joint models we do not return a stacked inducing point """
+        Z = self.sparsity.Z
+        chex.assert_rank(Z, 2)
+        return Z
+
+    def get_Z_blocks(self):
+        Z = self.get_Z()
+        Z =  Z[None, ...]
+        chex.assert_rank(Z, 3)
+        return Z
+
+    def get_Z_stacked(self):
+        Z = self.get_Z_blocks()
+        Z =  Z[None, ...]
+        chex.assert_rank(Z, 4)
+        return Z
 
     @property
     def base_prior(self):

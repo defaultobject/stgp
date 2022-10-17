@@ -126,7 +126,19 @@ class Prior(Model):
         raise NotImplementedError()
 
     def get_Z(self):
-        """ Return stacked inducing locations (output_dim x N x D) """
+        """ Return rank 2 inducing locations (output_dim * N x D) """
+        raise NotImplementedError()
+
+    def get_Z_blocks(self):
+        """ Return  inducing locations (output_dim x N x D) """
+        raise NotImplementedError()
+
+    def get_Z_stacked(self):
+        """ 
+        Return stacked inducing locations (Q x output_dim x N x D).
+
+        This required when batching over independent priors.
+        """
         raise NotImplementedError()
 
 class Posterior(Model):

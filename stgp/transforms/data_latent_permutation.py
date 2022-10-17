@@ -29,7 +29,7 @@ class DataLatentPermutation(LinearTransform):
 
     def np_mean_blocks(self, X): 
         """ Computes the mean across all latents keeping X fixed """
-        chex.assert_rank(X, 2)
+        #chex.assert_rank(X, 2)
         return self.parent.mean_blocks(X)
 
     def np_b_mean_blocks(self, X):
@@ -37,7 +37,7 @@ class DataLatentPermutation(LinearTransform):
         X is of rank 3, one X per latent function.
         This computes the mean of each latent function with its corresponding X
         """
-        chex.assert_rank(X, 3)
+        #chex.assert_rank(X, 3)
         return self.parent.b_mean_blocks(X)
 
     def permute_vec(self, vec, Q):
@@ -85,7 +85,7 @@ class DataLatentPermutation(LinearTransform):
         Left Permute, keep X1 static when constructing full var
         """
         # TODO: this is a hack, for efficieny parent should support this
-        X1 = np.tile(X1, [X2.shape[0], 1, 1])
+        X1 =np.repeat(X1[None, ...], X2.shape[0], axis=0)
 
         return left_permute_mat(self.parent.b_covar(X1, X2), self.output_dim)
 

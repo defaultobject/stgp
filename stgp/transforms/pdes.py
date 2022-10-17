@@ -56,10 +56,25 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def get_sparsity_list(self):
         return [self.get_sparsity()]
 
-    def get_Z(self):
+    def get_Z_stacked(self):
+        Z = get_Z_blocks()
+        Z = Z[None, ...]
+        chex.assert_rank(Z, 4)
+        return Z
+
+    def get_Z_blocks(self):
         Z = self.parent.get_Z()
-        Z_all = np.tile(Z, [self.output_dim, 1, 1])
-        return Z_all
+        Z_arr = np.tile(Z, [self.output_dim, 1, 1])
+
+        chex.assert_rank(Z_arr, 3)
+        return Z_arr
+
+    def get_Z(self):
+        Z_all = self.get_b_Z()
+
+        Z = np.vstack(Z_all)
+        chex.assert_rank(Z, 2)
+        return Z
 
     def get_sparsity(self):
         return self.parent.sparsity
