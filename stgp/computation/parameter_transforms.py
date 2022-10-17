@@ -86,8 +86,6 @@ def lower_triangle(val, N):
     tri = np.zeros((N, N))
     return update_idx(tri, np.tril_indices(N, 0), val)
 
-
-
 @partial(jit, static_argnums=(1,))
 def flatten_cholesky(val, N):
     tri = np.zeros((N, N))

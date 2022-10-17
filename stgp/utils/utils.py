@@ -86,7 +86,13 @@ def _summarize_var(v):
 
     return onp.array(v)
 
-def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=False, return_state_var=False):
+def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=False, return_state_var=False, summarize=True):
+
+    if summarize:
+        summarize_fn = _summarize_var
+    else:
+        summarize_fn = lambda v: v
+
     parameters = {}
 
     #imitate objax scoping so that parameters are consistently printed
@@ -105,7 +111,7 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=F
                     }
                 else:
                     parameters[scope + k] = {
-                        'var': _summarize_var(v),
+                        'var': summarize_fn(v),
                     }
 
         elif isinstance(v, Parameter):
@@ -125,7 +131,8 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=F
                             only_fixed=False, 
                             replace_name=replace_name, 
                             return_id=return_id,
-                            return_state_var=return_state_var
+                            return_state_var=return_state_var,
+                            summarize=summarize
                         )
                     )
                 else:
@@ -135,7 +142,7 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=F
                         }
                     else:
                         parameters[scope + k] = {
-                            'var': _summarize_var(v.value),
+                            'var': summarize_fn(v.value),
                         }
             else:
                 if return_id:
@@ -144,23 +151,23 @@ def get_parameters(m, scope='', only_fixed=False, replace_name=True, return_id=F
                     }
                 else:
                     parameters[v.name] = {
-                        'var': _summarize_var(v.value),
+                        'var': summarize_fn(v.value),
                     }
 
         elif isinstance(v, objax.ModuleList):
             for p, v_i in enumerate(v):
                 parameters.update(
-                    get_parameters(v_i, scope=f'{scope}{k}({v.__class__.__name__})[{p}]', only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var)
+                    get_parameters(v_i, scope=f'{scope}{k}({v.__class__.__name__})[{p}]', only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var, summarize=summarize)
                 )
 
         elif isinstance(v, objax.Module):
             if k == '__wrapped__':
                 parameters.update(
-                    get_parameters(v, scope=scope[:-1], only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var)
+                    get_parameters(v, scope=scope[:-1], only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var, summarize=summarize)
                 )
             else:
                 parameters.update(
-                    get_parameters(v, scope=scope + k, only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var)
+                    get_parameters(v, scope=scope + k, only_fixed=only_fixed, replace_name=replace_name, return_id=return_id, return_state_var=return_state_var, summarize=summarize)
                 )
 
     return parameters
@@ -216,7 +223,20 @@ def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = F
         var = var[:, 0, ...]
 
         if output_first:
-            raise RuntimeError()
+            # we can only make mu output first
+            # this is needed when mu is used to compute metrics in the correct format 
+            #   but we still want to log var
+            mu = mu.T
+
+            chex.assert_shape(
+                [mu, var],
+                [[P, N], [N, P, P]],
+            )
+        else:
+            chex.assert_shape(
+                [mu, var],
+                [[N, P], [N, P, P]],
+            )
 
     if squeeze:
         mu, var = np.squeeze(mu), np.squeeze(var) 

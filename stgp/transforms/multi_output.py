@@ -200,7 +200,7 @@ class GPRN_DRD_EXP(GPRN_Base):
 
         var_diag = np.diag(softplus(latent_v))
 
-        return (var_diag @ correlation_cholesky @ latent_f)[:, 0]
+        return (var_diag @ correlation_cholesky @ latent_f)
 
 
 class LMC_Base(LinearTransform):

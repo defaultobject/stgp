@@ -280,14 +280,16 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
     if num_samples is None:
         num_samples = inference.prediction_samples
 
-    if diagonal == True:
-        out_block_dim = 1
-    else:
-        raise NotImplementedError()
+
 
     model_type = get_model_type(prior)
 
     if isinstance(model_type, LinearModel):
+        if diagonal == True:
+            out_block_dim = 1
+        else:
+            raise NotImplementedError()
+
         # if the model is linear we can just return here
         sparsity_list = prior.base_prior.get_sparsity_list()
 
@@ -309,28 +311,44 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
         return mu, var
     else:
+        out_block_dim = 1
+
+        # set diagonal to True as it doesnt matter is diag=False as we are mean-field
+
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
-            XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
+            XS, data, approximate_posterior, likelihood, prior, inference, True, whiten, num_samples = num_samples, posterior=posterior
         )
 
         chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, out_block_dim))
 
-        second_moment =  mu**2
+        if diagonal:
+            second_moment =  mu**2
 
-        mu = np.mean(mu, axis=0)
-        second_moment = np.mean(second_moment, axis=0)
+            mu = np.mean(mu, axis=0)
+            second_moment = np.mean(second_moment, axis=0)
 
-        mu = np.transpose(mu, [1, 0, 2])
-        second_moment = np.transpose(second_moment, [1, 0, 2])
+            mu = np.transpose(mu, [1, 0, 2])
+            second_moment = np.transpose(second_moment, [1, 0, 2])
 
+            var = second_moment - np.square(mu)
 
-        var = second_moment - np.square(mu)
+            # fix shapes back to data-latent format
+            mu = np.transpose(mu, [1, 0, 2])
+            var = np.transpose(var, [1, 0, 2])
 
-        # fix shapes back to data-latent format
-        mu = np.transpose(mu, [1, 0, 2])
-        var = np.transpose(var, [1, 0, 2])
+            var = var[..., None]
 
-        return mu, var[..., None]
+        else:
+            second_moment = mu @ np.transpose(mu, [0, 1, 3, 2])
+
+            mu = np.mean(mu, axis=0)
+            second_moment = np.mean(second_moment, axis=0)
+            var = second_moment - mu @ np.transpose(mu, [0, 2, 1])
+
+            var = var[:, None, ...]
+
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
@@ -377,24 +395,34 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
         # TODO: fix shapes with aggregation blocks?
         chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
-        second_moment =  mu**2
+        if diagonal:
+            second_moment =  mu**2
 
-        mu = np.mean(mu, axis=0)
-        second_moment = np.mean(second_moment, axis=0)
+            mu = np.mean(mu, axis=0)
+            second_moment = np.mean(second_moment, axis=0)
 
-        mu = np.transpose(mu, [1, 0, 2])
-        second_moment = np.transpose(second_moment, [1, 0, 2])
+            mu = np.transpose(mu, [1, 0, 2])
+            second_moment = np.transpose(second_moment, [1, 0, 2])
 
-        var = second_moment - np.square(mu)
+            var = second_moment - np.square(mu)
 
-        # fix shapes back to data-latent format
-        mu = np.transpose(mu, [1, 0, 2])
-        var = np.transpose(var, [1, 0, 2])
+            # fix shapes back to data-latent format
+            mu = np.transpose(mu, [1, 0, 2])
+            var = np.transpose(var, [1, 0, 2])
 
-        if diagonal == False:
-            breakpoint()
+            var = var[..., None]
 
-        return mu, var[..., None]
+        else:
+            second_moment = mu @ np.transpose(mu, [0, 1, 3, 2])
+
+            mu = np.mean(mu, axis=0)
+            second_moment = np.mean(second_moment, axis=0)
+            var = second_moment - mu @ np.transpose(mu, [0, 2, 1])
+
+            var = var[:, None, ...]
+
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
 # ================================== Samples ==============================
 
