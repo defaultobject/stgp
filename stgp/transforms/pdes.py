@@ -57,7 +57,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return [self.get_sparsity()]
 
     def get_Z_stacked(self):
-        Z = get_Z_blocks()
+        Z = self.get_Z_blocks()
         Z = Z[None, ...]
         chex.assert_rank(Z, 4)
         return Z
@@ -86,6 +86,11 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return np.zeros([self.output_dim, X1.shape[0], 1])
 
     def b_mean(self, X1):
+        # for compatability with Independent X1 and can either be of rank 3 or 4
+        if len(X1.shape) == 4 :
+            chex.assert_equal([X1.shape[0]], [1])
+            X1 = X1[0]
+
         # We only support zero mean so we simply return the mean
         return self.mean(X1[0])
 
@@ -97,6 +102,12 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     def b_covar(self, X1, X2):
         """ WARNING: we assume that X1, X2 is actually repeated """
+
+        # for compatability with Independent X1 and can either be of rank 3 or 4
+        if len(X1.shape) == 4 and  len(X2.shape) == 4:
+            chex.assert_equal([X1.shape[0], X2.shape[0]], [1, 1])
+            X1 = X1[0]
+            X2 = X2[0]
 
         return self.covar(X1[0], X2[0])
 

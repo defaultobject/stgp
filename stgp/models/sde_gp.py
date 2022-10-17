@@ -260,6 +260,10 @@ class BASE_SDE_GP(Posterior):
     def predict_y(self, XS, squeeze=True):
         pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
 
+        if len(pred_var.shape) == 2:
+            # unsqueeze variance to add on likelihood
+            pred_var = pred_var[..., None]
+
         pred_y_mu, pred_y_var = evoke('predict_y_diagonal', self, self.likelihood)(
             XS,  self.likelihood, pred_mu, pred_var
         )
@@ -440,4 +444,4 @@ class ST_SDE_GP(BASE_SDE_GP):
         mu = np.reshape(mu, [-1, self.output_dim])
         var_diag = np.reshape(var_diag, [-1, self.output_dim])
 
-        return mu.T, var_diag.T
+        return mu, var_diag

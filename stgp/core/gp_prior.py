@@ -37,6 +37,9 @@ class GPPrior(Prior):
             raise NotImplementedError()
             self.sparsity = NoSparsity(self.X)
 
+    def get_sparsity_list(self):
+        return [self.sparsity]
+
     def get_Z(self):
         """ Unlike Independent / Joint models we do not return a stacked inducing point """
         Z = self.sparsity.Z
@@ -75,9 +78,21 @@ class GPPrior(Prior):
         """ Assume a zero mean GP """
         return np.zeros(XS.shape[0])[:, None]
 
+    def b_mean(self, XS):
+        chex.assert_rank([XS], [3])
+        chex.assert_equal(XS.shape[0], 1)
+
+        return self.mean(XS[0])
+
     def mean_blocks(self, XS):
         """ Assume a zero mean GP """
         return np.zeros(XS.shape[0])[None, :, None]
+
+    def b_mean_blocks(self, XS):
+        chex.assert_rank([XS], [3])
+        chex.assert_equal(XS.shape[0], 1)
+
+        return self.mean_blocks(XS[0])
 
     def var(self, XS):
         k =  self.kernel.K_diag(XS)
@@ -100,6 +115,13 @@ class GPPrior(Prior):
         k = self.kernel.K(X1, X2)
         chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
         return k
+
+    def b_covar(self, X1, X2):
+        chex.assert_rank([X1, X2], [3, 3])
+        chex.assert_equal(X1.shape[0], 1)
+        chex.assert_equal(X2.shape[0], 1)
+
+        return self.covar(X1[0], X2[0])
 
 
     def full_var(self, X):

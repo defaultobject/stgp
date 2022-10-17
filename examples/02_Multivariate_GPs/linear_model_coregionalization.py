@@ -65,12 +65,12 @@ m = stgp.models.GP(
     prior=prior
 )
 
-print('NLPD: ', nlpd(X, Y, m))
+#print('NLPD: ', nlpd(X, Y, m))
 
 print(m.get_objective())
 
 # Train
-if False:
+if True:
     max_iters = 200
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))

@@ -182,8 +182,10 @@ class Independent(Transform):
     def get_sparsity_list(self):
         """ Collect all sparsity objects of all latents in a flat list """
         sparsity_list = []
+
         for p in self.parent:
             sparsity_list += p.get_sparsity_list()
+
         return sparsity_list
 
     def get_Z_stacked(self):

@@ -75,7 +75,7 @@ print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 pred_mu, pred_var = m.predict_f(XS)
 
-if True:
+if False:
     max_iters = 200
 
     #ng_trainer = NatGradTrainer(m)
@@ -95,6 +95,7 @@ if True:
 
         print(m.get_objective())
 
+GradDescentTrainer(m, objax.optimizer.Adam).train(0.01, 100)
 
 print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
