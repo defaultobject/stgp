@@ -43,6 +43,7 @@ m = GP(
     inference='Variational'
 )
 
+
 # Train
 if True:
     ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')

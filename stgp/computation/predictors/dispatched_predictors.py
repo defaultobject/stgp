@@ -4,7 +4,7 @@ Dispatched Prediction Functions.
 In general each function should return two items:
 
     - mu: rank 3: N x P x A
-    - var: rank 4: N x P x A x A or N x 1 x PA x PA
+    - var: rank 4: N x P x A x A or N x 1 x PA x PA etc
 
 where
 

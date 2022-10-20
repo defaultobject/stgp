@@ -257,12 +257,15 @@ class DeepStationary(StationaryKernel):
 
     def propogate_parent(self, x1, x2):
         if self.use_parent:
-            pm_x1 = self.parent.mean(x1)
-            pm_x2 = self.parent.mean(x2)
+            pm_x1 = self.parent.mean_blocks(x1)
+            pm_x2 = self.parent.mean_blocks(x2)
 
-            pk_x1x1 = self.parent.var(x1)
-            pk_x2x2 = self.parent.var(x2)
-            pk_x1x2 = self.parent.covar(x1, x2)
+            pk_x1x1 = self.parent.var_blocks(x1)
+            pk_x2x2 = self.parent.var_blocks(x2)
+            pk_x1x2 = self.parent.covar_blocks(x1, x2)
+
+            chex.assert_rank([pm_x1, pm_x2], [3, 3])
+            chex.assert_rank([pk_x1x1, pk_x2x2, pk_x1x2], [3, 3, 3])
 
         else:
             N1 = x1.shape[0]
@@ -273,6 +276,8 @@ class DeepStationary(StationaryKernel):
             pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
             pk_x2x2 = self.kernel.K_diag(x2)[None, :, None]
             pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
+
+            raise RuntimeError()
 
 
         vec_shape_1 = [self.input_dim, x1.shape[0], 1]

@@ -131,28 +131,41 @@ class BatchGP(Posterior):
         return self.log_marginal_likelihood()
 
     def mean(self, XS):
+        raise NotImplementedError()
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
 
-        mu = mu.T
-
-        chex.assert_shape(mu, [XS.shape[0] * self.output_dim, 1])
+        chex.assert_shape(mu, [XS.shape[0], self.output_dim, 1])
 
         return mu
 
-    def var(self, XS):
+    def mean_blocks(self, XS):
+        mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
+
+        mu = np.reshape(mu, [self.output_dim, XS.shape[0], 1])
+
+        chex.assert_shape(mu, [self.output_dim, XS.shape[0], 1])
+
+        return mu
+
+    def var_blocks(self, XS):
         _, var = self.predict_f(XS, diagonal=True, squeeze=False)
+
+        var = np.reshape(var, [self.output_dim, XS.shape[0], 1])
+        chex.assert_shape(var, [self.output_dim, XS.shape[0], 1])
+
         return var
 
-    def covar(self, XS_1, XS_2, X=None, Y=None):
-        if X is None:
-            X, Y = self.X, self.Y
+    def covar(self, XS_1, XS_2):
+        raise NotImplementedError()
 
+    def covar_blocks(self, XS_1, XS_2):
         var_arr =  self.inference.predictive_covar(
             XS_1, XS_2, self.data, self, self.likelihood, self.prior
         )
 
-        #TODO
-        return var_arr[0]
+        chex.assert_shape(var_arr, [self.output_dim, XS_1.shape[0], XS_2.shape[0]])
+
+        return var_arr
 
 
     def predict_f(self, XS,  diagonal=True, squeeze=True):

@@ -554,7 +554,6 @@ def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, li
 
     lik_var = prior.likelihood.likelihood_arr[0].full_variance
 
-    breakpoint()
     return gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
     #return approximate_posterior.surrogate.covar(X1, X2)
 
@@ -587,14 +586,9 @@ def marginal_prediction_covar(XS_1, XS_2, data, q_m, q_S_chol, approximate_poste
         evoke_kwargs = {'whiten': whiten}
     )
 
-    # TODO: this should be fixed in the lower level predictoins but hacked here for now
+    marginal_var = marginal_var[None, ...]
 
-    marginal_var = marginal_var[..., None]
-
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-
-    #chex.assert_shape(marginal_var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
-
+    chex.assert_shape(marginal_var, [1, prior.output_dim, N1, N2])
 
     return marginal_var
 

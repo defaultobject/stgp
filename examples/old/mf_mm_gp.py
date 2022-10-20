@@ -70,6 +70,10 @@ m1 = GP(
     likelihood = [Gaussian(variance=0.1)],
     inference='Variational'
 )
+
+print(m1.mean(X).shape)
+print(m1.covar(X, X).shape)
+breakpoint()
 latent_m1 = LatentPredictor(m1)
 #latent_m1 = m1
 

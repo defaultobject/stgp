@@ -60,8 +60,16 @@ class Variational(Inference):
             # TODO: minibatching only works when sparsity is used. Assert this.
             data.batch()
 
-        return evoke('marginal', 'prediction_covar', approximate_posterior, likelihood, prior, self.whiten)(
-            XS_1, XS_2, data, approximate_posterior, likelihood, prior, self, self.whiten
+        sparsity_list = prior.base_prior.get_sparsity_list()
+
+        whiten = self.whiten
+
+        q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior, whiten)(
+            data, approximate_posterior, likelihood, prior, whiten
+        )
+
+        return evoke('marginal_prediction_covar', approximate_posterior, likelihood, prior, sparsity_list[0], whiten=self.whiten)(
+            XS_1, XS_2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_list, 1, self.whiten
         )
 
     def predictive_latent_covar(self, XS_1, XS_2, data, likelihood, prior, approximate_posterior):
@@ -71,7 +79,7 @@ class Variational(Inference):
 
         latent = prior.latent_obj
 
-        return evoke('marginal', 'prediction_covar', approximate_posterior, likelihood, latent, self.whiten)(
+        return evoke('marginal_prediction_covar', approximate_posterior, likelihood, latent, self.whiten)(
             XS_1, XS_2, data, approximate_posterior, likelihood, latent, self, self.whiten
         )
 
