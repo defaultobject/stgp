@@ -46,15 +46,19 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     # TODO: adding missing data masking
     block_size = likelihood.block_size
 
+    # block X
+    X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
+    X_blocks = np.transpose(X_blocks, [1, 0, 2])
+
     #Reshape Y to match q_f_mu
     Y_blocks = block_from_vec(Y, block_size)
-    X_blocks = block_from_mat(X, block_size)
 
     # Ensure correct shapes after vmap
     Y_blocks = Y_blocks[..., None]
-    q_f_mu = np.reshape(q_f_mu, [N, block_size, block_size])
+    q_f_var = np.reshape(q_f_var, [N, block_size, block_size])
 
     lik_var = likelihood.variance
+
 
     ell_arr = jax.vmap(
         full_gaussian_expected_log_likelihood,

@@ -35,7 +35,7 @@ from ...permutations import left_permute_mat
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -50,6 +50,18 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     # ensure correct shape
     q_m = np.reshape(q_m, [N, 1, out_block_dim])
     q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
+
+    return q_m, q_S
+
+@dispatch(ConjugateApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = q_m.shape[0]
+
+    # TODO: fix out_block_dim here
+
+    # ensure correct shape
+    q_m = np.reshape(q_m, [N, prior.output_dim, 1])
+    q_S = np.reshape(q_S, [N, 1, prior.output_dim, prior.output_dim])
 
     return q_m, q_S
 
@@ -172,15 +184,14 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     return mu, var
 # ================================== Dispatched q(f) ==============================
 
-@dispatch(FullGaussianApproximatePosterior, ProductLikelihood, Independent, whiten=True)
-@dispatch(FullGaussianApproximatePosterior, ProductLikelihood, Independent, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten):
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = get_permutated_prior(prior)
-
 
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
 
@@ -238,8 +249,49 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return marginal_mu, marginal_var
 
-@dispatch(ApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
-@dispatch(ApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=True)
+@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
+    if prior.is_base:
+        #assert out_block_dim == 1
+        out_block_dim = 1
+
+        # get D(t) from the kalman filter here
+        # and compute D(s) manually -- since K is separable
+
+        # need a linear approximation of the kalman filter 
+        #to approximate dL/dm wrt with dL/dY^tilde dY^tilde/dm
+
+        # TODO: move into dispatched_marginal_predictors
+        # TODO: check and fix permutations
+
+        if True:
+
+            # compute [f, Dt]
+            #mu, var = approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False, full_state=True)
+            mu, var = approximate_posterior.surrogate.posterior(diagonal=False, full_state=True)
+
+            # only pick the first Q dimensions
+
+            var = var[:, None, ...]
+
+
+            XS = data.X
+            N = XS.shape[0]
+
+            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
+            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
+
+            breakpoint()
+
+            return mu, var
+    else:
+        raise NotImplementedError()
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
     if prior.is_base:
         sparsity_arr = prior.base_prior.get_sparsity_list()
@@ -254,33 +306,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         return mu, var
 
     else:
-        assert out_block_dim == 1
-
-        # get D(t) from the kalman filter here
-        # and compute D(s) manually -- since K is separable
-
-        # need a linear approximation of the kalman filter 
-        #to approximate dL/dm wrt with dL/dY^tilde dY^tilde/dm
-
-        # TODO: move into dispatched_marginal_predictors
-        # TODO: check and fix permutations
-
+        raise NotImplementedError()
         if True:
-
-            mu, var = approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False, full_state=True)
-
-            # only pick the first Q dimensions
-
-            var = var[:, None, ...]
-
-
-            XS = data.X
-            N = XS.shape[0]
-            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
-            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
-
-            return mu, var
-
             sparsity_arr = prior.base_prior.get_sparsity_list()
             sparsity_type = sparsity_arr[0]
 

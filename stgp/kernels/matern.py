@@ -65,6 +65,8 @@ class Matern32(StationaryKernel, MarkovKernel):
     def __init__(self, *args, **kwargs):
         super(Matern32, self).__init__(*args, **kwargs, name='Matern32')
 
+        self._state_space_dim = 2
+
     def to_ss(self, X_spatial=None):
         """ Return state space representation """
         chex.assert_equal(self.input_dim, 1)
@@ -121,6 +123,8 @@ class Matern12(StationaryKernel, MarkovKernel):
     def __init__(self, *args, **kwargs):
         super(Matern12, self).__init__(*args, **kwargs, name='Matern12')
 
+        self._state_space_dim = 1
+
     def cf_to_ss_temporal(self):
         chex.assert_equal(self.input_dim, 1)
         raise NotImplementedError()
@@ -137,6 +141,7 @@ class Matern52(StationaryKernel, MarkovKernel):
     def __init__(self, *args, **kwargs):
         super(Matern52, self).__init__(*args, **kwargs, name='Matern52')
         self.variance = 1.0
+        self._state_space_dim = 3
 
     def to_ss(self, X_spatial=None):
         """ Return state space representation """

@@ -10,7 +10,7 @@ from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 
 # Import types
-from ...transforms.sdes import SDE
+from ...transforms.sdes import SDE, LTI_SDE
 
 import objax
 import chex
@@ -36,7 +36,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 
     return m, P
 
-@dispatch('LTI_SDE')
+@dispatch(LTI_SDE)
 def rts_step(prior, carry, x, X_s, full_state=False):
     P_inf = prior.P_inf(None, X_s, None)
     H_k = prior.H(None, X_s, None)

@@ -54,6 +54,18 @@ class LTI_SDE(SDE):
     def expm(self, X_s, t):
         return self.gp.expm(t, X_s)
 
+class LTI_SDE_Full_State_Obs(LTI_SDE):
+    def __init__(self, gp: 'Model'):
+        self.gp = gp
+        self._state_space_dim = np.sum(self.gp.state_space_dim())
+
+    @property
+    def _output_dim(self):
+        return self._state_space_dim
+
+    def H(self, x, X_s, t):
+        return np.eye(self._state_space_dim)
+
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):
         self.base_sde = base_sde

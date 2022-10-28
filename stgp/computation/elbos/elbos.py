@@ -113,8 +113,6 @@ def elbo(
     data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
 
-    Q = prior.num_latents
-
     # Compute ELL
     ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
 
@@ -122,13 +120,12 @@ def elbo(
     ELL_surrogate = compute_expected_log_liklihood(
         q.surrogate.data, 
         q.surrogate.likelihood, 
-        prior, 
+        prior.base_prior, 
         q, 
         inference
     )
     ML_surrogate = - q.surrogate.get_objective()
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
-    #elbo =  ELL 
 
     return elbo

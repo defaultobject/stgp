@@ -15,7 +15,7 @@ class ConjugateApproximatePosterior(ApproximatePosterior):
     pass
 
 class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePosterior):
-    def __init__(self, X, block_size: int, Y_tilde = None, surrogate_model: 'Model' = None):
+    def __init__(self, X, block_size: int, num_blocks:int = None, Y_tilde = None, surrogate_model: 'Model' = None):
         """
         A conjugate gaussian represents the approximate posterior as:
             q(u) \propto N(Y_tilde | u, V_tilde) p(u)
@@ -29,8 +29,12 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         self.dim = X.shape[0]
 
         self.block_size = block_size
-        self.num_blocks = int(self.dim/self.block_size)
 
+        if num_blocks is None:
+            self.num_blocks = int(self.dim/self.block_size)
+        else:
+            self.num_blocks = num_blocks
+            
         if Y_tilde is not None:
             Y_tilde = np.array(Y_tilde)
         else:
@@ -129,14 +133,16 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
         ])
 
 class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior):
-    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None):
+    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None, num_blocks: int = None):
         """
         A conjugate gaussian represents the approximate posterior as:
 
             q(U) \propto N(Y_tilde | U, V_tilde) p(U)
 
-        For computational reasons it is generally more efficient to store V_tilde data-latent format. 
-        For consistency we also store Y_tilde in the same way.
+        For computational reasons it is generally more efficient to store V_tilde data-latent format.  For consistency we also store Y_tilde in the same way. Leading to Y_tilde and V_tilde havning shapes:
+            
+            Y_tilde: N x num_latents
+            V_tilde: N x block_size x block_size
 
         There are three main use cases:
             1) No Sparsity 
@@ -146,18 +152,27 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         In the case of no sparsity the approximate likelihood will be block diagonal. There will be N blocks each of size Q x Q, which captures the correlation between latent processes.
 
         In the case of full sparsity the approximate likelihood will be dense.
+
+        Args:
+            X: N x D input matrix
+            num_latents: number of latent GPs
+            block_size: generally either 1 or num_latents
         """
 
         self.block_size = block_size
         self.num_latents = num_latents
-        self.num_blocks = int((self.num_latents*X.shape[1])/block_size)
-        self.M = X.shape[1]
+        self.M = X.shape[0]
+
+        if num_blocks is None:
+            self.num_blocks = int((self.num_latents*self.M)/block_size)
+        else:
+            self.num_blocks = num_blocks
 
         # Store in data-latent format
         Y_tilde = 1e-5*np.ones([self.M, self.num_latents])*onp.random.rand(self.M, self.num_latents)
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
-        if True:
+        if False:
             V_tilde = np.tile(
                 np.ones([self.block_size, self.block_size]) + 2*np.eye(self.block_size), 
                 [self.num_blocks, 1, 1]

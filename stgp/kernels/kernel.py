@@ -166,6 +166,9 @@ class ConcatationKernel(CombinationKernel):
         return np.array([self.k1.K_diag(X1), self.k2.K_diag(X1)])
 
 class MarkovKernel(Kernel):
+    def state_space_dim(self):
+        return self._state_space_dim
+
     def cf_to_ss_spatial(self, sparsity):
         raise NotImplementedError()
 

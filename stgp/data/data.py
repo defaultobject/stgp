@@ -524,7 +524,12 @@ class MultiOutputTemporalData(SequentialData):
     Within the Kalman Filtering and Smoothing algorithms multi-output temporal data and
         spatio-temporal data are handled in similarilily. However the way the data must be pre-processed is slightly different, therefore we have separate classes between for SpatioTemporalData and MultiOutputTemporalData data.
     """
-    def __init__(self, X, Y, sort=True):
+    def __init__(self, X, Y, sort=True, train_y = False):
+        """
+        Args:
+            X: rank 2 input X if shape N x D
+            Y: either rank 2 of shape N x P or rank 3 of shape  N X 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
+        """
 
         super(MultiOutputTemporalData, self).__init__()
 
@@ -548,7 +553,7 @@ class MultiOutputTemporalData(SequentialData):
         chex.assert_rank(X_sorted, 2)
         chex.assert_rank(Y_sorted, 3)
 
-        self._Y = Parameter(np.array(Y_sorted), train=False, name='Y')
+        self._Y = Parameter(np.array(Y_sorted), train=train_y, name='Y')
         self.save_X(X_sorted, train=False)
 
         # Useful statistcs of the data

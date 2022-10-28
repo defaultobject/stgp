@@ -170,6 +170,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
     # Fix Y shapeo
     Nt = data.Nt
     Ns = data.Ns
+
     P = Y.shape[-1]
 
     # Y has shape Nt x Ns x P

@@ -18,7 +18,7 @@ from ..data.sequential import add_temporal_points
 from ..kernels import Matern32
 from ..likelihood import get_product_likelihood
 from ..transforms import Independent
-from ..transforms.sdes import LTI_SDE
+from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
 
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 from ..sparsity import NoSparsity
@@ -42,6 +42,7 @@ class BASE_SDE_GP(Posterior):
         prior: 'Transform'=None, 
         whiten=False, 
         fix_input=True,
+        full_state_observed = False,
         **kwargs
     ):
         # Use the sorted X and Y to construct the model on
@@ -50,6 +51,8 @@ class BASE_SDE_GP(Posterior):
         self._likelihood = likelihood
         self.kernel = kernel
         self._prior = prior
+
+        self.full_state_observed = full_state_observed
 
         self.set_defaults()
 
@@ -60,7 +63,13 @@ class BASE_SDE_GP(Posterior):
     def input_space_dim(self): return self.data.X.shape[1]
 
     @property
-    def output_dim(self): return self.data.Y.shape[-1]
+    def output_dim(self): 
+        P = self.data.Y.shape[-1]
+
+        if self.full_state_observed:
+            return self.kernel.state_space_dim() * P
+
+        return P
 
     @property
     def X(self): return self.data.X 
@@ -70,7 +79,6 @@ class BASE_SDE_GP(Posterior):
 
     @property
     def prior(self): return self._prior
-
 
     @property
     def Nt(self): 
@@ -104,7 +112,10 @@ class BASE_SDE_GP(Posterior):
                 self.output_dim, 
                 kernel_list=self.kernel
             )
-            self._prior = LTI_SDE(self._prior)
+            if self.full_state_observed:
+                self._prior = LTI_SDE_Full_State_Obs(self._prior)
+            else:
+                self._prior = LTI_SDE(self._prior)
 
         if self.likelihood == None:
             self._likelihood = get_default_likelihood(self.output_dim)[0]
@@ -148,8 +159,6 @@ class BASE_SDE_GP(Posterior):
 
         X_sorted = X_stacked[sort_idx]
         Y_sorted = Y_stacked[sort_idx]
-
-
 
         _, mu, var = filter_and_smooth(
             X_sorted.value,
