@@ -13,7 +13,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -82,6 +82,18 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = XS.shape[0]
+
+    Q = prior.base_prior.output_dim
+
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
+
+    mu = np.reshape(mu, [N, Q, 1])
+    var = np.reshape(var, [N, 1, Q, Q])
+
+    return mu, var
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
@@ -117,6 +129,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     NS = XS.shape[0]
 
     # Variational parameters are in latent-data format
+    breakpoint()
     chex.assert_shape(q_m, [M * Q, 1])
     chex.assert_shape(q_S, [M * Q, M * Q])
 

@@ -457,7 +457,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
-    sparsity_arr = prior.latent_obj.get_sparsity_list()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
 
     # Collect CVI parameters
     Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
@@ -506,7 +506,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', ApproximatePosterior)
-def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
+def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.base_prior.get_sparsity_list()

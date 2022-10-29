@@ -67,7 +67,11 @@ class BASE_SDE_GP(Posterior):
         P = self.data.Y.shape[-1]
 
         if self.full_state_observed:
-            return self.kernel.state_space_dim() * P
+
+            if self.kernel is not None:
+                return self.kernel.state_space_dim() 
+            else:
+                return self.prior.output_dim 
 
         return P
 
@@ -306,8 +310,6 @@ class T_SDE_GP(BASE_SDE_GP):
         return R
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
-        if diagonal is False:
-            raise NotImplementedError()
 
         NS = XS.shape[0]
         chex.assert_equal(XS.shape[1], self.data.D)
@@ -320,8 +322,6 @@ class T_SDE_GP(BASE_SDE_GP):
 
         Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
         Y_stacked = onp.vstack([Y, Y_nans])
-
-
 
         test_data = get_sequential_data_obj(
             X_stacked,
@@ -341,14 +341,17 @@ class T_SDE_GP(BASE_SDE_GP):
         mu = np.reshape(mu, [-1, self.output_dim])
 
         # only keep diagonals
-        var_diag = np.diagonal(var, axis1=1, axis2=2)
-        var_diag = np.reshape(var_diag, [-1, self.output_dim])
+        if diagonal:
+            var_diag = np.diagonal(var, axis1=1, axis2=2)
+            var_diag = np.reshape(var_diag, [-1, self.output_dim])
+            var = test_data.unsort(var_diag)[self.data.N:]
+        else:
+            var = test_data.unsort(var)[self.data.N:]
 
         # Unsort data and remove the training data
         mu = test_data.unsort(mu)[self.data.N:]
-        var_diag = test_data.unsort(var_diag)[self.data.N:]
 
-        return mu, var_diag
+        return mu, var
 
 class ST_SDE_GP(BASE_SDE_GP):
     """ Spatio-Temporal SDE GP """

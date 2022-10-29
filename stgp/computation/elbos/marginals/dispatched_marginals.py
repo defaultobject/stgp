@@ -282,7 +282,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
             chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
             chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
 
-            breakpoint()
 
             return mu, var
     else:
@@ -302,6 +301,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten)
 
         mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block_dim, whiten)
+
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
 
@@ -580,7 +580,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     ) 
 
     return val[0], val[1]
-
 
 # ============================ FULL GAUSSIAN APPROXIMATE POSTERIOR ENTRY POINT ============================
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)

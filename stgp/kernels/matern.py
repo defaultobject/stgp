@@ -210,13 +210,15 @@ class Matern52(StationaryKernel, MarkovKernel):
 
 
 class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
+    def state_space_dim(self):
+        return 3
+
     def to_ss(self, X_spatial=None):
         """ Return state space representation """
         chex.assert_equal(self.input_dim, 1)
 
         var = self.variance
         ls = self.lengthscales[0]
-
 
         lam = 5.0**0.5 / ls
         F = np.array(
@@ -243,7 +245,6 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
 
     def state_size(self):
         return 3
-
 
     def expm(self, dt, X_spatial=None):
         """
