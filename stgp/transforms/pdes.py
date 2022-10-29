@@ -356,7 +356,7 @@ class AllenCahn(PDE):
 
     def forward(self, f):
         """ 
-        f is of shape 5 corresponding to f, ft, ft2 fx fx2
+        f is of shape 3 corresponding to f, ft fx2
         """
         t = f[0]
         dt = f[1]
