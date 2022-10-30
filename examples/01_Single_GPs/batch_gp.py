@@ -12,6 +12,7 @@ from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer
 from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels.matern import ScaledMatern32
 
 import stgp
 from stgp.models import GP
@@ -23,14 +24,16 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 # Construct Model
 # Will use default RBF kernel and Gaussian Likelihood
-m = GP(X, Y)
+m = GP(X, Y, kernel=[ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=0.2)])
 
 pred_mu, pred_var = m.predict_y(XS)
 
 # Train
-max_iters = 100
-trainer = ScipyTrainer(m, 'CG')
-trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+print(m.get_objective())
+if False:
+    max_iters = 100
+    trainer = ScipyTrainer(m, 'CG')
+    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 print('NLPD: ', m.nlpd(X, Y))
 

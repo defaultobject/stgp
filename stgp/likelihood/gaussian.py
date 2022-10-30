@@ -105,7 +105,7 @@ class DiagonalGaussian(DiagonalLikelihood):
             raise NotImplementedError()
 
         self.variance_param = Parameter(
-            variance, 
+            np.array(variance), 
             constraint='positive', 
             name ='Gaussian/variance', 
             train=True
@@ -116,7 +116,7 @@ class DiagonalGaussian(DiagonalLikelihood):
 
     @property
     def variance(self) -> np.ndarray:
-        return np.squeeze(self.variance_param.value)
+        return np.diag(np.squeeze(self.variance_param.value))
 
     @property
     def full_variance(self) -> np.ndarray:

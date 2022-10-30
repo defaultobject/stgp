@@ -16,7 +16,7 @@ import stgp
 from stgp.models import GP
 from stgp.trainers import ScipyTrainer, GradDescentTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import Matern32
+from stgp.kernels import Matern32, ScaledMatern32
 from stgp.data import TemporalData
 from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
@@ -30,7 +30,7 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 # Construct Model
 data = TemporalData(X, Y)
 lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=1)
-kern = Matern32(input_dim=1)
+kern = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=0.2)
 
 latent_gp = GP(
     sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 
@@ -39,12 +39,15 @@ latent_gp = GP(
 )
 prior = LTI_SDE(Independent([latent_gp])) 
 
+breakpoint()
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
 # Train
-max_iters = 100
-trainer = ScipyTrainer(m, 'L-BFGS-B')
-trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+print(m.get_objective())
+if False:
+    max_iters = 100
+    trainer = ScipyTrainer(m, 'L-BFGS-B')
+    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 # Predict
 pred_mu, pred_var = m.predict_y(XS)

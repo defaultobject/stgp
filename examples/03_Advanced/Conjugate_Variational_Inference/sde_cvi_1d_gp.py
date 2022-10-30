@@ -40,6 +40,7 @@ kern = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=1.0)
 latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
 data = Data(X, Y)
+
 m = GP(
     data = data,
     prior = Independent(latent_gps),
