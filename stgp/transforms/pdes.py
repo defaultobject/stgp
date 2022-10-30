@@ -72,7 +72,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return Z_arr
 
     def get_Z(self):
-        Z_all = self.get_b_Z()
+        Z_all = self.get_Z_blocks()
 
         Z = np.vstack(Z_all)
         chex.assert_rank(Z, 2)

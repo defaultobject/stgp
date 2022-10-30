@@ -109,7 +109,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
     if whiten:
         base_prior = prior.base_prior
-        Z = base_prior.get_Z()
+        Z = base_prior.get_Z_blocks()
         chex.assert_rank(Z, 3)
 
         Kzz = base_prior.b_covar(Z, Z)
@@ -129,7 +129,6 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     NS = XS.shape[0]
 
     # Variational parameters are in latent-data format
-    breakpoint()
     chex.assert_shape(q_m, [M * Q, 1])
     chex.assert_shape(q_S, [M * Q, M * Q])
 

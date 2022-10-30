@@ -147,7 +147,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     # reparameterise
     base_prior = prior.base_prior
 
-    Z = base_prior.get_Z()
+    Z = base_prior.get_Z_blocks()
     chex.assert_rank(Z, 3)
 
     Kzz = base_prior.b_covar(Z, Z)

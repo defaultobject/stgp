@@ -2,6 +2,7 @@ from .likelihood import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDia
 from .gaussian import Gaussian, GaussianParameterised, DiagonalGaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian, ReshapedGaussian
 from .poisson import Poisson
 from .bernoulli import Bernoulli
+from .probit import Probit
 from .product_likelihood import ProductLikelihood, GaussianProductLikelihood, BlockGaussianProductLikelihood, get_product_likelihood
 from .power import PowerLikelihood
 

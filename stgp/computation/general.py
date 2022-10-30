@@ -2,6 +2,7 @@ import jax
 import jax.numpy as np
 from jax import jit
 from jax.scipy.special import erf, gammaln
+from jax.scipy.stats.norm import logcdf
 
 import chex
 
@@ -25,5 +26,9 @@ def log_bernoulli(y, p):
     return y * np.log(p + jitter) + (1-y) * np.log(1 - p + jitter)
 
 
+
+@jit
+def log_inv_probit(f):
+    return logcdf(f)
 
 

@@ -340,8 +340,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     model_type = get_model_type(prior)
 
-    if  isinstance(model_type, LinearModel):
-        # check if closed form expression exists
+    # TODO: add proper check to see if closed form expression exists
+    if  isinstance(model_type, LinearModel) and isinstance(likelihood, GaussianProductLikelihood):
         ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
            X, Y, q_f_mu, q_f_var, likelihood, block_type
         )
