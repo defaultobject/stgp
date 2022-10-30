@@ -271,8 +271,6 @@ class StationaryKernel(Kernel):
 
         super(StationaryKernel, self).__init__(input_dim, active_dims)
 
-
-
         if lengthscales is None:
             lengthscales = np.array([1.0] * input_dim)
         else:
@@ -367,6 +365,9 @@ class StationaryVarianceKernel(StationaryKernel):
 
     def _K_scaler(self, x1, x2, lengthscale):
         return self._K_scaler_with_var(x1, x2, lengthscale, self.variance)
+
+    def K_diag(self, X1):
+        return self.variance * np.ones(X1.shape[0])
 
 class NonStationaryKernel(Kernel):
     def __init__(self) -> None:

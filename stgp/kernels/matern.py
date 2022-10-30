@@ -7,12 +7,14 @@ from . import StationaryKernel, StationaryVarianceKernel, MarkovKernel
 
 
 class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
+    def state_space_dim(self):
+        return 2
+
     def to_ss(self, X_spatial=None):
         """ Return state space representation """
         chex.assert_equal(self.input_dim, 1)
 
         lengthscale = self.lengthscales[0]
-        variance = self.variance
 
         # temporal so input dim in 1
         v = 3.0 / 2.0
@@ -32,7 +34,7 @@ class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
 
         Pinf = np.array(
             [
-                [1.0, 0.0],
+                [self.variance, 0.0],
                 [0.0, 3.0 * self.variance / lengthscale ** 2.0],
             ]
         )

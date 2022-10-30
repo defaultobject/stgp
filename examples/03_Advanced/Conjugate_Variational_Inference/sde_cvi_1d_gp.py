@@ -1,4 +1,4 @@
-""" Conjugate Variational Gaussian Process Regression """
+""" Conjugate Variational Gaussian Process Regression with a Timeseries State-Space Surrogate Model"""
 import sys
 sys.path.append('../')
 sys.path.append('../../')
@@ -13,10 +13,11 @@ from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import RBF, ScaleKernel
+from stgp.kernels import ScaledMatern32
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
+from stgp.transforms.sdes import LTI_SDE
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
 
 from tqdm import trange
@@ -35,7 +36,7 @@ print(f'X: {X.shape}, Y: {Y.shape}')
 Q = 1
 sparsity = stgp.sparsity.NoSparsity(Z = X)
 
-kern = ScaleKernel(RBF(input_dim=1, lengthscales=[0.1]))
+kern = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=1.0)
 latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
 data = Data(X, Y)
@@ -48,9 +49,10 @@ m = GP(
             X=sparsity,
             block_size=1,
             surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-                data=Data(X.X, Y), # Data should already be in the correct format
-                prior=Independent([latent_gps[q]]), 
-                likelihood=[likelihood[q]]
+                data=TemporalData(X=X.X, Y=Y, sort=False), # Data should already be in the correct format
+                prior=LTI_SDE(Independent([latent_gps[q]])), 
+                likelihood=[likelihood[q]],
+                inference='Sequential'
             )  
         )
         for q in range(Q)
@@ -90,5 +92,4 @@ plt.plot(XS, pred_mu, color=colors.LINE_COL, label='GP Fit')
 plt.scatter(X, Y, color='black', label='Training Data')
 plt.legend()
 plt.show()
-
 
