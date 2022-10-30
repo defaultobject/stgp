@@ -15,7 +15,7 @@ class DerivativeKernel(Kernel):
         self.active_dims = None
 
     def _K(self, X1, X2):
-        """ This is is being used a prior kernel therefore we can pass through the
+        """ This is is being used as a prior kernel therefore we can pass through the
         kernel function """
 
         return self._K_from_fn(X1, X2, self.parent_kernel.K)
@@ -23,62 +23,99 @@ class DerivativeKernel(Kernel):
     def K_from_fn(self, X1, X2, var_fn):
         return self._K_from_fn(X1, X2, var_fn)
 
+
 class FirstOrderDerivativeKernel(DerivativeKernel):
     def __init__(
             self, 
             parent_kernel = None,
-            input_index: int = 0
+            input_index: int = 0,
+            parent_output_dim: int = 1
         ):
-        """
-        Args:
-            input_idx (int): which input dimension of X to take derivates of
-        """
 
         super(FirstOrderDerivativeKernel, self).__init__(parent_kernel)
-        self.output_dim = 2
+
+        self.parent_output_dim = parent_output_dim
+        self.d_computed = 2
+        self.output_dim  = self.d_computed * self.parent_output_dim 
         self.input_index = input_index
 
     def _compute_derivatives(self, x1, x2, var_fn):
         """
-        Let x1 have columns denotes by [t] then we use 
-            Tto denote the differential operators d/dt
+        Let T to denote a differential operator: d/dt
 
-        The full joint kernel is given by (ignoring transposes):
+        Let D = 
+            I., .(T), 
+            (T).,    (T).(T)        
 
-            K,       K(T),       K(T^2)             
-            (T)K,    (T)K(T),    (T)K(T^2)        
-            (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
+        be a matrix of linear operators (where . denotes the operator input, and we ignore transposes). 
 
+        Then The full joint kernel is given by (ignoring transposes, and abusing the kronecker product notation):
+
+            K ⊗ D
+
+        When K is scalar this is given as
+
+            K,       K(T)             
+            (T)K,    (T)K(T)        
+
+        This means that the output is ordered by [f_1, (T)f_1, ..., f_B, (T)f_B]^T.
         """
-        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
+
+        #B x B
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])
 
         # compute blocks
 
         # variable name notation
         # res<x1 diff_order><x2 diff order>
-        #scalar
+
+        # Computes
+        # [K]
+        #B x B
         res00 = k(x1, x2)
 
-        # D dimensional jacobian vector
+        B = res00.shape[0]
+
+        # Computes
         # [(T)K]
-        res10 = grad(k, argnums=(0))(x1, x2)
+        # B x B x D
+        res10 = jacfwd(k, argnums=(0))(x1, x2)
+
+        # Computes
         # K(T)
-        res01 = grad(k, argnums=(1))(x1, x2)
+        # B x B x D
+        res01 = jacfwd(k, argnums=(1))(x1, x2)
 
 
         # Computes
         # (T)K(T)
-        res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
-
+        #  B x B x D x D
+        res11 = jacfwd(jacfwd(k, argnums=(0)), argnums=(1))(x1, x2)
 
         # Construct full matrix
-        # K,       K(T))
+        # K,       K(T)
         # (T)K,    (T)K(T)
 
-        K = np.array([
-            [res00,       res01[self.input_index]], # f
-            [res10[self.input_index],    res11[self.input_index, self.input_index]], # df/dt
+
+        # for a given B_i, B_j compute the derivate kernels
+        def get_K(i, j):
+            return np.array([
+                [res00[i, j],       res01[i, j, self.input_index]], # f
+                [res10[i, j, self.input_index],    res11[i, j, self.input_index, self.input_index]], # df/dt
+            ])
+
+        # stack all derivate kernels over each BxB element 
+        K = np.block([
+            [
+                get_K(b1, b2) 
+                for b2 in range(B) 
+            ]
+            for b1 in range(B) 
         ])
+
+        chex.assert_rank(K, 2)
+        chex.assert_shape(K, [B*self.d_computed, B*self.d_computed])
+        chex.assert_shape(K, [self.output_dim, self.output_dim])
 
         return K
 
@@ -88,71 +125,108 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
-        #return K[:, :, 0, 0]
-        #reshape to NxN
-        K_reshaped =  np.block([
-            [K[:, :, 0, 0], K[:, :, 0, 1]],
-            [K[:, :, 1, 0], K[:, :, 1, 1]],
+        # K is in data-diff format -- convert to diff-data format
+        K_reshaped = np.block([
+            [
+                K[:, :, d1, d2]
+                for d2 in range(self.output_dim)
+            ]
+            for d1 in range(self.output_dim)
         ])
 
         return K_reshaped
+
 
 class SecondOrderDerivativeKernel(DerivativeKernel):
     def __init__(
             self, 
             parent_kernel = None,
-            input_index: int = 0
+            input_index: int = 0,
+            parent_output_dim: int = 1
         ):
 
         super(SecondOrderDerivativeKernel, self).__init__(parent_kernel)
-        self.output_dim = 3
+
+        self.parent_output_dim = parent_output_dim
+        self.d_computed = 3
+        self.output_dim  = self.d_computed * self.parent_output_dim 
         self.input_index = input_index
 
     def _compute_derivatives(self, x1, x2, var_fn):
         """
-        Let x1 have columns denotes by [t] then we use 
-            Tto denote the differential operators d/dt
+        Let T to denote a differential operator: d/dt
 
-        The full joint kernel is given by (ignoring transposes):
+        Let D = 
+            I., .(T), .(T^2), 
+            (T).,    (T).(T),    (T).(T^2)        
+            (T)^2.,  (T)^2.(T),  (T)^2.(T^2) 
+
+        be a matrix of linear operators (where . denotes the operator input, and we ignore transposes). 
+
+        Then The full joint kernel is given by (ignoring transposes, and abusing the kronecker product notation):
+
+            K ⊗ D
+
+        When K is scalar this is given as
 
             K,       K(T),       K(T^2)             
             (T)K,    (T)K(T),    (T)K(T^2)        
             (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
 
+        This means that the output is ordered by [f_1, (T)f_1, (T^2)f_1, ..., f_B, (T)f_B, (T^2)f_B]^T.
         """
-        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
+
+        #B x B
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])
 
         # compute blocks
 
         # variable name notation
         # res<x1 diff_order><x2 diff order>
-        #scalar
+
+        # Computes
+        # [K]
+        #B x B
         res00 = k(x1, x2)
 
-        # D dimensional jacobian vector
-        # [(T)K]
-        res10 = grad(k, argnums=(0))(x1, x2)
-        # K(T)
-        res01 = grad(k, argnums=(1))(x1, x2)
+        B = res00.shape[0]
 
+        # Computes
+        # [(T)K]
+        # B x B x D
+        res10 = jacfwd(k, argnums=(0))(x1, x2)
+
+        # Computes
+        # K(T)
+        # B x B x D
+        res01 = jacfwd(k, argnums=(1))(x1, x2)
+
+        # Computes
         # (T^2)K
+        #  B x B x D x D
         res20 = hessian(k, argnums=(0))(x1, x2)
 
+        # Computes
         # K(T^2)
+        #  B x B x D x D
         res02 = hessian(k, argnums=(1))(x1, x2)
 
         # Computes
         # (T)K(T)
-        res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
+        #  B x B x D x D
+        res11 = jacfwd(jacfwd(k, argnums=(0)), argnums=(1))(x1, x2)
 
         # Computes
         # (T)K(T^2)
-        res12 = hessian(grad(k, argnums=(0)), argnums=(1))(x1, x2)
+        #  B x B x D x D x D
+        res12 = hessian(jacfwd(k, argnums=(0)), argnums=(1))(x1, x2)
         # (T^2)K(T)
-        res21 = hessian(grad(k, argnums=(1)), argnums=(0))(x1, x2)
+        #  B x B x D x D x D
+        res21 = hessian(jacfwd(k, argnums=(1)), argnums=(0))(x1, x2)
 
         # arg 0 are the first dim, arg1 are the final
         # (T^2)K(T^2)
+        #  B x B x D x D x D x D
         res22 = hessian(hessian(k, argnums=(0)), argnums=(1))(x1, x2)
 
         # Construct full matrix
@@ -160,11 +234,27 @@ class SecondOrderDerivativeKernel(DerivativeKernel):
         # (T)K,    (T)K(T),    (T)K(T^2)
         # (T)^2K,  (T)^2K(T),  (T)^2K(T^2)
 
-        K = np.array([
-            [res00,       res01[self.input_index],        res02[self.input_index, self.input_index]], # f
-            [res10[self.input_index],    res11[self.input_index, self.input_index],     res12[self.input_index, self.input_index, self.input_index]], # df/dt
-            [res20[self.input_index][self.input_index], res21[self.input_index, self.input_index, self.input_index],  res22[self.input_index, self.input_index, self.input_index, self.input_index]], # d^2f/dt^2
+
+        # for a given B_i, B_j compute the derivate kernels
+        def get_K(i, j):
+            return np.array([
+                [res00[i, j],       res01[i, j, self.input_index],        res02[i, j, self.input_index, self.input_index]], # f
+                [res10[i, j, self.input_index],    res11[i, j, self.input_index, self.input_index],     res12[i, j, self.input_index, self.input_index, self.input_index]], # df/dt
+                [res20[i, j, self.input_index, self.input_index], res21[i, j, self.input_index, self.input_index, self.input_index],  res22[i, j, self.input_index, self.input_index, self.input_index, self.input_index]], # d^2f/dt^2
+            ])
+
+        # stack all derivate kernels over each BxB element 
+        K = np.block([
+            [
+                get_K(b1, b2) 
+                for b2 in range(B) 
+            ]
+            for b1 in range(B) 
         ])
+
+        chex.assert_rank(K, 2)
+        chex.assert_shape(K, [B*self.d_computed, B*self.d_computed])
+        chex.assert_shape(K, [self.output_dim, self.output_dim])
 
         return K
 
@@ -174,12 +264,13 @@ class SecondOrderDerivativeKernel(DerivativeKernel):
 
         K = jax.vmap(k2, (0, None))(X1, X2)
 
-        #return K[:, :, 0, 0]
-        #reshape to NxN
-        K_reshaped =  np.block([
-            [K[:, :, 0, 0], K[:, :, 0, 1], K[:, :, 0, 2]],
-            [K[:, :, 1, 0], K[:, :, 1, 1], K[:, :, 1, 2]],
-            [K[:, :, 2, 0], K[:, :, 2, 1], K[:, :, 2, 2]],
+        # K is in data-diff format -- convert to diff-data format
+        K_reshaped = np.block([
+            [
+                K[:, :, d1, d2]
+                for d2 in range(self.output_dim)
+            ]
+            for d1 in range(self.output_dim)
         ])
 
         return K_reshaped

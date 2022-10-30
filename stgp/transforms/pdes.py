@@ -18,7 +18,8 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         base_latent,
         mean = None,
         kernel = None,
-        is_base = True
+        is_base:bool = True,
+        has_parent:bool = False
     ):
         if base_latent is None:
             raise RuntimeError('Latent gp must be passed')
@@ -29,6 +30,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self._output_dim = self.derivative_kernel.output_dim
         self._input_dim = 1
         self._is_base = is_base
+        self.has_parent = has_parent
 
     @property
     def is_base(self):
@@ -50,7 +52,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
             chex.assert_rank([mu, var], [2, 2])
         else:
             # compute 
-            pass
+            raise NotImplementedError()
         return mu, var
 
     def get_sparsity_list(self):
@@ -80,10 +82,20 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return self.parent.sparsity
 
     def mean(self, X1):
-        return np.zeros([X1.shape[0] * self.output_dim, 1])
+        if not self.has_parent:
+            return np.zeros([X1.shape[0] * self.output_dim, 1])
+        else:
+            mean_fn = self.parent.mean_blocks
+            mean_x = self.derivative_mean.mean_from_fn(X1, mean_fn)
+            return mean_x
 
     def mean_blocks(self, X1):
-        return np.zeros([self.output_dim, X1.shape[0], 1])
+        if not self.has_parent:
+            return np.zeros([self.output_dim, X1.shape[0], 1])
+        else:
+            mean_fn = self.parent.mean_blocks
+            mean_x = self.derivative_mean.mean_blocks_from_fn(X1, mean_fn)
+            return mean_x
 
     def b_mean(self, X1):
         # for compatability with Independent X1 and can either be of rank 3 or 4
@@ -98,7 +110,13 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return self.mean_blocks(X1[0])
 
     def covar(self, X1, X2):
-        return self.derivative_kernel.K(X1, X2)
+        if not self.has_parent:
+            return self.derivative_kernel.K(X1, X2)
+        else:
+            var_fn = self.parent.covar
+
+            K_xz = self.derivative_kernel.K_from_fn(X1, X2, var_fn)
+            return K_xz
 
     def b_covar(self, X1, X2):
         """ WARNING: we assume that X1, X2 is actually repeated """
@@ -112,7 +130,9 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return self.covar(X1[0], X2[0])
 
     def covar_blocks(self, X1, X2):
-        K_full =  self.derivative_kernel.K(X1, X2)
+        # TODO: this might need to be permutated 
+        
+        K_full = self.covar(X1, X2)
 
         return get_block_diagonal(
             K_full,
@@ -143,8 +163,6 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
             return self
 
         return self.parent.base_prior
-
-
 
 class PDE(Transform):
     pass
@@ -350,7 +368,6 @@ class AllenCahn(PDE):
         else:
             self._input_dim = self.parent.output_dim
 
- 
     def _f(self, init_x, t):
         raise NotImplementedError()
 

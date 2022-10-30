@@ -42,28 +42,30 @@ def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 @dispatch(BlockDiagonalGaussian, 'Diagonal')
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     N = Y.shape[0]
-
     # TODO: adding missing data masking
     block_size = likelihood.block_size
+
+    # q_f_mu across all ouputs in N x P x B, but we have batched over P so now it is rank 2
+    # add back the missing axis so that is matched Y
+    q_f_mu = q_f_mu[:, None, :]
+
+    # ensure correct shapes
+    chex.assert_rank([Y, q_f_mu, q_f_var], [3, 3, 3])
+    chex.assert_equal(Y.shape, q_f_mu.shape)
+    chex.assert_shape(q_f_var, [N, block_size, block_size])
 
     # block X
     X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
     X_blocks = np.transpose(X_blocks, [1, 0, 2])
 
-    #Reshape Y to match q_f_mu
-    Y_blocks = block_from_vec(Y, block_size)
-
-    # Ensure correct shapes after vmap
-    Y_blocks = Y_blocks[..., None]
-    q_f_var = np.reshape(q_f_var, [N, block_size, block_size])
-
     lik_var = likelihood.variance
+    chex.assert_shape(lik_var, q_f_var.shape)
 
     ell_arr = jax.vmap(
         full_gaussian_expected_log_likelihood,
         [0, 0, 0, 0, 0],
         0
-    )(X_blocks, Y_blocks, lik_var, q_f_mu, q_f_var)
+    )(X_blocks, Y, lik_var, q_f_mu, q_f_var)
 
     ell = np.sum(ell_arr)
 
