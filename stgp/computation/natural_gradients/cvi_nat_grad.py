@@ -129,8 +129,8 @@ def _get_mf_params(model, diagonal=True):
     Q = len(q_list)
 
     # Collect CVI parameters
-    Y_tilde_arr, V_tilde_arr = batch_or_loop(
-        lambda q: (q.surrogate.data.base.Y, q.surrogate.likelihood.likelihood_arr[0].base.variance),
+    raw_Y, Y_tilde_arr, V_tilde_arr = batch_or_loop(
+        lambda q: (q.surrogate.data.base._Y.value, q.surrogate.data.base.Y, q.surrogate.likelihood.likelihood_arr[0].base.variance),
         [q_list],
         [0],
         dim=len(q_list),
@@ -153,7 +153,7 @@ def _get_mf_params(model, diagonal=True):
         batch_type = get_batch_type(q_list)
     )
 
-    return Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z
+    return raw_Y, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z
 
 def _get_marginals(model):
     q_m, q_S = evoke('variational_params', model.approximate_posterior, model.likelihood, model.prior.base_prior, model.inference.whiten)(
@@ -180,68 +180,32 @@ def partial_ell(m, q_m, q_S):
 
 @dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
-    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=True)
+    raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=True)
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
-    Y_shape = Y_tilde_arr.shape
+    Y_shape = raw_Y_arr.shape
 
     Q, N, B, _ = V_tilde_arr.shape
 
+    # Fix shapes for ELL
+    q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
+    q_var_z = np.reshape(q_var_z, [Q, N, 1])
 
-    if enforce_psd_type == 'test':
-        def ell(model, q_f_mu, q_f_var):
+    # Compute dELL/dm, dEll/dS
+    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
 
-            # Compute Expected Log Likelihood   
-            ELL = evoke('expected_log_likelihood', model.data, model.likelihood, model.prior, model.approximate_posterior)(
-                model.data, q_f_mu, q_f_var, model.likelihood, model.prior, model.approximate_posterior, model.inference
-            )
+    # Fix shapes for Natgrads
+    Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
+    V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
 
-            #return np.sum(ELL)
-            return ELL
+    q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
+    q_var_z = np.reshape(q_var_z, [Q, N, B, B])
 
-        mu_marginal, var_marginals = _get_marginals(model)
-
-        mu_grads, var_grads = jax.grad(ell, (1, 2))(
-            model, mu_marginal, var_marginals
-        )
-
-        mu_grads = (mu_grads[0][:, 0, :] + mu_grads[1][:, 0, :])[:, None, :]
-        var_grads = (var_grads[0][:, :, 0, 0] + var_grads[1][:, :, 0, 0])[:, :, None, None]
-        #mu_grads = (mu_grads[0][:, 0, :] )[:, None, :]
-        #var_grads = (var_grads[0][:, :, 0, 0] )[:, :, None, None]
-
-        # Fix shapes for Natgrads
-        Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
-        V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
-
-        q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
-        q_var_z = np.reshape(q_var_z, [Q, N, B, B])
-
-        mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
-        var_grads = np.reshape(var_grads, [Q, N, B, B])
-        
-        enforce_psd_type = None
-
-    else:
-        # Fix shapes for ELL
-        q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
-        q_var_z = np.reshape(q_var_z, [Q, N, 1])
-
-        # Compute dELL/dm, dEll/dS
-        mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
-            model, q_mu_z, q_var_z
-        )
-
-        # Fix shapes for Natgrads
-        Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
-        V_tilde_arr = np.reshape(V_tilde_arr, [Q, N, B, B])
-
-        q_mu_z = np.reshape(q_mu_z, [Q, N, B, 1])
-        q_var_z = np.reshape(q_var_z, [Q, N, B, B])
-
-        mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
-        var_grads = np.reshape(var_grads, [Q, N, B, B])
+    mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
+    var_grads = np.reshape(var_grads, [Q, N, B, B])
 
     # vmap over Q and N
     new_Y_tilde, new_V_tilde = jax.vmap(
@@ -258,11 +222,11 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
 @dispatch('VGP', ConjugateApproximatePosterior, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
-    Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
+    raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
-    Y_shape = Y_tilde_arr.shape
+    Y_shape = raw_Y_arr.shape
 
     Q, Nt, B, _ = V_tilde_arr.shape
     N = Nt*B
@@ -460,12 +424,11 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     # Collect CVI parameters
-    Y_tilde_arr, V_tilde_arr = q.surrogate.Y, q.surrogate.likelihood.variance
+    raw_Y_arr, Y_tilde_arr, V_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y, q.surrogate.likelihood.variance
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
-    Y_shape = Y_tilde_arr.shape
-
+    Y_shape = raw_Y_arr.shape
 
     # Predict in data-latent order
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
@@ -494,6 +457,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     # Fix shapes
     Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
 
+
     new_Y_tilde, new_V_tilde = jax.vmap(
         cvi_block_update,
         [0, 0, 0, 0, 0, 0, None, None]
@@ -501,7 +465,8 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta, enforce_psd_type
     )
 
-    new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
+    new_Y_tilde = np.transpose(new_Y_tilde, [0, 2, 1])
+    #new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde
 

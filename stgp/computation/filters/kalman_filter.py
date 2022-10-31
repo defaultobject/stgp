@@ -161,7 +161,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
 
     # Set up data
     X_t = data.X_time
-    Y = data.Y
+    Y = data.Y_st
     dt = np.diff(X_t)
 
     # TODO: fix this

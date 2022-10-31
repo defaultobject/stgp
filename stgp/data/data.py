@@ -303,8 +303,16 @@ class SequentialData(Data):
         raise NotImplementedError()
 
     @property
+    def Y_st(self):
+        raise NotImplementedError()
+
+    @property
     def Y(self):
-        return self._x_time.value
+        raise NotImplementedError()
+
+    @property
+    def Y_flat(self):
+        raise NotImplementedError()
 
     def unsort(self, A):
         """ Reverse the sorting steps performed in self.sort """
@@ -405,8 +413,12 @@ class SpatioTemporalData(SequentialData):
         return self._X.X_time
 
     @property
-    def Y(self):
+    def Y_st(self):
         return self._Y.value
+
+    @property
+    def Y(self):
+        return self.Y_flat
 
     @property
     def Y_flat(self):
@@ -415,7 +427,7 @@ class SpatioTemporalData(SequentialData):
         # Therefore all we have to is reshape
 
         Y = np.reshape(
-            self.Y,
+            self.Y_st,
             [-1, self.P]
         )
 
@@ -455,7 +467,7 @@ class TemporalData(SequentialData):
         1) X is already sorted 
 
             X: Nt x 1 
-            Y: Nt x 1 x 1
+            Y: Nt x Ns x 1 = Nt x 1 x 1
 
         2) X is not sorted 
 
@@ -512,8 +524,13 @@ class TemporalData(SequentialData):
         return self._X.X
 
     @property
-    def Y(self):
+    def Y_st(self):
         return self._Y.value
+
+    @property
+    def Y(self):
+        # remove the Nt dimension
+        return self.Y_st[:, 0, :]
 
     @property
     def Y_flat(self):
@@ -528,7 +545,7 @@ class MultiOutputTemporalData(SequentialData):
         """
         Args:
             X: rank 2 input X if shape N x D
-            Y: either rank 2 of shape N x P or rank 3 of shape  N X 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
+            Y: either rank 2 of shape N x P or rank 3 of shape  Nt X Ns x P = Nt x 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
         """
 
         super(MultiOutputTemporalData, self).__init__()
@@ -574,8 +591,13 @@ class MultiOutputTemporalData(SequentialData):
         return self._X.X[:, 0]
 
     @property
-    def Y(self):
+    def Y_st(self):
         return self._Y.value
+
+    @property
+    def Y(self):
+        # remove the Nt dimension
+        return self.Y_st[:, 0, :]
 
     @property
     def Y_flat(self):

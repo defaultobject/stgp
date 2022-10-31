@@ -45,9 +45,18 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     # TODO: adding missing data masking
     block_size = likelihood.block_size
 
-    # q_f_mu across all ouputs in N x P x B, but we have batched over P so now it is rank 2
-    # add back the missing axis so that is matched Y
-    q_f_mu = q_f_mu[:, None, :]
+    # ensure Y is 3d
+    if len(Y.shape) == 2:
+        Y = Y[..., None]
+
+    if len(q_f_mu.shape) == 2:
+        # q_f_mu across all ouputs in N x P x B, but we have batched over P so now it is rank 2
+        # add back the missing axis so that is matched Y
+        q_f_mu = q_f_mu[:, None, :]
+
+    # ensure q_f_var is 3d
+    if len(q_f_var.shape) == 4:
+        q_f_var = q_f_var[:, 0, : ,:]
 
     # ensure correct shapes
     chex.assert_rank([Y, q_f_mu, q_f_var], [3, 3, 3])
@@ -185,15 +194,13 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     return ell
 
-
-
 # ====================== ELL FOR DIFFERENT APPROXIMATE POSTERIORS ===================
 
 def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_posterior):
     """
     Args:
         transformed_f: N x P x B - sampled  and transformed f
-        Y: N x P - data output
+        Y: N x P or N x B x P
 
     """
 
@@ -274,7 +281,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     # TODO: there is a choice here between quadrature and monte-carlo estimation
     # TODO: need to check if a likelihood has a closed form ELL
-    if isinstance(model_type, LinearModel):
+    if isinstance(model_type, LinearModel) and (isinstance(likelihood, GaussianProductLikelihood) or isinstance(likelihood, BlockDiagonalGaussian)):
         # check if closed form expression exists
         # batch over each output
         likelihood_arr = likelihood.likelihood_arr
@@ -304,7 +311,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         # q_f_mu is of shape:
         #   N x P x B
         # q_v_var is of shape:
-        #   N x P x B x 1
+        #   N x P x B x B or N x 1 x PB x PB
 
         num_likelihoods = len(likelihood_arr)
         N, P = Y.shape
@@ -341,7 +348,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     model_type = get_model_type(prior)
 
     # TODO: add proper check to see if closed form expression exists
-    if  isinstance(model_type, LinearModel) and isinstance(likelihood, GaussianProductLikelihood):
+    if  isinstance(model_type, LinearModel) and (isinstance(likelihood, GaussianProductLikelihood) or isinstance(likelihood, BlockDiagonalGaussian)):
         ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
            X, Y, q_f_mu, q_f_var, likelihood, block_type
         )
@@ -350,7 +357,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
     else:
-
         ell = approximate_expectation(
             compute_ell_for_sample, 
             q_f_mu, 

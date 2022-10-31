@@ -14,7 +14,7 @@ from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel
-from stgp.likelihood import Gaussian, ProductLikelihood
+from stgp.likelihood import Gaussian, ProductLikelihood, GaussianProductLikelihood
 from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
@@ -42,7 +42,7 @@ data = Data(X, Y)
 m = GP(
     data = data,
     prior = Independent(latent_gps),
-    likelihood = ProductLikelihood([Gaussian()]),
+    likelihood = GaussianProductLikelihood([Gaussian()]),
     approximate_posterior = MeanFieldConjugateGaussian([
         ConjugateGaussian(
             X=sparsity,

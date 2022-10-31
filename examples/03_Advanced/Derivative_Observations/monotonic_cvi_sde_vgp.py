@@ -1,7 +1,7 @@
 """ 
-Variational Monotonic Gaussian Process with a Virtual Monotonic Observations
+Variational Monotonic Gaussian Process with Virtual Monotonic Observations and a SDE CVI Surrogate Posterior
 
-Following:
+Monotonicitiy enforced following:
     Gaussian processes with monotonicity information, Riihim ̈aki et all
     http://proceedings.mlr.press/v9/riihimaki10a/riihimaki10a.pdf
 """
@@ -21,16 +21,18 @@ import stgp
 from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52
+from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, ScaledMatern32, Matern52, ScaledMatern52
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel
 from stgp.likelihood import Gaussian, Probit, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms.pdes import DifferentialOperatorJoint
 from stgp.data import Data
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from stgp.approximate_posteriors import FullConjugateGaussian
 from tqdm import trange
 from stgp.trainers import NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
+from stgp.transforms.sdes import LTI_SDE_Full_State_Obs
+from stgp.transforms import Independent
 
 import matplotlib.pyplot as plt
 
@@ -56,21 +58,36 @@ if False:
     plt.scatter(X, Y[:, 0])
     plt.show()
 
-base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = ScaledMatern32(input_dim = 1, lengthscales = [0.1], variance=1.0)
 kern = FirstOrderDerivativeKernel(base_kernel_1d)
+sparsity = stgp.sparsity.NoSparsity(Z=X)
+
+base_gp =  GP(
+    sparsity=sparsity, 
+    kernel = base_kernel_1d
+)
 
 prior = DifferentialOperatorJoint(
-    GP(
-        sparsity=stgp.sparsity.NoSparsity(Z=X), 
-        kernel = base_kernel_1d
-    ),
+    base_gp,
     kernel = kern,
     is_base = True,
     has_parent=False
 )
 
 # use full gaussian for consistency
-q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
+q = FullConjugateGaussian(
+    X = sparsity,
+    num_latents=2,
+    block_size=2,
+    num_blocks = X.shape[0],
+    surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y[:, None, :], sort=False, train_y=True), # we need gradients Y so set to be trainable
+        likelihood=likelihood, 
+        prior=LTI_SDE_Full_State_Obs(Independent([base_gp])),
+        inference='Sequential',
+        full_state_observed = True
+    )
+)
 
 # Create Model
 m = stgp.models.GP(
@@ -121,3 +138,4 @@ plt.fill_between(
 plt.plot(XS, pred_mu[:, 0])
 plt.scatter(X, Y[:, 0])
 plt.show()
+

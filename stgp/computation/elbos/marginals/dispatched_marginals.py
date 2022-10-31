@@ -44,6 +44,7 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 from .linear_marginals import linear_marginal_blocks
 # ================================== Dispatched q(f) ==============================
 @dispatch(ConjugateApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     N = q_m.shape[0]
 
@@ -54,6 +55,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     return q_m, q_S
 
 @dispatch(ConjugateApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     N = q_m.shape[0]
 
@@ -171,6 +173,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     """ Catch all for single latent functions with no sparsity"""
     M = q_m.shape[0]
 
+    breakpoint()
+
     # TODO: block dim
 
     mu, var =  evoke(
@@ -266,6 +270,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         # TODO: check and fix permutations
 
         if True:
+
+            return q_m[..., None], q_S_chol[:, None, ...]
+            breakpoint()
 
             # compute [f, Dt]
             #mu, var = approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False, full_state=True)
