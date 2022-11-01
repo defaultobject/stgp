@@ -60,24 +60,12 @@ if False:
 
 base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
 
-if True:
-    base_gp = Independent([
-        GP(
-            sparsity=stgp.sparsity.NoSparsity(Z=X), 
-            kernel = base_kernel_1d
-        )
-    ])
-else:
-    kern = FirstOrderDerivativeKernel(base_kernel_1d)
-    base_gp = DifferentialOperatorJoint(
-        GP(
-            sparsity=stgp.sparsity.NoSparsity(Z=X), 
-            kernel = base_kernel_1d
-        ),
-        kernel = kern,
-        is_base = True,
-        has_parent=False
+base_gp = Independent([
+    GP(
+        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        kernel = base_kernel_1d
     )
+])
 
 
 kern = FirstOrderDerivativeKernel(base_kernel_1d, parent_output_dim=base_gp.output_dim)
