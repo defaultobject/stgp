@@ -1,5 +1,5 @@
 """ 
-Variational Monotonic Gaussian Process with Virtual Monotonic Observations and a SDE CVI Surrogate Posterior
+Variational Monotonic Gaussian Process with Virtual Monotonic Observations and a Batch CVI Surrogate Posterior
 
 Monotonicitiy enforced following:
     Gaussian processes with monotonicity information, Riihim ̈aki et all
@@ -81,11 +81,9 @@ q = FullConjugateGaussian(
     block_size=2,
     num_blocks = X.shape[0],
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y[:, None, :], sort=False, train_y=True), # we need gradients Y so set to be trainable
+        data = stgp.data.Data(X=X, Y=Y), # we need gradients Y so set to be trainable
         likelihood=likelihood, 
-        prior=LTI_SDE_Full_State_Obs(Independent([base_gp])),
-        inference='Sequential',
-        full_state_observed = True
+        prior=prior,
     )
 )
 
@@ -104,7 +102,7 @@ m = stgp.models.GP(
 # Train
 if True:
     print(m.get_objective())
-    max_iters = 200
+    max_iters = 100
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
@@ -113,7 +111,7 @@ if True:
     lc_arr_1, _ = ng_trainer.train(0.01, 100)
     lc_arr = np.array(lc_arr_1).tolist()
 
-    if False:
+    if True:
         for i in trange(max_iters):
             trainer.train(0.01, 1)
             lc_arr_i, _  = ng_trainer.train(0.1, 1)
@@ -139,4 +137,5 @@ plt.fill_between(
 plt.plot(XS, pred_mu[:, 0])
 plt.scatter(X, Y[:, 0])
 plt.show()
+
 

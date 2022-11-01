@@ -57,34 +57,55 @@ def log_marginal_likelihood(
 
     return log_gaussian_with_nans(Y, mean, k) 
 
-@dispatch(BlockDiagonalGaussian)
+# =================================== Multioutput Models ===================================
+
+@dispatch(BlockDiagonalGaussian, Transform)
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, likelihood: BlockDiagonalGaussian, K: np.ndarray, mean: np.ndarray
+        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: Transform
 ):
-    chex.assert_rank(Y, 3)
-    chex.assert_rank(mean, 2)
-    chex.assert_rank(K, 2)
+    """ 
+    Prior is a multi-output prior and likelihood is block diagional 
+    
+    Prior is defined in latent-data format and likelihood is defined in data-latent format (ie one block per datapoint).
+    To compute the lml we convert the likelihood to latent-data format.
+    """
+    X = data.X
+    Y = data.Y
 
-    N, block_size, _ = Y.shape
+    chex.assert_rank(Y, 2)
+    N, P = Y.shape
 
-    Y_vec = np.reshape(Y, [N * block_size, 1])
-    lik_var = likelihood.full_variance
+    chex.assert_equal(P, likelihood.block_size)
 
-    chex.assert_shape(K, lik_var.shape)
+    # Y in latent-data format
+    Y_vec = vec_columns(Y)
 
-    K = K + lik_var
+    # precompute prior covariance
+    # in latent-data format
+    k_xx_arr = prior.covar(X, X)
+    mean_arr = prior.mean(X) 
 
-    return log_gaussian_with_nans(Y_vec, mean, K) 
+    # in data-latent format
+    likelihood_var = likelihood.full_variance
 
-# ===============================================================================================
-# ===============================================================================================
-# ========================================  ENTRY POINTs ========================================
-# ===============================================================================================
-# ===============================================================================================
+    # Permute so that the ordering between likelihood_var and Y is the same
+    N = X.shape[0]
+    NS = likelihood_var.shape[0]
 
+    # convert likelihood_var to latent-data format
+    P = data_order_to_output_order(P, N)
+    ordered_likelihood_var = P @ likelihood_var @ P.T
 
-# ========================================= Independent =========================================
-@dispatch(Data, BatchGP, ProductLikelihood, Independent)
+    chex.assert_shape(Y_vec, mean_arr.shape)
+    chex.assert_shape(k_xx_arr, ordered_likelihood_var.shape)
+
+    return log_gaussian_with_nans(
+        Y_vec,
+        mean_arr,
+        k_xx_arr + ordered_likelihood_var
+    )
+
+@dispatch(ProductLikelihood, Independent)
 def log_marginal_likelihood(
         data, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
 ):
@@ -124,10 +145,24 @@ def log_marginal_likelihood(
     return lml
 
 
+# ===============================================================================================
+# ===============================================================================================
+# ========================================  ENTRY POINTs ========================================
+# ===============================================================================================
+# ===============================================================================================
+
+
 # ====================================== Linear Transforms ======================================
 
 @dispatch(Data, Model, Likelihood, LinearModel)
 def log_marginal_likelihood( data, m, likelihood, prior):
+
+    # dispatch on likelihood and prior
+    return  evoke('log_marginal_likelihood', likelihood, prior)(
+        data, m, likelihood, prior 
+    )
+
+    breakpoint()
     X, Y = data.X, data.Y
     N, P = Y.shape
 
@@ -154,7 +189,7 @@ def log_marginal_likelihood( data, gp, likelihood, prior):
 
 # ======================================  Models ======================================
 
-@dispatch(Data, Model, GaussianProductLikelihood, Transform)
+@dispatch(Data, Model, Likelihood, Transform)
 def log_marginal_likelihood( data, m, likelihood, prior):
 
     model_type = get_model_type(prior)

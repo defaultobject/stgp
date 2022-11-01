@@ -465,8 +465,8 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta, enforce_psd_type
     )
 
-    new_Y_tilde = np.transpose(new_Y_tilde, [0, 2, 1])
-    #new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
+    #new_Y_tilde = np.transpose(new_Y_tilde, [0, 2, 1])
+    new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde
 

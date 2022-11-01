@@ -290,6 +290,63 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
+def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+    X = data.X
+    Y = data.Y
+
+    Ns = XS.shape[0]
+    N = X.shape[0]
+    P = Y.shape[1]
+
+    # hack for now
+    block_size = P
+    # can only return blocks of size P
+    chex.assert_equal(block_size, P)
+
+    # compute prior covariances in latent-data format
+    K_xs = prior.covar(XS, XS)
+    K_xx = prior.covar(X, X)
+    K_xs_x = prior.covar(XS, X)
+
+    # Get liklihood in data-latent format
+    likelihood_var = likelihood.full_variance
+
+    # Permute so that the ordering between likelihood_var and Y is the same
+    N = X.shape[0]
+    NS = likelihood_var.shape[0]
+
+    # convert likelihodo to latent-data format
+    permutation = data_order_to_output_order(P, N)
+    lik_var = permutation.T @ likelihood_var @ permutation
+
+    mean_x = prior.mean(X)
+    mean_xs = prior.mean(XS)
+
+    Y_vec = vec_columns(Y)
+
+    # TODO: this is v. inefficient
+    # Compute full matrix in latent-data format
+    mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    NS = var.shape[0]
+    N = XS.shape[0]
+
+    # convert K from latent-data to data-latent format
+    permutation = data_order_to_output_order(P, N)
+    K = permutation @ var @ permutation.T
+
+    var = get_block_diagonal(K, likelihood.block_size)
+
+    mu = mu.reshape([P, Ns]).T
+    mu = mu[..., None]
+
+    var = var[:, None, ...]
+
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
+
 # =========================== Model Specific prediction equations ===========================
 @dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
 @dispatch(Data, 'BatchGP', Likelihood, LinearTransform)

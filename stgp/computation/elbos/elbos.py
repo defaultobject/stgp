@@ -26,7 +26,6 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
-
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference

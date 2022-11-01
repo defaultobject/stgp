@@ -91,15 +91,17 @@ if True:
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
+
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
     lc_arr_1, _ = ng_trainer.train(0.01, 100)
     lc_arr = np.array(lc_arr_1).tolist()
 
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
-        lc_arr_i, _  = ng_trainer.train(0.1, 1)
-        lc_arr.append(float(lc_arr_i[0]))
+    if False:
+        for i in trange(max_iters):
+            trainer.train(0.01, 1)
+            lc_arr_i, _  = ng_trainer.train(0.1, 1)
+            lc_arr.append(float(lc_arr_i[0]))
 
     print(m.get_objective())
 

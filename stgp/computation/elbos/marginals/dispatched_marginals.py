@@ -271,6 +271,10 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
         if True:
 
+            N, P = q_m.shape[0], q_m.shape[1]
+            return np.reshape(q_m, [N, P, 1]), np.reshape(q_S_chol, [N, 1, P, P])
+            return q_m, q_S_chol
+            breakpoint()
             return q_m[..., None], q_S_chol[:, None, ...]
             breakpoint()
 
