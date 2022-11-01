@@ -131,7 +131,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     def covar_blocks(self, X1, X2):
         # TODO: this might need to be permutated 
-        
+        raise NotImplementedError() 
         K_full = self.covar(X1, X2)
 
         return get_block_diagonal(

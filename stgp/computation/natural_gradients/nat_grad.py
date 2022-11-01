@@ -400,8 +400,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
 
     approx_hessian = get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type)
 
-
-
     xi1, xi2 = natural_gradient_update_for_gaussian_approx_posterior(model, beta, q, m_grad, S_grad, enforce_psd_type, approx_hessian)
 
     return xi1, xi2

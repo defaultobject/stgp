@@ -62,7 +62,7 @@ class FirstOrderDerivativeMean(DiffOpMean):
 
         # assumes output dim is
         # B 
-        fn = lambda xs: np.squeeze(mean_fn(xs[None, ...]))
+        fn = lambda xs: mean_fn(xs[None, ...])[:, 0, 0]
 
         # B 
         mu_x = fn(x)

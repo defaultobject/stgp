@@ -1,0 +1,161 @@
+""" Structured Variational Gaussian Process Regression with a Derivative Observations"""
+
+import jax
+from jax.config import config as jax_config
+jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', True)
+import jax.numpy as jnp
+
+import objax
+
+import numpy as np
+
+import stgp
+from stgp import settings
+from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
+from stgp.trainers.callbacks import progress_bar_callback
+from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52
+from stgp.means.mean import FirstOrderDerivativeMean
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from stgp.likelihood import Gaussian
+from stgp.models import GP
+from stgp.transforms import Independent
+from stgp.transforms.pdes import DifferentialOperatorJoint
+from stgp.data import Data
+
+import matplotlib.pyplot as plt
+
+# Construct data
+f = lambda x: np.sin(10*x)
+df = lambda x: np.cos(10*x)*10
+
+N = 20
+x = np.linspace(0, 1, N)
+y = f(x) + 0.01*np.random.rand(N)
+dy = df(x) + 0.01*np.random.rand(N)
+
+X = x[:, None]
+Y_all = np.hstack([y[:, None], dy[:, None]])
+
+# remove non derivative observations
+Y = np.copy(Y_all)
+Y[int(N*0.2):, 0] = np.NaN
+
+# testing locations
+XS = np.linspace(-5, 6, 1000)[:, None]
+
+if False:
+    fig, axes = plt.subplots(2)
+
+    axes[0].scatter(X[:, 0], Y_all[:, 0], c='grey')
+    axes[0].scatter(X[:, 0], Y[:, 0], c='black')
+
+    axes[1].scatter(X[:, 0], Y_all[:, 1], c='grey')
+    axes[1].scatter(X[:, 0], Y[:, 1], c='black')
+
+    plt.show()
+
+# construct model
+
+base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
+
+if True:
+    base_gp = Independent([
+        GP(
+            sparsity=stgp.sparsity.NoSparsity(Z=X), 
+            kernel = base_kernel_1d
+        )
+    ])
+else:
+    kern = FirstOrderDerivativeKernel(base_kernel_1d)
+    base_gp = DifferentialOperatorJoint(
+        GP(
+            sparsity=stgp.sparsity.NoSparsity(Z=X), 
+            kernel = base_kernel_1d
+        ),
+        kernel = kern,
+        is_base = True,
+        has_parent=False
+    )
+
+
+kern = FirstOrderDerivativeKernel(base_kernel_1d, parent_output_dim=base_gp.output_dim)
+mean = FirstOrderDerivativeMean(parent_output_dim=base_gp.output_dim)
+
+prior = DifferentialOperatorJoint(
+    base_gp,
+    mean=mean,
+    kernel = kern,
+    is_base = False,
+    has_parent=True
+)
+
+q = FullGaussianApproximatePosterior(dim = X.shape[0] * base_gp.output_dim)
+
+# Create Model
+m = stgp.models.GP(
+    data = stgp.data.Data(X, Y),
+    prior = prior,
+    likelihood = [Gaussian(0.1), Gaussian(0.1)],
+    inference='Variational',
+    approximate_posterior = q
+)
+
+# train
+m.print()
+if True:
+    print(m.get_objective())
+    max_iters = 100
+
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+    lc_arr_1, _ = ng_trainer.train(0.01, 10)
+    lc_arr = np.array(lc_arr_1).tolist()
+
+    if False:
+        for i in trange(max_iters):
+            trainer.train(1.0, 1)
+            lc_arr_i, _  = ng_trainer.train(0.1, 1)
+            lc_arr.append(float(lc_arr_i[0]))
+
+
+    plt.plot(lc_arr)
+    plt.show()
+
+    m.print()
+else:
+    print(m.get_objective())
+
+# predict
+pred_mu, pred_var = m.predict_f(XS)
+
+# plot
+D = 1
+
+fig, axes = plt.subplots(1)
+d = 0
+axes.fill_between(
+    XS[:, 0], 
+    pred_mu - 1.96*np.sqrt(pred_var),
+    pred_mu + 1.96*np.sqrt(pred_var),
+    alpha = 0.4
+)
+
+axes.plot(
+    XS, pred_mu
+)
+
+axes.scatter(
+    X, Y_all[:, d], c='grey'
+)
+
+axes.scatter(
+    X, Y[:, d], c='black'
+)
+
+plt.show()
+

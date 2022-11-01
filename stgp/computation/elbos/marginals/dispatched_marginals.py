@@ -29,7 +29,7 @@ from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve
-from ...permutations import left_permute_mat
+from ...permutations import left_permute_mat, data_order_to_output_order
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -260,41 +260,11 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         #assert out_block_dim == 1
         out_block_dim = 1
 
-        # get D(t) from the kalman filter here
-        # and compute D(s) manually -- since K is separable
+        N, P = q_m.shape[0], q_m.shape[1]
+        mu, var =  np.reshape(q_m, [N, P, 1]), np.reshape(q_S_chol, [N, 1, P, P])
 
-        # need a linear approximation of the kalman filter 
-        #to approximate dL/dm wrt with dL/dY^tilde dY^tilde/dm
-
-        # TODO: move into dispatched_marginal_predictors
-        # TODO: check and fix permutations
-
-        if True:
-
-            N, P = q_m.shape[0], q_m.shape[1]
-            return np.reshape(q_m, [N, P, 1]), np.reshape(q_S_chol, [N, 1, P, P])
-            return q_m, q_S_chol
-            breakpoint()
-            return q_m[..., None], q_S_chol[:, None, ...]
-            breakpoint()
-
-            # compute [f, Dt]
-            #mu, var = approximate_posterior.approx_posteriors[0].surrogate.posterior(diagonal=False, full_state=True)
-            mu, var = approximate_posterior.surrogate.posterior(diagonal=False, full_state=True)
-
-            # only pick the first Q dimensions
-
-            var = var[:, None, ...]
-
-
-            XS = data.X
-            N = XS.shape[0]
-
-            chex.assert_shape(mu, [N, prior.output_dim,  out_block_dim])
-            chex.assert_shape(var, [N, 1, prior.output_dim*out_block_dim, prior.output_dim*out_block_dim])
-
-
-            return mu, var
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
     else:
         raise NotImplementedError()
 
@@ -317,6 +287,66 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         return mu, var
 
     else:
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
+
+        Z = sparsity_arr[0].Z
+        Q = prior.derivative_kernel.output_dim
+
+        XS = data.X
+        NS = XS.shape[0]
+        M = Z.shape[0]
+
+        # compute marginal q(f) \int p(f | u) q(u) df 
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
+
+        if False:
+            q_m, q_S = fn(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block_dim, whiten
+            ) 
+            chex.assert_rank([q_m, q_S], [3, 4])
+
+        # latent-data format
+        Kxx = prior.covar(Z, Z) # ND x ND
+        mean_xx = prior.mean(Z)
+
+        base_prior_output = prior.base_prior.output_dim
+        prior_added_output = prior.derivative_kernel.d_computed
+
+        # covar is ordered by K ⊗ D
+        Kzz = prior.base_prior.covar(Z, Z)
+        mean_zz = prior.base_prior.mean(Z)
+
+        idx = np.hstack([np.arange((M*prior_added_output)*d, (M*prior_added_output)*d + M) for d in range(base_prior_output)])
+        Kxz = Kxx[:, idx]
+
+        if whiten:
+            raise NotImplementedError()
+        else:
+            # will compute in latent data format
+            #np.hstack(q_m[..., 0])[:, None], 
+            mu, var = gaussian_conditional(
+                Z, 
+                Z, 
+                Kzz, 
+                Kxz, 
+                Kxx, 
+                q_m,
+                q_S_chol, 
+                mean_zz, 
+                mean_xx
+            )
+            # TODO: why the transpose?
+            P = data_order_to_output_order(M, prior.output_dim)
+            post_mu = np.reshape(P.T @ mu, [M, prior.output_dim, 1])
+
+            post_var = P.T @ var @ P
+            post_var = get_block_diagonal(post_var, prior.output_dim)
+            post_var = np.reshape(post_var, [M, 1, prior.output_dim, prior.output_dim])
+
+
+            return post_mu, post_var
+
         raise NotImplementedError()
         if True:
             sparsity_arr = prior.base_prior.get_sparsity_list()
