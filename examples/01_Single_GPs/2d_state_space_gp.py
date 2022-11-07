@@ -40,6 +40,7 @@ latent_gp = GP(
     kernel = kern,
     prior = True
 )
+
 prior = LTI_SDE(Independent([latent_gp])) 
 
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')

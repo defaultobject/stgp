@@ -161,7 +161,11 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
 
         self.block_size = block_size
         self.num_latents = num_latents
-        self.M = X.shape[0]
+
+        if num_blocks is None:
+            self.M = X.shape[0]
+        else:
+            self.M = num_blocks
 
         if num_blocks is None:
             self.num_blocks = int((self.num_latents*self.M)/block_size)
@@ -171,6 +175,7 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         # Store in data-latent format
         Y_tilde = 1e-5*np.ones([self.M, self.num_latents])*onp.random.rand(self.M, self.num_latents)
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
 
         if False:
             V_tilde = np.tile(

@@ -6,8 +6,8 @@ import objax
 from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, gaussian_spatial_conditional
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, batched_block_diagional
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
@@ -15,12 +15,87 @@ from ....transforms import JointDataLatentPermutation, IndependentDataLatentPerm
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
-from ....sparsity import FreeSparsity, Sparsity
+from ....sparsity import FreeSparsity, Sparsity, SpatialSparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ...integrals.samples import approximate_expectation
 from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_block_type, get_permutated_prior
+from ...permutations import data_order_to_output_order, permute_mat, permute_vec, permute_vec_blocks
 
 from .linear_marginals import linear_marginal_blocks
+
+
+# ========================= Conjugate Gaussian Approximate Posterior Marginal Blocks =========================
+
+@dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = XS.shape[0]
+
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
+
+    mu = np.reshape(mu, [N, 1, 1])
+    var = np.reshape(var, [N, 1, 1, 1])
+
+    return mu, var
+
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    breakpoint()
+    N = XS.shape[0]
+
+    Q = prior.base_prior.output_dim
+
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
+
+    mu = np.reshape(mu, [N, Q, 1])
+    var = np.reshape(var, [N, 1, Q, Q])
+
+    return mu, var
+
+@dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
+def marginal_prediction_blocks(data_xs, data_x, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+
+    N = data_xs.X.shape[0]
+
+    # TODO: assuming that data_xs and data_x are of the same type
+    #parent is wrapped by a permutator, we don't need this so we pass the parent
+    mu, var = evoke('spatial_conditional', data_x, prior.parent, approximate_posterior)(
+        data_xs, 
+        data_x, 
+        m, 
+        S, 
+        approximate_posterior,
+        likelihood,
+        prior.parent,
+        sparsity,
+        out_block_dim,
+        whiten
+    )
+
+
+    Q = prior.base_prior.output_dim
+    block_size = var.shape[-1]
+
+    if out_block_dim == Q: 
+        # convert mu-var to data-latent format and extract block diagonal
+        Q = prior.output_dim
+
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(mu)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(var)
+
+        mu_p = np.reshape(mu_p, [-1, Q, 1])
+        var_p = batched_block_diagional(var_p, Q)
+        var_p = np.reshape(var_p, [N, 1, Q, Q])
+
+        return mu_p, var_p
+
+    elif out_block_dim == block_size:
+        # why are we not permuting here?
+        return mu, var
+    else:
+        breakpoint()
+        raise NotImplementedError()
+
+# ========================= Gaussian Approximate Posterior Marginal Blocks =========================
 
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
@@ -70,30 +145,6 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
-
-@dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
-def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    N = XS.shape[0]
-
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
-
-    mu = np.reshape(mu, [N, 1, 1])
-    var = np.reshape(var, [N, 1, 1, 1])
-
-    return mu, var
-
-@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
-def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    N = XS.shape[0]
-
-    Q = prior.base_prior.output_dim
-
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
-
-    mu = np.reshape(mu, [N, Q, 1])
-    var = np.reshape(var, [N, 1, Q, Q])
-
-    return mu, var
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)

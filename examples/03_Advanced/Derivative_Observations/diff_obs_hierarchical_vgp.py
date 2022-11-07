@@ -58,7 +58,8 @@ if False:
 
 # construct model
 
-base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
+#base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
 
 base_gp = Independent([
     GP(

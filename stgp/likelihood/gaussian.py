@@ -31,6 +31,16 @@ class FullGaussian(FullLikelihood):
         )
 
 class BlockDiagonalGaussian(BlockDiagonalLikelihood):
+    """
+    Block Diagonal Likelihood.
+
+
+    When used in CVI models we assume that the blocks are ordered in data-latent format. For example:
+    
+        - Multi-output models with no sparsity will have N blocks of size P x P
+        - Multi-output models with spatial sparsity will have Nt blocks of size (Ns P) x (Ns P) ordered in space-latent format
+
+    """
     def __init__(self, block_size:int=None, num_blocks:int=None, variance=None, train=True):
         #if (block_size is None and num_blocks is None) or variance is None:
         #    raise NotImplementedError()

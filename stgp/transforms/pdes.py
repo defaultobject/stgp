@@ -79,7 +79,10 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return Z
 
     def get_sparsity(self):
-        return self.parent.sparsity
+        if self.has_parent:
+            return self.parent.get_sparsity()
+        else:
+            return self.parent.sparsity
 
     def mean(self, X1):
         if not self.has_parent:

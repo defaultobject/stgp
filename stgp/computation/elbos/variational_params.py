@@ -6,8 +6,8 @@ By convention in the single output / diagonal settings the output will be:
     var: M x 1
 
 Let B = the block size, N_b the number of blocks then In the multi-output/block diagonal setting: 
-    mu: N_b x B x 1
-    var: N_b x B x B
+    mu: N_b x B x Q
+    var: N_b x B*Q x B*Q
 
 When required we enforce these conventations through assertions.
 
@@ -114,6 +114,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     return mu, var
 
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity, False)
+@dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     Let B = the block size, N_b the number of blocks then
@@ -144,7 +145,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     return mu, var
 
-#================== MEAN FIELD ==========================
+#================== MEAN FIELD  ENTRY POINT ==========================
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
@@ -175,11 +176,21 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     return q_m, q_S
 
-#================== DENSE FULL POSTERIOR ==========================
-@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', False)
+#================== DENSE FULL POSTERIOR ENTRY POINT ==========================
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, True)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """  conjugate Full-posterior approximate posterior setting """
-    return approximate_posterior.surrogate.posterior_blocks()
+    q_m, q_S =  approximate_posterior.surrogate.posterior_blocks()
+
+    N, block_size = q_m.shape
+    Q = approximate_posterior.surrogate.data.Y.shape[-1]
+
+    # q_m is organised in data-latent format so we can just reshape
+    q_m = np.reshape(q_m, [N, -1, Q])
+    q_S = np.reshape(q_S, [N, block_size, block_size])
+
+    return q_m, q_S
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, False)

@@ -180,7 +180,7 @@ def partial_ell(m, q_m, q_S):
 
 @dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
-    raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=True)
+    raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
@@ -189,8 +189,9 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     Q, N, B, _ = V_tilde_arr.shape
 
     # Fix shapes for ELL
-    q_mu_z = np.reshape(q_mu_z, [Q, N, 1])
-    q_var_z = np.reshape(q_var_z, [Q, N, 1])
+    #breakpoint()
+    #q_mu_z = np.reshape(q_mu_z, [Q, N*B, 1])
+    #q_var_z = np.reshape(q_var_z, [Q, N*B, 1])
 
     # Compute dELL/dm, dEll/dS
     mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(

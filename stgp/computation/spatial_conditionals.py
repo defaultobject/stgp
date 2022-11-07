@@ -3,11 +3,11 @@ from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
 from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional
-from .matrix_ops import batched_block_diagional
+from .matrix_ops import batched_block_diagional, to_block_diag
 
 # Import Types
 from ..data import Data, Input
-from ..approximate_posteriors import MeanFieldApproximatePosterior
+from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent
@@ -215,3 +215,85 @@ def block_spatial_conditional(XS_data: 'Data', X_data: 'Data', pred_mean, pred_v
     # Add extra dim to ensure rank 2 after batching
     pred_mean = pred_mean[..., None]
     raise NotImplementedError()
+
+
+@dispatch(Input, Independent, FullGaussianApproximatePosterior)
+@dispatch(Data, Independent, FullGaussianApproximatePosterior)
+def spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    approximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
+):
+    """
+    Let P be the number of outputs then:
+
+    In:
+        pred_mean: Nt x Ns*P x 1
+        pred_var: Nt x Ns*P x Ns*P
+
+    where pred_mean, pred_var are in latent-data format.    
+    """
+
+    XS_time = data_xs.X_time
+    X_time = data_x.X_time
+
+    # Get spatial locations with dummy time dimension so kernel evaluations are correct
+    XS_space = data_xs.X_space
+    X_space = data_x.X_space
+    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
+    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
+
+    Ns = XS_space.shape[0]
+
+    # Precompute all kernels
+    Ktt = _batched_st_kernel(X_time, X_time, prior, 'temporal', full=False)
+    Kss = _batched_st_kernel(XS_space, XS_space, prior, 'spatial', full=True)
+    Ksz = _batched_st_kernel(XS_space, X_space, prior, 'spatial', full=True)
+    Kzz = _batched_st_kernel(X_space, X_space, prior, 'spatial', full=True)
+
+    Kss_full = to_block_diag(Kss)
+    Ksz_full = to_block_diag(Ksz)
+    Kzz_full = to_block_diag(Kzz)
+
+    Ktt = Ktt.T
+    Ktt_full = jax.vmap(
+        lambda _ktt: to_block_diag(jax.vmap(
+            lambda _k: _k*np.ones([Ns, Ns]),
+            0
+        )(_ktt)),
+        0
+    )(Ktt)
+
+    # TODO: check this
+    mean_x = np.zeros([Kzz_full.shape[0], 1])
+    mean_xs = np.zeros([Kss_full.shape[0], 1])
+
+    # convert pred_mean to latent-var
+    pred_mean = np.reshape(pred_mean, [pred_mean.shape[0], -1])[..., None]
+
+    mu, var = jax.vmap(
+        gaussian_spatial_conditional,
+        [None, None, None, None, None, 0, 0, 0, None, None],
+    )( 
+        XS_space, 
+        X_space, 
+        Kzz_full, 
+        Ksz_full, 
+        Kss_full, 
+        Ktt_full, #batching 
+        pred_mean, #batching
+        pred_var, #batching
+        mean_x, 
+        mean_xs
+    )
+
+    var = var[:, None, ...]
+
+    return mu, var

@@ -324,7 +324,7 @@ class SequentialData(Data):
 
 
 class SpatioTemporalData(SequentialData):
-    def __init__(self, X_time = None, X_space = None, X = None,  Y = None, sort=True):
+    def __init__(self, X_time = None, X_space = None, X = None,  Y = None, sort=True, train_y=False):
         """
         Base class for Spatio-temporal Data
 
@@ -372,7 +372,6 @@ class SpatioTemporalData(SequentialData):
             X_space = X_sorted[0, :, 1:]
             Y = Y_sorted
 
-
         if sort is True:
             chex.assert_rank(X_time, 1)
             chex.assert_rank(X_space, 2)
@@ -381,7 +380,7 @@ class SpatioTemporalData(SequentialData):
             self._X = X
 
         if Y is not None:
-            self._Y = Parameter(np.array(Y), train=False, name='Y')
+            self._Y = Parameter(np.array(Y), train=train_y, name='Y')
             self.P = Y.shape[2]
 
         # Useful statistcs of the data
@@ -391,6 +390,11 @@ class SpatioTemporalData(SequentialData):
         self.N = self.Ns*self.Nt
 
         self.check_shapes()
+
+        # no minibatching
+        self.minibatch_size = self.N
+        self.minibatch = False
+        self.idx = None
 
     def check_shapes(self):
         pass

@@ -76,6 +76,7 @@ def elbo(
     # TODO: this needs to be generalised to map across all X
 
     surrogate_ell_fn = lambda q, q_p, inf: compute_expected_log_liklihood(q.surrogate.data, q.surrogate.likelihood.likelihood_arr[0], q_p, q, inf)
+    #surrogate_ell_fn = lambda q, q_p, inf: compute_expected_log_liklihood(q.surrogate.data, q.surrogate.likelihood, q_p, q, inf)
 
     q_list = approx_posterior.approx_posteriors
 

@@ -113,7 +113,7 @@ if True:
     lc_arr_1, _ = ng_trainer.train(0.01, 100)
     lc_arr = np.array(lc_arr_1).tolist()
 
-    if False:
+    if True:
         for i in trange(max_iters):
             trainer.train(0.01, 1)
             lc_arr_i, _  = ng_trainer.train(0.1, 1)

@@ -173,6 +173,10 @@ class MarkovKernel(Kernel):
         raise NotImplementedError()
 
 class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
+    def state_space_dim(self):
+        # only need return the time dim
+        return self.k1.state_space_dim()
+
     def __init__(self, K_temporal, K_spatial):
         self.k1 = K_temporal
         self.k2 = K_spatial

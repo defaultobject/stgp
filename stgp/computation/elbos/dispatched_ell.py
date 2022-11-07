@@ -41,9 +41,26 @@ def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 @dispatch(BlockDiagonalGaussian, 'Blocked')
 @dispatch(BlockDiagonalGaussian, 'Diagonal')
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
-    N = Y.shape[0]
+    """
+    Blocked Gaussian Likelihood
+
+    This can occur in CVI when using:
+        multiple outputs
+        spatial-temporal data
+        aggregated data
+    """
+    # TODO: need to collapse/join the P and B axis
+
     # TODO: adding missing data masking
     block_size = likelihood.block_size
+    num_blocks = q_f_mu.shape[0]
+
+    # ensure Y is of the correct shape
+    X_blocks = np.reshape(X, [num_blocks, -1, X.shape[-1]])
+    Y = np.reshape(Y, [num_blocks, block_size, 1])
+    q_f_mu = np.reshape(q_f_mu, [num_blocks, block_size, 1])
+
+    N = Y.shape[0]
 
     # ensure Y is 3d
     if len(Y.shape) == 2:
@@ -64,8 +81,9 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     chex.assert_shape(q_f_var, [N, block_size, block_size])
 
     # block X
-    X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
-    X_blocks = np.transpose(X_blocks, [1, 0, 2])
+    if False:
+        X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
+        X_blocks = np.transpose(X_blocks, [1, 0, 2])
 
     lik_var = likelihood.variance
     chex.assert_shape(lik_var, q_f_var.shape)
@@ -337,6 +355,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     raise RuntimeError()
 
+@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, 'Blocked')
 @dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
@@ -394,8 +413,11 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     block_type_p = get_block_type(lik_block_size, q_block_size)
 
+    X = data.X
+    Y = data.Y
+
     return evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior, block_type_p)(
-        data.X, data.Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference, block_type_p
+        X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference, block_type_p
     )
 
 @dispatch(Data, ProductLikelihood, MultiOutput, MeanFieldApproximatePosterior)

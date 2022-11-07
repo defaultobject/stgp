@@ -66,6 +66,7 @@ class GaussianProductLikelihood(ProductLikelihood):
 
 class BlockGaussianProductLikelihood(ProductLikelihood):
 
+
     @property
     def variance(self):
         output_dim = len(self.likelihood_arr)

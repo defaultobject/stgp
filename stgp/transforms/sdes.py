@@ -64,7 +64,16 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         return self._state_space_dim
 
     def H(self, x, X_s, t):
-        return np.eye(self._state_space_dim)
+        H_t = np.eye(self._state_space_dim)
+
+        if X_s is None:
+            return H_t
+
+        I = np.eye(X_s.shape[0])
+        H_st = np.kron(I, H_t)
+
+        return H_st
+
 
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):

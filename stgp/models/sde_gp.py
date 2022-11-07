@@ -16,7 +16,7 @@ from ..defaults import get_default_likelihood
 from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
 from ..data.sequential import add_temporal_points
 from ..kernels import Matern32
-from ..likelihood import get_product_likelihood
+from ..likelihood import get_product_likelihood, ProductLikelihood
 from ..transforms import Independent
 from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
 
@@ -205,14 +205,13 @@ class BASE_SDE_GP(Posterior):
         return mu, var
 
     def posterior(self, diagonal=True, full_state=False):
-
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
-            self.get_likelihood_for_prediction(self.data),
+            #self.get_likelihood_for_prediction(self.data),
+            self.likelihood.variance,
             full_state = full_state
         )
-
 
         # only fix shapes is not returning the full-state
         if full_state is False:
@@ -366,14 +365,20 @@ class ST_SDE_GP(BASE_SDE_GP):
         # Data is temporal data. We do not use the Kalman filter and smoother to predict in space,
         #  only in time.  
 
-        out_dim = self.likelihood.block_size
+        if isinstance(self.likelihood, ProductLikelihood) or issubclass(type(self.likelihood), ProductLikelihood):
+            assert len(self.likelihood.likelihood_arr) == 1
+            out_dim = self.likelihood.likelihood_arr[0].block_size
+
+        else:
+            out_dim = self.likelihood.block_size
+
 
         points_added = data.Nt-R.shape[0] 
         # Full R. This wont be used at locations without data so we just ignore
         R_tmp = np.tile(np.eye(out_dim), [points_added, 1, 1])
         R = np.vstack([R, R_tmp])
         R = R[data.unique_idx][data.sort_idx]
-        R = np.reshape(R, [data.Nt, self.likelihood.block_size, self.likelihood.block_size])
+        R = np.reshape(R, [data.Nt, out_dim, out_dim])
 
         return R
 

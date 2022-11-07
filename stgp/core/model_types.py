@@ -13,6 +13,9 @@ class NonLinearModel(Model):
         self._parent = prior
 
 def _is_prior_linear(prior):
+    if isinstance(prior, GPPrior):
+        return True
+
     if prior.is_base:
         return True 
 
