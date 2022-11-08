@@ -9,7 +9,7 @@ from .matrix_ops import to_block_diag
 #@partial(jit, static_argnums=(0, 1))
 def data_order_to_output_order(num_outputs: int, N: int):
     """
-    A permutation matrix to convert from latent-data or data-latent order
+    A permutation matrix to convert from latent-data to data-latent order
     """
     total_N = N*num_outputs
 

@@ -81,7 +81,7 @@ q = FullConjugateGaussian(
     block_size=2,
     num_blocks = X.shape[0],
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y[:, None, :], sort=False, train_y=True), # we need gradients Y so set to be trainable
+        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y[:, :, None], sort=False, train_y=True), # we need gradients Y so set to be trainable
         likelihood=likelihood, 
         prior=LTI_SDE_Full_State_Obs(Independent([base_gp])),
         inference='Sequential',

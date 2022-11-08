@@ -270,9 +270,15 @@ class SequentialData(Data):
         Converts (X, Y) into a data format that supports running Kalman filtering and smoothing algorithms. This is done by:
             1) First the data must lie on a (spatio-temporal) grid. This is done by padding the data with necessary missing/fake/nan observations.
             2) Second the data is sorted to ensure time-space format.
+            3) Thirdly the data is reordered into time-latent-space format
         """
-        num_original_points = X.shape[0]
 
+        if Y is not None:
+            chex.assert_rank([X, Y], [2, 2])
+        else:
+            chex.assert_rank([X], [2])
+
+        num_original_points = X.shape[0]
 
         # Adding missing points to make the full spatio-temporal grid
         points_added, X_padded, Y_padded = pad_with_nan_to_make_grid(
@@ -291,6 +297,11 @@ class SequentialData(Data):
         self.unique_idx = unique_idx
         self.reverse_unique_idx = reverse_unique_idx
         self.sort_idx = sort_idx
+
+
+        # convert to time-latent-space format
+        if Y is not None:
+            Y_sorted = np.transpose(Y_sorted, [0, 2, 1])
 
         return X_sorted, Y_sorted
 
@@ -326,8 +337,8 @@ class SequentialData(Data):
 class SpatioTemporalData(SequentialData):
     def __init__(self, X_time = None, X_space = None, X = None,  Y = None, sort=True, train_y=False):
         """
-        Base class for Spatio-temporal Data
-
+        Base class for Spatio-temporal Data. due to how the kalman filter handles the state (time - latent - space - state) 
+            we store data in time - latent - data format.
 
         There are two cases supported:
 
@@ -336,14 +347,13 @@ class SpatioTemporalData(SequentialData):
             X_time: Nt  
             X_space: Ns x D
             X: None
-            Y: Nt x Ns x P
+            Y: Nt x P x Ns 
 
         3) X is already sorted and X is passed
-
             X_time: None  
             X_space: None
             X: Nt * Ns x D
-            Y: Nt x Ns x P
+            Y: Nt x P x Ns
 
         2) X is not sorted 
 
@@ -381,7 +391,7 @@ class SpatioTemporalData(SequentialData):
 
         if Y is not None:
             self._Y = Parameter(np.array(Y), train=train_y, name='Y')
-            self.P = Y.shape[2]
+            self.P = Y.shape[1]
 
         # Useful statistcs of the data
         self.Nt = self._X.Nt
@@ -426,12 +436,13 @@ class SpatioTemporalData(SequentialData):
 
     @property
     def Y_flat(self):
+        """ Return Y in data-latent format """
         # X is returned in time-space ordering  so we return Y in the same order
         # Y is already sorted by time, and then by space.
         # Therefore all we have to is reshape
 
         Y = np.reshape(
-            self.Y_st,
+            np.transpose(self.Y_st, [0, 2, 1]),
             [-1, self.P]
         )
 
@@ -471,7 +482,7 @@ class TemporalData(SequentialData):
         1) X is already sorted 
 
             X: Nt x 1 
-            Y: Nt x Ns x 1 = Nt x 1 x 1
+            Y: Nt x 1 x Ns  = Nt x 1 x 1
 
         2) X is not sorted 
 
@@ -549,7 +560,7 @@ class MultiOutputTemporalData(SequentialData):
         """
         Args:
             X: rank 2 input X if shape N x D
-            Y: either rank 2 of shape N x P or rank 3 of shape  Nt X Ns x P = Nt x 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
+            Y: either rank 2 of shape N x P or rank 3 of shape  Nt X P x Ns  = Nt x 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
         """
 
         super(MultiOutputTemporalData, self).__init__()
@@ -582,7 +593,7 @@ class MultiOutputTemporalData(SequentialData):
         self.Ns = 1
         self.D = 1
         self.N = self.Ns*self.Nt
-        self.output_dim = Y_sorted.shape[-1]
+        self.output_dim = Y_sorted.shape[1]
         self.P = self.output_dim
 
 
@@ -600,8 +611,8 @@ class MultiOutputTemporalData(SequentialData):
 
     @property
     def Y(self):
-        # remove the Nt dimension
-        return self.Y_st[:, 0, :]
+        # remove the Ns dimension as there are not spatial points
+        return self.Y_st[..., 0]
 
     @property
     def Y_flat(self):

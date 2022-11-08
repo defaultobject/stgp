@@ -29,11 +29,15 @@ from tqdm import trange
 import matplotlib.pyplot as plt
 
 # Generate data
-Q = 3
-P = 3
-N = 10
+Q = 2
+P = 2
+N = 20
+Nt = 100
+Ns = 100
 
-XS, X, Y = multi_output_spatial_data(P, N, N, 100, 100, seed=0)
+XS, X, Y = multi_output_spatial_data(P, N, N, Nt, Ns, seed=0)
+
+Y = np.hstack([Y[:, 0][:, None] for p in range(P)])
 
 if False:
     fig, axes = plt.subplots(1, P)
@@ -43,12 +47,12 @@ if False:
 
 print(f'XS: {XS.shape}, X: {X.shape}, Y: {Y.shape}')
 
-
 st_data = SpatioTemporalData(X=X, Y=Y)
+st_data_xs = SpatioTemporalData(X=XS, Y=None)
 
 # Construct Model
 #Z = [NoSparsity(Z_ref = st_data._X) for q in range(Q)]
-Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:5]) for q in range(Q)]
+Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:10]) for q in range(Q)]
 Z_all = StackedSparsity(Z)
 
 # Construct Latent GPs
@@ -63,9 +67,9 @@ latent_gps = [
     stgp.models.GP(sparsity=Z[0], kernel=latent_kernels[q]) for q in range(Q)
 ] 
 np.random.seed(0)
-W =  np.random.randn(P, Q)
 
-prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P, input_dim=2, W = W)
+prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P, input_dim=Q, W = np.eye(P))
+prior._W.fix()
 
 # Construct Full Gaussian Approximate Posterior
 
@@ -78,76 +82,59 @@ q = FullConjugateGaussian(
     block_size=Q*Z[0].raw_Z.Ns,
     num_blocks = st_data.Nt,
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-        data = SpatioTemporalData(X=X.raw_Z, Y=np.reshape(Y, [Mt, Ms, Q]), sort=False), # we need gradients Y so set to be trainable
+        data = SpatioTemporalData(X=X.raw_Z, Y=np.reshape(Y, [Mt, Q, Ms]), sort=False), # we need gradients Y so set to be trainable, in time-latent-space format
         likelihood=likelihood, 
         prior=LTI_SDE(Independent(latent_gps)),
         inference='Sequential',
         full_state_observed = False
     )
 )
+
 m = stgp.models.GP(
     data=st_data, 
-    likelihood=[Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)],
+    likelihood=[Gaussian(0.1) for p in range(P)],
     inference='Variational',
     prior=prior,
-    approximate_posterior = q  
+    approximate_posterior = q,
+    whiten=False
 )
 
-print(m.get_objective())
+m.print()
 
-breakpoint()
+if True:
+    ng_trainer = NatGradTrainer(m, return_objective=False)
+    m.approximate_posterior.fix()
+    ng_trainer.train(1.0, 1)
 
-print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
+if False:
+    max_iters = 200
 
+    ng_trainer = NatGradTrainer(m)
+    m.approximate_posterior.fix()
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+    ll_arr, _ = ng_trainer.train(1.0, 1)
+    ll_arr = [float(ll_arr)]
+
+    print(m.get_objective())
+
+    for i in trange(max_iters):
+        trainer.train(0.01, 1)
+        ll_i, _ = ng_trainer.train(1.0, 1)
+        ll_arr.append(float(ll_i))
+
+    print(m.get_objective())
+
+    plt.plot(ll_arr)
+    plt.show()
+
+m.print()
 
 pred_mu, pred_var = m.predict_f(XS)
 
 if True:
-    max_iters = 200
-
-    #ng_trainer = NatGradTrainer(m)
-    #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    m.approximate_posterior.fix()
-
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-
-    ng_trainer.train(1.0, 1)
-    if True:
-        print(m.get_objective())
-
-        for i in trange(max_iters):
-            trainer.train(0.01, 1)
-            ng_trainer.train(1.0, 1)
-
-        print(m.get_objective())
-
-GradDescentTrainer(m, objax.optimizer.Adam).train(0.01, 100)
-
-print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
-
-pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
-
-fig, axes = plt.subplots(P, 1, sharex=True)
-
-for p in range(P):
-
-    axes[p].fill_between(
-        np.squeeze(XS), 
-        np.squeeze(pred_mu[p] - 1.96*np.sqrt(pred_var[p])), 
-        np.squeeze(pred_mu[p] + 1.96*np.sqrt(pred_var[p])), 
-        facecolor=colors.LINE_COL, 
-        alpha=0.3
-    )
-    axes[p].plot(XS, pred_mu[p], color=colors.LINE_COL, label='GP Fit')
-    axes[p].scatter(X_test, Y_test[:, p], color='black', label='Testing Data')
-    axes[p].scatter(X, Y[:, p], color='grey', label='Training Data')
-
-    axes[p].legend()
-plt.show()
-
-
-
-
-
-
+    fig, axes = plt.subplots(2, P)
+    for i in range(P):
+        axes[0][i].imshow(pred_mu[:, i].reshape(Nt, Ns))
+        axes[1][i].imshow(Y[:, i].reshape(N, N))
+    plt.show()

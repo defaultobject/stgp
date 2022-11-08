@@ -51,7 +51,7 @@ trainer = ScipyTrainer(m, 'L-BFGS-B')
 trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 # Predict
-pred_mu, pred_var = m.predict_y(XS)
+pred_mu, pred_var = m.predict_f(XS)
 
 # Plot
 fig, axes = plt.subplots(1, 2)

@@ -69,7 +69,7 @@ m = stgp.models.GP(
     data = stgp.data.MultiOutputTemporalData(X, Y, sort=True),
     prior = latent_gp,
     likelihood = lik,
-    full_state = True,
+    full_state_observed = True,
     inference='Sequential'
 )
 m.print()

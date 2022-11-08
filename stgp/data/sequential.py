@@ -138,7 +138,7 @@ def order_sequentially_np(X, Y = None):
 
 def add_temporal_points(XS: 'Data', X: 'Data'):
     """
-    Only add new temporal points to X from XS.
+    Only add new temporal points to X from XS. Whilst keeping the spatial points in X.
     """
 
     Nt = XS.Nt

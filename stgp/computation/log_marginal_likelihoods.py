@@ -5,7 +5,7 @@ from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLik
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from .gaussian import log_gaussian, log_gaussian_with_nans
-from ..transforms import Independent, LinearTransform, Transform
+from ..transforms import Independent, LinearTransform, Transform, Joint
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from .matrix_ops import vec_columns, stack_rows
 from ..models import BatchGP
@@ -105,6 +105,39 @@ def log_marginal_likelihood(
         k_xx_arr + ordered_likelihood_var
     )
 
+@dispatch(ProductLikelihood, Joint)
+def log_marginal_likelihood(
+        data, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
+):
+    """ Independent Latent functions. Each marginal liklihood is computed separately and summed """
+
+    X = data.X
+    Y = data.Y
+
+    N, P = Y.shape
+
+    num_outputs = prior.output_dim
+
+    # precompute prior covariance in latent-data format
+    Kxx = prior.covar(X, X)
+    mean = prior.mean(X) 
+
+    # put Y in latent-data format
+    Y_vec = Y.reshape([-1], order='F')[..., None]
+
+    # construct Likelihood
+
+    # get likelihood in data-latent format
+    lik_var = likelihood.variance
+    lik_var = np.tile(lik_var, [N,  1])
+
+    # convert to latent-data format
+    lik_var_vec = lik_var.reshape([-1], order='F')
+    lik_var_diag = np.diag(lik_var_vec)
+
+    return log_gaussian_with_nans(Y_vec, mean, Kxx + lik_var_diag)
+
+
 @dispatch(ProductLikelihood, Independent)
 def log_marginal_likelihood(
         data, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
@@ -161,25 +194,6 @@ def log_marginal_likelihood( data, m, likelihood, prior):
     return  evoke('log_marginal_likelihood', likelihood, prior)(
         data, m, likelihood, prior 
     )
-
-    breakpoint()
-    X, Y = data.X, data.Y
-    N, P = Y.shape
-
-    #in latent-data format
-    Kxx = prior.covar(X, X)
-    mean = prior.mean(X)
-
-    # put Y in latent-data format
-    Y_vec = Y.reshape([-1], order='F')[..., None]
-
-    # construct Likelihood
-    lik_var = likelihood.variance
-    lik_var = np.tile(lik_var, [N,  1])
-    lik_var_vec = lik_var.reshape([-1], order='F')
-    lik_var_diag = np.diag(lik_var_vec)
-
-    return log_gaussian_with_nans(Y_vec, mean, Kxx + lik_var_diag)
 
 
 # ====================================== NonLinear Models ======================================

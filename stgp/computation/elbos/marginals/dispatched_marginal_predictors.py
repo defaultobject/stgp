@@ -39,7 +39,6 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    breakpoint()
     N = XS.shape[0]
 
     Q = prior.base_prior.output_dim
@@ -52,48 +51,17 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
     return mu, var
 
 @dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
-def marginal_prediction_blocks(data_xs, data_x, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-
-    N = data_xs.X.shape[0]
-
-    # TODO: assuming that data_xs and data_x are of the same type
-    #parent is wrapped by a permutator, we don't need this so we pass the parent
-    mu, var = evoke('spatial_conditional', data_x, prior.parent, approximate_posterior)(
-        data_xs, 
-        data_x, 
-        m, 
-        S, 
-        approximate_posterior,
-        likelihood,
-        prior.parent,
-        sparsity,
-        out_block_dim,
-        whiten
-    )
-
+def marginal_prediction_blocks(XS, data_x, m, S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    N = XS.shape[0]
 
     Q = prior.base_prior.output_dim
-    block_size = var.shape[-1]
 
-    if out_block_dim == Q: 
-        # convert mu-var to data-latent format and extract block diagonal
-        Q = prior.output_dim
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
 
-        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(mu)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(var)
+    mu = np.reshape(mu, [N, Q, 1])
+    var = np.reshape(var, [N, 1, Q, Q])
 
-        mu_p = np.reshape(mu_p, [-1, Q, 1])
-        var_p = batched_block_diagional(var_p, Q)
-        var_p = np.reshape(var_p, [N, 1, Q, Q])
-
-        return mu_p, var_p
-
-    elif out_block_dim == block_size:
-        # why are we not permuting here?
-        return mu, var
-    else:
-        breakpoint()
-        raise NotImplementedError()
+    return mu, var
 
 # ========================= Gaussian Approximate Posterior Marginal Blocks =========================
 
@@ -144,7 +112,6 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
 
     return mu, var
-
 
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
@@ -344,8 +311,6 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 
     if num_samples is None:
         num_samples = inference.prediction_samples
-
-
 
     model_type = get_model_type(prior)
 

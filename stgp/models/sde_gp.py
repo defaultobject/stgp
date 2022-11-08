@@ -11,6 +11,8 @@ from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
 from ..computation.filters import kalman_filter, rts_smoother
+from ..computation.matrix_ops import batched_block_diagional
+from ..computation.permutations import permute_mat, permute_vec
 
 from ..defaults import get_default_likelihood
 from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
@@ -19,6 +21,8 @@ from ..kernels import Matern32
 from ..likelihood import get_product_likelihood, ProductLikelihood
 from ..transforms import Independent
 from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
+
+
 
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 from ..sparsity import NoSparsity
@@ -64,7 +68,7 @@ class BASE_SDE_GP(Posterior):
 
     @property
     def output_dim(self): 
-        P = self.data.Y.shape[-1]
+        P = self.data.P
 
         if self.full_state_observed:
 
@@ -201,7 +205,11 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             self.likelihood.variance
         )
-        mu = np.reshape(mu, [mu.shape[0], mu.shape[1]])
+
+        var = var[:, None, ...]
+
+        # in time-latent-space format
+        chex.assert_rank([mu, var], [3, 4])
         return mu, var
 
     def posterior(self, diagonal=True, full_state=False):
@@ -328,14 +336,13 @@ class T_SDE_GP(BASE_SDE_GP):
             sort=True 
         )
 
-
         mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
             self.get_likelihood_for_prediction(test_data)
         )
 
-        # mu, var are in time - space format
+        # mu, var are in time - latent- space format but space is 1
         # Therefore we just need to stack them
         mu = np.reshape(mu, [-1, self.output_dim])
 
@@ -394,24 +401,31 @@ class ST_SDE_GP(BASE_SDE_GP):
         In:
             XS: Ns x D
 
+
+        When diagonal is True we return
+            mu;
+            var:
+
+        When diagonal is False we return the block diagonal across latents
         """
-
-        if diagonal is False:
-            raise NotImplementedError()
-
         chex.assert_equal(XS.shape[1], self.data.D)
 
+        # Convert XS to a spatio-temporal object
         NS = XS.shape[0]
-        YS_nans = onp.NaN * onp.ones([NS, self.output_dim])
+        # in data-latent format
+        YS_nans = onp.NaN * onp.ones([NS, self.output_dim]) # dummy Y values
 
+        # Convert XS to time-space format
         XS_data = get_sequential_data_obj(
             XS, 
             YS_nans,
             sort=True
         )
-
-        # Get all ordered temporal points
-        # This will be uses to unsort the results
+        # The KF is used to predict at new time points. Collect the order temporal points across
+        #    trainig and testing data.
+        # This will also be used to unsort the results
+        # NOTE: self.data must go before XS_data otherwise data points can be overwritten by the sorting
+        #    as only unique points are kept
         all_t = np.vstack([self.data.X_time[:, None], XS_data.X_time[:, None]])
         all_temporal_data = get_sequential_data_obj(
             all_t,
@@ -419,46 +433,65 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True
         )
 
+        # Collect Training Data
         X = onp.array(self.data.X)
+
+        # self.data.Y is stored in time-space-latent format, reshape into data-latent
         Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
 
-        XS_new = add_temporal_points(XS_data, self.data)
-        YS_new_nans = onp.NaN * onp.ones([XS_new.shape[0], self.output_dim])
+        # create new data with the same spatial points as self.data but with all time points across XS and X
+        XS_temporal_new = add_temporal_points(XS_data, self.data)
+        YS_temporal_new_nans = onp.NaN * onp.ones([XS_temporal_new.shape[0], self.output_dim]) # data-latent format
 
         # Stack X first so that training data does not get removed when sorting data
-        X_stacked = onp.vstack([X, XS_new])
-        Y_stacked = onp.vstack([Y, YS_new_nans])
+        X_stacked = onp.vstack([X, XS_temporal_new])
+        Y_stacked = onp.vstack([Y, YS_temporal_new_nans])
 
-        test_data = get_sequential_data_obj(
+        # ST data object across all (unique) training and testing temporal points but only 
+        #   at the training spatial locations
+        temporal_test_data = get_sequential_data_obj(
             X_stacked,
             Y_stacked,
             sort=True 
         )
 
-        mu, var = self.filter_and_smooth(
-            test_data,
+        # Compute posterior at temporal_test_data
+        mu_t, var_t = self.filter_and_smooth(
+            temporal_test_data,
             self.prior,
             self.get_likelihood_for_prediction(all_temporal_data)
         )
 
-        mu, var_diag = evoke('spatial_conditional', XS_data, test_data, self, self.prior)(
-            XS_data, test_data, mu, var, self, True
+        # construct testing data at new spatial locations
+        XS_spatial_new = add_temporal_points(all_temporal_data, XS_data)
+        YS_spatial_new_nans = onp.NaN * onp.ones([XS_spatial_new.shape[0], self.output_dim])
+
+        xs_spatial_data = get_sequential_data_obj(
+            XS_spatial_new,
+            YS_spatial_new_nans,
+            sort=True 
         )
 
-        # mu/var is in latent-temporal-spatial format
-        # Convert to temporal-spatial-latent format
-
-        mu = np.transpose(mu, [1, 2, 0, 3])
-        var_diag = np.transpose(var_diag, [1, 2, 0, 3])
-
+        # Compute spatial conditions to get posterior at new spatial points
+        mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
+            xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
+        )
+        
+        # mu/var is in  time - (space x latents) format
         # Unsort data and remove the training data
-        mu = all_temporal_data.unsort(mu)[self.data.Nt:]
-        var_diag = all_temporal_data.unsort(var_diag)[self.data.Nt:]
+        mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]
+        var_time_unsorted = all_temporal_data.unsort(var)[self.data.Nt:]
 
+        # convert to time-space-latent format
+        mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)
 
-        # mu, var are in time - space format
-        # Therefore we just need to stack them
-        mu = np.reshape(mu, [-1, self.output_dim])
-        var_diag = np.reshape(var_diag, [-1, self.output_dim])
+        mu_p = np.reshape(mu_p, [-1, self.output_dim, 1])
+        var_p = batched_block_diagional(var_p, self.output_dim)
+        var_p = np.reshape(var_p, [-1, 1, self.output_dim, self.output_dim])
+        
+        # unsort to original permutation in XS
+        mu_p_unsorted = XS_data.unsort(mu_p)
+        var_p_unsorted = XS_data.unsort(var_p)
 
-        return mu, var_diag
+        return mu_p_unsorted, var_p_unsorted

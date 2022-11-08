@@ -191,6 +191,11 @@ def cholesky(A):
     # return lower triangular cholesky factor
     return np.linalg.cholesky(A)
 
+@jit
+def batched_cholesky(A):
+    chex.assert_rank(A, 3)
+    return jax.vmap(cholesky, 0)(A)
+
 @partial(jit, static_argnums=(2))
 def _triangular_solve(chol, X, lower):
     return jax.scipy.linalg.solve_triangular(chol, X, lower=lower) 

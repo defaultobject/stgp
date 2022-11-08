@@ -177,18 +177,15 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     return q_m, q_S
 
 #================== DENSE FULL POSTERIOR ENTRY POINT ==========================
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', True)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, True)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """  conjugate Full-posterior approximate posterior setting """
     q_m, q_S =  approximate_posterior.surrogate.posterior_blocks()
 
-    N, block_size = q_m.shape
-    Q = approximate_posterior.surrogate.data.Y.shape[-1]
-
-    # q_m is organised in data-latent format so we can just reshape
-    q_m = np.reshape(q_m, [N, -1, Q])
-    q_S = np.reshape(q_S, [N, block_size, block_size])
+    chex.assert_rank([q_m, q_S], [3, 4])
 
     return q_m, q_S
 

@@ -1,3 +1,15 @@
+"""
+Kalman filtering
+
+With one latent function the full state has the following format:
+    time-space-state
+
+With multiple latent functions the full state is:
+    time-latent-space-state
+
+because this corresponds to simply stacking the latent GPs
+
+"""
 import jax
 from jax import jacfwd, jit
 import jax.numpy as np
@@ -170,13 +182,12 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
     # Fix Y shapeo
     Nt = data.Nt
     Ns = data.Ns
+    P = data.P
 
-    P = Y.shape[-1]
-
-    # Y has shape Nt x Ns x P
-    # At each timestep we need latent-data order because of how the state space is representated
-    # To convert to latent-data order we just need to stack each spatials observations
-    Y = np.reshape(np.transpose(Y, [0, 2, 1]), [-1, Ns*P])
+    # Y has shape Nt x P x Ns
+    chex.assert_shape(Y, [Nt, P, Ns])
+    # flatten but still in time - latent - space format
+    Y = np.reshape(Y, [data.Nt, -1])
 
     # Ensure rank 2 at each time step
     Y = Y[..., None]

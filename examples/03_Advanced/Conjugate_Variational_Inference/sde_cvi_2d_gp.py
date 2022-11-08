@@ -54,7 +54,7 @@ approximate_posterior = MeanFieldConjugateGaussian([
         block_size = st_data.Ns,
         num_blocks = st_data.Nt,
         surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-            data=SpatioTemporalData(X=X, Y=Y, sort=False), # Data should already be in the correct format
+            data=SpatioTemporalData(X=X, Y=np.reshape(Y, [st_data.Nt, 1, st_data.Ns]), sort=False), # Data should already be in the correct format
             prior=LTI_SDE(Independent([latent_gp])), 
             likelihood=[likelihood[q]],
             inference='Sequential'
@@ -71,8 +71,8 @@ m = GP(
     approximate_posterior = approximate_posterior
 )
 
-print(m.get_objective())
-print(m.predict_f(X))
+#print(m.get_objective())
+#print(m.predict_f(X))
 
 
 # Train

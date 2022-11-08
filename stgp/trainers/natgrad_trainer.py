@@ -118,6 +118,7 @@ class NatGradTrainer(Trainer):
         total_epochs = None,
         enforce_psd_type=None,
         prediction_samples=None,
+        return_objective = True
     ):
         """
         Args
@@ -134,15 +135,14 @@ class NatGradTrainer(Trainer):
             static_argnums=[1, 2]
         )
 
-        self.objective_fn = objax.Jit(
-            self.m.get_objective, 
-            vc
-        )
-
-        if False:
-            print(self.m.get_objective())
-            print(self.objective_fn())
-            breakpoint()
+        self.return_objective = return_objective
+        if self.return_objective:
+            self.objective_fn = objax.Jit(
+                self.m.get_objective, 
+                vc
+            )
+        else:
+            self.objective_fn = None
 
 
         if (schedule is None) or (schedule == 'none'):
@@ -198,8 +198,12 @@ class NatGradTrainer(Trainer):
         for i in range(epochs):
             gradient_step(i, i+epoch_ofset)
 
-            val = self.objective_fn()
-            epoch_arr.append(jnp.array(val).flatten())
+            if self.return_objective:
+                val = self.objective_fn()
+                epoch_arr.append(jnp.array(val).flatten())
+            else:
+                epoch_arr.append(np.NaN)
+
 
             if callback is not None:
                 callback(i, None, None)

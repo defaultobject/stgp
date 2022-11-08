@@ -64,13 +64,19 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         return self._state_space_dim
 
     def H(self, x, X_s, t):
+
+        # Observe both f and df
         H_t = np.eye(self._state_space_dim)
 
         if X_s is None:
             return H_t
 
+        breakpoint()
+        # need to permute from latent-space-state to latent-state-space
+
         I = np.eye(X_s.shape[0])
         H_st = np.kron(I, H_t)
+
 
         return H_st
 

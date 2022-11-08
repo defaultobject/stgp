@@ -14,7 +14,7 @@ from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 
 # Types imports
-from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior
+from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad
@@ -43,6 +43,10 @@ def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_ps
 
 @partial(jit, static_argnums=(7))
 def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
+    """
+    In the conjugate setting the CVI update is:
+        λ = λ + β (d/dμ) E[log p(Y | F)] 
+    """
      # Ensure matrix input
     chex.assert_rank(
         [Y_tilde, V_tilde, m, s, m_grad, s_grad],
@@ -93,31 +97,6 @@ def reparametise_vec_grad(m, m_grad, prior):
     m_grad = u(m_grad)[0]
 
     return m_grad
-
-def _get_surrogate_params_vc(model):
-
-    q_list = model.approximate_posterior.approx_posteriors
-
-    #for q in q_list:
-    #    y_tilde = q.surrogate.data._Y
-    #    v_tilde = q.surrogate.likelihood.likelihood_arr[0].variance_param
-
-    all_var_names = model.vars().keys()
-
-    Y_name = None
-    V_name = None
-    for n in all_var_names:
-        if 'surrogate' in n:
-            if '_Y' in n:
-                Y_name  = n
-            elif '(BlockDiagonalGaussian).variance_param' in n:
-                V_name = n
-
-    if Y_name == None or V_name == None:
-        raise RuntimeError()
-
-    return vc_keep_vars(model.vars(), [Y_name, V_name])
-
 
 
 def _get_mf_params(model, diagonal=True):
@@ -178,7 +157,7 @@ def partial_ell(m, q_m, q_S):
     )
 
 
-@dispatch('VGP', ConjugateApproximatePosterior, NoSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
 
@@ -197,6 +176,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
+
 
     # Fix shapes for Natgrads
     Y_tilde_arr = np.reshape(Y_tilde_arr, [Q, N, B, 1])
@@ -221,7 +201,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-@dispatch('VGP', ConjugateApproximatePosterior, SpatialSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
 
@@ -265,7 +245,7 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 
-@dispatch('VGP', ConjugateApproximatePosterior, FreeSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, FreeSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     """
     Block CVI Natural Gradients
@@ -419,27 +399,42 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', FullConjugateGaussian, NoSparsity)
+@dispatch('VGP', FullConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
+    """
+    In the conjugate setting the CVI update is:
+        λ = λ + β (d/dμ) E[log p(Y | F)] 
+
+    There are three different situtations that we consider:
+        - No Sparsity:  λ is block diagonal with blocks of size Q
+        - Spatial Sparsity:  λ is block diagonal with blocks of size Ns * Q
+        - Free Sparsity:  λ is a full matrix of size (N * Q) x (N * Q)
+    """
+
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     # Collect CVI parameters
+    # time-latent-space format
     raw_Y_arr, Y_tilde_arr, V_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y, q.surrogate.likelihood.variance
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
     Y_shape = raw_Y_arr.shape
 
-    # Predict in data-latent order
+    # Predict in time-latent-space order
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
+    chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # Ensure correct size
+    # still in time-latent-space format as reshape does not affect this
     N, Q = q_mu_z.shape[0], q_mu_z.shape[1]
-    q_mu_z = np.reshape(q_mu_z, [N, Q])
-    q_var_z = np.reshape(q_var_z, [N, Q, Q])
+    #q_mu_z = np.reshape(q_mu_z, [N, Q])
+    #q_var_z = np.reshape(q_var_z, [N, Q, Q])
 
     def partial_ell(m, q_m, q_S):
+        # this is expecting q_m, q_S to be in time-latent-space format
         return compute_expected_log_liklihood_with_variational_params(
             m.data,
             q_m,
@@ -450,23 +445,26 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
             m.inference
         )
 
-    # TODO: symmetrize?
+    # in time-latent-space 
     mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
+    # grads should be same as q_mu_z, q_var_z
+    chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
 
     # Fix shapes
+    # Y_tilde_arr is in data-latent format, this reshape will preserve that
     Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
 
-
+    # update for each N
     new_Y_tilde, new_V_tilde = jax.vmap(
         cvi_block_update,
         [0, 0, 0, 0, 0, 0, None, None]
     )(
-        Y_tilde_arr[..., None], V_tilde_arr, q_mu_z[..., None], q_var_z, mu_grads[..., None], var_grads, beta, enforce_psd_type
+            Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z[:, 0, ...], mu_grads, var_grads[:, 0, ...], beta, enforce_psd_type
     )
 
-    #new_Y_tilde = np.transpose(new_Y_tilde, [0, 2, 1])
+    # reshape will preserve the data-latent format
     new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde

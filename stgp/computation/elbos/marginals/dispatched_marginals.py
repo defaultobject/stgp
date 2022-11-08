@@ -28,8 +28,8 @@ from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve
-from ...permutations import left_permute_mat, data_order_to_output_order
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
+from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -48,10 +48,13 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(FullConjugateGaussian, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
     """ With conjugate gaussian there is no need to convert from cholesky parameterizations.  """
-    N = q_m.shape[0]
+    N = data.N
 
     # ensure correct shape
     q_m = np.reshape(q_m, [N, 1, out_block_dim])
+    print(q_S.shape)
+    breakpoint()
+    q_S = batched_block_diagional(q_S, out_block_dim)
     q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
 
     return q_m, q_S
@@ -59,16 +62,46 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 @dispatch(ConjugateApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
-    """ With conjugate gaussian there is no need to convert from cholesky parameterizations.  """
+    """ 
+    With conjugate gaussian there is no need to convert from cholesky parameterizations.  
+    
+    q_m is in time-(space x)latent format. 
+    """
     N = q_m.shape[0]
+    Q = prior.output_dim
+    block_size = q_S.shape[-1]
 
-    # TODO: fix out_block_dim here
+    if block_size == 1:
+        q_m = np.reshape(q_m, [N, prior.output_dim, 1])
+        q_S = np.reshape(q_S, [N, 1, prior.output_dim, prior.output_dim])
 
-    # ensure correct shape
-    q_m = np.reshape(q_m, [N, prior.output_dim, 1])
-    q_S = np.reshape(q_S, [N, 1, prior.output_dim, prior.output_dim])
+        return q_m, q_S
 
-    return q_m, q_S
+    if out_block_dim in [block_size, Q] :
+        # only return the block diagonals across latents 
+        # q_m and q_S are in time-latent-space format
+        # to convert to data-latent format we first need convert each time point
+        # to space-latent format, and then we can just reshape
+
+        # convert to time-space-latent
+        #chex.assert_rank([q_m, q_S], [3, 3])
+        mu_p = jax.vmap(lambda a: permute_vec(a[:, None], Q))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+        if out_block_dim == block_size:
+            var_p = var_p[:, None, ...]
+            return mu_p, var_p
+
+        # extract block diagonals
+        mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
+        var_p_bd = batched_block_diagional(var_p, Q)
+        var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
+
+        chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+        return mu_p_bd, var_p_bd
+
+    breakpoint()
+    raise RuntimeError()
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
@@ -225,6 +258,60 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     chex.assert_rank([mu, var], [3, 4])
 
     return mu, var
+
+
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=True)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+    """ 
+    When using sparsity with a conjugate approximate posterior we handle it in the following way.
+
+    When computing the ELBO we require the marginal q(f), to compute this we use the conjugate property to compute q(u) and then implement the conditionals. This is so we can take gradients through the integral.
+
+    When predicting we can simply use the predictive distribution of the conjugate posterior.
+    """
+    # TODO: assuming that data_xs and data_x are of the same type
+    chex.assert_rank([q_m, q_S], [3, 4])
+
+    #parent is wrapped by a permutator, we don't need this so we pass the parent
+    mu, var = evoke('spatial_conditional', data, prior.parent, approximate_posterior)(
+        data, 
+        sparsity[0].raw_Z, 
+        q_m, 
+        q_S[:, 0, ...], 
+        approximate_posterior,
+        likelihood,
+        prior.parent,
+        sparsity,
+        out_block_dim,
+        whiten
+    )
+
+    Q = prior.base_prior.output_dim
+    block_size = var.shape[-1]
+
+    # return either the full var, or the blocks across the latent functions
+    if out_block_dim in [Q, block_size]: 
+        # convert mu-var to data-latent format and extract block diagonal
+        Q = prior.output_dim
+
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(mu)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(var)
+
+        if out_block_dim == block_size:
+            var_p = var_p[:, None, ...]
+            return mu_p, var_p
+
+        mu_p = np.reshape(mu_p, [-1, Q, 1])
+        var_p = batched_block_diagional(var_p, Q)
+        var_p = np.reshape(var_p, [-1, 1, Q, Q])
+
+        return mu_p, var_p
+    else:
+        breakpoint()
+        raise NotImplementedError()
+
+
 # ================================== Dispatched q(f) ==============================
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=True)
@@ -296,13 +383,22 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 # DifferentialOperatorJoint with CVI approximate posteriors
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
     if prior.is_base:
+        chex.assert_rank([q_m, q_S], [3, 4])
+        chex.assert_equal(q_S.shape[1], 1)
+
         #assert out_block_dim == 1
         out_block_dim = 1
 
-        N, P = q_m.shape[0], q_m.shape[1]
-        mu, var =  np.reshape(q_m, [N, P, 1]), np.reshape(q_S_chol, [N, 1, P, P])
+        # q_m is in time - latent - space format
+        N = data.N
+        Nt, P, Ns = q_m.shape
+
+        # convert to data-latent format
+        mu = np.reshape(np.transpose(q_m, [0, 2, 1]), [N, P, 1])
+        var_p = jax.vmap(lambda A: permute_mat(A[0], P))(q_S)
+        var = batched_block_diagional(var_p, P)
 
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
