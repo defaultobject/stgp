@@ -46,13 +46,16 @@ class FullSparsity(FreeSparsity):
 
 
 class SpatialSparsity(StructuredSparsity):
-    def __init__(self, X_time, Z_space):
+    def __init__(self, X_time = None, Z_space = None, Z_ref:SpatialTemporalInput = None, train=True):
 
-        self.raw_Z = SpatialTemporalInput(
-            X_time = X_time,
-            X_space = Z_space,
-            train=True
-        )
+        if Z_ref:
+            self.raw_Z = Z_ref
+        else:
+            self.raw_Z = SpatialTemporalInput(
+                X_time = X_time,
+                X_space = Z_space,
+                train=train
+            )
 
     @property
     def Z(self):

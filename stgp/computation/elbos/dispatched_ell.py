@@ -17,6 +17,7 @@ from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_mont
 from ..integrals.samples import approximate_expectation
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, ApproximatePosterior
 from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_non_linear_model_part, get_block_type
+from ..permutations import  permute_mat
 
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
@@ -87,6 +88,9 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     lik_var = likelihood.variance
     chex.assert_shape(lik_var, q_f_var.shape)
+
+
+    lik_var = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_var)
 
     ell_arr = jax.vmap(
         full_gaussian_expected_log_likelihood,

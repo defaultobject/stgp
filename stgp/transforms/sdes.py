@@ -1,4 +1,5 @@
 from . import Transform, Independent
+from ..computation.permutations import data_order_to_output_order
 
 import jax.numpy as np
 
@@ -57,7 +58,7 @@ class LTI_SDE(SDE):
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     def __init__(self, gp: 'Model'):
         self.gp = gp
-        self._state_space_dim = np.sum(self.gp.state_space_dim())
+        self._state_space_dim = sum(self.gp.state_space_dim())
 
     @property
     def _output_dim(self):
@@ -71,14 +72,14 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         if X_s is None:
             return H_t
 
-        breakpoint()
         # need to permute from latent-space-state to latent-state-space
+        # assuming that latent = 1 and we are treating state as latent
+        Ns = X_s.shape[0]
+        P = self.output_dim
 
-        I = np.eye(X_s.shape[0])
-        H_st = np.kron(I, H_t)
+        H = data_order_to_output_order(P, Ns)
 
-
-        return H_st
+        return H
 
 
 class EulerMaruyama(SDE):

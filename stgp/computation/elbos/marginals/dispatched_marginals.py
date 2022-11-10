@@ -71,6 +71,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     Q = prior.output_dim
     block_size = q_S.shape[-1]
 
+    chex.assert_rank([q_m, q_S], [3, 4])
+
     if block_size == 1:
         q_m = np.reshape(q_m, [N, prior.output_dim, 1])
         q_S = np.reshape(q_S, [N, 1, prior.output_dim, prior.output_dim])
@@ -84,8 +86,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         # to space-latent format, and then we can just reshape
 
         # convert to time-space-latent
-        #chex.assert_rank([q_m, q_S], [3, 3])
-        mu_p = jax.vmap(lambda a: permute_vec(a[:, None], Q))(q_m)
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
         var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
 
         if out_block_dim == block_size:
@@ -287,6 +288,12 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         whiten
     )
 
+    #breakpoint()
+
+    # for testing
+    #mu = q_m
+    #var = q_S
+
     Q = prior.base_prior.output_dim
     block_size = var.shape[-1]
 
@@ -403,9 +410,29 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
     else:
-        # q_m is order in time - space - output format
+        # q_m is order in time - latent - space format
+
+        # compute spatial conditonal...
+
+        sparsity =  prior.base_prior.get_sparsity_list()
+
+        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+            data, 
+            sparsity[0].raw_Z, 
+            q_m, 
+            q_S[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior,
+            sparsity,
+            out_block_dim,
+            whiten
+        )
+
+        breakpoint()
         X_t = data.X_time  
         X_s = data.X_space
+
 
         X_i = np.hstack([np.tile(X_t[0:1][:, None], [X_s.shape[0], 1]), X_s])
 
@@ -426,7 +453,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         mean_xx = prior.mean(X_i)
 
         q_m_t = q_m[0][:, None]
-        q_S_t = cholesky(add_jitter(q_S_chol[0], settings.jitter))
+        q_S_t = cholesky(add_jitter(q_S[0], settings.jitter))
 
         mu, var = gaussian_conditional(
             X_i, 

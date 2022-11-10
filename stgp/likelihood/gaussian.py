@@ -41,12 +41,13 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
         - Multi-output models with spatial sparsity will have Nt blocks of size (Ns P) x (Ns P) ordered in space-latent format
 
     """
-    def __init__(self, block_size:int=None, num_blocks:int=None, variance=None, train=True):
+    def __init__(self, block_size:int=None, num_blocks:int=None, num_latents: int = None, variance=None, train=True):
         #if (block_size is None and num_blocks is None) or variance is None:
         #    raise NotImplementedError()
 
         self._block_size = block_size
         self.num_blocks = num_blocks
+        self.num_latents = num_latents
 
         if variance is None:
             variance = np.tile(np.eye(block_size), [num_blocks, 1, 1])

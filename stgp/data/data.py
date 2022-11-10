@@ -338,7 +338,7 @@ class SpatioTemporalData(SequentialData):
     def __init__(self, X_time = None, X_space = None, X = None,  Y = None, sort=True, train_y=False):
         """
         Base class for Spatio-temporal Data. due to how the kalman filter handles the state (time - latent - space - state) 
-            we store data in time - latent - data format.
+            we store data in time - latent - space format.
 
         There are two cases supported:
 
@@ -560,7 +560,7 @@ class MultiOutputTemporalData(SequentialData):
         """
         Args:
             X: rank 2 input X if shape N x D
-            Y: either rank 2 of shape N x P or rank 3 of shape  Nt X P x Ns  = Nt x 1 x P. The extra dimension is for compatability with spatio-temporal multi-output data
+            Y: either rank 2 of shape N x P or rank 3 of shape  Nt X P x Ns  = Nt x P x 1. The extra dimension is for compatability with spatio-temporal multi-output data
         """
 
         super(MultiOutputTemporalData, self).__init__()

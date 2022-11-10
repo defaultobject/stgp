@@ -410,7 +410,6 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         - Spatial Sparsity:  λ is block diagonal with blocks of size Ns * Q
         - Free Sparsity:  λ is a full matrix of size (N * Q) x (N * Q)
     """
-
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.base_prior.get_sparsity_list()

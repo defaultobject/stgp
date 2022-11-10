@@ -37,7 +37,7 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 
-f = lambda x: np.sin(10*x)+10*x
+f = lambda x: 10*np.sin(100*x)+100*x
 
 N = 20
 x = np.linspace(0, 1, N)
@@ -108,7 +108,7 @@ if True:
     m.approximate_posterior.fix()
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    lc_arr_1, _ = ng_trainer.train(0.01, 100)
+    lc_arr_1, _ = ng_trainer.train(0.01, 200)
     lc_arr = np.array(lc_arr_1).tolist()
 
     if True:

@@ -31,11 +31,12 @@ from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from tqdm import trange
 from stgp.trainers import NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
+from stgp.transforms import OutputMap, MultiOutput
 
 import matplotlib.pyplot as plt
 
 
-f = lambda x: np.sin(10*x)+10*x
+f = lambda x: 10*np.sin(100*x)+100*x
 
 N = 20
 x = np.linspace(0, 1, N)
@@ -55,6 +56,7 @@ if False:
     plt.plot(X, F)
     plt.scatter(X, Y[:, 0])
     plt.show()
+    exit()
 
 base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
 kern = FirstOrderDerivativeKernel(base_kernel_1d)
@@ -68,6 +70,17 @@ prior = DifferentialOperatorJoint(
     is_base = True,
     has_parent=False
 )
+
+# ignore the 2nd order derivates
+prior_output_1, prior_output_2 = OutputMap(
+    prior, 
+    [[0], [ 1]], 
+)
+
+prior = MultiOutput([
+    prior_output_1,
+    prior_output_2
+])
 
 # use full gaussian for consistency
 q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
@@ -87,17 +100,17 @@ m = stgp.models.GP(
 # Train
 if True:
     print(m.get_objective())
-    max_iters = 100
+    max_iters = 200
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    lc_arr_1, _ = ng_trainer.train(0.01, 100)
+    lc_arr_1, _ = ng_trainer.train(0.01, 500)
     lc_arr = np.array(lc_arr_1).tolist()
 
-    if False:
+    if True:
         for i in trange(max_iters):
             trainer.train(0.01, 1)
             lc_arr_i, _  = ng_trainer.train(0.1, 1)

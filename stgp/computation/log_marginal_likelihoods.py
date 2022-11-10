@@ -106,6 +106,7 @@ def log_marginal_likelihood(
     )
 
 @dispatch(ProductLikelihood, Joint)
+@dispatch(ProductLikelihood, LinearTransform)
 def log_marginal_likelihood(
         data, gp: 'Posterior', likelihood: ProductLikelihood, prior: Independent
 ):

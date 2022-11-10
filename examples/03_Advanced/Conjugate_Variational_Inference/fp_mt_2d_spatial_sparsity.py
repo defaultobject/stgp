@@ -28,10 +28,12 @@ from tqdm import trange
 
 import matplotlib.pyplot as plt
 
+stgp.settings.jitter = 1e-5
+
 # Generate data
 Q = 2
 P = 2
-N = 20
+N = 10
 Nt = 100
 Ns = 100
 
@@ -51,8 +53,13 @@ st_data = SpatioTemporalData(X=X, Y=Y)
 st_data_xs = SpatioTemporalData(X=XS, Y=None)
 
 # Construct Model
-#Z = [NoSparsity(Z_ref = st_data._X) for q in range(Q)]
-Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:10]) for q in range(Q)]
+if bool(int(sys.argv[1])):
+    print('no sparsity')
+    Z = [NoSparsity(Z_ref = st_data._X) for q in range(Q)]
+else:
+    print('spatial sparsity')
+    Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:3], train=True) for q in range(Q)]
+
 Z_all = StackedSparsity(Z)
 
 # Construct Latent GPs
@@ -75,6 +82,7 @@ prior._W.fix()
 
 Mt = Z[0].raw_Z.Nt
 Ms = Z[0].raw_Z.Ns
+
 
 q = FullConjugateGaussian(
     X = Z[0], # for state-space models we require the same Z across all latents
@@ -99,15 +107,16 @@ m = stgp.models.GP(
     whiten=False
 )
 
+
 m.print()
 
-if True:
+if False:
     ng_trainer = NatGradTrainer(m, return_objective=False)
     m.approximate_posterior.fix()
     ng_trainer.train(1.0, 1)
 
-if False:
-    max_iters = 200
+if True:
+    max_iters = 500
 
     ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
@@ -115,6 +124,8 @@ if False:
 
     ll_arr, _ = ng_trainer.train(1.0, 1)
     ll_arr = [float(ll_arr)]
+
+    trainer.train(0.01, 1)
 
     print(m.get_objective())
 
@@ -138,3 +149,5 @@ if True:
         axes[0][i].imshow(pred_mu[:, i].reshape(Nt, Ns))
         axes[1][i].imshow(Y[:, i].reshape(N, N))
     plt.show()
+
+breakpoint()

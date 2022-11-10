@@ -335,16 +335,8 @@ class Independent(Transform):
         return self.covar_blocks(X1, X1)
 
     def state_space_dim(self):
-        dim_arr = batch_or_loop(
-            lambda latent:  latent.kernel.state_space_dim(),
-            [self.parent],
-            [0],
-            dim = self.output_dim,
-            out_dim = 1,
-            batch_type = get_batch_type(self.parent)
-        )
-
-        return dim_arr
+        # use loop so that we get a list of int outputs
+        return  [latent.kernel.state_space_dim() for latent in self.parent]
 
     def state_space_representation(self, X_s):
         F_blocks, L_blocks, Qc_blocks, H_blocks, P_inf_blocks = batch_or_loop(

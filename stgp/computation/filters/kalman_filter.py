@@ -65,6 +65,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         np.eye(Y_k.shape[0])
     )
 
+
     # -- KALMAN UPDATE --
     mu = M @ H_k @ m_
     var = M @ H_k @ P_ @ H_k.T @ M.T

@@ -11,7 +11,8 @@ from ..data import Data, Input
 from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
-from ..transforms import Independent
+from ..transforms import Independent, Joint
+from ..transforms.pdes import DifferentialOperatorJoint
 from ..transforms.sdes import SDE
 
 import jax
@@ -61,10 +62,10 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     Let P be the number of outputs then:
 
     In:
-        pred_mean: Nt x Ns*P x 1
-        pred_var: Nt x Ns*P x Ns*P
+        pred_mean: Nt x P*Ns x 1
+        pred_var: Nt x P*Ns x P*P
 
-    where pred_mean, pred_var are in latent-data format.    
+    where pred_mean, pred_var are in time-latent-space format.    
 
 
     Computes:
@@ -72,6 +73,8 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         var =  Ktt  ⊗ diag[ Kss - Ksz Kzz⁻¹ Kss] - diag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
 
     """
+    # TODO: assuming that prior is independent
+
     XS_time = data_xs.X_time
     X_time = data_x.X_time
 
@@ -84,16 +87,24 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     Ns = XS_space.shape[0]
 
     # Precompute all kernels
+
+    # latent - time format
     Ktt = _batched_st_kernel(XS_time, XS_time, prior, 'temporal', full=False)
+    # latent - space format
     Kss = _batched_st_kernel(XS_space, XS_space, prior, 'spatial', full=True)
+    # latent - space format
     Ksz = _batched_st_kernel(XS_space, X_space, prior, 'spatial', full=True)
+    # latent - space format
     Kzz = _batched_st_kernel(X_space, X_space, prior, 'spatial', full=True)
 
+    # in latent-space format
     Kss_full = to_block_diag(Kss)
     Ksz_full = to_block_diag(Ksz)
     Kzz_full = to_block_diag(Kzz)
 
+    # time - latent format
     Ktt = Ktt.T
+    # time - latent - space format
     Ktt_full = jax.vmap(
         lambda _ktt: to_block_diag(jax.vmap(
             lambda _k: _k*np.ones([Ns, Ns]),
@@ -106,15 +117,14 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     mean_x = np.zeros([Kzz_full.shape[0], 1])
     mean_xs = np.zeros([Kss_full.shape[0], 1])
 
-    # convert pred_mean to latent-var
-    pred_mean = np.reshape(pred_mean, [pred_mean.shape[0], -1])[..., None]
-
+    # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
         lambda S: cholesky(add_jitter(S, settings.jitter)),
         0,
     )(pred_var)
 
     # batch over time
+
     mu, var = jax.vmap(
         gaussian_spatial_conditional,
         [None, None, None, None, None, 0, 0, 0, None, None],
@@ -131,12 +141,11 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_xs
     )
 
+    # in time-latent-space format
     var = var[:, None, ...]
 
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
-
-
 
 @dispatch(Data, Input, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
@@ -198,47 +207,6 @@ def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp
 
     return mu, var
 
-#@dispatch(Data, Data, BASE_SDE_GP, SDE)
-#@dispatch(Data, Data, BASE_SDE_GP, Independent)
-def spatial_conditional(XS: 'Data', X: 'Data', pred_mean, pred_var, gp, diagonal):
-    """
-    Let P be the number of outputs then:
-
-    In:
-        pred_mean: Nt x Ns*P x 1
-        pred_var: Nt x Ns*P x Ns*P
-
-    where pred_mean, pred_var are in latent-data format.    
-
-    This treats each latent function separately
-    """
-    prior = gp.prior
-    likelihood = gp.likelihood
-    P = prior.num_latents
-    latents_arr = prior.latents
-
-    # TODO: check this
-    Nt = pred_mean.shape[0]
-    pred_mean = np.reshape(pred_mean, [Nt, P, -1])
-    Ns = pred_mean.shape[-1]
-
-    #Treat latents separately and ignore cross correlations
-    pred_var = batched_block_diagional(pred_var, Ns)
-
-    # Batch over latents
-    marginal_mu, marginal_var = batch_over_module_types(
-        evoke_name = 'spatial_conditional',
-        evoke_params = [XS, X, gp],
-        module_arr = [latents_arr],
-        fn_params = [XS, X, pred_mean, pred_var, latents_arr, diagonal],
-        fn_axes = [None, None, 1, 1, 0, None],
-        dim = len(latents_arr),
-        out_dim  = 2
-    )
-
-    return marginal_mu, marginal_var
-
-
 @dispatch(Input, Independent, FullGaussianApproximatePosterior)
 @dispatch(Data, Independent, FullGaussianApproximatePosterior)
 def spatial_conditional(
@@ -262,6 +230,55 @@ def spatial_conditional(
 
     where pred_mean, pred_var are in latent-data format.    
     """
+
+    mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior)
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
+
+@dispatch(Input, DifferentialOperatorJoint, FullGaussianApproximatePosterior)
+@dispatch(Data, DifferentialOperatorJoint, FullGaussianApproximatePosterior)
+def spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    approximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
+):
+    """
+    Let P be the number of outputs then:
+
+    In:
+        pred_mean: Nt x Ns*P x 1
+        pred_var: Nt x Ns*P x Ns*P
+
+    where pred_mean, pred_var are in latent-data format.    
+    """
+    XS_time = data_xs.X_time
+    X_time = data_x.X_time
+
+    # Get spatial locations with dummy time dimension so kernel evaluations are correct
+    XS_space = data_xs.X_space
+    X_space = data_x.X_space
+    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
+    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
+
+    # this will be premultiplied by Ktt
+    #Kss = prior.covar(X_space, X_space)
+    #Ktt = prior.
+
+    # 
+    #Kss = prior.parent.derivative_kernel.parent_kernel.K(X_space, X_space)
+
+     
+
+    breakpoint()
+
 
     mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior)
     chex.assert_rank([mu, var], [3, 4])
