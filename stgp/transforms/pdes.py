@@ -42,7 +42,10 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     @property
     def in_block_dim(self):
-        return 1
+        if self.has_parent:
+
+        else:
+            return 1
 
     def forward(self, f): return f
 

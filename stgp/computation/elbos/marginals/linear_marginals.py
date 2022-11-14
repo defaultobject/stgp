@@ -24,13 +24,17 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
     # TODO: this is assuming only one transform
     parent_prior = prior.base_prior
 
-    if prior.in_block_dim is None:
+    prior_list = get_linear_model_part_list(prior)
+
+    # get linear part input dim
+    if prior_list[0]in_block_dim is None:
         # we do not need to worry about the block size
         parent_out_block_dim = out_block_dim
     else:
-        parent_out_block_dim = max(out_block_dim, prior.in_block_dim)
+        parent_out_block_dim = max(out_block_dim, prior_list[0].in_block_dim)
 
     # get parent transformed value
+    breakpoint()
 
     if XS is None:
         mu_parent, var_parent  = evoke('marginal_blocks', approximate_posterior, likelihood, parent_prior, whiten=whiten)(
@@ -48,7 +52,6 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
 
     # and transform 
 
-    prior_list = get_linear_model_part_list(prior)
     if var_parent.shape[-1] == 1 and out_block_dim == 1:
         chex.assert_rank([mu_parent, var_parent], [3, 4])
 

@@ -117,7 +117,7 @@ class LinearTransform(Transform):
 
     @property
     def base_prior(self):
-        return self.parent
+        return self.parent.base_prior
 
     def get_sparsity_list(self):
         return self.parent.get_sparsity_list()

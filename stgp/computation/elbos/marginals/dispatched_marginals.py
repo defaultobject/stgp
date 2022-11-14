@@ -410,10 +410,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
     else:
-        # q_m is order in time - latent - space format
 
-        # compute spatial conditonal...
-
+        # compute spatial conditonal
         sparsity =  prior.base_prior.get_sparsity_list()
 
         mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
@@ -429,7 +427,9 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
             whiten
         )
 
-        breakpoint()
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
+
         X_t = data.X_time  
         X_s = data.X_space
 

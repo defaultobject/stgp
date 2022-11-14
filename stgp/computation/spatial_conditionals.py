@@ -2,8 +2,9 @@
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
-from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional
-from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky
+from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional
+from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block
+from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
 
 # Import Types
@@ -265,21 +266,125 @@ def spatial_conditional(
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
     X_space = data_x.X_space
+
+    space_dim = X_space.shape[1]
+
     XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
     X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
 
-    # this will be premultiplied by Ktt
-    #Kss = prior.covar(X_space, X_space)
-    #Ktt = prior.
+    X_time = np.hstack([X_time[:, None], np.zeros([X_time.shape[0], 1])])
+
+    # TODO: assuming that data_xs and data_x are the same
+
+    # K_x_t computes K_F at all the time points independently
+    #time - Dt format
+    K_x_t = jax.vmap(lambda t: prior.base_prior.covar(t, t))(X_time[:, None, :])
+
+    base_prior_output = prior.base_prior.output_dim
+    prior_added_output = prior.derivative_kernel.d_computed
 
     # 
     #Kss = prior.parent.derivative_kernel.parent_kernel.K(X_space, X_space)
+    # covar is ordered by K ⊗ D
+    out_dim = prior.output_dim
 
-     
+    # Ns x Ns
+    K_base_spatial_zz = get_block(
+        prior.base_prior.covar(X_space, X_space), 
+        0, 0, 
+        base_prior_output, base_prior_output
+    )
 
-    breakpoint()
+    # Dt - Ds - space format
+    # (Dt x Ds x Ns) x (Dt x Ds x Ns)
+    K_spatial_ss_full = prior.covar(XS_space, XS_space)
+    
+    # (Ds - space) x (space) format
+    K_spatial_sz = np.block([
+        get_block(
+            K_spatial_ss_full,
+            0, 0,
+            out_dim, out_dim
+        ), 
+        get_block(
+            K_spatial_ss_full,
+            1, 0,
+            out_dim, out_dim
+        )
+    ]).T
 
 
-    mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior)
-    chex.assert_rank([mu, var], [3, 4])
-    return mu, var
+    # [Ds x Ns] x [Ds x Ns]
+    K_spatial_ss = np.block([
+        [
+            get_block(
+                K_spatial_ss_full,
+                0, 0,
+                out_dim, out_dim
+            ),
+            get_block(
+                K_spatial_ss_full,
+                0, 1,
+                out_dim, out_dim
+            )
+        ],
+        [
+            get_block(
+                K_spatial_ss_full,
+                1, 0,
+                out_dim, out_dim
+            ),
+            get_block(
+                K_spatial_ss_full,
+                1, 1,
+                out_dim, out_dim
+            )
+        ]
+    ])
+
+
+
+
+    # compute cholesky at each time stamp
+    pred_var_chol = jax.vmap(
+        lambda S: cholesky(add_jitter(S, settings.jitter)),
+        0,
+    )(pred_var)
+
+
+    # TODO: check this
+    mean_x = np.zeros([pred_mean.shape[1], 1])
+    mean_xs = np.zeros([data_xs.Ns * out_dim, 1])
+
+    # batch over time
+    mu, var = jax.vmap(
+        gaussian_linear_operator_spatial_conditional,
+        [None, None, None, None, None, 0, 0, 0, None, None],
+    )( 
+        XS_space, 
+        X_space, 
+        K_base_spatial_zz, 
+        K_spatial_sz, 
+        K_spatial_ss, 
+        K_x_t, #batching 
+        pred_mean, #batching
+        pred_var_chol, #batching
+        mean_x, 
+        mean_xs
+    )
+
+    # mu in time x [Dt x Ds x space] format
+    # var in time x [Dt x Ds x space] x [Dt x Ds x space]
+
+    # convert to data-latent format
+    mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
+    var_p = jax.vmap(lambda A: permute_mat(A, out_dim))(var)
+
+    # extract block diagonals
+    mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
+    var_p_bd = batched_block_diagional(var_p, out_dim)
+    var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
+
+
+    chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+    return mu_p_bd, var_p_bd

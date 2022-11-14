@@ -311,3 +311,24 @@ def v_get_block_diagonal(A, b_size, A_dim):
         (0, None, None),
         0
     )(A, b_size, A_dim)
+
+@partial(jit, static_argnums=(1, 2, 3, 4))
+def get_block(A, i1:int, i2:int, B1:int, B2:int):
+    """
+    A is a matrix made up of (evenly sized) B1 x B2 blocks.
+
+    Return the [i1,i2]'th block of A
+
+    Indexing starts at zero.
+    """
+
+    chex.assert_rank(A, 2)
+
+    block_size_1 = int(A.shape[0]/B1)
+    block_size_2 = int(A.shape[1]/B2)
+
+
+    return A[
+        i1 * block_size_1 : (i1+1) * block_size_1,
+        i2 * block_size_2 : (i2+1) * block_size_2,
+    ]
