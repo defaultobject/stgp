@@ -5,7 +5,9 @@ import chex
 from ...import settings
 
 from .approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
-from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_block_type
+from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part
+
+from ...core.block_types import get_block_type, compare_block_types, Block
 
 def _process_samples(f, fn, prior, *args):
     """
@@ -32,7 +34,7 @@ def _process_samples(f, fn, prior, *args):
     return fn(transformed_f, *args)
 
 
-def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, block_type, generator, average):
+def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, block_type: Block, generator, average):
     chex.assert_rank([mu, var], [3, 4])
     var = var[..., 0]
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
@@ -79,7 +81,7 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
         
         return np.sum(w * const*res)
 
-def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, block_type, generator, average):
+def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, block_type: Block, generator, average):
 
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
 
@@ -98,11 +100,11 @@ def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, bl
 
     return samples
 
-def approximate_expectation(fn, mu, var, prior, fn_args, num_samples = None, block_type = None, generator = None, average=True):
+def approximate_expectation(fn, mu, var, prior, fn_args, num_samples = None, block_type: Block = None, generator = None, average=True):
     if block_type is None: raise RuntimeError('Block type must be passed')
     if num_samples is None: raise RuntimeError('Number of samples must be passed')
 
-    if block_type == 'Diagonal':
+    if block_type == Block.DIAGONAL:
         return approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, block_type, generator, average)
 
     return approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, block_type, generator, average)

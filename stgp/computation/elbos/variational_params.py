@@ -34,6 +34,10 @@ from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, Blo
 from ...sparsity import FreeSparsity, Sparsity
 
 # ================================== Dispatched q(u) ==============================
+# 
+# Must return ranks [2, 3]
+# these are for individual gps so there are no latents dimension needed. This will 
+# be added in the entry points
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
@@ -44,56 +48,27 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     """ For computational reasons we return S_chol """
     mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol
 
-    chex.assert_rank([mu, var_chol], [2, 2])
+    #add missing dimension
+    var_chol = var_chol[None, ...]
 
+    chex.assert_rank([mu, var_chol], [2, 3])
     return mu, var_chol
 
-
-@dispatch('DiagonalGaussianApproximatePosterior', DiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
-    """
-    output:
-        mu: Mx1
-        var: Mx1
-    """
-
-    breakpoint()
-    mu, var =  approximate_posterior.m, approximate_posterior.S_diag
-    var = var[:, None]
-
-    chex.assert_rank(mu, 2)
-    chex.assert_equal_shape([mu, var])
-
-    return mu, var
-
-@dispatch('GaussianApproximatePosterior', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
-def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
-    """
-    With a block diagonal likelihood the approximate posterior is assumed to have the correct ordering.
-
-    output:
-        mu: N_b x B x 1
-        var: N_b x B x B
-    """
-
-    raise RuntimeError()
-
-    block_size = likelihood.block_size
-    return  block_from_vec(approximate_posterior.m, block_size), block_diagonal_from_cholesky(approximate_posterior.S_chol, block_size)
 
 @dispatch('ConjugateGaussian', Likelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
     output:
         mu: Mx1
-        var: Mx1
+        var: Mx1x1
     """
     mu, var = approximate_posterior.surrogate.posterior(diagonal=True)
     N = mu.shape[0]
 
     mu = np.reshape(mu, [N, 1])
-    var = np.reshape(var, [N, 1])
+    var = np.reshape(var, [N, 1, 1])
 
+    chex.assert_rank([mu, var], [2, 3])
     return mu, var
 
 @dispatch('ConjugateGaussian', Gaussian, 'GPPrior', 'SpatialSparsity', False)
@@ -111,6 +86,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     mu = np.reshape(mu, [Nt, Ns])
     var = np.reshape(var, [Nt, Ns, Ns])
 
+    chex.assert_rank([mu, var], [2, 3])
     return mu, var
 
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity, False)
@@ -128,11 +104,13 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     mu, var = approximate_posterior.surrogate.posterior_blocks()
 
     # Normalize shapes
-    mu = np.reshape(mu, [-1, block_size, 1])
+    mu = np.reshape(mu, [-1, block_size])
     var = np.reshape(var, [-1, block_size, block_size])
 
+    chex.assert_rank([mu, var], [2, 3])
     return mu, var
 
+#================== SINGLE GP ENTRY POINT ==========================
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', False)
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', True)
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
@@ -142,7 +120,13 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity, whiten)(
         data, approximate_posterior, likelihood, prior, sparsity, whiten
     ) 
+    chex.assert_rank([mu, var], [2, 3])
 
+    # add latentmissing dimensions
+    mu = mu[:, None, ...]
+    var = var[:, None, ...]
+
+    chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
 #================== MEAN FIELD  ENTRY POINT ==========================
@@ -174,6 +158,11 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         out_dim  = 2
     )
 
+    # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis
+    q_m = np.transpose(q_m, [1, 0, 2])
+    q_S = np.transpose(q_S, [1, 0, 2, 3])
+
+    chex.assert_rank([q_m, q_S], [3, 4])
     return q_m, q_S
 
 #================== DENSE FULL POSTERIOR ENTRY POINT ==========================
@@ -187,6 +176,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 
     chex.assert_rank([q_m, q_S], [3, 4])
 
+    q_m = q_m[..., 0]
+    q_S = q_S[:, 0, ...]
     return q_m, q_S
 
 
@@ -203,5 +194,12 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     mu, var = evoke('variational_params', approximate_posterior, likelihood, prior, sparsity, whiten)(
         data, approximate_posterior, likelihood, prior, sparsity, whiten
     ) 
+    chex.assert_rank([mu, var], [2, 3])
 
+    # add missing dimension
+    mu = mu[..., None]
+    var = var[:, None, ...]
+
+
+    chex.assert_rank([mu, var], [3, 4])
     return mu, var

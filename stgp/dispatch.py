@@ -1,6 +1,9 @@
 import types
 import inspect
 
+from enum import Enum
+
+
 _REGISTERED = {}
 
 def _is_arg_more_specific(arg1, arg2):
@@ -59,7 +62,11 @@ def _ensure_str(k):
 
 def _try_match(x, y):
 
+    # special cases
     if isinstance(x, bool) and isinstance(y, bool) :
+        return x == y
+
+    if isinstance(x, Enum) and isinstance(y, Enum) :
         return x == y
 
     # check if y is a child class of x

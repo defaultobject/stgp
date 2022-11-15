@@ -46,7 +46,9 @@ m = GP(
     approximate_posterior = MeanFieldConjugateGaussian([
         ConjugateGaussian(
             X=sparsity,
+            num_blocks = data.N,
             block_size=1,
+            num_latents=1,
             surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
                 data=Data(X.X, Y), # Data should already be in the correct format
                 prior=Independent([latent_gps[q]]), 

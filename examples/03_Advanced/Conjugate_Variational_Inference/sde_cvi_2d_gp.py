@@ -24,6 +24,7 @@ from stgp.transforms.sdes import LTI_SDE
 from stgp.transforms import Independent
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
 
+from tqdm import trange
 import matplotlib.pyplot as plt
 
 # Construct Data
@@ -53,6 +54,7 @@ approximate_posterior = MeanFieldConjugateGaussian([
         X=st_data._X,
         block_size = st_data.Ns,
         num_blocks = st_data.Nt,
+        num_latents = 1,
         surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
             data=SpatioTemporalData(X=X, Y=np.reshape(Y, [st_data.Nt, 1, st_data.Ns]), sort=False), # Data should already be in the correct format
             prior=LTI_SDE(Independent([latent_gp])), 

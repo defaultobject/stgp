@@ -60,7 +60,8 @@ m = GP(
 # Train
 max_iters = 10
 
-ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+#ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
 m.approximate_posterior.fix()
 
 trainer = GradDescentTrainer(m, objax.optimizer.Adam)

@@ -2,6 +2,7 @@ import jax
 import jax.numpy as np
 import chex
 
+from ..core import Block 
 # Import Types
 from . import Transform, LinearTransform, Joint
 from ..computation.matrix_ops import get_block_diagonal
@@ -42,10 +43,8 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     @property
     def in_block_dim(self):
-        if self.has_parent:
-
-        else:
-            return 1
+        # always requires the full input covariance to compute derivates
+        return Block.FULL
 
     def forward(self, f): return f
 

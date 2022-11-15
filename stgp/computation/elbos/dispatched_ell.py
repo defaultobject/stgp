@@ -16,7 +16,9 @@ from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, g
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ..integrals.samples import approximate_expectation
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, ApproximatePosterior
-from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_non_linear_model_part, get_block_type
+from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get_non_linear_model_part
+from ...core.block_types import get_block_type, compare_block_types, Block
+from ...core.gp_prior import GPPrior
 from ..permutations import  permute_mat
 
 from batchjax import batch_or_loop, BatchType
@@ -31,7 +33,7 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
 # TODO: rename this
-@dispatch(GaussianProductLikelihood, 'Blocked')
+@dispatch(GaussianProductLikelihood, Block.BLOCK)
 def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     lik_var = np.diag(likelihood.variance)
     return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
@@ -39,8 +41,8 @@ def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
 # ====================== GAUSSIAN ELLs ===================
 
-@dispatch(BlockDiagonalGaussian, 'Blocked')
-@dispatch(BlockDiagonalGaussian, 'Diagonal')
+@dispatch(BlockDiagonalGaussian, Block.BLOCK)
+@dispatch(BlockDiagonalGaussian, Block.DIAGONAL)
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     """
     Blocked Gaussian Likelihood
@@ -137,7 +139,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 
     return ell
 
-@dispatch(DiagonalLikelihood, 'Diagonal')
+@dispatch(DiagonalLikelihood, Block.DIAGONAL)
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     """ For diagonal likelihoods adds support for missing data. """ 
     chex.assert_rank([Y, q_f_mu, q_f_var], [2, 2, 3])
@@ -175,8 +177,8 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     return ell
 
-@dispatch(PowerLikelihood, 'Blocked')
-@dispatch(PowerLikelihood, 'Diagonal')
+@dispatch(PowerLikelihood, Block.DIAGONAL)
+@dispatch(PowerLikelihood, Block.BLOCK)
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     scale_a = likelihood.a
 
@@ -189,7 +191,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     return parent_ell * scale_a
 
 
-@dispatch(ProductLikelihood, 'Blocked')
+@dispatch(ProductLikelihood, Block.BLOCK)
 def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
     chex.assert_rank([Y, q_f_mu, q_f_var], [2, 3, 4])
 
@@ -270,7 +272,7 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     #return np.sum(ll_arr)
     return ll_arr
 
-@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, 'Diagonal')
+@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, Block.DIAGONAL)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
     chex.assert_equal([q_f_mu.shape[1], q_f_var.shape[1]], [1, 1])
@@ -289,7 +291,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     breakpoint()
 
 
-@dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, 'Diagonal')
+@dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, Block.DIAGONAL)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
 
@@ -300,10 +302,17 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     model_type = get_model_type(prior)
 
+    # TODO: this is not very general, fix this at some point
+    gauss_lik_flag = False
+    if isinstance(likelihood, ProductLikelihood):
+        # check if all likelihood_arr are Gaussian
+        gauss_lik_flag = all([isinstance(lik, Gaussian) for lik in likelihood.likelihood_arr])
+    elif isinstance(likelihood, BlockDiagonalGaussian):
+        gauss_lik_flag = True
 
     # TODO: there is a choice here between quadrature and monte-carlo estimation
     # TODO: need to check if a likelihood has a closed form ELL
-    if isinstance(model_type, LinearModel) and (isinstance(likelihood, GaussianProductLikelihood) or isinstance(likelihood, BlockDiagonalGaussian)):
+    if isinstance(model_type, LinearModel) and gauss_lik_flag:
         # check if closed form expression exists
         # batch over each output
         likelihood_arr = likelihood.likelihood_arr
@@ -359,8 +368,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     raise RuntimeError()
 
-@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, 'Blocked')
-@dispatch(Data, Likelihood, Transform, ApproximatePosterior, 'Blocked')
+@dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, Block.BLOCK)
+@dispatch(Data, Likelihood, Transform, ApproximatePosterior, Block.BLOCK)
 def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference, block_type):
     chex.assert_rank([q_f_mu, q_f_var], [3, 4])
     chex.assert_equal([q_f_var.shape[1]], [1])
@@ -370,8 +379,16 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     model_type = get_model_type(prior)
 
+    # TODO: this is not very general, fix this at some point
+    gauss_lik_flag = False
+    if isinstance(likelihood, ProductLikelihood):
+        # check if all likelihood_arr are Gaussian
+        gauss_lik_flag = all([isinstance(lik, Gaussian) for lik in likelihood.likelihood_arr])
+    elif isinstance(likelihood, BlockDiagonalGaussian):
+        gauss_lik_flag = True
+
     # TODO: add proper check to see if closed form expression exists
-    if  isinstance(model_type, LinearModel) and (isinstance(likelihood, GaussianProductLikelihood) or isinstance(likelihood, BlockDiagonalGaussian)):
+    if  isinstance(model_type, LinearModel) and (gauss_lik_flag):
         ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
            X, Y, q_f_mu, q_f_var, likelihood, block_type
         )
@@ -413,9 +430,14 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     # get correct ELL corresponding to the blocks
     q_block_size = q_f_var_arr.shape[-1]
-    lik_block_size = likelihood.block_size
+    lik_block_type = likelihood.block_type
 
-    block_type_p = get_block_type(lik_block_size, q_block_size)
+    # TODO: nee dto figure what Block.OUTPUT means...
+
+    block_type_p: Block = compare_block_types(
+        lik_block_type, 
+        get_block_type(q_block_size)
+    )
 
     X = data.X
     Y = data.Y
@@ -443,7 +465,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         chex.assert_rank([q_f_mu_p, q_f_var_p], [3, 4])
 
         q_block_size = q_f_var_p.shape[-1]
-        lik_block_size = likelihood.block_size
+        lik_block_type = likelihood.block_type
 
         assert lik_block_size <= q_block_size
 

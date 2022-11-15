@@ -86,7 +86,7 @@ Ms = Z[0].raw_Z.Ns
 
 q = FullConjugateGaussian(
     X = Z[0], # for state-space models we require the same Z across all latents
-    num_latents=Q*Z[0].raw_Z.Ns,
+    num_latents=Q,
     block_size=Q*Z[0].raw_Z.Ns,
     num_blocks = st_data.Nt,
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(

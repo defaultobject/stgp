@@ -49,6 +49,7 @@ m = GP(
         ConjugateGaussian(
             X=sparsity,
             block_size=1,
+            num_latents=1,
             surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
                 data=TemporalData(X=X.X, Y=Y, sort=False), # Data should already be in the correct format
                 prior=LTI_SDE(Independent([latent_gps[q]])), 

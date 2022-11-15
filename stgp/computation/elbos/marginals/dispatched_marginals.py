@@ -30,6 +30,7 @@ from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
+from ....core import Block, get_block_dim
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -44,34 +45,49 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 from .linear_marginals import linear_marginal_blocks
 
 # ================================== NoSparsity Entry Points ==============================
-@dispatch(ConjugateApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
-@dispatch(FullConjugateGaussian, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
-def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+#@dispatch(ConjugateApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
+#@dispatch(FullConjugateGaussian, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ With conjugate gaussian there is no need to convert from cholesky parameterizations.  """
+    chex.assert_rank([q_m, q_S], [3, 4])
+
     N = data.N
+
+    out_block_dim = get_block_dim(out_block, likelihood=likelihood)
+
+    print(q_m.shape)
+    print(q_S.shape)
+
+    print(out_block_dim)
+    print(out_block)
+    breakpoint()
 
     # ensure correct shape
     q_m = np.reshape(q_m, [N, 1, out_block_dim])
-    print(q_S.shape)
-    breakpoint()
-    q_S = batched_block_diagional(q_S, out_block_dim)
+    q_S = batched_block_diagional(q_S[:, 0, ...], out_block_dim)
     q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
 
     return q_m, q_S
-
+@dispatch(ConjugateApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
 @dispatch(ConjugateApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, 'NoSparsity', whiten=False)
-def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ 
     With conjugate gaussian there is no need to convert from cholesky parameterizations.  
     
     q_m is in time-(space x)latent format. 
     """
+    chex.assert_rank([q_m, q_S], [3, 4])
+
     N = q_m.shape[0]
     Q = prior.output_dim
     block_size = q_S.shape[-1]
-
-    chex.assert_rank([q_m, q_S], [3, 4])
+    out_block_dim = get_block_dim(
+        out_block, 
+        approximate_posterior=approximate_posterior,
+        likelihood = likelihood
+    )
 
     if block_size == 1:
         q_m = np.reshape(q_m, [N, prior.output_dim, 1])
@@ -105,38 +121,53 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     raise RuntimeError()
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ 
     Catch all for single latent functions with no sparsity and no whitening.
 
     In general the variational params are stored in cholesky format so we only need to form the full covariance.
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
     N = q_m.shape[0]
 
+    out_block_dim = get_block_dim(out_block)
+
     if out_block_dim == 1:
-        q_S = diagonal_from_cholesky(q_S_chol)
+        # assuming that q_m, q_S corresponds to a (single) full Gaussian
+        # therefore the first two dimensions of q_S_chol are just 1
+        chex.assert_equal([q_S_chol.shape[0], q_S_chol.shape[0]], [1, 1])
+        q_S = diagonal_from_cholesky(q_S_chol[0, 0])
+
     elif q_S_chol.shape[-1] < out_block_dim:
         raise RuntimeError()
+
     elif q_S_chol.shape[-1] > out_block_dim:
         # TODO: subsample
         raise RuntimeError()
 
     # ensure correct shape
     
-    q_m = q_m[..., None]
+    q_m = np.reshape(q_m, [N, 1, out_block_dim])
     q_S = np.reshape(q_S, [N, 1, out_block_dim, out_block_dim])
 
     return q_m, q_S
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=True)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ Catch all for single latent functions with no sparsity but with whitening"""
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
     N = q_m.shape[0]
+
+    q_m = q_m[:, 0, ...]
+    q_S_chol = q_S_chol[0, 0, ...]
+
     chex.assert_rank(q_S_chol, 2)
     chex.assert_shape(q_S_chol, [q_m.shape[0], q_m.shape[0]])
 
     Kzz = prior.covar(sparsity.Z, sparsity.Z)
     Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    out_block_dim = get_block_dim(out_block)
 
     if out_block_dim == 1:
         q_m = Kzz_chol @ q_m
@@ -151,13 +182,18 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     return q_m, q_S
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """
     The approximate posterior (and prior) is stored in latent-data format, this is because the prior is generally block diagional.
     However when computing the expected log likelihood, the likelihood decomposes across data points and hence we need in data-latent format.
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    q_m = q_m[:, 0, ...]
+    q_S_chol = q_S_chol[0, 0, ...]
 
     assert isinstance(prior, DataLatentPermutation)
+    out_block_dim = get_block_dim(out_block)
 
     m = q_m
     S = q_S_chol @ q_S_chol.T
@@ -188,7 +224,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     return m_p, S_blocks
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=True)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
     # first reparameterise and then we can treat as use
 
     # reparameterise
@@ -209,19 +246,20 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False)
 
     return fn(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, False
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block, False
     ) 
 
 
 # ================================== Sparsity Entry Points ==============================
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', Sparsity, whiten=True)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ 
     Catch all for single latent functions with sparsity.
 
     In general, sparsity can be considered as simply using the predictive distribution for q(f). 
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
     M = q_m.shape[0]
 
     # TODO: block dim
@@ -230,7 +268,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     mu, var =  evoke(
         'marginal_prediction_blocks', approximate_posterior, likelihood, 'GPPrior', sparsity[0], whiten=False 
     )(
-        data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten
+        data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
     )
 
     chex.assert_rank([mu, var], [3, 4])
@@ -241,10 +279,11 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 #@dispatch(MeanFieldApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ 
     In general, sparsity can be considered as simply using the predictive distribution for q(f). 
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
     M = q_m.shape[0]
 
     # TODO: block dim
@@ -253,7 +292,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     mu, var =  evoke(
         'marginal_prediction_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False 
     )(
-        data, sparsity[0].raw_Z, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten
+        data, sparsity[0].raw_Z, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
     )
 
     chex.assert_rank([mu, var], [3, 4])
@@ -263,7 +302,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=True)
-def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ 
     When using sparsity with a conjugate approximate posterior we handle it in the following way.
 
@@ -284,11 +323,16 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         likelihood,
         prior.parent,
         sparsity,
-        out_block_dim,
+        out_block,
         whiten
     )
 
     #breakpoint()
+    out_block_dim = get_block_dim(
+        out_block, 
+        approximate_posterior=approximate_posterior,
+        likelihood = likelihood
+    )
 
     # for testing
     #mu = q_m
@@ -323,7 +367,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
@@ -333,7 +378,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
 
     mu, var = fn(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block_dim, whiten
+        data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten
     ) 
     chex.assert_rank([mu, var], [3, 4])
 
@@ -344,7 +389,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 # Mean-field entry point
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
     latents_arr = prior.parent
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = prior.get_sparsity_list()
@@ -357,16 +404,19 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
 
     whiten_arr = [whiten for q in range(num_latents)]
-    out_block_arr = [out_block_dim for q in range(num_latents)]
+
+    # TODO: fix block sizes here
+    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
 
     # TODO: pre-compute Kzz and Kzx so that any kernel can be used in the latents and batching can still be used.
     # Compute q(f) for each output
+    # add additional dimension to q_m and q_S_chol to ensure rank [3, 4] after batching
     marginal_mu, marginal_var = batch_over_module_types(
         evoke_name = 'marginal_blocks',
         evoke_params = [],
         module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [data, q_m, q_S_chol, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
-        fn_axes = [None, 0, 0, 0, 0, 0, 0, 0, 0],
+        fn_params = [data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
+        fn_axes = [None, 1, 1, 0, 0, 0, 0, 0, 0],
         dim = len(latents_arr),
         out_dim  = 2,
         evoke_kwargs = {'whiten': whiten}
@@ -381,6 +431,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
     marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+
+    out_block_dim = get_block_dim(out_block_arr[0])
 
     chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
     chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
@@ -480,7 +532,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
     if prior.is_base:
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
@@ -489,7 +541,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
         fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten)
 
-        mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block_dim, whiten)
+        mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
 
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
@@ -510,7 +562,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
         if False:
             q_m, q_S = fn(
-                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block_dim, whiten
+                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block, whiten
             ) 
             chex.assert_rank([q_m, q_S], [3, 4])
 
@@ -557,11 +609,12 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 # Linear Transform Entry Point
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
     """ Recursively compute the transformed linear marginal. """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     return linear_marginal_blocks(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim, whiten, XS=None
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=None
     )
 
 
@@ -576,7 +629,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 # list of linear priors
 @dispatch(ApproximatePosterior, Likelihood, list, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, list, whiten=False)
-def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block_dim: int, whiten: bool):
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
     """ 
     Recursively compute the transformed linear marginal.  
 
@@ -586,10 +639,12 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         different, and hence batching wont be applicable anyway.
 
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
     mu_list, var_list = [], []
     for p in prior:
         mu_p, var_p  = evoke('marginal_blocks', approximate_posterior, likelihood, p, whiten=whiten)(
-            data, q_m, q_S_chol, approximate_posterior, likelihood, p, out_block_dim, whiten
+            data, q_m, q_S_chol, approximate_posterior, likelihood, p, out_block, whiten
         ) 
 
         mu_list.append(mu_p)
@@ -605,13 +660,15 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     """
     tbd.
     """
-    out_block_size = likelihood.block_size
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    out_block_type = likelihood.block_type
 
     sparsity = prior.sparsity
 
     # we are only processing the linear part so we can assume that it is linear
     mu, var = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity, whiten=whiten)(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_size, whiten
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block_type, whiten
     ) 
 
     chex.assert_rank([mu, var], [3, 4])
@@ -625,20 +682,22 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     """
     .
     """
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     # find out if the model is linear or not
     model_type = get_model_type(prior)
 
+
     # when non linear we transform up to the last linear transform and then use sampling
     linear_model_part = get_linear_model_part(prior)
 
-    # get output block size. NonLinear transforms are applied elementwise so only need the likelihood
+    # get output block type. NonLinear transforms are applied elementwise so only need the likelihood
     #   block size
-    out_block_size = likelihood.block_size
+    out_block: Block = likelihood.block_type
 
     # we are only processing the linear part so we can assume that it is linear
     val = evoke('marginal_blocks', approximate_posterior, likelihood, linear_model_part, whiten=whiten)(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_size, whiten
+        data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block, whiten
     ) 
 
     return val[0], val[1]
@@ -647,6 +706,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     # find out if the model is linear or not
     model_type = get_model_type(prior)
@@ -654,14 +714,18 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     # when non linear we transform up to the last linear transform and then use sampling
     linear_model_part = get_linear_model_part(prior)
 
-    out_block_size = max(
-        likelihood.block_size,
-        prior.base_prior.output_dim
-    )
+    # When using FullGaussian approximate posteriors we require the block covariances
+    #  to compute the resulting ELLs
+
+    # TODO: this is hack
+    if likelihood.block_type == Block.DIAGONAL:
+        out_block_type = Block.LATENT
+    else:
+        out_block_type = likelihood.block_type
 
     # we are only processing the linear part so we can assume that it is linear
     val = evoke('marginal_blocks', approximate_posterior, likelihood, linear_model_part, whiten=whiten)(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_size, whiten
+        data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, out_block_type, whiten
     ) 
 
     return val[0], val[1]

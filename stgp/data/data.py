@@ -88,6 +88,7 @@ class Data(objax.Module):
         self.save_X(X, train=False, name='X')
 
         self.N = Y.shape[0]
+        self.P = Y.shape[1]
 
         self.generator = objax.random.Generator(seed=0)
 

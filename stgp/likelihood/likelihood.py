@@ -4,13 +4,15 @@ import objax
 import jax
 import chex
 
+from ..core import Block
+
 
 class Likelihood(objax.Module):
     """Base likelihood class."""
 
     @property
-    def block_size(self):
-        return 1
+    def block_type(self):
+        raise NotImplementedError()
 
     @property
     def base(self):
@@ -31,9 +33,18 @@ class Likelihood(objax.Module):
 
 class FullLikelihood(Likelihood):
     """Likelihood that does not decompose """
+    @property
+    def block_type(self):
+        return Block.FULL
 
 class DiagonalLikelihood(Likelihood):
     """Likelihood that decomposes across data """
+    @property
+    def block_type(self):
+        return Block.DIAGONAL
 
 class BlockDiagonalLikelihood(Likelihood):
     """Likelihood that can decompose across blocks """
+    @property
+    def block_type(self):
+        return Block.BLOCK

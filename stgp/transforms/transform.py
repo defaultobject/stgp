@@ -12,6 +12,7 @@ from ..core import Prior, GPPrior, Model
 from ..utils.utils import ensure_module_list, can_batch, get_batch_type
 from batchjax import batch_or_loop, BatchType
 from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT
+from ..core import Block
 
 import jax
 import jax.numpy as np
@@ -108,11 +109,11 @@ class LinearTransform(Transform):
         self._parent = latent
 
     @property
-    def in_block_dim(self):
+    def in_block_dim(self) -> Block:
         return None
 
     @property
-    def out_block_dim(self):
+    def out_block_dim(self) -> Block:
         return None
 
     @property

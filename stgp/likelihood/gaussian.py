@@ -7,6 +7,7 @@ from jax import grad, jacfwd
 from . import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 
 from .. import Parameter
+from ..core import Block
 
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar

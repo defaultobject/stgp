@@ -4,6 +4,7 @@ from batchjax import batch_or_loop, BatchType
 
 from . import Likelihood, Gaussian, BlockDiagonalGaussian
 from ..utils.utils import ensure_module_list, can_batch, get_batch_type
+from ..core import Block
 
 def get_product_likelihood(likelihood_arr):
     if all(type(lik) == Gaussian for lik in likelihood_arr):
@@ -20,6 +21,11 @@ class ProductLikelihood(Likelihood):
             super(ProductLikelihood, self).__init__()
 
             self.likelihood_arr = objax.ModuleList(likelihood_arr)
+
+    @property
+    def block_type(self):
+        # TODO: assuming that all product likelihoods 
+        return self.likelihood_arr[0].block_type
 
     def fix(self):
         for lik in self.likelihood_arr:
@@ -66,6 +72,10 @@ class GaussianProductLikelihood(ProductLikelihood):
 
 class BlockGaussianProductLikelihood(ProductLikelihood):
 
+    @property
+    def block_size(self):
+        # TODO: assuming that all product likelihoods 
+        return self.likelihood_arr[0].block_size
 
     @property
     def variance(self):

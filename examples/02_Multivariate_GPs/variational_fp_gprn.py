@@ -66,7 +66,7 @@ prior = stgp.transforms.multi_output.GPRN(latent_W_gps, latent_f_gps, output_dim
 
 m = stgp.models.GP(
     data=Data(X, Y), 
-    likelihood=[Gaussian(), Gaussian(), Gaussian()],
+    likelihood=[Gaussian(0.1), Gaussian(), Gaussian()],
     inference='Variational',
     prior=prior,
     ell_samples = 10,
@@ -84,20 +84,26 @@ if True:
     max_iters = 100
 
     #ng_trainer = NatGradTrainer(m)
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton', prediction_samples=10)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction', prediction_samples=10)
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
+    lc_arr = []
+
     ng_trainer.train(0.01, 10)
     for i in trange(max_iters):
         trainer.train(0.01, 1)
-        ng_trainer.train(0.1, 1)
+        lc_i, _ = ng_trainer.train(0.1, 1)
+        lc_arr.append(float(lc_i))
+        
+
+    plt.plot(lc_arr)
+    plt.show()
 
 print('NLPD: ', m.nlpd(X, Y))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
-
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

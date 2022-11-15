@@ -3,6 +3,7 @@ from .models import Model
 from ..transforms import LinearTransform, NonLinearTransform, MultiOutput, Joint, Independent, CompositeTransform
 from ..transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
 from .gp_prior import GPPrior
+from . import Block, get_block_dim
 
 class LinearModel(Model):
     def __init__(self, prior):
@@ -13,7 +14,8 @@ class NonLinearModel(Model):
         self._parent = prior
 
 def _is_prior_linear(prior):
-    if isinstance(prior, GPPrior):
+    # if at bottom of hierrachy, then the GP is linear
+    if prior.__class__ == GPPrior:
         return True
 
     if prior.is_base:
@@ -154,11 +156,7 @@ def get_non_linear_model_part(prior) -> list:
 
     return non_linear_part
 
-def get_block_type(lik_block_size, q_block_size):
-    if (lik_block_size == 1) and (q_block_size == 1):
-        return 'Diagonal'
-    
-    return 'Blocked'
+
 
 
 def get_permutated_prior(prior):
