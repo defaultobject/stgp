@@ -53,6 +53,7 @@ def gaussian_spatial_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, 
     N = Kxsxs.shape[0]
     M = m.shape[0]
 
+    breakpoint()
     chex.assert_shape(Kxsxs, [N, N])
     chex.assert_shape(Kzz, [M, M])
     chex.assert_shape(Kxz, [N, M])

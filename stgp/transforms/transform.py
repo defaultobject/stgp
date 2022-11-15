@@ -48,6 +48,11 @@ class Transform(GPPrior):
         # parent obj that is being transformed
         self._parent = None
 
+    @property
+    def full_transform(self):
+        return False
+
+
     def transform_diagonal(self, mu, var):
         """ Transform a diagonal gaussian dist. This should matain rank 2."""
         raise NotImplementedError(f'{self}')

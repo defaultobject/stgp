@@ -3,8 +3,10 @@ import jax.numpy as np
 import chex
 
 from ..core import Block 
-# Import Types
 from . import Transform, LinearTransform, Joint
+
+
+from ..dispatch import evoke
 from ..computation.matrix_ops import get_block_diagonal
 from .. import Parameter
 from ..computation.matrix_ops import hessian
@@ -34,6 +36,11 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self.has_parent = has_parent
 
     @property
+    def full_transform(self):
+        # do not use batched transform
+        return True
+
+    @property
     def is_base(self):
         return self._is_base
 
@@ -46,15 +53,30 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         # always requires the full input covariance to compute derivates
         return Block.FULL
 
+    @property
+    def in_block_type(self):
+        # always requires the full input covariance to compute derivates
+        return Block.FULL
+
     def forward(self, f): return f
 
-    def transform(self, mu, var):
+    def transform(self, mu, var, data):
         if self.is_base:
             # base prior so no need to transform
             chex.assert_rank([mu, var], [2, 2])
         else:
             # compute 
-            raise NotImplementedError()
+            # no time
+            chex.assert_rank([mu, var], [3, 4])
+            mu, var = evoke('spatial_conditional', data, self)(
+                data, 
+                self.parent.parent.sparsity.raw_Z, 
+                mu, 
+                var[:, 0, ...], 
+                self
+            )
+
+            chex.assert_rank([mu, var], [3, 4])
         return mu, var
 
     def get_sparsity_list(self):

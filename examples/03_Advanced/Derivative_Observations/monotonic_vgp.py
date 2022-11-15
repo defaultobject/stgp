@@ -83,7 +83,7 @@ prior = MultiOutput([
 ])
 
 # use full gaussian for consistency
-q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
+q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim, num_latents=2)
 
 # Create Model
 m = stgp.models.GP(

@@ -467,12 +467,13 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         q_block_size = q_f_var_p.shape[-1]
         lik_block_type = likelihood.block_type
 
-        assert lik_block_size <= q_block_size
-
         X_p = data.X
         Y_p = data.Y[:, p][:, None]
 
-        block_type_p = get_block_type(lik_block_size, q_block_size)
+        block_type_p: Block = compare_block_types(
+            lik_block_type, 
+            get_block_type(q_block_size)
+        )
 
         ell_p =  evoke('expected_log_likelihood', data, likelihood_p, prior_p, approximate_posterior, block_type_p)(
             X_p, Y_p, q_f_mu_p, q_f_var_p, likelihood_p, prior_p, approximate_posterior, inference, block_type_p

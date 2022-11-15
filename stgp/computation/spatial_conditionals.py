@@ -237,19 +237,14 @@ def spatial_conditional(
     return mu, var
 
 
-@dispatch(Input, DifferentialOperatorJoint, FullGaussianApproximatePosterior)
-@dispatch(Data, DifferentialOperatorJoint, FullGaussianApproximatePosterior)
+@dispatch(Input, DifferentialOperatorJoint)
+@dispatch(Data, DifferentialOperatorJoint)
 def spatial_conditional(
     data_xs, 
     data_x, 
     pred_mean, 
     pred_var, 
-    approximate_posterior, 
-    likelihood, 
     prior, 
-    sparsity,
-    out_block_dim, 
-    whiten
 ):
     """
     Let P be the number of outputs then:
@@ -388,3 +383,6 @@ def spatial_conditional(
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
     return mu_p_bd, var_p_bd
+
+
+

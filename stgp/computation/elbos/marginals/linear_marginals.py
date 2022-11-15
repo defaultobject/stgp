@@ -9,6 +9,7 @@ from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT
 from ....core import Block
+from ....core.block_types import compare_block_types
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -33,9 +34,10 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         # so just set in 
         parent_out_block_dim = out_block
     else:
-        breakpoint()
-        raise NotImplementedError()
-        parent_out_block_dim = max(out_block_dim, prior_list[0].in_block_dim)
+        parent_out_block_dim = compare_block_types(
+            out_block, 
+            prior_list[0].in_block_type
+        )
 
     # get parent transformed value
 
@@ -63,7 +65,10 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         mu_p, var_p = mu_parent, var_parent
         for p in prior_list:
             # We batch over N, so the transform should support mu of rank 2, and var of rank 3
-            mu_p, var_p = jax.vmap(prior.transform_diagonal, [0, 0])(mu_p, var_p)
+            if p.full_transform:
+                mu_p, var_p = p.transform_diagonal(mu_p, var_p, data)
+            else:
+                mu_p, var_p = jax.vmap(p.transform_diagonal, [0, 0])(mu_p, var_p)
 
     elif var_parent.shape[-1] > 1:
 
@@ -72,7 +77,11 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
 
         mu_p, var_p = mu_parent, var_parent
         for p in prior_list:
-            mu_p, var_p = jax.vmap(p.transform, [0, 0])(mu_p, var_p)
+
+            if p.full_transform:
+                mu_p, var_p = p.transform(mu_p, var_p, data)
+            else:
+                mu_p, var_p = jax.vmap(p.transform, [0, 0])(mu_p, var_p)
     else:
         breakpoint()
         raise NotImplementedError()

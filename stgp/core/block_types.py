@@ -53,10 +53,12 @@ def compare_block_types(b1: Block, b2: Block) -> Block:
     Returns the `greater' block size of b1 and b2
     """
 
-    assert b1 in [Block.DIAGONAL, Block.BLOCK]
-    assert b2 in [Block.DIAGONAL, Block.BLOCK]
+    order = [Block.DIAGONAL, Block.LATENT, Block.BLOCK,  Block.FULL]
 
-    if (b1 == Block.DIAGONAL) and (b2 == Block.DIAGONAL):
-        return Block.DIAGONAL
-    
-    return Block.BLOCK
+    return order[
+        max(
+            order.index(b1),
+            order.index(b2)
+        )
+    ]
+

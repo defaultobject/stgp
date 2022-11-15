@@ -8,7 +8,7 @@ import chex
 import warnings
 
 class GaussianApproximatePosterior(ApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S=None, S_chol_vec = None, train=True):
+    def __init__(self, dim: int=None, m=None, S=None, S_chol_vec = None, train=True, num_latents = None):
         super(GaussianApproximatePosterior, self).__init__()
 
         if dim is None and m is None:
@@ -45,6 +45,7 @@ class GaussianApproximatePosterior(ApproximatePosterior):
         )
 
         self.dim = dim
+        self.num_latents = num_latents
 
     @property
     def m(self):
