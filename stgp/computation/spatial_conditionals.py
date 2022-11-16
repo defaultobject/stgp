@@ -263,6 +263,7 @@ def spatial_conditional(
     X_space = data_x.X_space
 
     space_dim = X_space.shape[1]
+    Ns = data_x.Ns
 
     XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
     X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
@@ -271,9 +272,7 @@ def spatial_conditional(
 
     # TODO: assuming that data_xs and data_x are the same
 
-    # K_x_t computes K_F at all the time points independently
-    #time - Dt format
-    K_x_t = jax.vmap(lambda t: prior.base_prior.covar(t, t))(X_time[:, None, :])
+
 
     base_prior_output = prior.base_prior.output_dim
     prior_added_output = prior.derivative_kernel.d_computed
@@ -281,71 +280,35 @@ def spatial_conditional(
     # 
     #Kss = prior.parent.derivative_kernel.parent_kernel.K(X_space, X_space)
     # covar is ordered by K ⊗ D
-    out_dim = prior.output_dim
+    out_dim = base_prior_output * prior_added_output
+
+    # base prior kernel function
+    base_kernel = prior.base_prior.derivative_kernel.parent_kernel
+    base_time_kernel = base_kernel.k1
+    base_space_kernel = base_kernel.k2
+
+    # K_x_t computes K_F at all the time points independently
+    #time - Dt format
+    # TODO: need to remove spatial scaling
+    K_x_t = jax.vmap(lambda t: prior.base_prior.covar(t, t))(X_time[:, None, :])
+
+
 
     # Ns x Ns
-    K_base_spatial_zz = get_block(
-        prior.base_prior.covar(X_space, X_space), 
-        0, 0, 
-        base_prior_output, base_prior_output
-    )
+    K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
 
     # Dt - Ds - space format
-    # (Dt x Ds x Ns) x (Dt x Ds x Ns)
-    K_spatial_ss_full = prior.covar(XS_space, XS_space)
-    
-    # (Ds - space) x (space) format
-    K_spatial_sz = np.block([
-        get_block(
-            K_spatial_ss_full,
-            0, 0,
-            out_dim, out_dim
-        ), 
-        get_block(
-            K_spatial_ss_full,
-            1, 0,
-            out_dim, out_dim
-        )
-    ]).T
-
-
     # [Ds x Ns] x [Ds x Ns]
-    K_spatial_ss = np.block([
-        [
-            get_block(
-                K_spatial_ss_full,
-                0, 0,
-                out_dim, out_dim
-            ),
-            get_block(
-                K_spatial_ss_full,
-                0, 1,
-                out_dim, out_dim
-            )
-        ],
-        [
-            get_block(
-                K_spatial_ss_full,
-                1, 0,
-                out_dim, out_dim
-            ),
-            get_block(
-                K_spatial_ss_full,
-                1, 1,
-                out_dim, out_dim
-            )
-        ]
-    ])
+    K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
 
-
-
+    # [Ds x Ns] x [Ns] format
+    K_spatial_sz = K_spatial_ss[:, :Ns]
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
         lambda S: cholesky(add_jitter(S, settings.jitter)),
         0,
     )(pred_var)
-
 
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])

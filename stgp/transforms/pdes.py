@@ -136,14 +136,17 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def b_mean_blocks(self, X1):
         return self.mean_blocks(X1[0])
 
+    def covar_from_fn(self, X1, X2, var_fn):
+        K_xz = self.derivative_kernel.K_from_fn(X1, X2, var_fn)
+        return K_xz
+
     def covar(self, X1, X2):
         if not self.has_parent:
             return self.derivative_kernel.K(X1, X2)
         else:
             var_fn = self.parent.covar
 
-            K_xz = self.derivative_kernel.K_from_fn(X1, X2, var_fn)
-            return K_xz
+            return self.covar_from_fn(X1, X2, var_fn)
 
     def b_covar(self, X1, X2):
         """ WARNING: we assume that X1, X2 is actually repeated """

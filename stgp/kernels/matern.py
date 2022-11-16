@@ -208,7 +208,15 @@ class Matern52(StationaryKernel, MarkovKernel):
         return A
 
     def _K_scaler(self, x1, x2, lengthscale):
-        raise NotImplementedError()
+        """
+        r = |X1 - X2|/l
+        K(X1, X2) = σ (1 + √5 r + (5/3) r^2) exp{-√5 r}
+        """
+
+        r  = np.abs(x1-x2) / lengthscale
+        sqrt5 = np.sqrt(5.0)
+
+        return  (1.0 + sqrt5 * r + (5.0/3.0) * r * r) * np.exp(-sqrt5 * r)
 
 
 class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
@@ -275,6 +283,14 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
         )
         return A
 
-    def _K_scaler(self, x1, x2, lengthscale):
-        raise NotImplementedError()
+    def _K_scaler(self, x1, x2, lengthscale, variance):
+        """
+        r = |X1 - X2|/l
+        K(X1, X2) = σ (1 + √5 r + (5/3) r^2) exp{-√5 r}
+        """
+
+        r  = np.abs(x1-x2) / lengthscale
+        sqrt5 = np.sqrt(5.0)
+
+        return  variance * (1.0 + sqrt5 * r + (5.0/3.0) * r * r) * np.exp(-sqrt5 * r)
 

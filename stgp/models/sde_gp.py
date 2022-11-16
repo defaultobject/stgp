@@ -472,19 +472,25 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True 
         )
 
-        # Compute spatial conditions to get posterior at new spatial points
-        mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
-            xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
-        )
+        if False:
+            # Compute spatial conditions to get posterior at new spatial points
+            mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
+                xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
+            )
+        else:
+            mu, var = mu_t, var_t
         
         # mu/var is in  time - (space x latents) format
         # Unsort data and remove the training data
         mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]
         var_time_unsorted = all_temporal_data.unsort(var)[self.data.Nt:]
 
-        # convert to time-space-latent format
-        mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)
+        if False:
+            # convert to time-space-latent format
+            mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)
+        else:
+            mu_p, var_p = mu_time_unsorted, var_time_unsorted
 
         mu_p = np.reshape(mu_p, [-1, self.output_dim, 1])
         var_p = batched_block_diagional(var_p, self.output_dim)
