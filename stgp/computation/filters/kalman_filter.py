@@ -51,6 +51,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     """
 
 
+    # in latent - space format
     Y_k = x['Y']
 
     mask_k = get_same_shape_mask(Y_k)
@@ -67,10 +68,14 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
 
 
     # -- KALMAN UPDATE --
+    # m_, P_ is in latent - space -state format
+    # convert to latent-space format
+
     mu = M @ H_k @ m_
     var = M @ H_k @ P_ @ H_k.T @ M.T
 
     #inovation mean and variance
+    # all in latent-space format
     v = Y_k - mu
     S = var + R_k
 
@@ -80,6 +85,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     K = (cholesky_solve(L, M @ H_k @ P_)).T
 
     # Kalman Update
+    # convert to latent-space-state format before updating
     m_k = m_ + K @ v
     P_k = P_ - K @ S @ K.T
 
@@ -156,6 +162,10 @@ def filter_step_wrapper(data, m):
     return _fn
 
 def filter_loop(data: 'SequentialData', prior: 'Prior', R):
+    """
+    Args:
+        R: in time - latent - space format
+    """ 
 
     x_t =  data.X_time
     X_s =  data.X_space
@@ -169,6 +179,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
     step_wrap = filter_step_wrapper(data, prior)
 
     # steady state does not depend on time
+    # in latent-space-state format
     m_inf = prior.m_inf(None, X_s, None)
     P_inf = prior.P_inf(None, X_s, None)
 

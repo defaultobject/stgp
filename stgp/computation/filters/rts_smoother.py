@@ -37,7 +37,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
     return m, P
 
 @dispatch(LTI_SDE)
-def rts_step(prior, carry, x, X_s, full_state=False):
+def rts_step(prior, carry, x, X_s):
     P_inf = prior.P_inf(None, X_s, None)
     H_k = prior.H(None, X_s, None)
 
@@ -64,19 +64,14 @@ def rts_step(prior, carry, x, X_s, full_state=False):
         'm': m, 'P': P 
     }
 
-    if full_state:
-        p_res = {
-            'm': m, 'P':  P 
-        }
-    else:
-        p_res = {
-            'm': H_k @ m, 'P': H_k @ P @ H_k.T
-        }
+    p_res = {
+        'm': H_k @ m, 'P': H_k @ P @ H_k.T
+    }
 
     return m_res, p_res
 
 @dispatch(SDE)
-def rts_step(model, carry, x, X_s, full_state=False):
+def rts_step(model, carry, x, X_s):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
 
@@ -106,22 +101,17 @@ def rts_step(model, carry, x, X_s, full_state=False):
         'm': m, 'P': P 
     }
 
-    if full_state:
-        p_res = {
-            'm': m, 'P':  P 
-        }
-    else:
-        p_res = {
-            'm': H_k @ m, 'P': H_k @ P @ H_k.T
-        }
+    p_res = {
+        'm': H_k @ m, 'P': H_k @ P @ H_k.T
+    }
 
     return m_res, p_res
 
-def step_wrapper(data, m, full_state=False):
+def step_wrapper(data, m):
     rts_fn = evoke('rts_step', m)
 
     def _fn(carry, x):
-        return rts_fn(m, carry, x, data.X_space, full_state=full_state)
+        return rts_fn(m, carry, x, data.X_space)
 
     return _fn
 
@@ -144,7 +134,7 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     # TODO: fix this
     dt = np.hstack([dt, np.zeros(1)])
 
-    step_wrap = step_wrapper(data, model, full_state=full_state)
+    step_wrap = step_wrapper(data, model)
     H_k = model.H(None, X_s, None)
 
     m_init = filter_res['m'][-1]
@@ -167,13 +157,8 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     m = ys['m']
     P = ys['P']
 
-    if full_state:
-        m = np.vstack([(m_init)[None, ...], m])
-        P = np.vstack([(P_init)[None, ...], P])
-
-    else:
-        m = np.vstack([(H_k @ m_init)[None, ...], m])
-        P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
+    m = np.vstack([(H_k @ m_init)[None, ...], m])
+    P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
 
     return np.flip(m, axis=0), np.flip(P, axis=0)
 

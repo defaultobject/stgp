@@ -472,29 +472,44 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True 
         )
 
-        if False:
-            # Compute spatial conditions to get posterior at new spatial points
-            mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
-                xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
-            )
-        else:
-            mu, var = mu_t, var_t
+        # mu_t and var_t are in time-latent-space format
+        # when predicting we only predict f, not the state as well
+        if self.full_state_observed:
+            # remove the extra state dims
+            mu_t = mu_t[:, :self.data.Ns, :]
+            var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
+
+        # Compute spatial conditions to get posterior at new spatial points
+        mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
+            xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
+        )
+
         
-        # mu/var is in  time - (space x latents) format
+        # mu/var is in  time - (latent x space) format
         # Unsort data and remove the training data
         mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]
         var_time_unsorted = all_temporal_data.unsort(var)[self.data.Nt:]
 
-        if False:
-            # convert to time-space-latent format
+
+        # convert to time-space-latent format
+        if not self.full_state_observed:
+            # if using full sate this will already be in time-space format
             mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
             var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)
-        else:
-            mu_p, var_p = mu_time_unsorted, var_time_unsorted
 
-        mu_p = np.reshape(mu_p, [-1, self.output_dim, 1])
-        var_p = batched_block_diagional(var_p, self.output_dim)
-        var_p = np.reshape(var_p, [-1, 1, self.output_dim, self.output_dim])
+            mu_p = np.reshape(mu_p, [-1, self.output_dim, 1])
+            var_p = batched_block_diagional(var_p, self.output_dim)
+            var_p = np.reshape(var_p, [-1, 1, self.output_dim, self.output_dim])
+        else:
+            mu_p = mu_time_unsorted
+            var_p = var_time_unsorted
+
+            # time - space format
+            mu_p = np.reshape(mu_p, [-1, 1, 1])
+            var_p = np.reshape(
+                np.diagonal(var_p, axis1=2, axis2=3),
+                [-1, 1, 1, 1]
+            )
         
         # unsort to original permutation in XS
         mu_p_unsorted = XS_data.unsort(mu_p)

@@ -26,44 +26,20 @@ from .linear_marginals import linear_marginal_blocks
 
 
 # ========================= Conjugate Gaussian Approximate Posterior Marginal Blocks =========================
-#TODO: do we actually ever use these?
 
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
-def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
-    N = XS.shape[0]
-
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=True)
-
-    mu = np.reshape(mu, [N, 1, 1])
-    var = np.reshape(var, [N, 1, 1, 1])
-
-    return mu, var
-
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     N = XS.shape[0]
 
     Q = prior.base_prior.output_dim
 
     mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
-
-    mu = np.reshape(mu, [N, Q, 1])
-    var = np.reshape(var, [N, 1, Q, Q])
+    chex.assert_rank([mu, var], [3, 4])
 
     return mu, var
 
-@dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
-def marginal_prediction_blocks(XS, data_x, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
-    N = XS.shape[0]
-
-    Q = prior.base_prior.output_dim
-
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
-
-    mu = np.reshape(mu, [N, Q, 1])
-    var = np.reshape(var, [N, 1, Q, Q])
-
-    return mu, var
 
 # ========================= Gaussian Approximate Posterior Marginal Blocks =========================
 

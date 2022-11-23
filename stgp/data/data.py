@@ -428,6 +428,15 @@ class SpatioTemporalData(SequentialData):
         return self._X.X_time
 
     @property
+    def X_st(self):
+        # return in time-space format
+        X_t = np.repeat(self.X_time[:, None], self.Ns)[:, None]
+        X_s = np.tile(self.X_space, [self.Nt, 1])
+        X =  np.hstack([X_t, X_s])
+        X = X.reshape([self.Nt, self.Ns, self.D])
+        return X
+
+    @property
     def Y_st(self):
         return self._Y.value
 
@@ -439,8 +448,8 @@ class SpatioTemporalData(SequentialData):
     def Y_flat(self):
         """ Return Y in data-latent format """
         # X is returned in time-space ordering  so we return Y in the same order
-        # Y is already sorted by time, and then by space.
-        # Therefore all we have to is reshape
+        # Y is already sorted by time - time -space
+        # Therefore all we have to is reorder and reshape
 
         Y = np.reshape(
             np.transpose(self.Y_st, [0, 2, 1]),

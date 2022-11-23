@@ -162,52 +162,6 @@ def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp
     mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, gp.prior)
     return mu, var
 
-    chex.assert_rank([pred_mean, pred_var], [2, 3])
-
-    # Add extra dim to ensure rank 2 after batching
-    pred_mean = pred_mean[..., None]
-
-    XS_time = XS_data.X_time
-    X_time = X_data.X_time
-
-    # Get spatial locations with dummy time dimension so kernel evaluations are correct
-    XS_space = XS_data.X_space
-    X_space = X_data.X_space
-    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
-    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
-
-    mean_x = np.zeros([X_space.shape[0], 1])
-    mean_xs = np.zeros([XS_space.shape[0], 1])
-
-    if diagonal:
-        Ktt = gp.kernel.k1.K_diag(X_time)
-        Kss = gp.kernel.k2.K_diag(XS_space)
-    else:
-        Ktt = gp.kernel.k1.K_diag(X_time)
-        Kss = gp.kernel.k2.K(XS_space, XS_space)
-
-    # Evaluate separable kernels
-    Kzz = gp.kernel.k2.K(X_space, X_space)
-    Ksz = gp.kernel.k2.K(XS_space, X_space)
-
-    if diagonal:
-        mu, var = jax.vmap(
-            gaussian_spatial_conditional_diagional,
-            [None, None, None, None, None, 0, 0, 0, None, None],
-        )( 
-            XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, pred_var, mean_x, mean_xs
-        )
-    else:
-        mu, var = jax.vmap(
-            gaussian_spatial_conditional,
-            [None, None, None, None, None, 0, 0, 0, None, None],
-        )( 
-            XS_space, X_space, Kzz, Ksz, Kss, Ktt, pred_mean, pred_var, mean_x, mean_xs
-        )
-
-
-    return mu, var
-
 @dispatch(Input, Independent, FullGaussianApproximatePosterior)
 @dispatch(Data, Independent, FullGaussianApproximatePosterior)
 def spatial_conditional(
@@ -272,16 +226,11 @@ def spatial_conditional(
 
     # TODO: assuming that data_xs and data_x are the same
 
-
-
     base_prior_output = prior.base_prior.output_dim
     prior_added_output = prior.derivative_kernel.d_computed
-
-    # 
-    #Kss = prior.parent.derivative_kernel.parent_kernel.K(X_space, X_space)
-    # covar is ordered by K ⊗ D
     out_dim = base_prior_output * prior_added_output
 
+    # covar is ordered by K ⊗ D
     # base prior kernel function
     base_kernel = prior.base_prior.derivative_kernel.parent_kernel
     base_time_kernel = base_kernel.k1
@@ -289,10 +238,7 @@ def spatial_conditional(
 
     # K_x_t computes K_F at all the time points independently
     #time - Dt format
-    # TODO: need to remove spatial scaling
-    K_x_t = jax.vmap(lambda t: prior.base_prior.covar(t, t))(X_time[:, None, :])
-
-
+    K_x_t = jax.vmap(lambda t: prior.base_prior.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
 
     # Ns x Ns
     K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
@@ -342,7 +288,6 @@ def spatial_conditional(
     mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
     var_p_bd = batched_block_diagional(var_p, out_dim)
     var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
-
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
     return mu_p_bd, var_p_bd

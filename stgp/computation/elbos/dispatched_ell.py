@@ -60,7 +60,12 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     # ensure Y is of the correct shape
     X_blocks = np.reshape(X, [num_blocks, -1, X.shape[-1]])
+
+    # Y is in (time-space)-latent format
+    # reshape to time - (space-latent) format
     Y = np.reshape(Y, [num_blocks, block_size, 1])
+
+    # already in time - (space-latent) format 
     q_f_mu = np.reshape(q_f_mu, [num_blocks, block_size, 1])
 
     N = Y.shape[0]
@@ -88,10 +93,12 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
         X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
         X_blocks = np.transpose(X_blocks, [1, 0, 2])
 
+    # likelihood is time - latent - space format
     lik_var = likelihood.variance
     chex.assert_shape(lik_var, q_f_var.shape)
 
 
+    # convert to time - space - latent format
     lik_var = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_var)
 
     ell_arr = jax.vmap(

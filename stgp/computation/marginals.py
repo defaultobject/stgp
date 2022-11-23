@@ -53,7 +53,6 @@ def gaussian_spatial_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, 
     N = Kxsxs.shape[0]
     M = m.shape[0]
 
-    breakpoint()
     chex.assert_shape(Kxsxs, [N, N])
     chex.assert_shape(Kzz, [M, M])
     chex.assert_shape(Kxz, [N, M])
@@ -83,7 +82,7 @@ def gaussian_linear_operator_spatial_conditional(XS:np.ndarray, X: np.ndarray, K
     """
     Computes:
         mu =  [I_Dt ⊗  Ksz Kzz⁻¹] m_t
-        var =  Ktt \kron blkdiag[ Kss - Ksz Kzz⁻¹ Kss] + blkdiag[ [I_Dt ⊗  Ksz Kzz⁻¹] Stt [I_Dt ⊗  Ksz Kzz⁻¹]^T ]^T_t
+        var =  Ktt ⊗  blkdiag[ Kss - Ksz Kzz⁻¹ Kzs] + blkdiag[ [I_Dt ⊗  Ksz Kzz⁻¹] Stt [I_Dt ⊗  Ksz Kzz⁻¹]^T ]^T_t
     """
 
     # number of dimensions in the time prior
