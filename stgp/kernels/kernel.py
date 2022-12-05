@@ -253,9 +253,11 @@ class ScaleKernel(Kernel):
 
     def fix(self):
         self.variance_param.fix()
+        self.parent_kernel.fix()
 
     def release(self):
         self.variance_param.release()
+        self.parent_kernel.release()
 
 
 class StationaryKernel(Kernel):
@@ -275,14 +277,7 @@ class StationaryKernel(Kernel):
 
         super(StationaryKernel, self).__init__(input_dim, active_dims)
 
-        if lengthscales is None:
-            lengthscales = np.array([1.0] * input_dim)
-        else:
-            lengthscales = ensure_array(lengthscales)
-
-        chex.assert_shape(lengthscales, [input_dim])
-
-        # register lengthscales and variances
+           # register lengthscales and variances
         if name is None:
             name = 'Kernel'
 
@@ -293,7 +288,19 @@ class StationaryKernel(Kernel):
         else:
             name = f'{name}/Lengthscale({additive})[{active_dims}]'
 
-        self.lengthscale_param = Parameter(lengthscales, constraint='positive', name=name)
+        if type(lengthscales).__name__ == 'Parameter':
+            # lengthscale is already a param so no need to create a new one
+            self.lengthscale_param = lengthscales
+        else:
+
+            if lengthscales is None:
+                lengthscales = np.array([1.0] * input_dim)
+            else:
+                lengthscales = ensure_array(lengthscales)
+
+            chex.assert_shape(lengthscales, [input_dim])
+
+            self.lengthscale_param = Parameter(lengthscales, constraint='positive', name=name)
 
         self.additive = additive
 
@@ -372,6 +379,14 @@ class StationaryVarianceKernel(StationaryKernel):
 
     def K_diag(self, X1):
         return self.variance * np.ones(X1.shape[0])
+
+    def fix(self):
+        self.lengthscale_param.fix()
+        self.variance_param.fix()
+
+    def release(self):
+        self.lengthscale_param.release()
+        self.variance_param.release()
 
 class NonStationaryKernel(Kernel):
     def __init__(self) -> None:

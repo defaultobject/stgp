@@ -81,3 +81,7 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
     def fix(self):
         for q in self.approx_posteriors:
             q.fix()
+
+    def release(self):
+        for q in self.approx_posteriors:
+            q.release()

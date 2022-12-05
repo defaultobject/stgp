@@ -29,6 +29,7 @@ from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diago
 
 # Import Types
 from ...transforms import Transform, LinearTransform, Independent, NonLinearTransform
+from ...transforms.latent_variable import LatentVariable
 from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, FullConjugateGaussian
 from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood, Gaussian
 from ...sparsity import FreeSparsity, Sparsity
@@ -157,6 +158,10 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         dim = num_latents,
         out_dim  = 2
     )
+
+    if type(q_m) is list:
+        # hack for now to get models with mixed number of inducing points to work
+        return q_m, q_S
 
     # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis
     q_m = np.transpose(q_m, [1, 0, 2])

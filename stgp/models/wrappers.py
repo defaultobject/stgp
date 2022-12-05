@@ -1,9 +1,13 @@
 """ Useful wrappers """
 from ..core import Model, Posterior
+from ..dispatch import dispatch
+from ..dispatch import evoke
 
 import jax
 import objax
 import chex
+
+from ..approximate_posteriors import MeanFieldApproximatePosterior
 
 class LatentPredictor(Model):
     def __init__(self, model):
@@ -44,6 +48,11 @@ class LatentPredictor(Model):
 class MultiObjectiveModel(Model):
     def __init__(self, model_list):
         self.model_list = objax.ModuleList(model_list)
+        if False:
+            self.approximate_posterior = MeanFieldApproximatePosterior(
+                approximate_posteriors = [m.approximate_posterior.approx_posteriors[0] for m in model_list]
+            )
+        self.approximate_posterior = model_list[-1].approximate_posterior
 
     def get_objective(self):
         obj = 0.0
@@ -52,4 +61,13 @@ class MultiObjectiveModel(Model):
 
         return obj
 
+    def natural_gradient_update(self, learning_rate, enforce_psd_type=None, prediction_samples=None):
+        natgrad_fn = evoke('natural_gradients', self, self.approximate_posterior)
+
+        return natgrad_fn(
+            self,
+            learning_rate,
+            enforce_psd_type,
+            prediction_samples
+        )
 

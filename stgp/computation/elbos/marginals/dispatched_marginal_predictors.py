@@ -13,6 +13,7 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
+from ....transforms.latent_variable import LatentVariable
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity, SpatialSparsity
@@ -201,6 +202,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     return _m, _S
 
 
+
+
+
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
@@ -257,6 +261,11 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity
     )
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
+    breakpoint()
 
 
 @dispatch(ApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
@@ -564,7 +573,8 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
 
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    chex.assert_rank([q_m, q_S_chol], [3, 4])
+    #TODO FIX THIs
+    #chex.assert_rank([m, S_chol], [3, 4])
 
     K12 = prior.kernel.K(X1, X2)
     K1z = prior.kernel.K(X1, sparsity.Z)
@@ -578,7 +588,7 @@ def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, li
         Kz2,
         K12,
         m,
-        S_chol
+        S_chol[0]
     )
 
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)

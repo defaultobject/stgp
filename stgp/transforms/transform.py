@@ -374,6 +374,14 @@ class Independent(Transform):
 
         return to_block_diag(A_blocks)
 
+    def fix(self):
+        for q in self.parent:
+            q.fix()
+
+    def release(self):
+        for q in self.parent:
+            q.release()
+
 
 
 class MultiOutput(Transform):

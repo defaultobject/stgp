@@ -352,7 +352,8 @@ class DeepStationary(StationaryKernel):
 class DeepRBF(DeepStationary):
     def _K_var(self, lengthscale):
         #return np.sqrt(np.pi*lengthscale)
-        return np.sqrt(np.pi*lengthscale)/np.sqrt(2*np.pi*(lengthscale))
+        #return np.sqrt(2 * np.pi*lengthscale)/np.sqrt(2*np.pi*(lengthscale))
+        return 1.0
 
     def _K_scaler(self, x1, x2, lengthscale, m1, m2, k_11, k_22, k_12):
         chex.assert_rank(k_11, 0)
@@ -363,7 +364,7 @@ class DeepRBF(DeepStationary):
         if self.use_parent:
             L = lengthscale + k_11 + k_22 - 2*k_12
 
-            const = np.squeeze(np.sqrt(np.pi*lengthscale))
+            const = np.squeeze(np.sqrt(2 * np.pi*lengthscale))
 
             # setup correct dimensions for log_gaussian_scalar
             k_ij = const * np.exp(log_gaussian_scalar(0, m1-m2, L))

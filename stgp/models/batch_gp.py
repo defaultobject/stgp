@@ -224,3 +224,11 @@ class BatchGP(Posterior):
 
     def nlpd(self, XS, YS, num_samples=None):
         return evoke('nlpd', self)(XS, YS, self, num_samples=num_samples)
+
+    def fix(self):
+        self.likelihood.fix()
+        self.prior.fix()
+
+    def release(self):
+        self.likelihood.release()
+        self.prior.release()

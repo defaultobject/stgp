@@ -325,6 +325,7 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
 
 
 @dispatch('VGP', 'MeanFieldApproximatePosterior')
+@dispatch('MultiObjectiveModel', 'MeanFieldApproximatePosterior')
 def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=None) -> np.ndarray:
     approx_posteriors = model.approximate_posterior.approx_posteriors
     num_q = len(approx_posteriors)

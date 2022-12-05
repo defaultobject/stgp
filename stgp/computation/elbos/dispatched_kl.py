@@ -82,6 +82,9 @@ def latent_kullback_leibler(approximate_posterior, prior, whiten):
         evoke_kwargs = kwarg_arr
     )
 
+    # ensure array
+    kl_arr = np.array(kl_arr)
+
     chex.assert_shape(kl_arr, [len(latents_arr)])
 
     return np.sum(kl_arr)

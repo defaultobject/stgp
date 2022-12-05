@@ -135,3 +135,13 @@ class GPPrior(Prior):
     def sample(self, X1, X2):
         raise NotImplementedError()
 
+    def fix(self):
+        """ Hold all parameters.  """
+        self.kernel.fix()
+        self.sparsity.fix()
+
+    def release(self):
+        """ Un-hold all parameters.  """
+        self.kernel.release()
+        self.sparsity.release()
+

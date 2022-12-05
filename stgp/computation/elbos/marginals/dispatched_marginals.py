@@ -36,6 +36,7 @@ from ....core import Block, get_block_dim
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
+from ....transforms.latent_variable import LatentVariable
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
@@ -247,7 +248,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     # Call the predictive distribution to compute q(f)
     mu, var =  evoke(
-        'marginal_prediction_blocks', approximate_posterior, likelihood, 'GPPrior', sparsity[0], whiten=False 
+        'marginal_prediction_blocks', approximate_posterior, likelihood, 'GPPrior', sparsity, whiten=False 
     )(
         data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
     )
@@ -714,3 +715,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     ) 
 
     return val[0], val[1]
+
+
+

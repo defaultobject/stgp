@@ -70,6 +70,10 @@ class GaussianApproximatePosterior(ApproximatePosterior):
         self._m.fix()
         self._S_chol.fix()
 
+    def release(self):
+        self._m.release()
+        self._S_chol.release()
+
 class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     def __init__(self, dim: int=None, m=None, S_diag=None, train=True):
         self._m = Parameter(

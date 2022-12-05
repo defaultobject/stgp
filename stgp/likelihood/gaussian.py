@@ -157,6 +157,7 @@ class Gaussian(DiagonalGaussian):
 
     def fix(self):
         self.variance_param.fix()
+
     def release(self):
         self.variance_param.release()
 

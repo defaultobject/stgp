@@ -14,6 +14,8 @@ class Sparsity(Input):
     def X(self):
         return self.Z
 
+
+
 class FreeSparsity(Sparsity):
     pass
 
@@ -32,6 +34,13 @@ class NoSparsity(Sparsity):
     def Z(self):
         return self.raw_Z.value
 
+    def fix(self):
+        """ NoSparsity is used for data, do not train data. """
+        pass
+
+    def release(self):
+        pass
+
 class FullSparsity(FreeSparsity):
     def __init__(self, Z: np.ndarray = None, Z_ref: Parameter = None):
 
@@ -44,9 +53,19 @@ class FullSparsity(FreeSparsity):
     def Z(self):
         return self.raw_Z.value
 
+    def fix(self):
+        """ Hold all parameters.  """
+        self.raw_Z.fix()
+
+    def release(self):
+        """ Un-hold all parameters.  """
+        self.raw_Z.release()
+
 
 class SpatialSparsity(StructuredSparsity):
     def __init__(self, X_time = None, Z_space = None, Z_ref:SpatialTemporalInput = None, train=True):
+
+        self.train_flag = train
 
         if Z_ref:
             self.raw_Z = Z_ref
@@ -60,6 +79,17 @@ class SpatialSparsity(StructuredSparsity):
     @property
     def Z(self):
         return self.raw_Z.value
+
+    def fix(self):
+        """ Hold all parameters.  """
+        if self.train_flag:
+            self.raw_Z.fix()
+
+    def release(self):
+        """ Un-hold all parameters.  """
+        # only release if it was set a trainable parameter from the start
+        if self.train_flag:
+            self.raw_Z.release()
 
 class StackedSparsity(Sparsity):
     def __init__(self, sparsity_arr):

@@ -337,6 +337,9 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
             dim = P,
             out_dim  = 1 
         )
+        #ensure array
+        ell_arr = np.array(ell_arr)
+
         chex.assert_shape(ell_arr, [P])
 
         ell = np.sum(ell_arr)

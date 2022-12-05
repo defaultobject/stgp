@@ -157,6 +157,13 @@ class VGP(Posterior):
 
         return -elbo
 
+    def mean(self, XS):
+        return self.mean_blocks(XS)
+
+
+    def covar(self, X1, X2):
+        return self.covar_blocks(X1, X2)
+
     def mean_blocks(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False, fix_shapes=False)
         mu = np.reshape(mu, [self.output_dim, XS.shape[0], 1])
@@ -182,6 +189,9 @@ class VGP(Posterior):
 
         chex.assert_shape(var_arr, [1, self.output_dim, XS_1.shape[0], XS_2.shape[0]])
         return var_arr[0]
+
+    def var_blocks(self, XS, X=None, Y=None):
+        return self.var(XS)
 
     def predict_latents(self, XS, diagonal=True, squeeze=True):
         mean, var = self.inference.predict_latents(
@@ -280,3 +290,15 @@ class VGP(Posterior):
 
     def nlpd(self, XS, YS, num_samples=None):
         return evoke('nlpd', self)(XS, YS, self, num_samples=num_samples)
+
+    def fix(self):
+        """ Hold all parameters.  """
+        self.likelihood.fix()
+        self.prior.fix()
+        self.approximate_posterior.fix()
+
+    def release(self):
+        """ Un-hold all parameters.  """
+        self.likelihood.release()
+        self.prior.release()
+        self.approximate_posterior.release()
