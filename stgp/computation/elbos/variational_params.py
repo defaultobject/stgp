@@ -42,6 +42,9 @@ from ...sparsity import FreeSparsity, Sparsity
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', False)
@@ -131,8 +134,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     return mu, var
 
 #================== MEAN FIELD  ENTRY POINT ==========================
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, False)
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, True)
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
     base_prior = prior.base_prior
@@ -158,6 +161,10 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         dim = num_latents,
         out_dim  = 2
     )
+
+    #q_m = np.array(q_m)
+    #q_S = np.array(q_S)
+
 
     if type(q_m) is list:
         # hack for now to get models with mixed number of inducing points to work

@@ -49,6 +49,20 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
 # ======= Dispatchers ========
 
+@dispatch(Posterior, "HetGaussian", Transform)
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+    if diagonal:
+        m_f = post_mu[:, 0, ...][:, None, ...]
+        m_g = post_mu[:, 1, ...][:, None, ...]
+
+        k_f = post_var[:, 0, ...]
+        k_g = post_var[:, 1, ...]
+
+        mean = m_f
+        var = k_f + np.exp(2 * m_g + 2 * k_g)
+
+        return mean, var[..., None]
+
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 

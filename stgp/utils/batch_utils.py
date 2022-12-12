@@ -1,9 +1,11 @@
 import objax
 from batchjax import batch_or_loop, BatchType
+import jax.numpy as np
 
 from typing import Union, Optional, List
 from .utils import can_batch, get_batch_type
 from ..dispatch import evoke
+from .. import settings
 
 
 def get_modules_at_i(module_arr, i):
@@ -57,7 +59,7 @@ def batch_over_module_types(
     fn = lambda pred_fn, *args: pred_fn(*args)
 
     # Compute prediction for each likelihood-prior pair
-    return batch_or_loop(
+    res = batch_or_loop(
         fn,
         [pred_fn, *fn_params],
         [pred_axes, *fn_axes],
@@ -65,3 +67,13 @@ def batch_over_module_types(
         out_dim=out_dim,
         batch_type = get_batch_type(module_arr)
     )
+
+    if settings.use_loop_mode:
+        return res
+
+    if out_dim == 1:
+        return np.array(res)
+
+    # convert to array
+    res = [np.array(r) for r in res]
+    return res

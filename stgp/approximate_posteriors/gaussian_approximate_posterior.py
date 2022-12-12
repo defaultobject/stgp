@@ -1,4 +1,5 @@
 import jax.numpy as np
+import numpy as onp
 import objax
 
 from . import ApproximatePosterior
@@ -15,7 +16,8 @@ class GaussianApproximatePosterior(ApproximatePosterior):
             raise RuntimeError('Either dim or m must be passed')
 
         if m is None:
-            m = 0.01*np.ones([dim, 1])
+            #m = 0.01*np.ones([dim, 1])
+            m = np.array(0.01*onp.random.rand(dim)[:, None])
             #m = np.ones([dim, 1])
 
         chex.assert_rank(m, 2)
@@ -76,6 +78,22 @@ class GaussianApproximatePosterior(ApproximatePosterior):
 
 class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
     def __init__(self, dim: int=None, m=None, S_diag=None, train=True):
+
+        if dim is None and m is None:
+            raise RuntimeError('Either dim or m must be passed')
+
+        if m is None:
+            #m = 0.01*np.ones([dim, 1])
+            m = np.array(0.01*onp.random.rand(dim)[:, None])
+            #m = np.ones([dim, 1])
+
+        chex.assert_rank(m, 2)
+
+        if S_diag is None:
+            warnings.warn('Approximate posterior ')
+            S_diag = 0.1*np.ones(dim)
+
+
         self._m = Parameter(
             m,
             constraint=None,
@@ -96,7 +114,17 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
 
     @property
     def S_diag(self):
-        return self._S_diag.value
+        return np.square(self._S_diag.value)
+
+    @property
+    def S_chol(self):
+        S_diag = self._S_diag.value
+        return np.diag(S_diag)
+
+    @property
+    def S(self):
+        S_chol = self.S_chol
+        return S_chol @ S_chol.T
 
 
 

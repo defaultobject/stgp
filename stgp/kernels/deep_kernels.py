@@ -148,8 +148,9 @@ class DeepKernel(Kernel):
 
     def propogate_parent_var(self, x1):
         if self.use_parent:
-            pm_x1 = self.parent.mean(x1)
-            pk_x1x1 = self.parent.var(x1)
+            pm_x1 = self.parent.mean_blocks(x1)
+            pk_x1x1 = self.parent.var_blocks(x1)
+            chex.assert_rank([pm_x1, pk_x1x1], [3, 3])
 
         else:
             N1 = x1.shape[0]
@@ -159,16 +160,21 @@ class DeepKernel(Kernel):
             pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
 
 
-        return pm_x1, pk_x1x1
+        vec_shape_1 = [self.input_dim, x1.shape[0], 1]
+
+        return np.reshape(pm_x1, vec_shape_1),  np.reshape(pk_x1x1, vec_shape_1)
 
     def propogate_parent(self, x1, x2):
         if self.use_parent:
-            pm_x1 = self.parent.mean(x1)
-            pm_x2 = self.parent.mean(x2)
+            pm_x1 = self.parent.mean_blocks(x1)
+            pm_x2 = self.parent.mean_blocks(x2)
 
-            pk_x1x1 = self.parent.var(x1)
-            pk_x2x2 = self.parent.var(x2)
-            pk_x1x2 = self.parent.covar(x1, x2)
+            pk_x1x1 = self.parent.var_blocks(x1)
+            pk_x2x2 = self.parent.var_blocks(x2)
+            pk_x1x2 = self.parent.covar_blocks(x1, x2)
+
+            chex.assert_rank([pm_x1, pm_x2], [3, 3])
+            chex.assert_rank([pk_x1x1, pk_x2x2, pk_x1x2], [3, 3, 3])
 
         else:
             N1 = x1.shape[0]
@@ -179,6 +185,8 @@ class DeepKernel(Kernel):
             pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
             pk_x2x2 = self.kernel.K_diag(x2)[None, :, None]
             pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
+
+            raise RuntimeError()
 
 
         vec_shape_1 = [self.input_dim, x1.shape[0], 1]
@@ -208,7 +216,7 @@ class DeepLinear(DeepKernel):
 
         return np.squeeze((pm_x1[0] * pm_x1[0] + pk_x1x1[0]))
 
-class DeepStationary(StationaryKernel):
+class DeepStationary(StationaryKernel, DeepKernel):
     """
     Parent class of all Deep stationary kernels.
     All these kernels assume a single input dimension 
@@ -255,35 +263,7 @@ class DeepStationary(StationaryKernel):
     def forward_diag(self, X1, mu_1, K_diag):
         return self.K_diag(X1)
 
-    def propogate_parent(self, x1, x2):
-        if self.use_parent:
-            pm_x1 = self.parent.mean_blocks(x1)
-            pm_x2 = self.parent.mean_blocks(x2)
 
-            pk_x1x1 = self.parent.var_blocks(x1)
-            pk_x2x2 = self.parent.var_blocks(x2)
-            pk_x1x2 = self.parent.covar_blocks(x1, x2)
-
-            chex.assert_rank([pm_x1, pm_x2], [3, 3])
-            chex.assert_rank([pk_x1x1, pk_x2x2, pk_x1x2], [3, 3, 3])
-
-        else:
-            N1 = x1.shape[0]
-            N2 = x2.shape[0]
-            pm_x1 = np.zeros([1, N1, 1])
-            pm_x2 = np.zeros([1, N2, 1])
-
-            pk_x1x1 = self.kernel.K_diag(x1)[None, :, None]
-            pk_x2x2 = self.kernel.K_diag(x2)[None, :, None]
-            pk_x1x2 = self.kernel.K(x1, x2)[None, :, :]
-
-            raise RuntimeError()
-
-
-        vec_shape_1 = [self.input_dim, x1.shape[0], 1]
-        vec_shape_2 = [self.input_dim, x2.shape[0], 1]
-
-        return np.reshape(pm_x1, vec_shape_1) , np.reshape(pm_x2, vec_shape_2), np.reshape(pk_x1x1, vec_shape_1), np.reshape(pk_x2x2, vec_shape_2), pk_x1x2
 
     def K_diag(self, X1):
         return self._K_var(self.lengthscales) * np.ones(X1.shape[0])

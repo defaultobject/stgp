@@ -44,6 +44,7 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
 # ========================= Gaussian Approximate Posterior Marginal Blocks =========================
 
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
@@ -72,6 +73,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     """ Computes the diagonal of q(f) = ∫ p(f | u) q(u) du """
@@ -205,8 +207,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
 
 
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=True)
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, Sparsity, whiten=False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
@@ -571,6 +573,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
 
 # ================================== Marginal Covars ==============================
 
+@dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_covar(X1, X2, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     #TODO FIX THIs

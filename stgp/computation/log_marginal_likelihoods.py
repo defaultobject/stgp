@@ -1,7 +1,7 @@
 # Import Types
 from ..data import Data, TransformedData
 from ..kernels import Kernel, RBF
-from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian
+from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian, DiagonalGaussian
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from .gaussian import log_gaussian, log_gaussian_with_nans
@@ -31,6 +31,34 @@ from typing import List
 from batchjax import batch_or_loop, BatchType
 
 # =================================== Individual Likelihoods ===================================
+
+@dispatch(DiagonalGaussian)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray
+):
+    """
+    Log marginal likelihood of GP prior with Gaussian likelihood.
+
+    Computes:
+        log N(Y | 0, K(X, X) + lik.variance*I)
+
+    """
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 2)
+
+    N = X.shape[0]
+
+    chex.assert_shape(Y, [N, 1])
+    chex.assert_shape(mean, [N, 1])
+    chex.assert_shape(K, [N, N])
+
+    lik_noise = likelihood.full_variance
+
+    k = K + lik_noise 
+
+    return log_gaussian_with_nans(Y, mean, k) 
+
+
 @dispatch(Gaussian)
 def log_marginal_likelihood(
         X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray

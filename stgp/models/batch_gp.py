@@ -131,12 +131,12 @@ class BatchGP(Posterior):
         return self.log_marginal_likelihood()
 
     def mean(self, XS):
-        raise NotImplementedError()
-        mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
+        mean_blocks = self.mean_blocks(XS)
+        mean = np.reshape(m.mean_blocks(XS), [-1, 1])
 
-        chex.assert_shape(mu, [XS.shape[0], self.output_dim, 1])
+        chex.assert_shape(mean, [self.output_dim * XS.shape[0], 1])
 
-        return mu
+        return mean
 
     def mean_blocks(self, XS):
         mu, _ = self.predict_f(XS, diagonal=True, squeeze=False)
@@ -156,7 +156,12 @@ class BatchGP(Posterior):
         return var
 
     def covar(self, XS_1, XS_2):
-        raise NotImplementedError()
+        assert self.output_dim == 1
+        covar =  self.covar_blocks(XS_1, XS_2)[0]
+
+
+        chex.assert_shape(covar, [XS_1.shape[0], XS_2.shape[0]])
+        return covar
 
     def covar_blocks(self, XS_1, XS_2):
         var_arr =  self.inference.predictive_covar(

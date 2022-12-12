@@ -370,8 +370,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
 
 # Mean-field entry point
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=True)
-@dispatch(MeanFieldApproximatePosterior, ProductLikelihood, Independent, whiten=False)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 

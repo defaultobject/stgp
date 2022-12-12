@@ -77,7 +77,6 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
 
         mu_p, var_p = mu_parent, var_parent
         for p in prior_list:
-
             if p.full_transform:
                 mu_p, var_p = p.transform(mu_p, var_p, data)
             else:

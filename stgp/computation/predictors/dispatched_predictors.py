@@ -94,6 +94,27 @@ def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, bloc
 
     return mu, var
 
+@dispatch('BatchGP', DiagonalGaussian)
+def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
+    NS = XS.shape[0]
+    N = X.shape[0]
+    chex.assert_equal(K_xx.shape, (N, N))
+    chex.assert_equal(K_xs_x.shape, (NS, N))
+    chex.assert_equal(K_xs.shape, (NS, ))
+    chex.assert_rank(Y, 2)
+
+    # Convert Gaussian likelihood noise to diagonal matrix
+    lik_var = likelihood.variance
+
+    mu, var = gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    # this function only supports one output, but for compatability add the extra dimensions
+    mu = mu[..., None]
+    var = var[..., None, None]
+
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
 @dispatch('BatchGP', Gaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
     NS = XS.shape[0]
@@ -122,6 +143,7 @@ def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean
     return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
 
 @dispatch('BatchGP', BlockDiagonalGaussian)
+@dispatch('BatchGP', DiagonalGaussian)
 def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs):
     lik_var = likelihood.full_variance
 

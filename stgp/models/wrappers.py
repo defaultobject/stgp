@@ -52,7 +52,8 @@ class MultiObjectiveModel(Model):
             self.approximate_posterior = MeanFieldApproximatePosterior(
                 approximate_posteriors = [m.approximate_posterior.approx_posteriors[0] for m in model_list]
             )
-        self.approximate_posterior = model_list[-1].approximate_posterior
+        if False:
+            self.approximate_posterior = model_list[-1].approximate_posterior
 
     def get_objective(self):
         obj = 0.0
