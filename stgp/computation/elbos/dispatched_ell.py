@@ -32,6 +32,8 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Gaussian expected log likelihood component. """
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
+
+
 # TODO: rename this
 @dispatch(GaussianProductLikelihood, Block.BLOCK)
 def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
@@ -112,10 +114,16 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     return ell
 
 
-#@dispatch("DiagonalGaussian", GaussianApproximatePosterior)
-def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
-    """ Special case for diagonal Gaussian"""
-    N = X.shape[0]
+
+@dispatch("DiagonalGaussian", Block.DIAGONAL)
+def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, block_type):
+    lik_var = likelihood.variance_param.value
+
+    chex.assert_rank([lik_var, Y, q_f_mu, q_f_var], [1, 2, 2, 3])
+
+    # q_f_var is diagional so we fix the shapes so all shapes batch
+    q_f_var = q_f_var[..., 0]
+    chex.assert_equal_shape([Y, q_f_mu, q_f_var])
 
     # Get nan mask for output
     mask = get_mask(Y)
@@ -123,20 +131,18 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     # Convert nans to zeros
     Y = mask_vector(Y, mask)
 
+    # Ensure rank 2 after batching
     X = X[:, None, ...]
     Y = Y[..., None]
     q_f_mu = q_f_mu[..., None]
     q_f_var = q_f_var[..., None]
 
-    lik_var = likelihood.variance
-    chex.assert_shape(lik_var, [N])
-
+    # Compute ELL for each datapoint
     ell_arr = jax.vmap(
         scalar_gaussian_expected_log_likelihood,
         [0, 0, 0, 0, 0],
         0
     )(X, Y, lik_var, q_f_mu, q_f_var)
-    chex.assert_shape(ell_arr, [N])
 
     # Set elements that correposnd to missing data to zero
     ell_arr = mask_vector(ell_arr[:, None], mask)
@@ -313,7 +319,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     gauss_lik_flag = False
     if isinstance(likelihood, ProductLikelihood):
         # check if all likelihood_arr are Gaussian
-        gauss_lik_flag = all([isinstance(lik, Gaussian) for lik in likelihood.likelihood_arr])
+        gauss_lik_flag = all([isinstance(lik, Gaussian) or isinstance(lik, DiagonalGaussian)  for lik in likelihood.likelihood_arr])
     elif isinstance(likelihood, BlockDiagonalGaussian):
         gauss_lik_flag = True
 
@@ -393,7 +399,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     gauss_lik_flag = False
     if isinstance(likelihood, ProductLikelihood):
         # check if all likelihood_arr are Gaussian
-        gauss_lik_flag = all([isinstance(lik, Gaussian) for lik in likelihood.likelihood_arr])
+        gauss_lik_flag = all([isinstance(lik, Gaussian) or isinstance(lik, DiagonalGaussian)  for lik in likelihood.likelihood_arr])
     elif isinstance(likelihood, BlockDiagonalGaussian):
         gauss_lik_flag = True
 
@@ -427,6 +433,53 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     raise RuntimeError()
 
+# ===============================================================================
+# ================================= Specifics =================================
+# ===============================================================================
+
+@dispatch(Data, 'HetGaussian', Transform, MeanFieldApproximatePosterior)
+def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    TODO: this is a hack for now 
+    """
+
+    def ell_scalar(y, f_mu, f_var):
+        y = np.squeeze(y)
+        f_mu = np.squeeze(f_mu)
+        f_var = np.squeeze(f_var)
+
+        m_f = f_mu[0]
+        m_g = f_mu[1]
+        k_f = f_var[0]
+        k_g = f_var[1]
+
+        return -0.5 * (
+            np.log(2 * np.pi) + 2 * m_g + ((y - m_f) ** 2 + k_f) * np.exp(2 * k_g - 2 * m_g)
+        )
+
+    ell = jax.vmap(ell_scalar)(data.Y, q_f_mu_arr, q_f_var_arr)
+
+    return np.sum(ell)
+
+    X, Y = data.X, data.Y
+    scalar_fn = lambda y, f: likelihood.log_likelihood_scalar(np.squeeze(y), np.squeeze(f))
+
+
+    ell = approximate_expectation(
+        lambda transformed_f, X, Y, prior, likelihood, approximate_posterior: jax.vmap(
+           scalar_fn 
+        )(Y, transformed_f), 
+        q_f_mu_arr, 
+        q_f_var_arr, 
+        prior = prior,
+        fn_args = [X, Y, prior, likelihood, approximate_posterior],
+        generator = inference.generator, 
+        num_samples = inference.ell_samples,
+        block_type = Block.DIAGONAL,
+        average = True
+    )
+
+    return ell
 
 # ===============================================================================
 # ================================= Entry Point =================================

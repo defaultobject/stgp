@@ -126,6 +126,7 @@ class DiagonalGaussian(DiagonalLikelihood):
     def fix(self):
         self.variance_param.fix()
 
+
     @property
     def variance(self) -> np.ndarray:
         return np.diag(np.squeeze(self.variance_param.value))
