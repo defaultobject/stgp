@@ -37,9 +37,14 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
     return m, P
 
 @dispatch(LTI_SDE)
-def rts_step(prior, carry, x, X_s):
+def rts_step(prior, carry, x, X_s, full_state):
     P_inf = prior.P_inf(None, X_s, None)
-    H_k = prior.H(None, X_s, None)
+
+    if full_state:
+        # force full state
+        H_k = np.eye(x['m'].shape[0])
+    else:
+        H_k = model.H(None, X_s, None)
 
     dt_k = x['dt']
 
@@ -71,9 +76,14 @@ def rts_step(prior, carry, x, X_s):
     return m_res, p_res
 
 @dispatch(SDE)
-def rts_step(model, carry, x, X_s):
+def rts_step(model, carry, x, X_s, full_state):
     """ Extended Kalman Filter Predict Step """
-    H_k = model.H(None, X_s, None)
+
+    if full_state:
+        # force full state
+        H_k = np.eye(x['m'].shape[0])
+    else:
+        H_k = model.H(None, X_s, None)
 
     f_fn = lambda m: model.f_dt(
         m, X_s, x['t'], x['dt']
@@ -107,11 +117,11 @@ def rts_step(model, carry, x, X_s):
 
     return m_res, p_res
 
-def step_wrapper(data, m):
+def step_wrapper(data, m, full_state):
     rts_fn = evoke('rts_step', m)
 
     def _fn(carry, x):
-        return rts_fn(m, carry, x, data.X_space)
+        return rts_fn(m, carry, x, data.X_space, full_state)
 
     return _fn
 
@@ -134,11 +144,19 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     # TODO: fix this
     dt = np.hstack([dt, np.zeros(1)])
 
-    step_wrap = step_wrapper(data, model)
-    H_k = model.H(None, X_s, None)
+    step_wrap = step_wrapper(data, model, full_state)
+
 
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
+
+
+    if full_state:
+        # force full state
+        H_k = np.eye(m_init.shape[0])
+    else:
+        H_k = model.H(None, X_s, None)
+
 
     carry, ys = scan(
         step_wrap,
@@ -156,6 +174,7 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
 
     m = ys['m']
     P = ys['P']
+
 
     m = np.vstack([(H_k @ m_init)[None, ...], m])
     P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])

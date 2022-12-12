@@ -276,7 +276,6 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-
     def predict_y(self, XS, squeeze=True):
         pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
 
