@@ -44,7 +44,7 @@ def rts_step(prior, carry, x, X_s, full_state):
         # force full state
         H_k = np.eye(x['m'].shape[0])
     else:
-        H_k = model.H(None, X_s, None)
+        H_k = prior.H(None, X_s, None)
 
     dt_k = x['dt']
 
@@ -83,7 +83,7 @@ def rts_step(model, carry, x, X_s, full_state):
         # force full state
         H_k = np.eye(x['m'].shape[0])
     else:
-        H_k = model.H(None, X_s, None)
+        H_k = prior.H(None, X_s, None)
 
     f_fn = lambda m: model.f_dt(
         m, X_s, x['t'], x['dt']

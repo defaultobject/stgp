@@ -55,7 +55,7 @@ if False:
 
 # construct model
 
-base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = ScaleKernel(Matern52(input_dim = 1, lengthscales = [0.1]), 1.0)
 kern = FirstOrderDerivativeKernel(base_kernel_1d)
 
 diff_op_prior = DifferentialOperatorJoint(
