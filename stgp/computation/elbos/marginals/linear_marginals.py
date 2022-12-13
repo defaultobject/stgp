@@ -13,7 +13,6 @@ from ....core.block_types import compare_block_types
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
-from ....transforms.pdes import DifferentialOperatorJoint
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity
