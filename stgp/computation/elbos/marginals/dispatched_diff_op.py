@@ -149,7 +149,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         # compute marginal q(f) \int p(f | u) q(u) df 
         fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
 
-        if False:
+        if True:
             q_m, q_S = fn(
                 data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block, whiten
             ) 
@@ -180,8 +180,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
                 Kzz, 
                 Kxz, 
                 Kxx, 
-                q_m,
-                q_S_chol, 
+                q_m[..., 0],
+                q_S_chol[0, 0, ...], 
                 mean_zz, 
                 mean_xx
             )

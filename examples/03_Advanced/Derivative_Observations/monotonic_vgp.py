@@ -36,7 +36,7 @@ from stgp.transforms import OutputMap, MultiOutput
 import matplotlib.pyplot as plt
 
 
-f = lambda x: 10*np.sin(100*x)+100*x
+f = lambda x: 20*np.sin(100*x)+100*x
 
 N = 20
 x = np.linspace(0, 1, N)
@@ -89,7 +89,7 @@ q = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_
 m = stgp.models.GP(
     data = stgp.data.Data(X, Y),
     prior = prior,
-    likelihood = [Gaussian(0.1), Probit(nu=1.0)],
+    likelihood = [ProductLikelihood([Gaussian(0.1)]), ProductLikelihood([Probit(nu=1.0)])],
     approximate_posterior = q,
     ell_samples = 100,
     prediction_samples = 1000,

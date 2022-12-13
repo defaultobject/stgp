@@ -4,6 +4,7 @@ from ..dispatch import evoke
 from .. import settings
 from ..computation.gaussian import log_gaussian_scalar
 import objax
+from .. import Parameter
 
 import jax
 import jax.numpy as np
@@ -15,9 +16,8 @@ from typing import List, Optional, Union
 import chex 
 import warnings
 
-
-
 class DeepIndependentKernel(ConcatationKernel):
+    """ TODO: check if still needeed"""
     def K(self, X1: np.array, X2: np.array):
         K_arr = super(DeepIndependentKernel, self).K(X1, X2)
 
@@ -26,91 +26,6 @@ class DeepIndependentKernel(ConcatationKernel):
     def K_diag(self, X1: np.array):
         K_arr = super(DeepIndependentKernel, self).K_diag(X1)
         return np.sum(K_arr, axis=0)
-
-class DeepNN(Kernel):
-    def __init__(self, kernel, nn):
-        self.kernel = kernel
-        self.nn = nn
-
-    def K_diag(self, X):
-        X_nn = self.nn(X)
-        return self.kernel.K_diag(X_nn)
-
-    def K(self, X1, X2):
-        X1_nn = self.nn(X1)
-        X2_nn = self.nn(X2)
-        return self.kernel.K(X1_nn, X2_nn)
-
-class DeepHetreo(Kernel):
-    def __init__(
-        self,
-        parent: Optional['Model'] = None,
-        ignore_var = False,
-        input_dim: Optional[int] = 1, 
-        active_dims: Optional[np.ndarray] = None
-    ):
-        super(DeepHetreo, self).__init__(input_dim, active_dims)
-
-        self.parent_model = parent
-        self.ignore_var = ignore_var
-        self.kernel = WhiteNoiseKernel(input_dim, active_dims)
-
-    def propogate_parent(self, X):
-        N = X.shape[0]
-
-        #jitted_pred = objax.Jit(self.parent_model.predict_f, self.parent_model.predict_f.vars())
-        jitted_pred = self.parent_model.predict_f
-
-        parent_mean, parent_k = jitted_pred(X, diagonal=True, squeeze=False)
-
-        parent_mean = parent_mean[0]
-        parent_k = parent_k[0]
-
-        chex.assert_shape(parent_mean, [N, 1])
-        chex.assert_shape(parent_k, [N, 1])
-
-        return parent_mean, parent_k
-
-    def K_diag(self, X):
-        pm, pk = self.propogate_parent(X)
-
-        pm = pm[:, 0]
-        pk = pk[:, 0]
-
-        if self.ignore_var:
-            k =  np.exp(pm)
-        else:
-            k =  np.exp(pm+pk/2)
-
-        chex.assert_shape(k, [X.shape[0]])
-        return k
-
-    def K(self, X1, X2):
-        """ 
-        X1, X2 need to be full shape when we call propogate_parent hence we overwrite K not _K
-        """
-        pm, pk = self.propogate_parent(X1)
-
-        pm = np.tile(pm, [1, X2.shape[0]])
-        pk = np.tile(pk, [1, X2.shape[0]])
-
-        # Manually  apply active dim
-        X1 = self._apply_active_dim(X1)
-        X2 = self._apply_active_dim(X2)
-
-        wn_kern = self.kernel.K(X1, X2)
-
-        pm = pm *wn_kern
-        pk = pk *wn_kern
-
-        if self.ignore_var:
-            k = np.exp(pm)*wn_kern
-        else:
-            k = np.exp(pm + pk/2)*wn_kern
-
-        chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
-
-        return k
 
 class DeepKernel(Kernel):
     def __init__(
@@ -206,6 +121,51 @@ class DeepKernel(Kernel):
     def K_diag(self, X1):
         raise NotImplementedError()
 
+class DeepUIKernel(DeepKernel):
+    """
+    Deep Kernel with Uncertain Inputs
+    """
+    def __init__(self, kernel, surrogate_model, noise = 1e-5):
+        """
+        Args:
+            kernel: prior kernel
+            surrogate_model: model used to get derivatives of the GP prior (with the same kernel)
+        """
+        # setup active dims and input_dim
+        # call parent of deepkernel as we dont need all the setup of DeepKernel
+        super(DeepKernel, self).__init__()
+
+        self.parent_kernel = kernel
+        self.surrogate_model = surrogate_model
+
+        self.noise_param = Parameter(np.array(noise), constraint='positive', name='DeepUIKernel/noise')
+
+    @property
+    def noise(self) -> np.ndarray:
+        return self.noise_param.value
+
+    def _K(self, X1, X2):
+        chex.assert_rank([X1, X2], [2, 2])
+
+        K_base = self.parent_kernel.K(X1, X2)
+
+        noise = np.reshape(self.noise, [1, 1])
+
+        pred_x1, _ = self.surrogate_model.predict_f(X1)
+        pred_x2, _ = self.surrogate_model.predict_f(X2)
+
+        # extract first derivative
+        pred_x1 = pred_x1[:, 1][:, None]
+        pred_x2 = pred_x2[:, 1][:, None]
+
+        K_taylor = pred_x1 @ noise @ pred_x2.T
+
+        return K_base + K_taylor
+
+    def K_diag(self, X1):
+        # TODO: very inefficient
+        return np.diag(self._K(X1, X1))
+
 class DeepLinear(DeepKernel):
     def _K_with_pm(self, X1, X2,pm_x1,pm_x2,pk_x1, pk_x1x2, pk_x2):
         # TODO: assume single latent function
@@ -243,8 +203,6 @@ class DeepStationary(StationaryKernel, DeepKernel):
         else:
             self.use_parent = False
 
-
-
     def set_parent(self, parent):
         self.parent = parent
 
@@ -262,8 +220,6 @@ class DeepStationary(StationaryKernel, DeepKernel):
 
     def forward_diag(self, X1, mu_1, K_diag):
         return self.K_diag(X1)
-
-
 
     def K_diag(self, X1):
         return self._K_var(self.lengthscales) * np.ones(X1.shape[0])
