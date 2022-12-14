@@ -270,11 +270,13 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     # TODO: block dim
 
+    base_prior = prior.base_prior 
+
     # Call the predictive distribution to compute q(f)
     mu, var =  evoke(
-        'marginal_prediction_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False 
+        'marginal_prediction_blocks', approximate_posterior, likelihood, base_prior, sparsity[0], whiten=False 
     )(
-        data, sparsity[0].raw_Z, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
+        data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity, out_block, whiten
     )
 
     chex.assert_rank([mu, var], [3, 4])

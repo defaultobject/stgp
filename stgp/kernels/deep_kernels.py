@@ -151,16 +151,31 @@ class DeepUIKernel(DeepKernel):
 
         noise = np.reshape(self.noise, [1, 1])
 
-        pred_x1, _ = self.surrogate_model.predict_f(X1)
-        pred_x2, _ = self.surrogate_model.predict_f(X2)
+        pred_x1, var_x1 = self.surrogate_model.predict_f(X1)
+        pred_x2, var_x2 = self.surrogate_model.predict_f(X2)
+
+        pred, var = self.surrogate_model.predict_f(np.vstack([X1, X2]), diagonal=False)
+        # var is in latent-data format?
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
+        # get (co-)variance of derivative
+        covar = var[N1:N1*2, :][:, N1*2+N2:]
 
         # extract first derivative
         pred_x1 = pred_x1[:, 1][:, None]
         pred_x2 = pred_x2[:, 1][:, None]
 
-        K_taylor = pred_x1 @ noise @ pred_x2.T
+        # extract first derivative variance
+        var_x1 = var_x1[:, 1][:, None]
+        var_x2 = var_x2[:, 1][:, None]
 
-        return K_base + K_taylor
+        if X1.shape[0] == X2.shape[0]:
+            # white noise setting
+            K_taylor = pred_x1 @ noise @ pred_x2.T
+     
+            return K_base + K_taylor  
+        else:
+            return K_base 
 
     def K_diag(self, X1):
         # TODO: very inefficient

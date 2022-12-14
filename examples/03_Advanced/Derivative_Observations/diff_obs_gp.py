@@ -68,6 +68,7 @@ diff_op_prior = DifferentialOperatorJoint(
     has_parent=False
 )
 
+
 # Create Model
 m = stgp.models.GP(
     data = stgp.data.Data(X, Y),

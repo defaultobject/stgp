@@ -25,7 +25,6 @@ from ...permutations import data_order_to_output_order, permute_mat, permute_vec
 
 from .linear_marginals import linear_marginal_blocks
 
-
 # ========================= Conjugate Gaussian Approximate Posterior Marginal Blocks =========================
 
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)

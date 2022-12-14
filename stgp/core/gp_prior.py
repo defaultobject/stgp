@@ -63,6 +63,10 @@ class GPPrior(Prior):
         return self
 
     @property
+    def hierarchical_base_prior(self):
+        return self
+
+    @property
     def X(self): return self._X.value
 
     @property

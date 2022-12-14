@@ -106,9 +106,13 @@ class SecondOrderDerivativeMean(DiffOpMean):
         # B 
         fn = lambda xs: np.squeeze(mean_fn(xs[None, ...]))
 
+
         # B 
         mu_x = fn(x)
-        B = mu_x.shape[0]
+        B = self.parent_output_dim
+
+        # ensure mu_x is a vector
+        mu_x = np.reshape(mu_x, [B])
 
         # B x D
         dmu_dx = jacfwd(fn)(x)

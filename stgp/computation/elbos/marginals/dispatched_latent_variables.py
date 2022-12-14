@@ -74,17 +74,28 @@ def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, lik
         Kxz = gp_prior.kernel.K(XS, Z_gp)
         Kxx_var = gp_prior.kernel.K_diag(XS)  
 
-        mu, var =  gaussian_conditional_diagional(
-            XS, 
-            Z_gp, 
-            Kzz, 
-            Kxz, 
-            Kxx_var, 
-            gp_mu,
-            gp_S_chol,
-            np.zeros(Z_gp.shape[0])[:, None],
-            np.zeros(XS.shape[0])[:, None]
-        )
+        if whiten:
+            mu, var =  whitened_gaussian_conditional_diagional(
+                XS, 
+                Z_gp, 
+                Kzz, 
+                Kxz, 
+                Kxx_var, 
+                gp_mu,
+                gp_S_chol
+            )
+        else:
+            mu, var =  gaussian_conditional_diagional(
+                XS, 
+                Z_gp, 
+                Kzz, 
+                Kxz, 
+                Kxx_var, 
+                gp_mu,
+                gp_S_chol,
+                np.zeros(Z_gp.shape[0])[:, None],
+                np.zeros(XS.shape[0])[:, None]
+            )
 
         return mu, mu**2, var
 
@@ -124,9 +135,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     """
     # use GP predictive equations for approximate_psoterior[0] but use the MMK kernel 
 
-    if whiten:
-        raise NotImplementedError()
-
     return latent_variable_marginal(
         data.X, data,  q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten, False
     )
@@ -136,10 +144,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
     # use GP predictive equations for approximate_psoterior[0] but use the MMK kernel 
-
-    if whiten:
-        raise NotImplementedError()
-
     q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
         data, approximate_posterior, likelihood, prior.base_prior, whiten
     )

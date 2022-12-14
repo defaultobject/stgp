@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as np
+import numpy as onp
 import chex
 
 from . import Transform, LinearTransform
@@ -29,11 +30,18 @@ class AdditiveLatentVariable(LatentVariable):
         return X + W
 
 class UncertainInput(LinearTransform):
-    def __init__(self, base_gp, variance = None):
-        self._parent = Independent([base_gp])
+    def __init__(self, base_gp, variance = None, hessian_flag = False):
+        #self._parent = Independent([base_gp])
+        self._parent = base_gp
 
         if variance is None:
             variance = 1.0
+
+        if onp.isscalar(variance) or onp.sum(variance.shape) == 0:
+            self.static_var = True
+        else:
+            self.static_var = False
+
 
         self.var_param = Parameter(
             np.array(variance), 
@@ -41,6 +49,8 @@ class UncertainInput(LinearTransform):
             name ='UncertainInput/variance', 
             train=True
         )
+
+        self.hessian_flag = hessian_flag
 
     @property
     def full_transform(self):
@@ -50,9 +60,14 @@ class UncertainInput(LinearTransform):
         return self.transform(mu, var, data)
 
     def transform(self, mu, var, data):
+        if self.static_var:
+            var_axis = None
+        else:
+            var_axis = 0
+
         return jax.vmap(
             self.transform_single, 
-            [0, 0, 0]
+            [0, 0, var_axis]
         )(
             mu, 
             var,
@@ -60,6 +75,7 @@ class UncertainInput(LinearTransform):
         )
 
     def transform_single(self, mu, var, input_var):
+        """ Delta approximation """
         chex.assert_rank([mu, var], [2, 3])
         f =  mu[0]
         df = mu[1]
@@ -67,15 +83,17 @@ class UncertainInput(LinearTransform):
         var_f = var[0][0][0]
         var_df = var[0][1][1]
 
+        if self.hessian_flag:
+            df2 = mu[2]
+            trans_mu = f + 0.5 * input_var * df2
+        else:
+            trans_mu = f
 
-        trans_mu = f
-        #trans_var = var[0][0][0] + input_var * (df**2 + var_df)
-        trans_var = var[0][0][0] + input_var * (df**2)
+        trans_var = var[0][0][0] + input_var * (df**2 + var_df)
 
         trans_mu = np.reshape(trans_mu, [1, 1])
         trans_var = np.reshape(trans_var, [1, 1, 1])
 
         chex.assert_rank([trans_mu, trans_var], [2, 3])
         return trans_mu, trans_var
-
 

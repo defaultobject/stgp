@@ -22,7 +22,8 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         mean = None,
         kernel = None,
         is_base:bool = True,
-        has_parent:bool = False
+        has_parent:bool = False,
+        hierarchical = False
     ):
         if base_latent is None:
             raise RuntimeError('Latent gp must be passed')
@@ -34,6 +35,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self._input_dim = 1
         self._is_base = is_base
         self.has_parent = has_parent
+        self.hierarchical = hierarchical
 
     @property
     def full_transform(self):
@@ -61,7 +63,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
     def forward(self, f): return f
 
     def transform(self, mu, var, data):
-        if self.is_base:
+        if not self.hierarchical:
             # base prior so no need to transform
             chex.assert_rank([mu, var], [2, 2])
         else:
@@ -188,8 +190,16 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     @property
     def base_prior(self):
-        """ DifferentialOperatorJoint is only used to construct a base prior""" 
-        if self.is_base:
+        #if self.is_base:
+        if not self.hierarchical:
+            return self
+
+        return self.parent.base_prior
+
+    @property
+    def hierarchical_base_prior(self):
+        #if self.is_base:
+        if self.hierarchical:
             return self
 
         return self.parent.base_prior

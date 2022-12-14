@@ -28,7 +28,7 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, out_block: Block, whiten: bool):
-    if prior.is_base:
+    if not prior.hierarchical:
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)
 
@@ -117,12 +117,108 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         raise NotImplementedError()
 
 # DifferentialOperatorJoint with (non-CVI) approximate posteriors
+@dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
+    if not prior.hierarchical:
+        breakpoint()
+
+    else:
+        chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
+
+        Z = sparsity_arr[0].Z
+        Q = prior.derivative_kernel.output_dim
+
+        NS = XS.shape[0]
+        M = Z.shape[0]
+
+        if False:
+            # compute marginal q(f) \int p(f | u) q(u) df 
+            fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
+            q_m, q_S = fn(
+                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block, whiten
+            ) 
+            chex.assert_rank([q_m, q_S], [3, 4])
+
+        # latent-data format
+        # due to a jit bug we have to use the full gaussian_conditional
+        #   but we only care about the diagonal of the result so we just compute
+        #   the diagonal variance here
+
+        #Kxx = np.diag(np.squeeze(prior.var(XS))) # ND x ND
+        Kxx = prior.covar(XS, XS) # ND x ND
+        mean_xx = prior.mean(XS)
+
+        base_prior_output = prior.base_prior.output_dim
+        prior_added_output = prior.derivative_kernel.d_computed
+
+        # covar is ordered by K ⊗ D
+        Kzz = prior.base_prior.covar(Z, Z)
+        mean_zz = prior.base_prior.mean(Z)
+
+        Kxz = prior.covar(XS, Z)
+
+        # remove added outputs to Kxz Z dimension as Kzz is only defined on the base prior
+        idx = np.hstack([np.arange((M*prior_added_output)*d, (M*prior_added_output)*d + M) for d in range(base_prior_output)])
+        Kxz = Kxz[:, idx]
+
+        if whiten:
+            mu, var = whitened_gaussian_conditional_full(
+                XS, 
+                Z, 
+                Kzz, 
+                Kxz, 
+                Kxx, 
+                q_m[..., 0],
+                q_S_chol[0, 0, ...]
+            )
+            # TODO: why the transpose?
+            P = data_order_to_output_order(NS, prior.output_dim)
+            post_mu = np.reshape(P.T @ mu, [NS, prior.output_dim, 1])
+
+            post_var = P.T @ var @ P
+            post_var = get_block_diagonal(post_var, prior.output_dim)
+            post_var = np.reshape(post_var, [NS, 1, prior.output_dim, prior.output_dim])
+
+            return post_mu, post_var
+        else:
+            # TODO: this is inefficiently implemented but it works 
+
+            mu, var = gaussian_conditional(
+                XS, 
+                Z, 
+                Kzz, 
+                Kxz, 
+                Kxx, 
+                q_m[..., 0],
+                q_S_chol[0, 0, ...], 
+                mean_zz, 
+                mean_xx
+            )
+            # TODO: why the transpose?
+            P = data_order_to_output_order(NS, prior.output_dim)
+            post_mu = np.reshape(P.T @ mu, [NS, prior.output_dim, 1])
+
+            post_var = P.T @ var @ P
+            post_var = get_block_diagonal(post_var, prior.output_dim)
+            post_var = np.reshape(post_var, [NS, 1, prior.output_dim, prior.output_dim])
+
+            return post_mu, post_var
+
+
+
+# DifferentialOperatorJoint with (non-CVI) approximate posteriors
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
-    if prior.is_base:
+    if not prior.hierarchical:
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
 
@@ -139,59 +235,12 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
 
-        Z = sparsity_arr[0].Z
-        Q = prior.derivative_kernel.output_dim
 
-        XS = data.X
-        NS = XS.shape[0]
-        M = Z.shape[0]
+        mu, var =  evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior, sparsity_type, whiten=whiten)(
+            data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_arr, out_block, whiten
+        )
 
-        # compute marginal q(f) \int p(f | u) q(u) df 
-        fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior.base_prior, whiten=whiten)
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
-        if True:
-            q_m, q_S = fn(
-                data, q_m, q_S_chol, approximate_posterior, likelihood, prior.base_prior, out_block, whiten
-            ) 
-            chex.assert_rank([q_m, q_S], [3, 4])
-
-        # latent-data format
-        Kxx = prior.covar(Z, Z) # ND x ND
-        mean_xx = prior.mean(Z)
-
-        base_prior_output = prior.base_prior.output_dim
-        prior_added_output = prior.derivative_kernel.d_computed
-
-        # covar is ordered by K ⊗ D
-        Kzz = prior.base_prior.covar(Z, Z)
-        mean_zz = prior.base_prior.mean(Z)
-
-        idx = np.hstack([np.arange((M*prior_added_output)*d, (M*prior_added_output)*d + M) for d in range(base_prior_output)])
-        Kxz = Kxx[:, idx]
-
-        if whiten:
-            raise NotImplementedError()
-        else:
-            # TODO: this is inefficiently implemented but it works 
-
-            mu, var = gaussian_conditional(
-                Z, 
-                Z, 
-                Kzz, 
-                Kxz, 
-                Kxx, 
-                q_m[..., 0],
-                q_S_chol[0, 0, ...], 
-                mean_zz, 
-                mean_xx
-            )
-            # TODO: why the transpose?
-            P = data_order_to_output_order(M, prior.output_dim)
-            post_mu = np.reshape(P.T @ mu, [M, prior.output_dim, 1])
-
-            post_var = P.T @ var @ P
-            post_var = get_block_diagonal(post_var, prior.output_dim)
-            post_var = np.reshape(post_var, [M, 1, prior.output_dim, prior.output_dim])
-
-            return post_mu, post_var
-
+ 

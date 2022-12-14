@@ -23,7 +23,8 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
     """ Recursively compute the transformed linear marginal. """
 
     # TODO: this is assuming only one transform
-    parent_prior = prior.base_prior
+    # TODO: this is a hack to support operator marginals
+    parent_prior = prior.hierarchical_base_prior
 
     prior_list = get_linear_model_part_list(prior)
 
@@ -39,7 +40,6 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         )
 
     # get parent transformed value
-
     if XS is None:
         mu_parent, var_parent  = evoke('marginal_blocks', approximate_posterior, likelihood, parent_prior, whiten=whiten)(
             data, q_m, q_S, approximate_posterior, likelihood, parent_prior, parent_out_block_dim, whiten

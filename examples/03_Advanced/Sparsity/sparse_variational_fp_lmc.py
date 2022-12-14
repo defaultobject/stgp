@@ -1,5 +1,5 @@
 import sys
-sys.path.append('../')
+sys.path.append('../../')
 
 import jax
 from jax.config import config as jax_config
@@ -16,13 +16,15 @@ from stgp.kernels import RBF
 from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.data import Data
 from stgp.transforms import Independent
-from tqdm import trange
-
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.transforms import One2One
 from stgp.transforms.basic import InvProbit
 from stgp.computation.parameter_transforms import identity
+from stgp.sparsity import FullSparsity
 import stgp
 from stgp.models import GP
+
+from tqdm import trange
 
 import matplotlib.pyplot as plt
 
@@ -31,7 +33,7 @@ Q = 3
 P = 3
 N = 50
 
-XS, X, Y = multi_output_timeseries(P, N, 500, seed=0)
+XS, X, Y = multi_output_timeseries(P, N, 10, seed=0)
 
 X_test = np.copy(X)
 Y_test = np.copy(Y)
@@ -47,45 +49,66 @@ if False:
     plt.show()
 
 # Construct Model
-Z = [stgp.sparsity.NoSparsity(X) for q in range(Q)]
+Z = np.linspace(np.min(X), np.max(X), 35)[:, None]
+
+# use same Z for now
+Z_list = [stgp.sparsity.FullSparsity(Z) for q in range(Q)]
 
 # Construct Latent GPs
 latent_kernels = [RBF(lengthscales=[0.1]) for q in range(Q)]
 latent_gps = [
-    stgp.models.GP(sparsity=Z[q], kernel=latent_kernels[q]) for q in range(Q)
+    stgp.models.GP(sparsity=Z_list[q], kernel=latent_kernels[q]) for q in range(Q)
 ] 
 np.random.seed(0)
 W =  np.random.randn(P, Q)
 print('W: ', W)
-prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P, W = W)
 
+prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P, input_dim=2, W = W)
 
 m = stgp.models.GP(
     data=Data(X, Y), 
-    likelihood=[Gaussian(0.1), Gaussian(1.0), Gaussian(2.0)],
+    likelihood=[Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)],
     inference='Variational',
-    prior=prior
+    prior=prior,
+    approximate_posterior = FullGaussianApproximatePosterior(dim = Z.shape[0] * prior.base_prior.output_dim)
 )
 
-print('NLPD: ', m.nlpd(X, Y))
 
-if True:
+print(m.get_objective())
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
+
+
+pred_mu, pred_var = m.predict_f(XS)
+
+if False:
     max_iters = 200
 
+    ng_trainer = NatGradTrainer(m)
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m)
-
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    ng_trainer.train(0.9, 1)
+    ng_trainer.train(1.0, 1)
     if True:
-        for i in trange(max_iters):
-            trainer.train(1e-2, 1)
-            ng_trainer.train(0.9, 1)
+        print(m.get_objective())
 
-print('NLPD: ', m.nlpd(X, Y))
+        for i in trange(max_iters):
+            trainer.train(0.01, 1)
+            ng_trainer.train(1.0, 1)
+
+        print(m.get_objective())
+else:
+    ng_trainer = NatGradTrainer(m)
+    ng_trainer.train(1.0, 1)
+
+    #lc, _ = GradDescentTrainer(m, objax.optimizer.Adam).train(0.01, 100)
+    #plt.plot(lc)
+    #plt.show()
+    #m.print()
+
+print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
 

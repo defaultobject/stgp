@@ -58,16 +58,16 @@ if False:
 
 # construct model
 
+Z = np.linspace(0, 1, 5)[:, None]
 #base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
 base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
 
 base_gp = Independent([
     GP(
-        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        sparsity=stgp.sparsity.FullSparsity(Z=Z), 
         kernel = base_kernel_1d
     )
 ])
-
 
 kern = FirstOrderDerivativeKernel(base_kernel_1d, parent_output_dim=base_gp.output_dim)
 mean = FirstOrderDerivativeMean(parent_output_dim=base_gp.output_dim)
@@ -76,11 +76,12 @@ prior = DifferentialOperatorJoint(
     base_gp,
     mean=mean,
     kernel = kern,
-    is_base = False,
-    has_parent=True
+    is_base = True,
+    has_parent=True,
+    hierarchical = True
 )
 
-q = FullGaussianApproximatePosterior(dim = X.shape[0] * base_gp.output_dim)
+q = FullGaussianApproximatePosterior(dim = Z.shape[0] * base_gp.output_dim)
 
 # Create Model
 m = stgp.models.GP(
@@ -93,6 +94,7 @@ m = stgp.models.GP(
 
 # train
 m.print()
+
 if True:
     print(m.get_objective())
     max_iters = 100

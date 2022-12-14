@@ -79,6 +79,10 @@ class Transform(GPPrior):
         return False
 
     @property
+    def hierarchical_base_prior(self):
+        return self.parent.hierarchical_base_prior
+
+    @property
     def base_prior(self):
         """
         A transform is paced on top of a GP prior. This returns that base GP prior.
@@ -183,6 +187,10 @@ class Independent(Transform):
 
     @property
     def base_prior(self):
+        return self
+
+    @property
+    def hierarchical_base_prior(self):
         return self
 
     def get_sparsity_list(self):
