@@ -123,7 +123,19 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
     if not prior.hierarchical:
+
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
+
+        base_prior = get_permutated_prior(prior)
+
+        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=True)
+
+        mu, var = fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
+
         breakpoint()
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
     else:
         chex.assert_rank([q_m, q_S_chol], [3, 4])

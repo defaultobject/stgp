@@ -198,11 +198,11 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     @property
     def hierarchical_base_prior(self):
-        #if self.is_base:
         if self.hierarchical:
             return self
 
-        return self.parent.base_prior
+        # when not hierarchical this should have the same behavior as base prior
+        return self.base_prior
 
 class PDE(Transform):
     pass

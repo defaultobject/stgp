@@ -124,29 +124,29 @@ else:
 # predict
 pred_mu, pred_var = m.predict_f(XS)
 
+
 # plot
-D = 1
+D = 2
 
-fig, axes = plt.subplots(1)
-d = 0
-axes.fill_between(
-    XS[:, 0], 
-    pred_mu - 1.96*np.sqrt(pred_var),
-    pred_mu + 1.96*np.sqrt(pred_var),
-    alpha = 0.4
-)
+fig, axes = plt.subplots(2)
+for d in range(D):
+    axes[d].fill_between(
+        XS[:, 0], 
+        pred_mu[:, d] - 1.96*np.sqrt(pred_var[:, d]),
+        pred_mu[:, d] + 1.96*np.sqrt(pred_var[:, d]),
+        alpha = 0.4
+    )
 
-axes.plot(
-    XS, pred_mu
-)
+    axes[d].plot(
+        XS, pred_mu[:, d]
+    )
 
-axes.scatter(
-    X, Y_all[:, d], c='grey'
-)
+    axes[d].scatter(
+        X, Y_all[:, d], c='grey'
+    )
 
-axes.scatter(
-    X, Y[:, d], c='black'
-)
+    axes[d].scatter(
+        X, Y[:, d], c='black'
+    )
 
 plt.show()
-

@@ -68,10 +68,10 @@ prior = DifferentialOperatorJoint(
     ),
     kernel = kern,
     is_base = True,
-    has_parent=False
+    has_parent=False,
+    hierarchical = False
 )
 
-# ignore the 2nd order derivates
 prior_output_1, prior_output_2 = OutputMap(
     prior, 
     [[0], [ 1]], 
@@ -96,6 +96,11 @@ m = stgp.models.GP(
     whiten=False,
     inference='Variational'
 )
+
+pred_mu, pred_var = m.predict_latents(XS)
+pred_mu, pred_var = m.predict_f(XS)
+print(m.get_objective())
+breakpoint()
 
 # Train
 if True:

@@ -145,19 +145,43 @@ def dispatch(*args, **kwargs):
 
     return decorator
 
-def evoke(*args, **kwargs):
+def evoke(*args, debug=False, **kwargs):
     matched_item = None
     matched_key = None
 
+    if debug:
+        print('============= called from ====')
+        print(f"{inspect.stack()[1].filename} -- {inspect.stack()[1].lineno}")
+        print('=================')
+
     for k, item in _REGISTERED.items():
+
+
         if _DISPATCHER.match(k, *args, **kwargs):
+            if debug:
+                print('=============')
+                print('new match')
+                print(item)
+                print(k)
+                print(k.args)
             if matched_item is None or is_more_specific(k, matched_key):
+                if debug:
+                    print('most specific')
 
                 matched_item = item
                 matched_key = k
 
 
     if matched_item != None:
+        if debug:
+            print('=============')
+            print('matched item')
+            print(matched_item)
+            print(f"{matched_item.__globals__['__file__']} -- {inspect.getsourcelines(matched_item)[1]}")
+            print(inspect.getfullargspec(matched_item))
+            print(matched_key.args)
+            print('=============')
+            breakpoint()
         return matched_item
 
     raise RuntimeError(f'Cannot evoke {args}, {kwargs}')
