@@ -114,7 +114,13 @@ pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True)
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 
+Z_list = m.prior.get_sparsity_list()
+m_list = m.approximate_posterior.m
+M = Z_list[0].Z.shape[0]
+
 for p in range(P):
+    m_p =  m_list[p*M:p*M + M]
+    Z_p = np.squeeze(Z_list[p].Z)
 
     axes[p].fill_between(
         np.squeeze(XS), 
@@ -124,8 +130,12 @@ for p in range(P):
         alpha=0.3
     )
     axes[p].plot(XS, pred_mu[p], color=colors.LINE_COL, label='GP Fit')
-    axes[p].scatter(X_test, Y_test[:, p], color='black', label='Testing Data')
-    axes[p].scatter(X, Y[:, p], color='grey', label='Training Data')
+    axes[p].scatter(X_test, Y_test[:, p], color='grey', label='Testing Data')
+    axes[p].scatter(X, Y[:, p], color='lightgrey', label='Training Data')
+
+    # this plots the inducing points of the latent processes
+    #axes[p].scatter(Z_p, np.squeeze(m_p), 1, label='Inducing Points', color='black')
+    #axes[p].scatter(Z_p, np.zeros_like(np.squeeze(m_p)), 0.5)
 
     axes[p].legend()
 plt.show()
