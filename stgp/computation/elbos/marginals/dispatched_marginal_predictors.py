@@ -106,6 +106,8 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DataLatentPermutation, Sparsity, whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, DataLatentPermutation, Sparsity, whiten=True)
 def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     """ 
     approximate_posterior is already is in latent data format and so needs to be converted to data-latent format. 
@@ -263,10 +265,21 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity
     )
 
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=True)
-@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=False)
+@dispatch(ApproximatePosterior, Likelihood, list, Sparsity, whiten=True)
+@dispatch(ApproximatePosterior, Likelihood, list, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
-    breakpoint()
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    mu_list, var_list = [], []
+    for p in prior:
+        mu_p, var_p  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, p, sparsity[0], whiten=whiten, debug=True)(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, p, sparsity, out_block, whiten
+        ) 
+
+        mu_list.append(mu_p)
+        var_list.append(var_p)
+
+    return mu_list, var_list
 
 
 @dispatch(ApproximatePosterior, Likelihood, Transform, Sparsity, whiten=True)
@@ -418,19 +431,39 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
             mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
                 XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block , whiten
             )
-        chex.assert_rank([mu, var], [3, 4])
+        if type(linear_model_part) is not list:
+            # wrap mu, var in a list 
+            mu = [mu]
+            var = [var]
 
-        if diagonal:
-            var = np.transpose(np.diagonal(var, axis1=2, axis2=3), [0, 2, 1])[..., None]
-        else:
-            # no action required as var will already be of the correct shape
-            pass
+        
+        mu_list = []
+        var_list = []
+        for i in range(len(mu)):
+            mu_i = mu[i]
+            var_i = var[i]
+            chex.assert_rank([mu_i, var_i], [3, 4])
 
-        return mu, var
+            if diagonal:
+                var_i = np.transpose(np.diagonal(var_i, axis1=2, axis2=3), [0, 2, 1])[..., None]
+            else:
+                # no action required as var will already be of the correct shape
+                pass
+
+            mu_list.append(mu_i)
+            var_list.append(var_i)
+
+        if type(linear_model_part) is not list:
+            # unwrap list
+            return mu_list[0], var_list[0]
+
+        return mu_list, var_list
     else:
         mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=whiten)(
             XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
         )
+
+        breakpoint()
 
         # TODO: fix shapes with aggregation blocks?
         chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))

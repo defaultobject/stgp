@@ -98,7 +98,7 @@ m = stgp.models.GP(
 )
 
 pred_mu, pred_var = m.predict_latents(XS)
-pred_mu, pred_var = m.predict_f(XS)
+pred_mu, pred_var = m.predict_f(XS, fix_shapes=False)
 print(m.get_objective())
 breakpoint()
 

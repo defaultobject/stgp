@@ -129,11 +129,10 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 
         base_prior = get_permutated_prior(prior)
 
-        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=True)
+        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=False)
 
         mu, var = fn(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
 
-        breakpoint()
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
 
