@@ -273,6 +273,10 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
         out_dim=1,
         batch_type = get_batch_type(likelihood_arr)
     )
+    # ensure array
+    ll_arr = np.array(ll_arr)
+    chex.assert_rank(ll_arr, 2)
+
     # Fix shapes so that ll_arr matches Y
     ll_arr = ll_arr[..., None]
     ll_arr = np.transpose(ll_arr, [1, 0, 2])

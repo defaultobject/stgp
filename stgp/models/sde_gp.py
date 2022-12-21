@@ -356,6 +356,15 @@ class T_SDE_GP(BASE_SDE_GP):
         # Unsort data and remove the training data
         mu = test_data.unsort(mu)[self.data.N:]
 
+        if squeeze:
+            mu = np.squeeze(mu)
+            var = np.squeeze(var)
+        else:
+            # ensure rank 3 and 4
+            mu = mu[..., None]
+            var = var[:, None, ...]
+            chex.assert_rank([mu, var], [3, 4])
+
         return mu, var
 
 class ST_SDE_GP(BASE_SDE_GP):

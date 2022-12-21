@@ -37,7 +37,8 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 
-f = lambda x: np.sin(10*x)+10*x
+settings.ng_jitter = 1e-4
+f = lambda x: 20*np.sin(100*x)+100*x
 
 N = 20
 x = np.linspace(0, 1, N)
@@ -53,12 +54,25 @@ XS = np.linspace(0, 1, 1000)[:, None]
 
 Y = np.hstack([Y, np.ones_like(Y)])
 
+N_colocation = 200
+X_colocation = np.linspace(np.min(X), np.max(X), N_colocation)[:, None]
+Y_colocation = np.ones([N_colocation, Y.shape[1]])
+Y_colocation[:, 0] = np.NaN
+
+X = np.vstack([X, X_colocation])
+Y = np.vstack([Y, Y_colocation])
+
+# sort data
+st_data = stgp.data.MultiOutputTemporalData(X, Y)
+X, Y = st_data.X, st_data.Y
+
 if False:
-    plt.plot(X, F)
+    #plt.plot(X, F)
     plt.scatter(X, Y[:, 0])
+    plt.scatter(X, Y[:, 1])
     plt.show()
 
-base_kernel_1d = ScaledMatern32(input_dim = 1, lengthscales = [0.1], variance=1.0)
+base_kernel_1d = ScaledMatern32(input_dim = 1, lengthscales = [1.0], variance=1.0)
 kern = FirstOrderDerivativeKernel(base_kernel_1d)
 sparsity = stgp.sparsity.NoSparsity(Z=X)
 
@@ -89,11 +103,14 @@ q = FullConjugateGaussian(
     )
 )
 
+gauss_lik = Gaussian(0.01)
+gauss_lik.fix()
+
 # Create Model
 m = stgp.models.GP(
     data = stgp.data.Data(X, Y),
     prior = prior,
-    likelihood = [Gaussian(0.1), Probit(nu=1.0)],
+    likelihood = [gauss_lik, Probit(nu=1.0)],
     approximate_posterior = q,
     ell_samples = 100,
     prediction_samples = 1000,
@@ -101,27 +118,32 @@ m = stgp.models.GP(
     inference='Variational'
 )
 
+print(m.get_objective())
+
+
 # Train
 if True:
     print(m.get_objective())
-    max_iters = 200
-    #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-    ng_trainer = NatGradTrainer(m)
+    max_iters = 2000
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+    #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-    lc_arr_1, _ = ng_trainer.train(0.01, 100)
+    lc_arr_1, _ = ng_trainer.train(0.001, 100)
     lc_arr = np.array(lc_arr_1).tolist()
 
     if True:
         for i in trange(max_iters):
-            trainer.train(0.01, 1)
-            lc_arr_i, _  = ng_trainer.train(0.1, 1)
+            trainer.train(0.001, 1)
+            lc_arr_i, _  = ng_trainer.train(0.01, 1)
             lc_arr.append(float(lc_arr_i[0]))
 
     print(m.get_objective())
+    m.print()
 
     plt.plot(lc_arr)
+    plt.yscale('log')
     plt.show()
 
 

@@ -133,7 +133,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     """
     .
     """
-    # use GP predictive equations for approximate_psoterior[0] but use the MMK kernel 
+    # use GP predictive equations for approximate_posterior[0] but use the MMK kernel 
 
     return latent_variable_marginal(
         data.X, data,  q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten, False
@@ -143,7 +143,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, whiten=False)
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
-    # use GP predictive equations for approximate_psoterior[0] but use the MMK kernel 
+    # use GP predictive equations for approximate_posterior[0] but use the MMK kernel 
     q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
         data, approximate_posterior, likelihood, prior.base_prior, whiten
     )

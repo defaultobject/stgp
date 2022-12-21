@@ -52,6 +52,14 @@ XS = np.linspace(0, 1, 1000)[:, None]
 
 Y = np.hstack([Y, np.ones_like(Y)])
 
+N_colocation = 200
+X_colocation = np.linspace(np.min(X), np.max(X), N_colocation)[:, None]
+Y_colocation = np.ones([N_colocation, Y.shape[1]])
+Y_colocation[:, 0] = np.NaN
+
+X = np.vstack([X, X_colocation])
+Y = np.vstack([Y, Y_colocation])
+
 if False:
     plt.plot(X, F)
     plt.scatter(X, Y[:, 0])
@@ -97,10 +105,7 @@ m = stgp.models.GP(
     inference='Variational'
 )
 
-pred_mu, pred_var = m.predict_latents(XS)
-pred_mu, pred_var = m.predict_f(XS, fix_shapes=False)
 print(m.get_objective())
-breakpoint()
 
 # Train
 if True:

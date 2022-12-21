@@ -37,7 +37,7 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 
-f = lambda x: 10*np.sin(100*x)+100*x
+f = lambda x: 20*np.sin(100*x)+100*x
 
 N = 20
 x = np.linspace(0, 1, N)
@@ -52,6 +52,15 @@ XS = np.linspace(0, 1, 1000)[:, None]
 # add virtual observations (not actually used in the likelihood but have to be passed)
 
 Y = np.hstack([Y, np.ones_like(Y)])
+
+N_colocation = 200
+X_colocation = np.linspace(np.min(X), np.max(X), N_colocation)[:, None]
+Y_colocation = np.ones([N_colocation, Y.shape[1]])
+Y_colocation[:, 0] = np.NaN
+
+X = np.vstack([X, X_colocation])
+Y = np.vstack([Y, Y_colocation])
+
 
 if False:
     plt.plot(X, F)
