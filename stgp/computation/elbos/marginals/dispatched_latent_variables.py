@@ -59,9 +59,8 @@ def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, lik
         lv_pred_mu = lv_pred_mu[None, ..., 0]
         lv_pred_var = lv_pred_var[None, ..., 0, 0]
 
-        lv_pred_mu = np.zeros_like(lv_pred_mu)
-        lv_pred_var = np.ones_like(lv_pred_var) 
-
+        #lv_pred_mu = np.zeros_like(lv_pred_mu)
+        #lv_pred_var = np.ones_like(lv_pred_var) 
     else:
         lv_pred_mu, lv_pred_var = lv_mu, lv_S
         lv_pred_mu = lv_pred_mu[None, ...]
@@ -105,13 +104,13 @@ def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, lik
     mu = mu
 
     mu_1_diff = jax.vmap(jax.jacobian(get_mu_var))(XS_concat[:, None, :])
-    mu_1_diff = mu_1_diff[0][:, 0, 0, 0, 1][:, None]
+    mu_1_diff = mu_1_diff[0][:, 0, 0, 0, prior.w_index][:, None]
 
     var = var + (mu_1_diff ** 2) * lv_pred_var[0] 
 
     if prior.with_hessian:
         hess = jax.vmap(hessian(get_mu_var, 0))(XS_concat[:, None, :])
-        mu_hess = hess[0][:, 0, 0, 0, 1, 0, 1][:, None]
+        mu_hess = hess[0][:, 0, 0, 0, prior.w_index, 0, prior.w_index][:, None]
 
         # update mean with hessian
         #mu = mu + 0.5 * mu_hess * lv_pred_var[0]

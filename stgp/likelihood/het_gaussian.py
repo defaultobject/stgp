@@ -4,7 +4,6 @@ import jax.numpy as np
 from . import DiagonalLikelihood
 from ..computation.gaussian import log_gaussian_scalar
 
-
 class HetGaussian(DiagonalLikelihood):
     def __init__(self):
         # hack for now, when using a mean-field it assumed that there is one likelihood

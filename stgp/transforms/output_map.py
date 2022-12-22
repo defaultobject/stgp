@@ -17,8 +17,7 @@ class _OutputMap(LinearTransform):
         self._output_dim = len(mapping)
 
     def forward(self, f):
-        raise NotImplementedError()
-        return res[self.mapping]
+        return f[self.mapping]
 
     def transform(self, base_mu, base_var):
         chex.assert_rank([base_mu, base_var], [2, 3])

@@ -16,9 +16,18 @@ class LatentVariable(LinearTransform):
 
         # flag whether or not hessian should be computed in approximation
         self.with_hessian = with_hessian
+        self.w_index = 0
+
+    def transform_x(self, X, W):
+        # W is the only input
+        return W
 
 class ConcatenateLatentVariable(LatentVariable):
     """ Model X = [X, W]. """
+    def __init__(self, base_gp, latent_variable, with_hessian=False):
+        super(ConcatenateLatentVariable, self).__init__(base_gp, latent_variable, with_hessian=with_hessian)
+        self.w_index = 1
+
     def transform_x(self, X, W):
         return np.hstack([X, W])
 

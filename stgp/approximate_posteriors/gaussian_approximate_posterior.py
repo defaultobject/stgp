@@ -86,25 +86,31 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
             #m = 0.01*np.ones([dim, 1])
             m = np.array(0.01*onp.random.rand(dim)[:, None])
             #m = np.ones([dim, 1])
+        else:
+            m = np.array(m)
 
         chex.assert_rank(m, 2)
 
         if S_diag is None:
             warnings.warn('Approximate posterior ')
             S_diag = 0.1*np.ones(dim)
+        else:
+            S_diag = np.array(S_diag)
+
+        chex.assert_rank(S_diag, 1)
 
 
         self._m = Parameter(
             m,
             constraint=None,
-            name='GaussianApproxPosterior/m',
+            name='DiagonalGaussianApproximatePosterior/m',
             train=train
         )
 
         self._S_diag = Parameter(
             S_diag,
             constraint=None,
-            name='GaussianApproxPosterior/S_diag',
+            name='DiagonalGaussianApproximatePosterior/S_diag',
             train=train
         )
 
@@ -126,8 +132,13 @@ class DiagonalGaussianApproximatePosterior(GaussianApproximatePosterior):
         S_chol = self.S_chol
         return S_chol @ S_chol.T
 
+    def fix(self):
+        self._m.fix()
+        self._S_diag.fix()
 
-
+    def release(self):
+        self._m.release()
+        self._S_diag.release()
 
 
 class FullGaussianApproximatePosterior(GaussianApproximatePosterior):

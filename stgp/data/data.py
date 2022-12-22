@@ -139,6 +139,28 @@ class Data(objax.Module):
         else:
             self._X = Input(np.array(_X), name=name, train=train)
 
+class DataList(Data):
+    # Y is a list, assumed that X is the same across all the lists
+    def __init__(self, X, Y, minibatch_size=None):
+
+        #self._Y = Parameter(np.array(Y), train=False, name='Y')
+        self._Y = Y
+        self.save_X(X, train=False, name='X')
+
+        self.N = X.shape[0]
+        self.P = None
+
+        self.generator = objax.random.Generator(seed=0)
+        self.minibatch = False
+
+    @property
+    def Y(self):
+        return self._Y
+
+    @property
+    def X(self):
+        return self._X.X
+
 class TransformedData(Data):
     def __init__(self, base_data, transform_arr):
         self.transform_arr = objax.ModuleList(transform_arr)
