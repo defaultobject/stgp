@@ -7,6 +7,13 @@ from functools import partial
 import chex
 from jax import jacfwd, jacrev, grad
 
+def shape_rank(X):
+    if hasattr(X, "shape"):
+        shape = X.shape
+    else:
+        shape = ()  
+    return len(shape)
+
 def hessian(f, argnums):
     return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 
