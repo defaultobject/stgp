@@ -6,8 +6,22 @@ from jax import jit, grad
 from functools import partial
 import chex
 from jax import jacfwd, jacrev, grad
+import objax
+
+
+def first_axis_dim(X):
+    if type(X) is list:
+        return len(X)
+    return X.shape[0]
 
 def shape_rank(X):
+    if type(X) is objax.module.ModuleList:
+        return len(X)
+
+    if type(X) is list:
+        # min x
+        return 1 + np.min(np.array([shape_rank(x) for x in X]))
+
     if hasattr(X, "shape"):
         shape = X.shape
     else:

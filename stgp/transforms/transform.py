@@ -213,7 +213,7 @@ class Independent(Transform):
         )
 
         # each latent.get_b_Z() is of rank 3
-        chex.assert_rank(Z_arr, 4)
+        #chex.assert_rank(Z_arr, 4)
 
         return Z_arr
 

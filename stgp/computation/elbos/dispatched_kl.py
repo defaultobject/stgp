@@ -20,6 +20,8 @@ from ...transforms import DataLatentPermutation, Joint
 def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
     Z = prior.get_Z_stacked()
+    Z = np.array(Z)
+
     chex.assert_rank(Z, 4)
 
     covar_2 = prior.b_covar(Z, Z)

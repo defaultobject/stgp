@@ -18,9 +18,8 @@ def get_product_likelihood(likelihood_arr):
 
 class ProductLikelihood(Likelihood):
     def __init__(self, likelihood_arr):
-            super(ProductLikelihood, self).__init__()
-
-            self.likelihood_arr = objax.ModuleList(likelihood_arr)
+        super(ProductLikelihood, self).__init__()
+        self.likelihood_arr = objax.ModuleList(likelihood_arr)
 
     @property
     def block_type(self):

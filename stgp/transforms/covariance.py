@@ -67,7 +67,6 @@ class LKJStaticVarianceProcess(NonLinearTransform):
 
         return (var_diag @ correlation_cholesky @ correlation_cholesky.T @ var_diag.T)
 
-
 class LKJProcess(NonLinearTransform):
     def __init__(self, v, W_vec, f):
         super(NonLinearTransform, self).__init__()

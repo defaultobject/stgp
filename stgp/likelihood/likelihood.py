@@ -2,6 +2,7 @@
 
 import objax
 import jax
+import jax.numpy as np
 import chex
 
 from ..core import Block
@@ -19,11 +20,12 @@ class Likelihood(objax.Module):
         return self
 
     def log_likelihood(self, Y, F):
-        chex.assert_shape(Y, F.shape)
-        chex.assert_rank(Y, 2)
-        chex.assert_equal(Y.shape[1], 1)
+        chex.assert_equal(Y.shape[0], F.shape[0])
 
-        return jax.vmap(self.log_likelihood_scalar, (0, 0), 0)(Y[:, 0], F[:, 0])
+        return jax.vmap(self.log_likelihood_scalar, (0, 0), 0)(
+            np.squeeze(Y), 
+            np.squeeze(F)
+        )
 
     def conditional_var(self, f):
         raise NotImplementedError()

@@ -4,7 +4,7 @@ import jax.numpy as np
 import objax
 
 from ...dispatch import dispatch, evoke
-from ..matrix_ops import block_from_vec, block_from_mat, stack_rows
+from ..matrix_ops import block_from_vec, block_from_mat, stack_rows, shape_rank
 
 from ...data import Data, TransformedData
 from ...transforms import LinearTransform, Independent, NonLinearTransform, Transform, DataLatentPermutation, MultiOutput
@@ -239,60 +239,77 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
         transformed_f: (N x P x B) or (N x P x B x B) - sampled  and transformed f
         Y: N x P or N x B x P
 
+
+    When Y is of rank 2 it is assumed that there is one likelihood per output (as defined by the second axis) 
+       
+    When Y is of rank 3 (or greater) it is assumed that there is one likelihood per grouping, as defined by the first axis
+
     """
 
-    # transformed_f should be either rank 3 or 4
-
-    if len(transformed_f.shape) not in [3, 4]:
+    # assert correct shapes
+    # transformed_f should have at least rank 3 (N x P x B)
+    if shape_rank(transformed_f) < 3:
         raise RuntimeError('transformed_f shape wrong')
 
-    breakpoint()
-    chex.assert_rank(Y, 2)
+    if shape_rank(Y) <= 2:
+        raise RuntimeError('Shape of Y is wrong')
+
+    multivariate_flag = False
+    # fix shapes of Y to cover regression, multi output, covariance regression etc
+    if shape_rank(Y) == 2:
+        # Y and F must be rank 2 when they are passed to log_likelihood
+        # When vmapping one dimension is lost so extent here
+        Y = (Y.T)[..., None]
+    elif shape_rank(Y) >= 2:
+        multivariate_flag = True
 
     N, Q, B = transformed_f.shape[0], transformed_f.shape[1], transformed_f.shape[2]
-    P = Y.shape[1]
+    
+    # P is the number of likelihoods
+    #P = Y.shape[0]
 
     likelihood_arr = likelihood.likelihood_arr
     num_likelihoods = len(likelihood_arr)
 
-    breakpoint()
-    chex.assert_equal(P, num_likelihoods)
+    #chex.assert_equal(P, num_likelihoods)
 
     # Y and F must be rank 2 when they are passed to log_likelihood
     # When vmapping one dimension is lost so extent here
-    Y = Y[..., None]
+    #Y = Y[..., None]
     #chex.assert_shape(transformed_f, Y.shape)
 
-    # Get nan mask for output
-    mask = get_same_shape_mask(Y)
+    # when Y is a single output we can simply mask by ignoring the corresponding ELL for each datapoint
+    # otherwise we have to let the likelihood handle it
+    if not multivariate_flag:
+        # Get nan mask for output
+        mask = get_same_shape_mask(Y)
 
-    # Convert nans to zeros
-    Y = mask_matrix(Y, mask)
+        # Convert nans to zeros
+        Y = mask_matrix(Y, mask)
 
     # batch over outputs
     # log likelihood for each outout
     ll_arr = batch_or_loop(
         lambda y, f, lik: np.squeeze(lik.log_likelihood(y, f)),
         [Y, transformed_f, likelihood_arr],
-        [1, 1, 0],
+        [0, 1, 0],
         dim = num_likelihoods,
         out_dim=1,
         batch_type = get_batch_type(likelihood_arr)
     )
-    # ensure array
-    ll_arr = np.array(ll_arr)
-    chex.assert_rank(ll_arr, 2)
 
-    # Fix shapes so that ll_arr matches Y
-    ll_arr = ll_arr[..., None]
-    ll_arr = np.transpose(ll_arr, [1, 0, 2])
+    chex.assert_equal(shape_rank(ll_arr), 2)
+    #ll_arr = ll_arr[..., None]
+    #ll_arr = np.transpose(ll_arr, [1, 0, 2])
 
-    chex.assert_equal(ll_arr.shape, Y.shape)
+    if not multivariate_flag:
+        # Fix shapes so that ll_arr matches Y
+        breakpoint()
+        chex.assert_equal(ll_arr.shape, Y.shape)
 
-    # Mask out log-liklihoods that correspond to missing data
-    ll_arr = mask_matrix(ll_arr, mask)
+        # Mask out log-liklihoods that correspond to missing data
+        ll_arr = mask_matrix(ll_arr, mask)
 
-    #return np.sum(ll_arr)
     return ll_arr
 
 @dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior, Block.DIAGONAL)
@@ -401,28 +418,18 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     chex.assert_equal([q_f_var.shape[1]], [1])
 
     N, Q, B = q_f_mu.shape
-    P = Y.shape[1]
+    #P = Y.shape[1]
 
-    model_type = get_model_type(prior)
+    try:
+        # see if there is a closed form expression
 
-    # TODO: this is not very general, fix this at some point
-    gauss_lik_flag = False
-    if isinstance(likelihood, ProductLikelihood):
-        # check if all likelihood_arr are Gaussian
-        gauss_lik_flag = all([isinstance(lik, Gaussian) or isinstance(lik, DiagonalGaussian)  for lik in likelihood.likelihood_arr])
-    elif isinstance(likelihood, BlockDiagonalGaussian):
-        gauss_lik_flag = True
-
-    # TODO: add proper check to see if closed form expression exists
-    if  isinstance(model_type, LinearModel) and (gauss_lik_flag):
         ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
            X, Y, q_f_mu, q_f_var, likelihood, block_type
         )
 
         ell = np.sum(ell)
-
-        return ell
-    else:
+    except Exception as e:
+        # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 
             q_f_mu, 
@@ -435,9 +442,9 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
             average = True
         )
 
-        chex.assert_shape(ell, [N, P, 1])
+        #chex.assert_shape(ell, [N, P, 1])
 
-        ell = np.sum(ell)
+        ell = np.sum(np.array(ell))
 
         return ell
 
@@ -498,6 +505,9 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 @dispatch(Data, Likelihood, 'GPPrior', ApproximatePosterior)
 @dispatch(Data, Likelihood, Transform, ApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """
+    General ELL entry point
+    """
     chex.assert_rank([q_f_mu_arr, q_f_var_arr], [3, 4])
     base_prior = prior.base_prior
 
@@ -523,8 +533,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 @dispatch(Data, ProductLikelihood, MultiOutput, FullGaussianApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
     """
-    Multioutput assumes that
-        Data Is 
+    Multioutput assumes that... 
     """
     ell_arr = []
 
@@ -557,6 +566,8 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
 @dispatch(TransformedData, Likelihood, Transform, ApproximatePosterior)
 def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference):
+    """ Transformed Y ELL. """
+
     base_data = data.base_data
 
     base_ell =  evoke('expected_log_likelihood', base_data, likelihood, prior, approximate_posterior)(

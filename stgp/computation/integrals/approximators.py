@@ -118,6 +118,8 @@ def mv_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None, num_s
 
     if average:
         # Return average across all samples
+        if type(fn_samples) is list:
+            return [np.mean(f, axis=0) for f in fn_samples]
         return np.mean(fn_samples, axis=0)
     else: 
         return fn_samples

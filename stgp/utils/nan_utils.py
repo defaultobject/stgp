@@ -7,21 +7,27 @@ import jax.numpy as np
 import objax
 import chex
 
-from ..computation.matrix_ops import cholesky, cholesky_solve, add_jitter
+from ..computation.matrix_ops import cholesky, cholesky_solve, add_jitter, first_axis_dim
 
 def get_same_shape_mask(Y: np.ndarray) -> np.ndarray:
     """
     Returns 1 if Y_n is numeric, otherwise 0
     """
-    return (~np.isnan(Y)).astype(int)
+    if type(Y) is list:
+        return [get_same_shape_mask(y) for y in Y]
+    else:
+        return (~np.isnan(Y)).astype(int)
 
 def get_mask(Y: np.ndarray) -> np.ndarray:
     """
     Returns 1 if Y_n is numeric, otherwise 0
     """
-    mask =  get_same_shape_mask(Y)
-    # make sure rank one
-    return np.reshape(mask, [mask.shape[0]])
+    if type(Y) is list:
+        return [get_mask(y) for y in Y]
+    else:
+        mask =  get_same_shape_mask(Y)
+        # make sure rank one
+        return np.reshape(mask, [mask.shape[0]])
 
 def mask_vector(Y, mask):
     chex.assert_equal(Y.shape[0], mask.shape[0])
@@ -31,8 +37,11 @@ def mask_vector(Y, mask):
     return np.where(mask[:, None], Y, np.zeros_like(Y))
 
 def mask_matrix(Y, mask):
-    chex.assert_equal(Y.shape, mask.shape)
-    return np.where(mask, Y, np.zeros_like(Y))
+    if type(Y) is list:
+        return [mask_matrix(Y[i], mask[i]) for i in range(first_axis_dim(Y))]
+    else:
+        chex.assert_equal(Y.shape, mask.shape)
+        return np.where(mask, Y, np.zeros_like(Y))
 
 
 def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:

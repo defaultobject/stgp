@@ -9,7 +9,6 @@ from .. import Parameter
 
 from ..dispatch import evoke
 
-
 class LatentVariable(LinearTransform):
     def __init__(self, base_gp, latent_variable, with_hessian=False):
         self._parent = Independent([base_gp, latent_variable])
