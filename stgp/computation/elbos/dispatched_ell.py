@@ -236,26 +236,32 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_posterior):
     """
     Args:
-        transformed_f: N x P x B - sampled  and transformed f
+        transformed_f: (N x P x B) or (N x P x B x B) - sampled  and transformed f
         Y: N x P or N x B x P
 
     """
 
-    chex.assert_rank(transformed_f, 3)
+    # transformed_f should be either rank 3 or 4
+
+    if len(transformed_f.shape) not in [3, 4]:
+        raise RuntimeError('transformed_f shape wrong')
+
+    breakpoint()
     chex.assert_rank(Y, 2)
 
-    N, Q, B = transformed_f.shape
+    N, Q, B = transformed_f.shape[0], transformed_f.shape[1], transformed_f.shape[2]
     P = Y.shape[1]
 
     likelihood_arr = likelihood.likelihood_arr
     num_likelihoods = len(likelihood_arr)
 
+    breakpoint()
     chex.assert_equal(P, num_likelihoods)
 
     # Y and F must be rank 2 when they are passed to log_likelihood
     # When vmapping one dimension is lost so extent here
     Y = Y[..., None]
-    chex.assert_shape(transformed_f, Y.shape)
+    #chex.assert_shape(transformed_f, Y.shape)
 
     # Get nan mask for output
     mask = get_same_shape_mask(Y)
@@ -458,7 +464,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         k_g = f_var[1]
 
         return -0.5 * (
-            np.log(2 * np.pi) + 2 * m_g + ((y - m_f) ** 2 + k_f) * np.exp(2 * k_g - 2 * m_g)
+            np.log(2 * np.pi) +  m_g + ((y - m_f) ** 2 + k_f) * np.exp(0.5 * k_g -  m_g)
         )
 
     ell = jax.vmap(ell_scalar)(data.Y, q_f_mu_arr, q_f_var_arr)
