@@ -363,6 +363,11 @@ class T_SDE_GP(BASE_SDE_GP):
             # ensure rank 3 and 4
             mu = mu[..., None]
             var = var[:, None, ...]
+
+            if diagonal:
+                # add missing diagonal axid which is removed when extracting the diagonal
+                var = var[..., None]
+
             chex.assert_rank([mu, var], [3, 4])
 
         return mu, var
