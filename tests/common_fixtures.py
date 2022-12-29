@@ -14,6 +14,23 @@ from stgp.kernels.diff_op import SecondOrderDerivativeKernel_2D
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.computation.parameter_transforms import correlation_transform, get_correlation_cholesky
 
+
+
+@pytest.fixture
+def regression_1d_diff_obs_data(N):
+    np.random.seed(0)
+
+    f = lambda x: np.sin(10*x)
+    df = lambda x: np.cos(10*x)*10
+
+    x = np.linspace(0, 1, N)
+    y = f(x) + 0.01*np.random.rand(N)
+    dy = df(x) + 0.01*np.random.rand(N)
+    Y_all = np.hstack([y[:, None], dy[:, None]])
+    return x[:, None], Y_all
+
+
+
 @pytest.fixture
 def regression_1d_data(N):
     np.random.seed(0)
