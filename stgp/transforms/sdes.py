@@ -77,7 +77,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         Ns = X_s.shape[0]
         P = self.output_dim
 
-        H = data_order_to_output_order(P, Ns)
+        H = data_order_to_output_order(P, Ns).T
 
         return H
 
