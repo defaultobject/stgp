@@ -85,9 +85,12 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
     X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
 
-    Ns = XS_space.shape[0]
+    Ns = X_space.shape[0]
+    Nss = XS_space.shape[0]
 
     # Precompute all kernels
+
+    # TODO: how to compute the diagonal diff op kernels effeciently
 
     # latent - time format
     Ktt = _batched_st_kernel(XS_time, XS_time, prior, 'temporal', full=False)
@@ -103,20 +106,28 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     Ksz_full = to_block_diag(Ksz)
     Kzz_full = to_block_diag(Kzz)
 
-    # time - latent format
-    Ktt = Ktt.T
-    # time - latent - space format
-    Ktt_full = jax.vmap(
-        lambda _ktt: to_block_diag(jax.vmap(
-            lambda _k: _k*np.ones([Ns, Ns]),
+    if False:
+        # time - latent format
+        Ktt = Ktt.T
+        # time - latent - space format
+        Ktt_full = jax.vmap(
+            lambda _ktt: to_block_diag(jax.vmap(
+                lambda _k: _k*np.ones([Nss, Nss]),
+                0
+            )(_ktt)),
             0
-        )(_ktt)),
-        0
-    )(Ktt)
+        )(Ktt)
+    else:
+        Ktt_full = Ktt[0]
+
+    if True:
+        Kzz_full = Kzz_full[:Ns, ...][..., :Ns]
+        Ksz_full = Ksz_full[..., :Ns]
+
 
     # TODO: check this
-    mean_x = np.zeros([Kzz_full.shape[0], 1])
-    mean_xs = np.zeros([Kss_full.shape[0], 1])
+    mean_x = np.zeros([pred_mean.shape[1], 1])
+    mean_xs = np.zeros([2*Kss_full.shape[0], 1])
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -124,10 +135,13 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         0,
     )(pred_var)
 
+    #Kzz should only be the spatial kernel, not the derivative kernel
+
     # batch over time
 
     mu, var = jax.vmap(
-        gaussian_spatial_conditional,
+        #gaussian_spatial_conditional,
+        gaussian_linear_operator_spatial_conditional,
         [None, None, None, None, None, 0, 0, 0, None, None],
     )( 
         XS_space, 
@@ -142,6 +156,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_xs
     )
 
+    breakpoint()
     # in time-latent-space format
     var = var[:, None, ...]
 

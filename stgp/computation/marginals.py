@@ -102,7 +102,7 @@ def gaussian_linear_operator_spatial_conditional(XS:np.ndarray, X: np.ndarray, K
     I_t = np.eye(Dt)
 
     k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
-    
+
     A = triangular_solve(k_zz_chol, Kxz.T, lower=True) # M x N
     A1 = triangular_solve(k_zz_chol.T, A, lower=False) # M x N
     A1_t = np.kron(I_t, A1)
@@ -300,4 +300,26 @@ def whitened_gaussian_conditional_full(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, K
     sig = k_xsxs - k_xz @ A + A1.T @ sig @ A1
 
     return mu, sig
+
+
+@jit
+def whitened_gaussian_covar(X1:np.ndarray, X2:np.ndarray, X: np.ndarray, Kzz, Kxz, Kzx, Kxsxs, m, S_chol) -> np.ndarray:
+    """
+        Args:
+            g1 defines the distribution of the conditional p(f*|f)
+            g2 defines the distribution that the expectation is wrt E_{q(f)} [ . ]
+    """
+    sig_chol = S_chol
+    sig = sig_chol @ sig_chol.T
+
+    k_zz_chol = cholesky(add_jitter(k_zz, settings.jitter))
+    A = cholesky_solve(k_zz_chol, Kzx)
+
+    mu = k_xz @ jax.scipy.linalg.solve_triangular(k_zz_chol.T, mu, lower=False)
+
+    sig = k_xsxs - kxz @ A + cholesky_solve(k_zz_chol, Kxz.T) @ sig @ A
+
+
+    return mu, sig
+
 
