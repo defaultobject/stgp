@@ -47,7 +47,7 @@ def nlpd(XS, YS, m, prior, num_samples = None):
     """
     For each n:
         NLPD = - log p(Y*_n | X, Y)
-            \approx -(1\S) \sum^S_s p(Y*_n | F^(s)_n) for F^(s)_n \sim q(F_n)
+            \approx - log (1\S) \sum^S_s p(Y*_n | F^(s)_n) for F^(s)_n \sim q(F_n)
 
         and we compute inner sum using the log sum exp trick
         
@@ -182,7 +182,6 @@ def nlpd(XS, YS, model, prior):
 
          - (1/N) \sum^N_n [ \log p(T(YS_n)) + log |dT(YS_n) / d YS_2| ]
     """
-    raise NotImplementedError('Figure out joint NLPD')
 
     model_type = get_model_type(model.prior)
 

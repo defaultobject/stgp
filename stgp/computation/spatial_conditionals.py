@@ -139,6 +139,8 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
 
     # batch over time
 
+    breakpoint()
+
     mu, var = jax.vmap(
         #gaussian_spatial_conditional,
         gaussian_linear_operator_spatial_conditional,

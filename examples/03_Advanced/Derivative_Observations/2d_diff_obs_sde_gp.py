@@ -28,8 +28,11 @@ sys.path.append('/Users/ohamelijnck/Documents/projects/stgp/examples')
 from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
+stgp.settings.jitter = 1e-4
+
 # construct 2d grid for X
-XS, X, _ = single_output_spatial_data(20, 20, 200, 200, seed=0)
+NS = 15
+XS, X, _ = single_output_spatial_data(10, 10, NS, NS, seed=0)
 N = X.shape[0]
 
 # Construct data
@@ -37,23 +40,36 @@ f = lambda x1, x2: np.sin(10*x1*x2)
 df_x1 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x2
 df_x2 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x1
 
+np.random.seed(0)
 y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
-Y = np.hstack([y[:, None], dy_x1[:, None], dy_x1[:, None], dy_x1[:, None] * np.NaN])
+# only uses time derivates
+Y = np.hstack([y[:, None], dy_x1[:, None]])
 
 print('X: ', X.shape)
-print('Y: ', Y.shape)
+print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
 # construct model
 
 data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
 
-base_kernel = SpatioTemporalSeperableKernel(
-    Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]),
-    RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
-)
+if True:
+    base_kernel = SpatioTemporalSeperableKernel(
+        FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
+        RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
+    )
+elif False:
+    base_kernel = SpatioTemporalSeperableKernel(
+        FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
+        FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1)
+    )
+else:
+    base_kernel = SpatioTemporalSeperableKernel(
+        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), 
+        RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
+    )
 
 latent_gp = GP(
     sparsity=stgp.sparsity.NoSparsity(Z=X), 
@@ -61,7 +77,7 @@ latent_gp = GP(
 )
 latent_gp = LTI_SDE_Full_State_Obs(Independent([latent_gp]))
 
-Q = 4
+Q = 2
 var = 0.1 * np.tile(np.eye(Q * data.Ns), [data.Nt, 1, 1]) 
 # block diagonal likelihood
 lik = BlockDiagonalGaussian(
@@ -77,13 +93,20 @@ m = stgp.models.GP(
     data = data,
     prior = latent_gp,
     likelihood = lik,
-    inference='Sequential'
+    inference='Sequential',
+    full_state_observed=True
 )
 
 print(m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS)
-print(pred_mu)
+
+print(pred_mu.shape, np.sum(pred_mu), np.sum(pred_var))
+print(pred_mu.shape, np.sum(pred_mu[:, 0]), np.sum(pred_var[:, 0]))
+
 breakpoint()
+
+plt.imshow(pred_mu[:, 0].reshape(NS, NS)); 
+plt.show()
 
 

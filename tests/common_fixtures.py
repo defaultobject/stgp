@@ -15,7 +15,6 @@ from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.computation.parameter_transforms import correlation_transform, get_correlation_cholesky
 
 
-
 @pytest.fixture
 def regression_1d_diff_obs_data(N):
     np.random.seed(0)
@@ -29,6 +28,29 @@ def regression_1d_diff_obs_data(N):
     Y_all = np.hstack([y[:, None], dy[:, None]])
     return x[:, None], Y_all
 
+@pytest.fixture
+def regression_2d_diff_obs_data(N):
+    """ Create grid of size NxN. """
+    np.random.seed(0)
+
+    x1, x2 = np.meshgrid(np.linspace(0, 1, N), np.linspace(0, 1, N))
+    X = np.hstack([np.reshape(x1, [N*N, 1]), np.reshape(x2, [N*N, 1])])
+
+    N = X.shape[0]
+
+    # Construct data
+    f = lambda x1, x2: np.sin(10*x1*x2)
+    df_x1 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x2
+    df_x2 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x1
+
+    np.random.seed(0)
+    y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
+    dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
+    dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
+
+    Y = np.hstack([y[:, None], dy_x1[:, None]*np.NaN, dy_x2[:, None]*np.NaN, dy_x1[:, None] * np.NaN])
+
+    return X, Y
 
 
 @pytest.fixture

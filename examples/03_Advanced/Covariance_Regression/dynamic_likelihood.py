@@ -67,9 +67,28 @@ m = stgp.models.GP(
     inference='Variational',
     prior=prior,
     ell_samples = 10,
-    prediction_samples = 1000,
     approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
 
 )
-m.get_objective()
+print(m.get_objective())
+
+if False:
+    epochs = 1000
+    callback = progress_bar_callback(epochs)
+    learning_curve, training_time = ScipyTrainer(m, 'L-BFGS-B').train(
+        None,
+        epochs,
+        callback = callback
+    )
+
+    # Plot learning curve
+    plt.plot(learning_curve)
+    plt.yscale('log')
+    plt.show()
+
+print(m.samples(XS, num_samples=10))
+breakpoint()
+print(m.nlpd(X, Y))
+print(m.predict_f(XS))
+breakpoint()
 

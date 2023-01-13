@@ -487,7 +487,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         # mu_t and var_t are in time-latent-space format
         # when predicting we only predict f, not the state as well
-        if self.full_state_observed:
+        if not self.full_state_observed:
             # remove the extra state dims
             mu_t = mu_t[:, :self.data.Ns, :]
             var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
@@ -496,6 +496,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
             xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
         )
+
         # mu/var is in  time - (latent x space) format
         # Unsort data and remove the training data
         mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]
@@ -503,7 +504,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
 
         # convert to time-space-latent format
-        if not self.full_state_observed:
+        if self.full_state_observed:
             # if using full sate this will already be in time-space format
             mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
             var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)

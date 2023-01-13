@@ -13,7 +13,7 @@ from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32
-from stgp.kernels.diff_op import FirstOrderDerivativeKernel
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D
 from stgp.likelihood import Gaussian
 from stgp.models import GP
 from stgp.transforms.pdes import DifferentialOperatorJoint
@@ -26,8 +26,11 @@ sys.path.append('/Users/ohamelijnck/Documents/projects/stgp/examples')
 from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
+stgp.settings.jitter = 1e-4
+
 # construct 2d grid for X
-XS, X, _ = single_output_spatial_data(20, 20, 200, 200, seed=0)
+NS = 15
+XS, X, _ = single_output_spatial_data(10, 10, NS, NS, seed=0)
 N = X.shape[0]
 
 # Construct data
@@ -35,24 +38,38 @@ f = lambda x1, x2: np.sin(10*x1*x2)
 df_x1 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x2
 df_x2 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x1
 
+np.random.seed(0)
 y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
-Y = np.hstack([y[:, None], dy_x1[:, None], dy_x1[:, None], dy_x1[:, None] * np.NaN])
+#Y = np.hstack([y[:, None], dy_x1[:, None]*np.NaN, dy_x2[:, None]*np.NaN, dy_x1[:, None] * np.NaN])
+Y = np.hstack([y[:, None], dy_x1[:, None]])
 
 print('X: ', X.shape)
-print('Y: ', Y.shape)
+print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
 # construct model
 
-base_kernel = ScaleKernel(Matern32(input_dim = 2, lengthscales = [0.1, 0.1]), 1.0)
-
-kern = FirstOrderDerivativeKernel(
-    FirstOrderDerivativeKernel(base_kernel, input_index = 0),
-    input_index = 0,
-    parent_output_dim = 2
+base_kernel = ScaleKernel(
+    Matern32(
+        input_dim = 1, lengthscales = [0.1], active_dims=[0]
+    )
+, 1.0) * RBF(
+    lengthscales=[0.1], active_dims=[1], input_dim=1
 )
+
+if True:
+    kern = FirstOrderDerivativeKernel(base_kernel, input_index=0)
+    lik_arr = [Gaussian(0.1), Gaussian(0.1)]
+
+else:
+    kern = FirstOrderDerivativeKernel(
+        FirstOrderDerivativeKernel(base_kernel, input_index = 0),
+        input_index = 1,
+        parent_output_dim = 2
+    )
+    lik_arr = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)]
 
 diff_op_prior = DifferentialOperatorJoint(
     GP(
@@ -68,12 +85,16 @@ diff_op_prior = DifferentialOperatorJoint(
 m = stgp.models.GP(
     data = stgp.data.Data(X, Y),
     prior = diff_op_prior,
-    likelihood = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)],
+    likelihood = lik_arr,
 )
 
 print(m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS)
-print(pred_mu)
-breakpoint()
+
+print(pred_mu.shape, np.sum(pred_mu), np.sum(pred_var))
+print(pred_mu.shape, np.sum(pred_mu[:, 0]), np.sum(pred_var[:, 0]))
+
+plt.imshow(pred_mu[:, 0].reshape(NS, NS)); 
+plt.show()
 
