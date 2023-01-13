@@ -34,11 +34,13 @@ def identity(x):
 @jit
 def softplus(val):
     return np.log(1 + np.exp(val))
+    #return np.log(1 + np.exp(-val))+val
 
 
 @jit
 def inv_softplus(val):
-    return np.log(np.exp(val) - 1)
+    #return np.log(np.exp(val) - 1)
+    return np.log(1 - np.exp(-val)) + val 
 
 
 @jit

@@ -12,6 +12,7 @@ from ..core import Block
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar
 from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular, to_block_diag, batched_diag
+from ..computation.integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 
 class FullGaussian(FullLikelihood):
     def __init__(self, dim: int = None, variance=None, train=True):
@@ -179,6 +180,24 @@ class Gaussian(DiagonalGaussian):
 
     def conditional_mean(self, f):
         return f
+
+    def conditional_samples(self, f, num_samples = 1, generator=None):
+        chex.assert_rank(f, 2)
+        f = f[..., None]
+
+        samples = mv_indepentdent_monte_carlo(
+            lambda x: x,
+            self.conditional_mean(f), 
+            self.conditional_var(f),
+            generator = generator,
+            num_samples=num_samples,
+            average=False
+        )
+
+        # [num_samples, f.shape]
+        chex.assert_rank(samples, 4)
+
+        return samples
 
 class ReshapedGaussian(Gaussian):
     def __init__(self, base,  num_blocks, block_size): 

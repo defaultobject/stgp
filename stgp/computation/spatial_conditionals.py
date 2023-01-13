@@ -156,7 +156,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_xs
     )
 
-    breakpoint()
     # in time-latent-space format
     var = var[:, None, ...]
 

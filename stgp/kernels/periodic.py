@@ -1,3 +1,6 @@
+"""
+See http://proceedings.mlr.press/v33/solin14.pdf
+"""
 import objax
 import chex
 import jax
@@ -14,24 +17,24 @@ from jax.scipy.linalg import expm
 class _PeriodicBase(MarkovKernel):
     """ Two dimensional oscillatory SDE model """
 
-    def __init__(self, period_param, lengthscale_param, variance_param, j):
+    def __init__(self, frequency_param, lengthscale_param, variance_param, j):
         self.j = j
 
-        self.period_param = period_param
+        self.frequency_param = frequency_param
         self.lengthscale_param = lengthscale_param
         self.variance_param = variance_param
 
 
     def to_ss(self, X_spatial=None):
-        period = self.period_param.value
+        freq = self.frequency_param.value
         lengthscale = self.lengthscale_param.value
         variance= self.variance_param.value
 
         j = self.j
 
         F = np.array([
-            [0, - period * j],
-            [period * j, 0],
+            [0, - freq * j],
+            [freq * j, 0],
         ])
 
         L = np.eye(2)
@@ -56,12 +59,12 @@ class _PeriodicBase(MarkovKernel):
         return F, L, Qc, H, Pinf
 
 class Periodic(Kernel):
-    def __init__(self, period, lengthscale, variance, active_dims = None):
+    def __init__(self, frequency, lengthscale, variance, active_dims = None):
         super(Periodic, self).__init__(input_dim=1, active_dims=active_dims)
 
         self.lengthscale_param = Parameter(lengthscale, constraint='positive', name='Periodic/lengthscale')
         self.variance_param = Parameter(variance, constraint='positive', name='Periodic/variance')
-        self.period_param = Parameter(period, constraint='positive', name='Periodic/perod')
+        self.frequency_param = Parameter(frequency, constraint='positive', name='Periodic/frequency')
 
     def K_diag(self, X1):
         variance = self.variance_param.value
@@ -73,13 +76,13 @@ class Periodic(Kernel):
         """
         ls = self.lengthscale_param.value
         variance = self.variance_param.value
-        period = self.period_param.value
+        frequency = self.frequency_param.value
 
         tau = np.abs(x1 - x2)
 
         k = variance * np.exp(
             - 2 * np.square(
-                np.sin( period * tau / 2) / ls
+                np.sin( frequency * tau / 2) / ls
             )
         )
 

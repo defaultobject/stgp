@@ -37,6 +37,7 @@ def mv_indepentdent_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=None
     # Reparameterise
     def reparameterise(fn, samples, mu_arr, var_arr, *args):
         chex.assert_equal(samples.shape, mu_arr.shape)
+        chex.assert_equal(samples.shape, var_arr.shape)
 
         s = mu_arr + samples * np.sqrt(var_arr)
         return fn(s, *args)

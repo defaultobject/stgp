@@ -33,6 +33,18 @@ class Variational(Inference):
 
         return mu, var
 
+    def samples(self, XS, data, likelihood, prior, approximate_posterior, diagonal, num_samples=None, posterior=False):
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
+
+        mu = evoke('marginal_prediction_samples', approximate_posterior, likelihood, prior, whiten=self.whiten)(
+            XS, data, approximate_posterior, likelihood, prior, self, diagonal, self.whiten, num_samples = num_samples, posterior=posterior
+        )
+
+
+        return mu
+
     def predict_latents(self, XS, data, likelihood, prior, approximate_posterior, diagonal):
         if data.minibatch:
             # TODO: minibatching only works when sparsity is used. Assert this.
@@ -64,9 +76,11 @@ class Variational(Inference):
 
         whiten = self.whiten
 
-        q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior, whiten)(
+        q_m, q_S_chol = evoke('variational_params', approximate_posterior, likelihood, prior.base_prior, whiten)(
             data, approximate_posterior, likelihood, prior, whiten
         )
+        q_m = np.array(q_m)
+        q_S_chol = np.array(q_S_chol)
 
         return evoke('marginal_prediction_covar', approximate_posterior, likelihood, prior, sparsity_list[0], whiten=self.whiten)(
             XS_1, XS_2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_list, 1, self.whiten

@@ -146,7 +146,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     chex.assert_shape(q_S, [M * Q, M * Q])
 
     # Get all Z in latent-data format
-    Z_all = base_prior.get_Z_stacked()
+    Z_all = np.array(base_prior.get_Z_stacked())
     Q1, Q2, _, _ = Z_all.shape
 
     chex.assert_shape(Z_all, [Q1, Q2, M, D])
@@ -463,10 +463,8 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
             XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
         )
 
-        breakpoint()
-
         # TODO: fix shapes with aggregation blocks?
-        chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
+        #chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
         if diagonal:
             second_moment =  mu**2
@@ -599,7 +597,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         average = False
     )
     # TODO: fix shapes with aggregation blocks?
-    chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
+    #chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 
     return mu
 

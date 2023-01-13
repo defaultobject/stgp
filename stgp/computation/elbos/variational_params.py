@@ -169,7 +169,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     #q_m = np.array(q_m)
     #q_S = np.array(q_S)
 
-
     if type(q_m) is list:
         # hack for now to get models with mixed number of inducing points to work
         return q_m, q_S

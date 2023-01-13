@@ -84,6 +84,10 @@ class Kernel(objax.Module):
     def K_diag(self, X: np.array):
         raise NotImplementedError()
 
+    @property
+    def base(self):
+        return self
+
 
 class CombinationKernel(Kernel):
     def __init__(self, k1: "Kernel", k2: "Kernel"):
@@ -102,6 +106,14 @@ class CombinationKernel(Kernel):
             k2_arr = [self.k2]
 
         return k1_arr + k2_arr
+
+    def fix(self):
+        self.k1.fix()
+        self.k2.fix()
+
+    def release(self):
+        self.k1.release()
+        self.k2.release()
 
     def __getitem__(self, index):
         """
@@ -182,7 +194,8 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         self.k2 = K_spatial
 
     def to_ss(self, X_spatial):
-        K_spatial = self.k2.K(X_spatial, X_spatial)
+        # if the spatial kernel is a derivate kernel, just evaluate the base kernel
+        K_spatial = self.k2.base.K(X_spatial, X_spatial)
 
         F, L, Qc, H, Pinf = self.k1.to_ss()
 

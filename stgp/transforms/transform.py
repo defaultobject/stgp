@@ -246,6 +246,8 @@ class Independent(Transform):
             batch_type = get_batch_type(self.parent)
         )
 
+        mean = np.array(mean)
+
         mean = np.reshape(
             mean, 
             [self.output_dim, X1.shape[0], 1]
@@ -265,6 +267,8 @@ class Independent(Transform):
             out_dim = 1,
             batch_type = get_batch_type(self.parent)
         )
+
+        k_arr = np.array(k_arr)
 
         k_arr = np.reshape(
             k_arr, 
@@ -332,6 +336,7 @@ class Independent(Transform):
             batch_type = get_batch_type(self.parent)
         )
 
+        var = np.array(var)
         var = np.reshape(
             var, 
             [self.output_dim, X1.shape[0], 1]

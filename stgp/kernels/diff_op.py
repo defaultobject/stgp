@@ -14,6 +14,11 @@ class DerivativeKernel(Kernel):
         self.parent_kernel = parent_kernel
         self.active_dims = None
 
+    def K_diag(self, X):
+        chex.assert_rank(X, 1)
+        return jax.vmap(lambda x: self.K(x[..., None], x[..., None]))(X[..., None])
+        
+
     def _K(self, X1, X2):
         """ This is is being used as a prior kernel therefore we can pass through the
         kernel function """
@@ -23,8 +28,28 @@ class DerivativeKernel(Kernel):
     def K_from_fn(self, X1, X2, var_fn):
         return self._K_from_fn(X1, X2, var_fn)
 
+    def to_ss(self, X_spatial=None):
+        """
+        The state-space representation using the Kalman computes the derivates implicitely. Therefore we just pass to the base, (non-derivatie) kernel. 
+        """
+        return self.base.to_ss(X_spatial=X_spatial)
+
+
+    def state_space_dim(self):
+        # only need return the time dim
+        return self.base.state_space_dim()
+
+    def expm(self, dt, X_spatial=None):
+        return self.base.expm(dt, X_spatial = X_spatial)
+
+    @property
+    def base(self):
+        return self.parent_kernel
+
+
 
 class FirstOrderDerivativeKernel(DerivativeKernel):
+    """ Construct FirstOrderDerivative kernel for the input index provided """
     def __init__(
             self, 
             parent_kernel = None,
@@ -138,6 +163,7 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
 
 
 class SecondOrderDerivativeKernel(DerivativeKernel):
+    """ Construct SecondOrderDerivativeKernel kernel for the input index provided """
     def __init__(
             self, 
             parent_kernel = None,
@@ -318,6 +344,131 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
         # Computes
         # (T)K(T)
         res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
+
+
+        # Construct full matrix
+        # K,       K(T))
+        # (T)K,    (T)K(T)
+
+        K = np.array([
+            [res00,       res01[0]], # f
+            [res10[0],    res11[0, 0]], # df/dt
+        ])
+
+        return K
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        #return K[:, :, 0, 0]
+        #reshape to NxN
+        K_reshaped =  np.block([
+            [K[:, :, 0, 0], K[:, :, 0, 1]],
+            [K[:, :, 1, 0], K[:, :, 1, 1]],
+        ])
+
+        return K_reshaped
+
+class FirstOrderDerivativeKernel_2D(DerivativeKernel):
+    """
+    Compute first order derivates in x1 \kron x2 format.
+    """
+    def __init__(
+            self, 
+            parent_kernel = None,
+        ):
+
+        super(FirstOrderDerivativeKernel_2D, self).__init__(parent_kernel)
+        # f, df/dx1, df/dx2, d^2f/(dx1 dx2)
+        self.output_dim = 4
+
+    def _compute_derivatives(self, x1, x2, var_fn):
+        """
+        Let x1 have columns denotes by [t] then we use 
+            Tto denote the differential operators d/dt
+
+        The full joint kernel is given by (ignoring transposes):
+
+            K,       K(T),      K(S),        K(S)(T)
+            (T)K,    (T)K(T),   (T)K(S),     (T)K(S)(T)
+            (S)K,    (S)K(T),   (S)K(S),     (S)K(S)(T)
+            (T)(S)K, (T)(S)K(T), (T)(S)K(S), (T)(S)K(S)(T)
+
+        """
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
+
+        # compute blocks
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+        #scalar
+        res00 = k(x1, x2)
+
+        # D dimensional jacobian vector
+        # [(T)K, (S)K]
+        res10 = grad(k, argnums=(0))(x1, x2)
+        # [K(T), K(S)]
+        res01 = grad(k, argnums=(1))(x1, x2)
+
+        # Computes
+        # [0][0]
+        #  (T)(T)K, (T)(S)K
+        #  (S)(T)K,    (S)(S)K
+
+        # [0][1]
+        #  (T)K(T), (T)K(S)
+        #  (S)K(T),    (S)K(S)
+
+        # [1][0]
+        #  (T)K(T), (T)K(S)
+        #  (S)K(T),    (S)K(S)
+
+        # [1][1]
+        #  K(T)(T),  K(S)(T)
+        #  K(T) (S), K(S)(S)
+
+        res11 = hessian(k, argnums=(0, 1))(x1, x2)
+
+
+        res22 = hessian(hessian(k, argnums=(0, 1)), argnums=(0, 1))(x1, x2)
+
+        # Computes (t)(s) k . or . k (s)(t) 
+        # Args:
+        #  inner_axis: which axis to take the first derivate wrt
+        #  outer_axis: which axis to take the first derivate wrt
+        #  inner: which dimension we want to take from the first derivate
+        #  outer: which dimension we want to take from the second derivate
+        joint_diff = lambda fn: lambda inner_axis, outer_axis, inner, outer: jacfwd(
+            lambda a1, a2: grad(
+                fn, argnums=(inner_axis)
+            )(a1, a2)[inner], 
+            argnums=(outer_axis)
+        )(x1, x2)[outer]
+
+        breakpoint()
+
+        res_st_k = joint_diff(0, 0, 0, 1)
+        res_k_st = joint_diff(1, 1, 1, 0)
+
+
+        # Computes
+        #  (T)(T)K, (T)(S)K
+        #  (T)(S)K,    (S)(S)K
+
+        #  (T)K(T),   (T)K(S)
+        #  (S)K(T),   (S)K(S)
+
+        res21 = jacfwd(grad(k, argnums=(0)), argnums=(0, 1))(x1, x2)
+
+        # Computes
+        #  K(T)(T), K(S)(T)
+        #  K(S)(T), K(S)(S)
+        res12 = jacfwd(grad(k, argnums=(1)), argnums=(0, 1))(x1, x2)
+
+        breakpoint()
 
 
         # Construct full matrix

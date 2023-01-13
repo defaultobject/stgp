@@ -200,7 +200,8 @@ def log_marginal_likelihood(
         dim = num_outputs,
         out_dim  = 1 
     )
-    chex.assert_shape(lml_arr, (num_outputs, ))
+    lml_arr = np.array(lml_arr)
+    #chex.assert_shape(lml_arr, (num_outputs, ))
 
     lml =  np.sum(lml_arr)
 

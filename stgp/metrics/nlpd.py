@@ -67,7 +67,6 @@ def nlpd(XS, YS, m, prior, num_samples = None):
     N = XS.shape[0]
     n_samples = mu.shape[0]
 
-
     # ensure consistent shape
     mu = np.reshape(mu, [n_samples, N, P])
 

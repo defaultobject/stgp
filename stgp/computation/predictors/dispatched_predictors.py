@@ -182,6 +182,7 @@ def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
         1
     )
 
+    var_arr = np.array(var_arr)
     chex.assert_shape(var_arr, [num_outputs, XS_1.shape[0], XS_2.shape[0]])
 
     return var_arr
@@ -233,6 +234,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
         num_outputs,
         2
     )
+    marginal_mu = np.array(marginal_mu)
+    marginal_var = np.array(marginal_var)
 
     V_P, V_NS, _, V_B, _ = marginal_var.shape
 

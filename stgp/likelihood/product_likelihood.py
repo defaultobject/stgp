@@ -52,6 +52,19 @@ class ProductLikelihood(Likelihood):
 
         return np.array(mu_arr)
 
+    def conditional_samples(self, f, generator=None, num_samples=1):
+        samples_arr = []
+        for i, lik in enumerate(self.likelihood_arr):
+            samples_arr.append(
+                lik.conditional_samples(
+                    f[..., i][..., None],
+                    generator=generator,
+                    num_samples=num_samples
+                )
+            )
+
+        return np.array(samples_arr)
+
 class GaussianProductLikelihood(ProductLikelihood):
 
     @property

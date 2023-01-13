@@ -496,8 +496,6 @@ class ST_SDE_GP(BASE_SDE_GP):
         mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
             xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
         )
-
-        
         # mu/var is in  time - (latent x space) format
         # Unsort data and remove the training data
         mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]

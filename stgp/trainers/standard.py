@@ -45,4 +45,46 @@ class VB_NG_ADAM(Trainer):
         self.ng_trainer.train(learning_rates[1], epochs[1][1])
         return self.switch_trainer.train(learning_rates, epochs, callback)
 
+class LikNoiseSplitTrainer(Trainer):
+    """ A trainer that holds the likelihood noise for a percentage of the training epochs """
+    def __init__(self, m, trainer_wrapper, hold_noise_percent):
+        m.likelihood.fix()
+        self.trainer_with_lik_held = trainer_wrapper()
+        m.likelihood.release()
+        self.trainer_with_lik_released = trainer_wrapper()
+        self.hold_percent = hold_noise_percent
         
+    def train(
+        self,
+        learning_rates: list,
+        epochs: list,
+        callback = None,
+        verbose = False
+    ):
+        """
+        Args:
+            epochs: list: [num_epochs, *] 
+        """
+
+        # TODO: ensure valid values here
+        max_iters = epochs[0]
+        iters_with_lik_held = int(self.hold_percent * max_iters)
+        iters_with_lik_released = max_iters -  iters_with_lik_held
+
+
+        if verbose:
+            # wrap with empty prints to add new lines to helping viewing when using callbacks
+            print('')
+            print(f'training with likelihood held for {iters_with_lik_held}/{max_iters}')
+            print('')
+
+        lc_1, _ = self.trainer_with_lik_held.train(learning_rates, [iters_with_lik_held, epochs[1]], callback)
+
+        if verbose:
+            print('')
+            print(f'training with likelihood released for {iters_with_lik_released}/{max_iters}')
+            print('')
+
+        lc_2, _ = self.trainer_with_lik_released.train(learning_rates, [iters_with_lik_released, epochs[1]], callback)
+
+        return [lc_1, lc_2], None

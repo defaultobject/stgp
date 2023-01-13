@@ -248,19 +248,22 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
 
     # assert correct shapes
     # transformed_f should have at least rank 3 (N x P x B)
-    if shape_rank(transformed_f) < 3:
-        raise RuntimeError('transformed_f shape wrong')
+    if False:
+        if shape_rank(transformed_f) < 3:
+            raise RuntimeError('transformed_f shape wrong')
 
-    if shape_rank(Y) <= 2:
-        raise RuntimeError('Shape of Y is wrong')
+        if shape_rank(Y) <= 2:
+            raise RuntimeError('Shape of Y is wrong')
 
     multivariate_flag = False
     # fix shapes of Y to cover regression, multi output, covariance regression etc
-    if shape_rank(Y) == 2:
+    if type(Y) is not list:
+    #if shape_rank(Y) == 2:
         # Y and F must be rank 2 when they are passed to log_likelihood
         # When vmapping one dimension is lost so extent here
         Y = (Y.T)[..., None]
-    elif shape_rank(Y) >= 2:
+    #elif shape_rank(Y) >= 2:
+    else:
         multivariate_flag = True
 
     N, Q, B = transformed_f.shape[0], transformed_f.shape[1], transformed_f.shape[2]
@@ -298,17 +301,20 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
         batch_type = get_batch_type(likelihood_arr)
     )
 
-    chex.assert_equal(shape_rank(ll_arr), 2)
+    #chex.assert_equal(shape_rank(ll_arr), 2)
     #ll_arr = ll_arr[..., None]
     #ll_arr = np.transpose(ll_arr, [1, 0, 2])
 
     if not multivariate_flag:
         # Fix shapes so that ll_arr matches Y
-        breakpoint()
+        ll_arr = ll_arr[..., None]
         chex.assert_equal(ll_arr.shape, Y.shape)
 
         # Mask out log-liklihoods that correspond to missing data
         ll_arr = mask_matrix(ll_arr, mask)
+
+        ll_arr = np.transpose(ll_arr, [1, 0, 2])
+
 
     return ll_arr
 

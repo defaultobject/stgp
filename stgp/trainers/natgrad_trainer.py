@@ -190,13 +190,22 @@ class NatGradTrainer(Trainer):
             params = self.natgrad_fn(lr, self.enforce_psd_type, self.prediction_samples)
 
             if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
-                raise RuntimeError('NaN encountered whilst natgrad training!')
+                print('NaN encountered whilst natgrad training!')
+                return False
+                #raise RuntimeError('NaN encountered whilst natgrad training!')
 
             update_vars(self.m, self.vars_to_update, params)
+            return True
 
         epoch_arr = []
         for i in range(epochs):
-            gradient_step(i, i+epoch_ofset)
+            max_attempt = 10
+            while not gradient_step(i, i+epoch_ofset):
+                if max_attempt == 0:
+                    raise RuntimeError('NaN encountered whilst natgrad training!')
+
+                print('retrying nat grad')
+                max_attempt = max_attempt - 1
 
             if self.return_objective:
                 val = self.objective_fn()

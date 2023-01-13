@@ -56,6 +56,9 @@ def lambda_to_theta(lambda_1, lambda_2):
 
     lambda_2_chol = cholesky(-2*lambda_2+jit)
 
+    #inv_chol = triangular_solve(lambda_2_chol, np.eye(M), lower=True)
+    #theta_2 = inv_chol.T @ inv_chol
+
     theta_2 =  cholesky_solve(lambda_2_chol, np.eye(M))
     theta_1 =  theta_2 @ lambda_1
 

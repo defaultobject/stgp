@@ -281,12 +281,27 @@ class VGP(Posterior):
             prediction_samples
         )
 
+    def samples(self, XS, diagonal=True, num_samples = None, posterior = False):
+        samples_arr =  self.inference.samples(
+            XS, 
+            self.data, 
+            self.likelihood, 
+            self.prior,
+            self.approximate_posterior,
+            diagonal=diagonal,
+            num_samples = num_samples,
+            posterior=posterior
+        )
+
+        breakpoint()
+        return samples_arr
+
     def natural_gradient(self, learning_rate):
         raise NotImplementedError()
 
-    def confidence_intervals(self, XS):
+    def confidence_intervals(self, XS, num_samples=None, **kwargs):
         """ Returns the median and the 95% confidence intervals. """
-        return evoke('confidence_intervals', self)(XS, self)
+        return evoke('confidence_intervals', self)(XS, self, num_samples = num_samples, **kwargs)
 
     def nlpd(self, XS, YS, num_samples=None):
         return evoke('nlpd', self)(XS, YS, self, num_samples=num_samples)

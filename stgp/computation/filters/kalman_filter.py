@@ -74,8 +74,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     mu = M @ H_k @ m_
     var = M @ H_k @ P_ @ H_k.T @ M.T
 
-    breakpoint()
-
     #inovation mean and variance
     # all in latent-space format
     v = Y_k - mu

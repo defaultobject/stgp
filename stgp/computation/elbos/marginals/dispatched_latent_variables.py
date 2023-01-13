@@ -6,7 +6,7 @@ import objax
 from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
-from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
+from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full , whitened_gaussian_covar
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional, hessian
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
 from ....core import Block, get_block_dim
@@ -26,7 +26,7 @@ from .linear_marginals import linear_marginal_blocks
 
 # ==== LV part ====
 
-def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool, predict: bool):
+def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool, predict: bool, diagonal: bool = True, XS_2 = None):
     # GP prior for which we are adding LV to
     gp_prior = prior.parent.parent[0]
     lv_prior = prior.parent.parent[1]
@@ -73,6 +73,7 @@ def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, lik
         Kxz = gp_prior.kernel.K(XS, Z_gp)
         Kxx_var = gp_prior.kernel.K_diag(XS)  
 
+        # compute mu and var
         if whiten:
             mu, var =  whitened_gaussian_conditional_diagional(
                 XS, 
@@ -96,9 +97,40 @@ def latent_variable_marginal(XS, data, q_m, q_S_chol, approximate_posterior, lik
                 np.zeros(XS.shape[0])[:, None]
             )
 
+        # if not diagonal compute full covariance
+        if not diagonal:
+            print('bug here, need to fix')
+            if whiten:
+                var = whitened_gaussian_covar(
+                    XS, 
+                    XS_2, 
+                    Z_gp, 
+                    Kzz,
+                    Kxz, 
+                    gp_prior.kernel.K(Z_gp, XS_2), 
+                    gp_prior.kernel.K(XS, XS_2), 
+                    m,
+                    S_chol
+                )
+            else:
+                var = gaussian_conditional_covar(
+                    XS, 
+                    XS_2, 
+                    Z_gp, 
+                    Kzz,
+                    Kxz, 
+                    gp_prior.kernel.K(Z_gp, XS_2), 
+                    gp_prior.kernel.K(XS, XS_2), 
+                    m,
+                    S_chol
+                )
+
         return mu, mu**2, var
 
     mu, mu_squared, var = get_mu_var(XS_concat)
+
+    if not diagonal:
+        breakpoint()
 
 
     mu = mu
@@ -151,6 +183,15 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
     return latent_variable_marginal(
         XS, data,  q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten, True
     )
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, LatentVariable, Sparsity, whiten=False)
+def marginal_prediction_covar(XS_1, XS_2, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    return latent_variable_marginal(
+        XS_1, data,  q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten, True, diagonal=False, XS_2 = XS_2
+    )[1]
+
 
 
 

@@ -278,7 +278,8 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     lambda_2 = lambda_2/2 
     lambda_2 = lambda_2 + lambda_2.T
 
-    if False:
+    if True:
+        # for debugging
         _lambda_2 = lambda_2
         _lambda_2_new = lambda_2_init + beta*(-lambda_2)
 
@@ -297,7 +298,6 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
         lambda_2_new = lambda_2_init + beta*(-lambda_2)
         lambda_to_theta(lambda_1, lambda_2)
 
-        breakpoint()
         # update precision
         precision = -2 * lambda_2
         G = precision - grad_2
@@ -310,6 +310,8 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     elif enforce_psd in ['laplace_gauss_newton', 'gauss_newton']:
         # use gauss newton approximation of lambda_2
         lambda_2 = lambda_2_init + beta*(-approx_hessian)
+    else:
+        raise RuntimeError(f'enforce_psd of type {enforce_psd} unknown')
 
 
     #convert from natural parameters to the raw parameters
@@ -395,7 +397,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
 
     # Construct the objax grad fucntions
     grad_fn = objax.GradValues(model.get_objective, vars_to_diff)
-    gradients, _ = grad_fn()
+    gradients, val = grad_fn()
     m_grad = gradients[0]
     S_grad = gradients[1]
 

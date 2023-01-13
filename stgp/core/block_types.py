@@ -35,8 +35,6 @@ def get_block_dim(block_type: Block, data = None, likelihood = None, approximate
         if likelihood is not None:
             return likelihood.block_size
 
-
-
     if block_type == Block.LATENT:
         if approximate_posterior is not None:
             return approximate_posterior.num_latents
