@@ -106,7 +106,14 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     Ksz_full = to_block_diag(Ksz)
     Kzz_full = to_block_diag(Kzz)
 
-    if False:
+    # if the temporal kernel is a derivate kernel this will return a rank 3 matrix
+    if len(Ktt.shape) == 2:
+        f_only_flag: bool = True
+    else:
+        f_only_flag: bool = False
+
+
+    if f_only_flag:
         # time - latent format
         Ktt = Ktt.T
         # time - latent - space format
@@ -120,14 +127,14 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     else:
         Ktt_full = Ktt[0]
 
-    if True:
+    if not f_only_flag:
         Kzz_full = Kzz_full[:Ns, ...][..., :Ns]
         Ksz_full = Ksz_full[..., :Ns]
 
 
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])
-    mean_xs = np.zeros([2*Kss_full.shape[0], 1])
+    mean_xs = np.zeros([prior.temporal_output_dim * Kss_full.shape[0], 1])
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -139,11 +146,15 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
 
     # batch over time
 
-    breakpoint()
+    if f_only_flag:
+        spatial_fn = gaussian_spatial_conditional
+    else:
+        spatial_fn = gaussian_linear_operator_spatial_conditional
+
+    # TODO: derive proper mean 
 
     mu, var = jax.vmap(
-        #gaussian_spatial_conditional,
-        gaussian_linear_operator_spatial_conditional,
+        spatial_fn,
         [None, None, None, None, None, 0, 0, 0, None, None],
     )( 
         XS_space, 

@@ -18,7 +18,7 @@ from stgp.likelihood import Gaussian, BlockDiagonalGaussian
 from stgp.models import GP
 from stgp.transforms import Independent
 from stgp.transforms.pdes import DifferentialOperatorJoint
-from stgp.transforms.sdes import LTI_SDE_Full_State_Obs
+from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
 from stgp.data import Data
 
 import matplotlib.pyplot as plt
@@ -45,8 +45,14 @@ y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
+no_diff_flag = True
+
 # only uses time derivates
-Y = np.hstack([y[:, None], dy_x1[:, None]])
+if no_diff_flag:
+    Y = y[:, None]
+else:
+    Y = np.hstack([y[:, None], dy_x1[:, None]])
+
 
 print('X: ', X.shape)
 print('Y: ', Y.shape, np.nanmean(Y, axis=0))
@@ -55,16 +61,19 @@ print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
 data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
 
-if True:
-    base_kernel = SpatioTemporalSeperableKernel(
-        FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
-        RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
-    )
-elif False:
-    base_kernel = SpatioTemporalSeperableKernel(
-        FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
-        FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1)
-    )
+
+
+if not no_diff_flag:
+    if False:
+        base_kernel = SpatioTemporalSeperableKernel(
+            FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
+            RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
+        )
+    elif True:
+        base_kernel = SpatioTemporalSeperableKernel(
+            FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
+            FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1)
+        )
 else:
     base_kernel = SpatioTemporalSeperableKernel(
         Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), 
@@ -75,9 +84,13 @@ latent_gp = GP(
     sparsity=stgp.sparsity.NoSparsity(Z=X), 
     kernel = base_kernel
 )
-latent_gp = LTI_SDE_Full_State_Obs(Independent([latent_gp]))
+if no_diff_flag:
+    latent_gp = LTI_SDE(Independent([latent_gp]))
+    Q = 1
+else:
+    latent_gp = LTI_SDE_Full_State_Obs(Independent([latent_gp]))
+    Q = 2
 
-Q = 2
 var = 0.1 * np.tile(np.eye(Q * data.Ns), [data.Nt, 1, 1]) 
 # block diagonal likelihood
 lik = BlockDiagonalGaussian(
@@ -102,7 +115,7 @@ print(m.get_objective())
 pred_mu, pred_var = m.predict_f(XS)
 
 print(pred_mu.shape, np.sum(pred_mu), np.sum(pred_var))
-print(pred_mu.shape, np.sum(pred_mu[:, 0]), np.sum(pred_var[:, 0]))
+print(pred_mu.shape, pred_var.shape, np.sum(pred_mu[:, 0]), np.sum(pred_var[:, 0]))
 
 breakpoint()
 

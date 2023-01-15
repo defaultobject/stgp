@@ -505,13 +505,15 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         # convert to time-space-latent format
         if self.full_state_observed:
-            # if using full sate this will already be in time-space format
-            mu_p = jax.vmap(lambda a: permute_vec(a, self.output_dim))(mu_time_unsorted)
-            var_p = jax.vmap(lambda A: permute_mat(A[0], self.output_dim))(var_time_unsorted)
+            out_dim = self.prior.spatial_output_dim*self.prior.temporal_output_dim
 
-            mu_p = np.reshape(mu_p, [-1, self.output_dim, 1])
-            var_p = batched_block_diagional(var_p, self.output_dim)
-            var_p = np.reshape(var_p, [-1, 1, self.output_dim, self.output_dim])
+            # if using full sate this will already be in time-space format
+            mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu_time_unsorted)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var_time_unsorted)
+
+            mu_p = np.reshape(mu_p, [-1, out_dim, 1])
+            var_p = batched_block_diagional(var_p, out_dim)
+            var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
         else:
             mu_p = mu_time_unsorted
             var_p = var_time_unsorted

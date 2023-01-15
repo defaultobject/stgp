@@ -17,6 +17,27 @@ class LTI_SDE(SDE):
     def __init__(self, gp: 'Model'):
         self.gp = gp
 
+    @property
+    def temporal_output_dim(self):
+        """
+        Only return `f'
+        """
+        return 1
+
+    @property
+    def _output_dim(self):
+        return 1
+
+    @property
+    def spatial_output_dim(self):
+        # TODO: this is a bit hacky atm
+
+        # if the spatial kernel is a derivate kernel this will get ignored by the filter and computed explicitely after smoothing.
+        try:
+            return self.gp.base_prior.parent[0].kernel.k2.output_dim
+        except Exception as e:
+            return 1
+
     def state_space_representation(self, X_s, dt, t):
         return self.gp.state_space_representation(X_s)
 
@@ -59,6 +80,11 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
     def __init__(self, gp: 'Model'):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
+
+    @property
+    def temporal_output_dim(self):
+        """ Returns the full state.  """
+        return self._state_space_dim
 
     @property
     def _output_dim(self):
