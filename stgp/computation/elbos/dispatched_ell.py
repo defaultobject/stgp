@@ -434,6 +434,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         )
 
         ell = np.sum(ell)
+
+        return ell
     except Exception as e:
         # approximate expected log likelihood
         ell = approximate_expectation(

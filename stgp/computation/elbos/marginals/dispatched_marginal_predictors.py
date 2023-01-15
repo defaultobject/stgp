@@ -272,7 +272,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 
     mu_list, var_list = [], []
     for p in prior:
-        mu_p, var_p  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, p, sparsity[0], whiten=whiten, debug=True)(
+        mu_p, var_p  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, p, sparsity[0], whiten=whiten, debug=False)(
             XS, data, q_m, q_S_chol, approximate_posterior, likelihood, p, sparsity, out_block, whiten
         ) 
 

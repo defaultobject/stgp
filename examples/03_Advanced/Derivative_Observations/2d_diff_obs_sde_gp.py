@@ -45,7 +45,7 @@ y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
-no_diff_flag = True
+no_diff_flag = False
 
 # only uses time derivates
 if no_diff_flag:

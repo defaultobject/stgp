@@ -9,7 +9,7 @@ from .. import settings
 
 # Import Types
 from ..data import Data, Input
-from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior
+from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior,FullConjugateGaussian
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent, Joint
@@ -44,6 +44,7 @@ def _batched_st_kernel(X1, X2, prior, kernel_type='spatial', full=True):
     else:
         raise NotImplementedError()
 
+    # TODO: .latents is depreciated
     q_list = prior.latents
 
     K_arr = batch_or_loop(
@@ -111,7 +112,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         f_only_flag: bool = True
     else:
         f_only_flag: bool = False
-
 
     if f_only_flag:
         # time - latent format
@@ -218,14 +218,18 @@ def spatial_conditional(
     return mu, var
 
 
-@dispatch(Input, DifferentialOperatorJoint)
-@dispatch(Data, DifferentialOperatorJoint)
+@dispatch(Data, DifferentialOperatorJoint, FullConjugateGaussian)
 def spatial_conditional(
     data_xs, 
     data_x, 
     pred_mean, 
     pred_var, 
+    approximate_posterior, 
+    likelihood, 
     prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
 ):
     """
     Let P be the number of outputs then:

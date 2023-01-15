@@ -54,67 +54,22 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         # compute spatial conditonal
         sparsity =  prior.base_prior.get_sparsity_list()
 
-        if False:
-            mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
-                data, 
-                sparsity[0].raw_Z, 
-                q_m, 
-                q_S[:, 0, ...], 
-                approximate_posterior,
-                likelihood,
-                prior,
-                sparsity,
-                out_block_dim,
-                whiten
-            )
-
-            chex.assert_rank([mu, var], [3, 4])
-            return mu, var
-
-        X_t = data.X_time  
-        X_s = data.X_space
-
-
-        X_i = np.hstack([np.tile(X_t[0:1][:, None], [X_s.shape[0], 1]), X_s])
-
-        # compute for all time slices
-        Kzz = prior.parent.covar(X_i, X_i)
-        # Ktt is ordered by [f, f_t]
-        # Kxx is ordered by [f, f_t, f_s, f_ts]
-        Kxx = prior.covar(X_i, X_i)
-
-        M = X_i.shape[0]
-        base_prior_output = prior.parent.output_dim
-        prior_added_output = prior.derivative_kernel.d_computed
-
-        idx = np.hstack([np.arange((M*prior_added_output)*d, (M*prior_added_output)*d + M) for d in range(base_prior_output)])
-        Kxz = Kxx[:, idx]
-
-        mean_zz = prior.parent.mean(X_i)
-        mean_xx = prior.mean(X_i)
-
-        q_m_t = q_m[0][:, None]
-        q_S_t = cholesky(add_jitter(q_S[0], settings.jitter))
-
-        mu, var = gaussian_conditional(
-            X_i, 
-            X_i, 
-            Kzz, 
-            Kxz, 
-            Kxx, 
-            q_m_t,
-            q_S_t, 
-            mean_zz, 
-            mean_xx
+        out_block_dim = 1
+        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+            data, 
+            sparsity[0].raw_Z, 
+            q_m, 
+            q_S[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior,
+            sparsity,
+            out_block_dim,
+            whiten
         )
 
-        # TODO FIGURE OUT ORDERING
-        breakpoint()
-
-
-
-        breakpoint()
-        raise NotImplementedError()
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
 
 # DifferentialOperatorJoint with (non-CVI) approximate posteriors
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
