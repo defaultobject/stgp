@@ -52,6 +52,7 @@ if no_diff_flag:
     Y = y[:, None]
 else:
     Y = np.hstack([y[:, None], dy_x1[:, None]])
+    #Y = np.hstack([y[:, None], dy_x1[:, None],  dy_x1[:, None]*np.NaN,  dy_x1[:, None]*np.NaN])
 
 
 print('X: ', X.shape)
@@ -61,18 +62,19 @@ print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
 data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
 
-
-
 if not no_diff_flag:
-    if False:
+    if True:
         base_kernel = SpatioTemporalSeperableKernel(
             FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
             RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
         )
-    elif True:
+    elif False:
+        # TODO: what is the new format of f?
+        # TODO: fix predictions
         base_kernel = SpatioTemporalSeperableKernel(
             FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
-            FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1)
+            FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1),
+            spatial_output_dim = 2
         )
 else:
     base_kernel = SpatioTemporalSeperableKernel(

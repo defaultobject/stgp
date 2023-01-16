@@ -189,13 +189,16 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         # only need return the time dim
         return self.k1.state_space_dim()
 
-    def __init__(self, K_temporal, K_spatial):
+    def __init__(self, K_temporal, K_spatial, spatial_output_dim: int = 1):
         self.k1 = K_temporal
         self.k2 = K_spatial
+        # when k2 is a DiffOp kernel this will change the output dim of space
+        self.spatial_output_dim = spatial_output_dim
 
     def to_ss(self, X_spatial):
         # if the spatial kernel is a derivate kernel, just evaluate the base kernel
-        K_spatial = self.k2.base.K(X_spatial, X_spatial)
+        #€K_spatial = self.k2.base.K(X_spatial, X_spatial)
+        K_spatial = self.k2.K(X_spatial, X_spatial)
 
         F, L, Qc, H, Pinf = self.k1.to_ss()
 
@@ -216,7 +219,7 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
     def expm(self, dt, X_spatial):
         A_t = self.k1.expm(dt)
 
-        eye = np.eye(X_spatial.shape[0])
+        eye = np.eye(self.spatial_output_dim*X_spatial.shape[0])
 
         A = np.kron(eye, A_t)
 

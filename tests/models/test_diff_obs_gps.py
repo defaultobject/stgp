@@ -87,9 +87,6 @@ def test__2d_batch_gps_with_temporal_diff_obs_match(seed, N, NS, regression_2d_d
         )
         latent_gp = LTI_SDE_Full_State_Obs(Independent([latent_gp]))
 
-        #lik = ReshapedGaussian(DiagonalGaussian([lik_var, lik_var]), N, 2)
-
-
         data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
         Q = 2
 
