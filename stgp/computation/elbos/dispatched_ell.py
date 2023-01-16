@@ -523,7 +523,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     q_block_size = q_f_var_arr.shape[-1]
     lik_block_type = likelihood.block_type
 
-    # TODO: nee dto figure what Block.OUTPUT means...
+    # TODO: need to figure what Block.OUTPUT means...
 
     block_type_p: Block = compare_block_types(
         lik_block_type, 

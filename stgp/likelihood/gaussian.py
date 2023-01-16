@@ -142,6 +142,49 @@ class DiagonalGaussian(DiagonalLikelihood):
     def conditional_mean(self, f):
         return f
 
+class ReshapedDiagonalGaussian(BlockDiagonalGaussian):
+    """ Convert a diagonal Gaussian to a block-block-diagonal matrix """
+
+    def __init__(self, bd_lik, num_outer_blocks:int=None, inner_block_size: int = None, num_latents : int = None):
+        self.bd_lik = bd_lik
+        self.num_outer_blocks = num_outer_blocks
+        self.inner_block_size = inner_block_size
+        self.num_latents = num_latents
+        self._block_size = self.num_latents*self.inner_block_size
+
+    @property
+    def base(self):
+        return self.bd_lik.base
+
+    @property
+    def variance_param(self):
+        """ Return the original variance parameter so that it is consistent for gradient updates etc. """
+        return self.bd_lik.variance_param
+
+    @property
+    def variance(self) -> np.ndarray:
+        var = self.bd_lik.variance_param.value
+        Q = self.num_latents
+
+        # convert var to a block diagonal matrix with blocks of size inner_block_size
+        var_inner_blocks = np.tile(np.eye(self.inner_block_size)[None, ...], [Q, 1, 1])
+        chex.assert_shape(var_inner_blocks, [Q, self.inner_block_size, self.inner_block_size])
+        # broad cast multiply with var across the blocks
+        var_inner_blocks = var_inner_blocks * var[:, None, None]
+        chex.assert_shape(var_inner_blocks, [Q, self.inner_block_size, self.inner_block_size])
+        # convert to block diagonal matrix
+        var_inner_blocks = to_block_diag(var_inner_blocks)
+        chex.assert_shape(var_inner_blocks, [Q*self.inner_block_size, Q*self.inner_block_size])
+        # tile across num_outer_blocks
+        res = np.tile(var_inner_blocks[None, ...], [self.num_outer_blocks, 1, 1])
+        chex.assert_shape(res, [self.num_outer_blocks, Q * self.inner_block_size, Q*self.inner_block_size])
+
+        return res
+
+    @property
+    def full_variance(self) -> np.ndarray:
+        return self.bd_lik.full_variance
+
 class Gaussian(DiagonalGaussian):
     """Gaussian likelihood."""
 

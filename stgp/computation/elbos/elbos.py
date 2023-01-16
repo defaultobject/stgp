@@ -127,6 +127,7 @@ def elbo(
     ML_surrogate = - q.surrogate.get_objective()
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
+
     #elbo =  ELL 
 
     return elbo

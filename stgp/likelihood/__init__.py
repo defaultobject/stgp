@@ -1,5 +1,5 @@
 from .likelihood import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
-from .gaussian import Gaussian, GaussianParameterised, DiagonalGaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian, ReshapedGaussian
+from .gaussian import Gaussian, GaussianParameterised, DiagonalGaussian, BlockDiagonalGaussian, ReshapedBlockDiagonalGaussian, ReshapedGaussian, ReshapedDiagonalGaussian
 from .poisson import Poisson
 from .bernoulli import Bernoulli
 from .probit import Probit
@@ -22,5 +22,6 @@ __all__ = [
     'ReshapedBlockDiagonalGaussian',
     'ReshapedGaussian',
     'get_product_likelihood',
-    'PowerLikelihood'
+    'PowerLikelihood',
+    'ReshapedDiagonalGaussian'
 ]
