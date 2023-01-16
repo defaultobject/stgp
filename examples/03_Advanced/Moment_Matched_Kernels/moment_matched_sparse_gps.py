@@ -23,6 +23,7 @@ from stgp.kernels import ScaleKernel, RBF
 from stgp.likelihood import Gaussian
 from stgp.kernels.deep_kernels import DeepRBF
 from stgp.models.wrappers import MultiObjectiveModel
+from stgp.trainers.standard import VB_NG_ADAM
 
 import matplotlib.pyplot as plt
 
@@ -77,7 +78,13 @@ m_hr = GP(
 
 m = MultiObjectiveModel([m_hr, m_lr])
 
+# train m_lr first
+
+
 if True:
+    lr_lr, _ = VB_NG_ADAM(m_lr).train([0.01, 0.9], [200, [1, 1]], callback=progress_bar_callback(200))
+    lr_hr, _ = VB_NG_ADAM(m_hr).train([0.01, 0.9], [200, [1, 1]], callback=progress_bar_callback(200))
+
     # Train
     epochs = 200
     callback = progress_bar_callback(epochs)
