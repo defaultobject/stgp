@@ -73,9 +73,11 @@ def confidence_intervals(XS, m, num_samples = None, **kwargs):
         'confidence_intervals', base_data, m, m.likelihood, model_type
     )(XS, m, num_samples = num_samples, **kwargs)
 
-    median = m.data.inverse_transform(median.T).T
-    lower_ci = m.data.inverse_transform(lower_ci.T).T
-    upper_ci = m.data.inverse_transform(upper_ci.T).T
+    chex.assert_rank([median, lower_ci, upper_ci], [2, 2, 2])
+
+    median = m.data.inverse_transform(median)
+    lower_ci = m.data.inverse_transform(lower_ci)
+    upper_ci = m.data.inverse_transform(upper_ci)
 
     return median, lower_ci, upper_ci
 

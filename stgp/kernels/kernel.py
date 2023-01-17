@@ -199,7 +199,6 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         # if the spatial kernel is a derivate kernel, just evaluate the base kernel
         #€K_spatial = self.k2.base.K(X_spatial, X_spatial)
         K_spatial = self.k2.K(X_spatial, X_spatial)
-
         F, L, Qc, H, Pinf = self.k1.to_ss()
 
         eye = np.eye(K_spatial.shape[0])

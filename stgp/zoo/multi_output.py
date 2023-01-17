@@ -10,7 +10,7 @@ from ..kernels import RBF, ScaleKernel
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.transforms.basic import Log, Softminus, Affine, ReverseFlow
 
-def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1):
+def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False):
     """
     Helper function for returning an LMC model with Gaussian likelihood across all outputs.
 
@@ -45,6 +45,9 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
         GP(sparsity=Z[q], kernel=kernels[q]) for q in range(Q)
     ] 
 
+    # Construct LMC Prior
+    prior = LMC(latent_gps, output_dim = P)
+
     if inference == 'vi':
         inference='Variational'
         approximate_posterior = FullGaussianApproximatePosterior(
@@ -53,10 +56,17 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
     else:
         approximate_posterior = None
 
-    # Construct LMC Prior
-    prior = LMC(latent_gps, output_dim = P)
 
-    data = Data(X, Y)
+
+    if normalise_data:
+        data = TransformedData(
+            Data(X, Y), 
+            [
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
+            ]
+        )
+    else:
+        data = Data(X, Y)
 
     m = GP(
         data=data,
@@ -68,7 +78,7 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
 
     return m
 
-def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1):
+def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False):
     """
     Helper function for returning an LMC-DRD model with Gaussian likelihood across all outputs.
 
@@ -87,14 +97,11 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
         Q = P
 
     if kernels is None:
+        # DRD should not have a scale kernel 
         kernels = [
-            ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
-                variance = variance
-            )
+            RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale)
             for q in range(Q)
         ]
-
 
     # construct model
     Z = [NoSparsity(X) for q in range(Q)]
@@ -102,6 +109,8 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
     latent_gps = [
         GP(sparsity=Z[q], kernel=kernels[q]) for q in range(Q)
     ] 
+
+    prior = LMC_DRD(latent_gps, output_dim = P)
 
     if inference == 'vi':
         inference='Variational'
@@ -111,9 +120,16 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
     else:
         approximate_posterior = None
 
-    prior = LMC_DRD(latent_gps, output_dim = P)
 
-    data = Data(X, Y)
+    if normalise_data:
+        data = TransformedData(
+            Data(X, Y), 
+            [
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
+            ]
+        )
+    else:
+        data = Data(X, Y)
 
     m = GP(
         data=data,
@@ -188,8 +204,7 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
         data = TransformedData(
             Data(X, Y), 
             [
-                ReverseFlow(Affine(np.nanstd(Y[:, 0]), np.nanmean(Y[:, 0]), train=False)),
-                ReverseFlow(Affine(np.nanstd(Y[:, 1]), np.nanmean(Y[:, 1]), train=False))
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
             ]
         )
     else:
@@ -275,8 +290,7 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
         data = TransformedData(
             Data(X, Y), 
             [
-                ReverseFlow(Affine(np.nanstd(Y[:, 0]), np.nanmean(Y[:, 0]), train=False)),
-                ReverseFlow(Affine(np.nanstd(Y[:, 1]), np.nanmean(Y[:, 1]), train=False))
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
             ]
         )
     else:
@@ -378,8 +392,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
         data = TransformedData(
             Data(X, Y), 
             [
-                ReverseFlow(Affine(np.nanstd(Y[:, 0]), np.nanmean(Y[:, 0]), train=False)),
-                ReverseFlow(Affine(np.nanstd(Y[:, 1]), np.nanmean(Y[:, 1]), train=False))
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
             ]
         )
     else:

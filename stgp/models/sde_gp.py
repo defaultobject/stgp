@@ -72,6 +72,9 @@ class BASE_SDE_GP(Posterior):
 
         if self.full_state_observed:
 
+            out_dim = self.prior.spatial_output_dim*self.prior.temporal_output_dim
+            return out_dim
+
             if self.kernel is not None:
                 return self.kernel.state_space_dim() 
             else:
