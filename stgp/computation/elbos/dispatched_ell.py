@@ -426,16 +426,21 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     N, Q, B = q_f_mu.shape
     #P = Y.shape[1]
 
+    model_type = get_model_type(prior)
+
     try:
         # see if there is a closed form expression
+        # if model is non linear then there will be no closed form expressions
+        if  isinstance(model_type, LinearModel):
+            ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
+               X, Y, q_f_mu, q_f_var, likelihood, block_type
+            )
 
-        ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
-           X, Y, q_f_mu, q_f_var, likelihood, block_type
-        )
+            ell = np.sum(ell)
 
-        ell = np.sum(ell)
-
-        return ell
+            return ell
+        else:
+            raise RuntimeError()
     except Exception as e:
         # approximate expected log likelihood
         ell = approximate_expectation(

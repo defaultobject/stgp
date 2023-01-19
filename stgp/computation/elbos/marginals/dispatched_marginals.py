@@ -83,6 +83,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
         var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
 
+
         if out_block_dim == block_size:
             var_p = var_p[:, None, ...]
             return mu_p, var_p
@@ -95,7 +96,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
         return mu_p_bd, var_p_bd
 
-    breakpoint()
     raise RuntimeError()
 
 @dispatch(ApproximatePosterior, Likelihood, 'GPPrior', 'NoSparsity', whiten=False)

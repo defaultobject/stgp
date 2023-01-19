@@ -375,7 +375,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples=N
         batch_type = BatchType.LOOP
     )
 
-
     return xi1_arr, xi2_arr
 
 @dispatch('VGP', 'FullGaussianApproximatePosterior')

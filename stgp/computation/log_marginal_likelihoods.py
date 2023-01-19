@@ -241,3 +241,15 @@ def log_marginal_likelihood( data, m, likelihood, prior):
     return  evoke('log_marginal_likelihood', data, m, likelihood, model_type)(
         data, m, likelihood, prior 
     )
+
+
+@dispatch(TransformedData, Model, Likelihood, Transform)
+def log_marginal_likelihood( data, m, likelihood, prior):
+
+    model_type = get_model_type(prior)
+
+    ll =   evoke('log_marginal_likelihood', data, m, likelihood, model_type)(
+        data, m, likelihood, prior 
+    )
+
+    return ll + np.sum(data.log_jacobian(data.Y_base))

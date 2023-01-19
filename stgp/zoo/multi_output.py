@@ -1,16 +1,91 @@
 import jax
 import jax.numpy as np
 
-from ..sparsity import NoSparsity
+from scipy.cluster.vq import kmeans2
+
+from ..sparsity import NoSparsity, FullSparsity
 from ..models import GP
-from ..transforms.multi_output import LMC, LMC_DRD, GPRN, GPRN_Exp, GPRN_DRD, GPRN_DRD_EXP
+from ..transforms.multi_output import LMC, LMC_DRD, GPRN, GPRN_Exp, GPRN_DRD, GPRN_DRD_EXP, Independent
 from ..data import Data, TransformedData
 from ..likelihood import Gaussian
 from ..kernels import RBF, ScaleKernel
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.transforms.basic import Log, Softminus, Affine, ReverseFlow
 
-def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False):
+def gp_regression(X, Y, P=None,  kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False, M=None, additive=False, whiten=False):
+    """
+    Helper function for returning an LMC model with Gaussian likelihood across all outputs.
+
+    Args:
+        P, Q: When not passed they are set to Y.shape[1]
+        kernels: When not passed they are set to RBF kernels
+    """
+
+    D = X.shape[1]
+
+    # set defaults
+    if P is None:
+        P = Y.shape[1]
+
+    Q = P
+
+    if kernels is None:
+        kernels = [
+            ScaleKernel(
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                variance = variance
+            )
+            for q in range(Q)
+        ]
+
+
+    # construct model
+    if M is None:
+        Z = [NoSparsity(X) for q in range(Q)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+        Z = [FullSparsity(Z_centroid) for q in range(Q)]
+
+
+    latent_gps = [
+        GP(sparsity=Z[q], kernel=kernels[q]) for q in range(Q)
+    ] 
+
+    # Construct LMC Prior
+    prior = Independent(latent_gps)
+
+    if inference == 'vi':
+        inference='Variational'
+        approximate_posterior = None
+    else:
+        approximate_posterior = None
+
+
+
+    if normalise_data:
+        data = TransformedData(
+            Data(X, Y), 
+            [
+                ReverseFlow(Affine(np.nanstd(Y[:, i]), np.nanmean(Y[:, i]), train=False)) for i in range(Y.shape[1])
+            ]
+        )
+    else:
+        data = Data(X, Y)
+
+    m = GP(
+        data=data,
+        likelihood = [Gaussian(variance=lik_noise) for p in range(P)],
+        prior=prior,
+        inference=inference,
+        approximate_posterior = approximate_posterior,
+        whiten = whiten
+    )
+
+    return m
+
+
+def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False, M=None, additive=False, whiten=False):
     """
     Helper function for returning an LMC model with Gaussian likelihood across all outputs.
 
@@ -31,7 +106,7 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
     if kernels is None:
         kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(Q)
@@ -39,7 +114,13 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
 
 
     # construct model
-    Z = [NoSparsity(X) for q in range(Q)]
+    if M is None:
+        Z = [NoSparsity(X) for q in range(Q)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+        Z = [FullSparsity(Z_centroid) for q in range(Q)]
+
 
     latent_gps = [
         GP(sparsity=Z[q], kernel=kernels[q]) for q in range(Q)
@@ -51,7 +132,7 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
     if inference == 'vi':
         inference='Variational'
         approximate_posterior = FullGaussianApproximatePosterior(
-            dim = X.shape[0]*prior.base_prior.output_dim
+            dim = M*prior.base_prior.output_dim
         ) 
     else:
         approximate_posterior = None
@@ -73,12 +154,13 @@ def lmc_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', le
         likelihood = [Gaussian(variance=lik_noise) for p in range(P)],
         prior=prior,
         inference=inference,
-        approximate_posterior = approximate_posterior
+        approximate_posterior = approximate_posterior,
+        whiten = whiten
     )
 
     return m
 
-def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False):
+def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch', lengthscale=1.0, variance=1.0, lik_noise = 0.1, normalise_data: bool = False, M=None, additive=False, whiten=False):
     """
     Helper function for returning an LMC-DRD model with Gaussian likelihood across all outputs.
 
@@ -99,12 +181,17 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
     if kernels is None:
         # DRD should not have a scale kernel 
         kernels = [
-            RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale)
+            RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive)
             for q in range(Q)
         ]
 
     # construct model
-    Z = [NoSparsity(X) for q in range(Q)]
+    if M is None:
+        Z = [NoSparsity(X) for q in range(Q)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+        Z = [FullSparsity(Z_centroid) for q in range(Q)]
 
     latent_gps = [
         GP(sparsity=Z[q], kernel=kernels[q]) for q in range(Q)
@@ -115,7 +202,7 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
     if inference == 'vi':
         inference='Variational'
         approximate_posterior = FullGaussianApproximatePosterior(
-            dim = X.shape[0]*prior.base_prior.output_dim
+            dim = M*prior.base_prior.output_dim
         ) 
     else:
         approximate_posterior = None
@@ -136,13 +223,14 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
         likelihood = [Gaussian(variance=lik_noise) for p in range(P)],
         prior=prior,
         inference=inference,
-        approximate_posterior = approximate_posterior
+        approximate_posterior = approximate_posterior,
+        whiten = whiten
     )
 
     return m
 
 
-def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, inference='Variational', constraint=None, ell_samples=100, lengthscale=1.0, variance=1.0, lik_noise=0.1, normalise_data=True):
+def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, inference='Variational', constraint=None, ell_samples=100, lengthscale=1.0, variance=1.0, lik_noise=0.1, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational mean-field GPRN model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -158,7 +246,7 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
         W_kernels = [
             [
                 ScaleKernel(
-                    RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                    RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                     variance = variance
                 )
                 for q in range(Q)
@@ -169,7 +257,7 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
     if f_kernels is None:
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(Q)
@@ -182,6 +270,17 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
 
     Z_f = [NoSparsity(X) for q in range(Q)]
     Z_W = [[NoSparsity(X) for q in range(Q)] for p in range(P)]
+
+
+    # construct model
+    if M is None:
+        Z_f = [NoSparsity(X) for q in range(Q)]
+        Z_W = [[NoSparsity(X) for q in range(Q)] for p in range(P)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+        Z_f = [FullSparsity(Z_centroid) for q in range(Q)]
+        Z_W = [[FullSparsity(Z_centroid) for q in range(Q)] for p in range(P)]
 
     latent_f_gps = [
         GP(sparsity=Z_f[q], kernel=f_kernels[q]) for q in range(Q)
@@ -216,13 +315,14 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
         prior=prior,
         inference=inference,
         ell_samples=ell_samples,
-        prediction_samples=None
+        prediction_samples=None,
+        whiten = whiten
     )
 
     return m
 
 
-def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True):
+def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational full-Gaussian GPRN_DRD model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -238,7 +338,7 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
     if W_kernels is None:
         W_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(num_W)
@@ -246,10 +346,15 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
 
     if f_kernels is None:
         # kernel variances must be 1, so that K is a correlation matrix
+        if additive:
+            scale_var = 1/D
+        else:
+            scale_var = 1
+
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
-                variance = variance
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                variance = scale_var
             )
             for q in range(Q)
         ]
@@ -259,8 +364,14 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
 
     # setup model
 
-    Z_f = [NoSparsity(X) for q in range(Q)]
-    Z_W = [NoSparsity(X) for q in range(num_W)]
+    if M is None:
+        Z_f = [NoSparsity(X) for q in range(Q)]
+        Z_W = [NoSparsity(X) for q in range(num_W)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+        Z_f = [FullSparsity(Z_centroid) for q in range(Q)]
+        Z_W = [FullSparsity(Z_centroid) for q in range(num_W)]
 
     latent_f_gps = [
         GP(sparsity=Z_f[q], kernel=f_kernels[q]) for q in range(Q)
@@ -283,7 +394,7 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
         q = None
     else:
         q = FullGaussianApproximatePosterior(
-            dim = X.shape[0]*prior.base_prior.output_dim
+            dim = M*prior.base_prior.output_dim
         )
 
     if normalise_data:
@@ -303,13 +414,14 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
         inference='Variational',
         approximate_posterior = q,
         ell_samples=ell_samples,
-        prediction_samples=None
+        prediction_samples=None,
+        whiten = whiten
     )
 
     return m
 
 
-def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True):
+def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational full-Gaussian Noise Varying GPRN_DRD model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -325,7 +437,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
     if v_kernels is None:
         v_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(P)
@@ -334,7 +446,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
     if W_kernels is None:
         W_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(num_W)
@@ -344,7 +456,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
         # kernel variances must be 1, so that K is a correlation matrix
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale),
+                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
                 variance = variance
             )
             for q in range(Q)
@@ -358,6 +470,20 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
     Z_v = [NoSparsity(X) for p in range(P)]
     Z_f = [NoSparsity(X) for q in range(Q)]
     Z_W = [NoSparsity(X) for q in range(num_W)]
+
+    if M is None:
+        Z_v = [NoSparsity(X) for p in range(P)]
+        Z_f = [NoSparsity(X) for q in range(Q)]
+        Z_W = [NoSparsity(X) for q in range(num_W)]
+        M = X.shape[0]
+    else:
+        Z_centroid, _ = kmeans2(X, M, seed=0)
+
+        Z_v = [FullSparsity(Z_centroid) for p in range(P)]
+        Z_f = [FullSparsity(Z_centroid) for q in range(Q)]
+        Z_W = [FullSparsity(Z_centroid) for q in range(num_W)]
+
+
 
     latent_v_gps = [
         GP(sparsity=Z_v[q], kernel=v_kernels[q]) for q in range(P)
@@ -385,7 +511,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
         q = None
     else:
         q = FullGaussianApproximatePosterior(
-            dim = X.shape[0]*prior.base_prior.output_dim
+            dim = M*prior.base_prior.output_dim
         )
 
     if normalise_data:
@@ -405,7 +531,8 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
         inference='Variational',
         approximate_posterior = q,
         ell_samples=ell_samples,
-        prediction_samples=None
+        prediction_samples=None,
+        whiten = whiten
     )
 
     return m

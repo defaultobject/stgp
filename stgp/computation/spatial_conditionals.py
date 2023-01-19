@@ -154,7 +154,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
 
     # TODO: derive proper mean 
 
-    breakpoint()
     mu, var = jax.vmap(
         spatial_fn,
         [None, None, None, None, None, 0, 0, 0, None, None],

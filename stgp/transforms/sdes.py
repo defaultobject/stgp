@@ -88,7 +88,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
     @property
     def _output_dim(self):
-        return self._state_space_dim
+        return self.temporal_output_dim * self.spatial_output_dim
 
     def H(self, x, X_s, t):
 
@@ -101,7 +101,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         # need to permute from latent-space-state to latent-state-space
         # assuming that latent = 1 and we are treating state as latent
         Ns = self.spatial_output_dim * X_s.shape[0]
-        P = self.output_dim
+        P = self.temporal_output_dim
 
         H = data_order_to_output_order(P, Ns).T
 

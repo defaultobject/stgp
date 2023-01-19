@@ -32,9 +32,34 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)
 
-        if out_block == Block.FULL or out_block == Block.BLOCK:
-            return q_m, q_S
+        if (out_block == Block.FULL or out_block == Block.BLOCK):
+            P = q_m.shape[1]
+            Q = prior.output_dim
+
+            mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+            var_p = var_p[:, None, ...]
+            return mu_p, var_p
         else:
+
+            if True:
+                # q_m is in time - latent - space format
+                N = data.N
+                Nt, _, _= q_m.shape
+                Q = prior.output_dim
+
+                mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+                var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+                # extract block diagonals
+                mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
+                var_p_bd = batched_block_diagional(var_p, Q)
+                var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
+
+                chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+                return mu_p_bd, var_p_bd
+
             #assert out_block_dim == 1
             out_block_dim = 1
 

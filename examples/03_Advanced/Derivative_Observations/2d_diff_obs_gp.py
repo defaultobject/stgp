@@ -43,8 +43,8 @@ y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
-#Y = np.hstack([y[:, None], dy_x1[:, None]*np.NaN, dy_x2[:, None]*np.NaN, dy_x1[:, None] * np.NaN])
-Y = np.hstack([y[:, None], dy_x1[:, None]])
+Y = np.hstack([y[:, None], dy_x2[:, None], dy_x1[:, None], dy_x1[:, None]*np.NaN])
+#Y = np.hstack([y[:, None], dy_x1[:, None]])
 
 print('X: ', X.shape)
 print('Y: ', Y.shape, np.nanmean(Y, axis=0))
@@ -59,7 +59,7 @@ base_kernel = ScaleKernel(
     lengthscales=[0.1], active_dims=[1], input_dim=1
 )
 
-if True:
+if False:
     kern = FirstOrderDerivativeKernel(base_kernel, input_index=0)
     lik_arr = [Gaussian(0.1), Gaussian(0.1)]
 

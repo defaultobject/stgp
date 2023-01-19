@@ -20,6 +20,7 @@ from stgp.transforms import Independent
 from stgp.transforms.pdes import DifferentialOperatorJoint
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
 from stgp.data import Data
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior
 
 import matplotlib.pyplot as plt
 
@@ -48,76 +49,82 @@ dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 no_diff_flag = False
 include_ds = True
 
-# only uses time derivates
-if no_diff_flag:
-    Y = y[:, None]
-else:
-    if include_ds:
-        #Y = np.hstack([y[:, None],  dy_x1[:, None]*np.NaN, dy_x1[:, None],  dy_x1[:, None]*np.NaN])
-        Y = np.hstack([y[:, None], dy_x2[:, None], dy_x1[:, None], dy_x1[:, None]*np.NaN])
-    else:
-        Y = np.hstack([y[:, None], dy_x1[:, None]])
-
+Y = np.hstack([y[:, None], dy_x2[:, None], dy_x1[:, None], dy_x1[:, None]*np.NaN])
 
 print('X: ', X.shape)
 print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
-# construct model
-
+# there are 4 latents functions, f, df/ds, df/dt, d^2f/(dtds)
+Q = 4
 data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
 
-if not no_diff_flag:
-    if not include_ds:
-        base_kernel = SpatioTemporalSeperableKernel(
-            FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
-            RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
-        )
-    else:
-        # TODO: what is the new format of f?
-        # TODO: fix predictions
-        base_kernel = SpatioTemporalSeperableKernel(
-            FirstOrderDerivativeKernel(Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), input_index=0), 
-            FirstOrderDerivativeKernel(RBF(input_dim=1, lengthscales=[0.1], active_dims=[1]), input_index=1),
-            spatial_output_dim = 2
-        )
-else:
-    base_kernel = SpatioTemporalSeperableKernel(
-        Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0]), 
-        RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
-    )
+time_kernel = Matern32(input_dim=1, lengthscales=[0.1], active_dims=[0])
+spatial_kernel = RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
 
-latent_gp = GP(
+# GP prior kernels
+base_kernel = SpatioTemporalSeperableKernel(
+    time_kernel, 
+    spatial_kernel
+)
+
+# surrogare model kernels using same base a gp prior
+base_sde_kernel = SpatioTemporalSeperableKernel(
+    FirstOrderDerivativeKernel(time_kernel, input_index=0), 
+    FirstOrderDerivativeKernel(spatial_kernel, input_index=1),
+    spatial_output_dim = 2
+)
+
+
+# surrogate model prior
+latent_sde_gp = GP(
     sparsity=stgp.sparsity.NoSparsity(Z=X), 
-    kernel = base_kernel
+    kernel = base_sde_kernel
 )
-if no_diff_flag:
-    latent_gp = LTI_SDE(Independent([latent_gp]))
-    Q = 1
-else:
-    latent_gp = LTI_SDE_Full_State_Obs(Independent([latent_gp]))
-    if include_ds:
-        Q = 4
-    else:
-        Q = 2
 
-var = 0.1 * np.tile(np.eye(Q * data.Ns), [data.Nt, 1, 1]) 
-# block diagonal likelihood
-lik = BlockDiagonalGaussian(
-    block_size = Q * data.Ns,
-    num_blocks = data.Nt,
-    num_latents = Q,
-    variance = var
+latent_sde_gp = Independent([latent_sde_gp])
+latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+
+# gp model prior
+latent_diff_op = DifferentialOperatorJoint(
+    GP(
+        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        kernel = base_kernel
+    ),
+    kernel = FirstOrderDerivativeKernel(FirstOrderDerivativeKernel(base_kernel, input_index=0), input_index=1, parent_output_dim = 2),
+    is_base = True,
+    has_parent = False
 )
-lik.fix()
+
+lik = [Gaussian(0.1) for q in range(Q)]
+
+# use full gaussian for consistency
+B = data.Ns * Q
+q = FullConjugateGaussian(
+    X = data._X,
+    num_latents =  Q,
+    block_size= B,
+    num_blocks = data.Nt,
+    surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+        # in state-space format
+        data = stgp.data.SpatioTemporalData(X=X, Y=np.reshape(Y, [data.Nt,  Q, data.Ns]), sort=False, train_y=True), # we need gradients Y so set to be trainable
+        likelihood=likelihood, 
+        prior=latent_sde_gp,
+        inference='Sequential',
+        full_state_observed = True
+    )
+)
 
 # Create Model
 m = stgp.models.GP(
     data = data,
-    prior = latent_gp,
+    prior = latent_diff_op,
     likelihood = lik,
-    inference='Sequential',
-    full_state_observed=True
+    inference='Variational',
+    approximate_posterior = q
 )
+print(m.get_objective())
+
+NatGradTrainer(m).train(1.0, 1)
 
 print(m.get_objective())
 
