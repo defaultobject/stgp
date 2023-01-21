@@ -143,6 +143,9 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return K_xz
 
     def covar(self, X1, X2):
+        # if self does not have a parent then 
+        #  we know that the prior covariance is directly given by K
+        #  so we can efficient computed the derivate kernel
         if not self.has_parent:
             return self.derivative_kernel.K(X1, X2)
         else:

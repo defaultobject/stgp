@@ -59,12 +59,14 @@ if False:
 # construct model
 
 Z = np.linspace(0, 1, 5)[:, None]
+#sparsity=stgp.sparsity.FullSparsity(Z=Z)
+sparsity=stgp.sparsity.NoSparsity(Z=X)
 #base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
-base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = ScaleKernel(Matern52(input_dim = 1, lengthscales = [0.1]), 1.0)
 
 base_gp = Independent([
     GP(
-        sparsity=stgp.sparsity.FullSparsity(Z=Z), 
+        sparsity=sparsity, 
         kernel = base_kernel_1d
     )
 ])
@@ -81,7 +83,7 @@ prior = DifferentialOperatorJoint(
     hierarchical = True
 )
 
-q = FullGaussianApproximatePosterior(dim = Z.shape[0] * base_gp.output_dim)
+q = FullGaussianApproximatePosterior(dim = sparsity.Z.shape[0] * base_gp.output_dim)
 
 # Create Model
 m = stgp.models.GP(
@@ -100,22 +102,27 @@ if True:
     max_iters = 100
 
     ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
-
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-
-    lc_arr_1, _ = ng_trainer.train(0.01, 10)
-    lc_arr = np.array(lc_arr_1).tolist()
+    ng_trainer.train(1.0, 1)
 
     if False:
-        for i in trange(max_iters):
-            trainer.train(1.0, 1)
-            lc_arr_i, _  = ng_trainer.train(0.1, 1)
-            lc_arr.append(float(lc_arr_i[0]))
+        print(m.get_objective())
+        breakpoint()
+        m.approximate_posterior.fix()
+
+        trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+        lc_arr_1, _ = ng_trainer.train(0.01, 10)
+        lc_arr = np.array(lc_arr_1).tolist()
+
+        if False:
+            for i in trange(max_iters):
+                trainer.train(1.0, 1)
+                lc_arr_i, _  = ng_trainer.train(0.1, 1)
+                lc_arr.append(float(lc_arr_i[0]))
 
 
-    plt.plot(lc_arr)
-    plt.show()
+        plt.plot(lc_arr)
+        plt.show()
 
     m.print()
 else:

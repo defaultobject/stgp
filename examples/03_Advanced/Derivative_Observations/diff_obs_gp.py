@@ -78,7 +78,7 @@ m = stgp.models.GP(
 
 # train
 m.print()
-if True:
+if False:
     print(m.get_objective())
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')

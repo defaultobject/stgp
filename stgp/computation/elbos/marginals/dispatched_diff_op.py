@@ -103,6 +103,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
     if not prior.hierarchical:
+        # TODO: is this ever called?
+        breakpoint()
 
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
@@ -140,6 +142,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         # due to a jit bug we have to use the full gaussian_conditional
         #   but we only care about the diagonal of the result so we just compute
         #   the diagonal variance here
+
 
         #Kxx = np.diag(np.squeeze(prior.var(XS))) # ND x ND
         Kxx = prior.covar(XS, XS) # ND x ND
@@ -179,25 +182,49 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
             return post_mu, post_var
         else:
             # TODO: this is inefficiently implemented but it works 
+            # TODO: why not just vmap over x? this will automatically get the correct format, and may even make the graph smaller?
 
-            mu, var = gaussian_conditional(
-                XS, 
-                Z, 
-                Kzz, 
-                Kxz, 
-                Kxx, 
-                q_m[..., 0],
-                q_S_chol[0, 0, ...], 
-                mean_zz, 
-                mean_xx
-            )
-            # TODO: why the transpose?
-            P = data_order_to_output_order(NS, prior.output_dim)
-            post_mu = np.reshape(P.T @ mu, [NS, prior.output_dim, 1])
+            if True:
+                P = data_order_to_output_order(NS, prior.output_dim)
 
-            post_var = P.T @ var @ P
-            post_var = get_block_diagonal(post_var, prior.output_dim)
-            post_var = np.reshape(post_var, [NS, 1, prior.output_dim, prior.output_dim])
+                Kxx_diag = jax.vmap(lambda x: prior.covar(x, x))(XS[:, None, ...])
+
+                mu, var = gaussian_conditional_blocks(
+                    1.0,
+                    prior.output_dim,
+                    XS, 
+                    Z, 
+                    Kzz, 
+                    P.T @ Kxz, 
+                    Kxx_diag, 
+                    q_m[..., 0],
+                    q_S_chol[0, 0, ...], 
+                    mean_zz, 
+                    mean_xx
+                )
+               
+                post_mu = mu[..., None]
+                post_var = var[:, None, ...]
+            else:
+                mu, var = gaussian_conditional(
+                    XS, 
+                    Z, 
+                    Kzz, 
+                    Kxz, 
+                    Kxx, 
+                    q_m[..., 0],
+                    q_S_chol[0, 0, ...], 
+                    mean_zz, 
+                    mean_xx
+                )
+                # why permutation here?
+                # TODO: why the transpose?
+                P = data_order_to_output_order(NS, prior.output_dim)
+                post_mu = np.reshape(P.T @ mu, [NS, prior.output_dim, 1])
+
+                post_var = P.T @ var @ P
+                post_var = get_block_diagonal(post_var, prior.output_dim)
+                post_var = np.reshape(post_var, [NS, 1, prior.output_dim, prior.output_dim])
 
             return post_mu, post_var
 
@@ -209,23 +236,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
-    if not prior.hierarchical:
+    if prior.hierarchical:
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
-
-        base_prior = get_permutated_prior(prior)
-
-        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten)
-
-        mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
-
-        chex.assert_rank([mu, var], [3, 4])
-        return mu, var
-
-    else:
-        sparsity_arr = prior.base_prior.get_sparsity_list()
-        sparsity_type = sparsity_arr[0]
-
 
         mu, var =  evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior, sparsity_type, whiten=whiten)(
             data.X, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_arr, out_block, whiten
@@ -233,5 +246,25 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
+    else:
+        # when not hierarchal q(F) is defined over all the required derivatives, and we are in the standard multi-output setting
+        # hence we just call the standard marginals
+
+        # TODO: is this ever being called?
+
+        breakpoint()
+
+        sparsity_arr = prior.base_prior.get_sparsity_list()
+        sparsity_type = sparsity_arr[0]
+
+        base_prior = get_permutated_prior(prior)
+
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=True)
+
+        mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
+
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
+
 
  
