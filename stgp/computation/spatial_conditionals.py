@@ -312,6 +312,7 @@ def spatial_conditional(
     # mu in time x [Dt x Ds x space] format
     # var in time x [Dt x Ds x space] x [Dt x Ds x space]
 
+    # convert from time - state - space to time - space - state format
     # convert to data-latent format
     mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
     var_p = jax.vmap(lambda A: permute_mat(A, out_dim))(var)

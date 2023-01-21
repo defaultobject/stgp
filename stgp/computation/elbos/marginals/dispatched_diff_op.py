@@ -93,6 +93,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
             whiten
         )
 
+
         chex.assert_rank([mu, var], [3, 4])
         return mu, var
 
