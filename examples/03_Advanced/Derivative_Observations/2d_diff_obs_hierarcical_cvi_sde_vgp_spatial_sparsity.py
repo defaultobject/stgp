@@ -75,6 +75,8 @@ if False:
 
     # construct P(T)
 
+
+
     diff_op_prior_time = DifferentialOperatorJoint(
         GP(
             sparsity=stgp.sparsity.NoSparsity(Z=X), 
@@ -134,11 +136,24 @@ else:
 
     lik_arr = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)]
 
+    if False:
+        #Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 10)[:, None]
+        Z_s = data.X_space
+        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=True)
+        Ms = Z_sparsity.raw_Z.Ns
+        Nt = data.Nt
+    else:
+        Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 15)[:, None]
+        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=True)
+        Ms = Z_sparsity.raw_Z.Ns
+        Nt = data.Nt
+
+
     # construct P(T)
 
     diff_op_prior_time = DifferentialOperatorJoint(
         GP(
-            sparsity=stgp.sparsity.NoSparsity(Z_ref=data._X), 
+            sparsity=Z_sparsity, 
             kernel = base_kernel
         ),
         kernel = FirstOrderDerivativeKernel(base_kernel, input_index = 0),
@@ -160,7 +175,7 @@ else:
 
     # surrogate model prior
     latent_sde_gp = GP(
-        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        sparsity=Z_sparsity, 
         kernel = base_sde_kernel
     )
 
@@ -168,15 +183,15 @@ else:
     latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
 
     Q = diff_op_prior_time.output_dim
-    B = data.Ns * Q
+    B = Ms * Q
     q = FullConjugateGaussian(
-        X = data._X,
+        X = Z_sparsity,
         num_latents =  Q,
         block_size= B,
         num_blocks = data.Nt,
         surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
             # in state-space format
-            data = stgp.data.SpatioTemporalData(X=X, Y=np.reshape(Y, [data.Nt,  Q, data.Ns]), sort=False, train_y=True), # we need gradients Y so set to be trainable
+            data = stgp.data.SpatioTemporalData(X=X.raw_Z, Y=np.reshape(Y, [data.Nt,  Q, Ms]), sort=False, train_y=True), # we need gradients Y so set to be trainable
             likelihood=likelihood, 
             prior=latent_sde_gp,
             inference='Sequential',

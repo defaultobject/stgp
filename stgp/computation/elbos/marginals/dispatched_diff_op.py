@@ -105,7 +105,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
     if not prior.hierarchical:
         # TODO: is this ever called?
-        breakpoint()
 
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
@@ -253,14 +252,12 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
         # TODO: is this ever being called?
 
-        breakpoint()
-
         sparsity_arr = prior.base_prior.get_sparsity_list()
         sparsity_type = sparsity_arr[0]
 
         base_prior = get_permutated_prior(prior)
 
-        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=True)
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_type, whiten=whiten, debug=False)
 
         mu, var = fn(data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten)
 

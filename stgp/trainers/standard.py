@@ -13,6 +13,11 @@ class LBFGS(ScipyTrainer):
     def __init__(self, *args, **kwargs):
         super(LBFGS, self).__init__(*args, optimizer='L-BFGS-B', **kwargs)
 
+class ADAM(GradDescentTrainer):
+    """ Constructs a GradDescentTrainer using Adam argument """
+    def __init__(self, *args, **kwargs):
+        super(ADAM, self).__init__(*args, optimizer=objax.optimizer.Adam, **kwargs)
+
 class VB_NG_ADAM(Trainer):
     """ 
     A variational bayes algorithm that uses Natural gradients to update the approximate posterior and Adam for the rest of the parameters.
