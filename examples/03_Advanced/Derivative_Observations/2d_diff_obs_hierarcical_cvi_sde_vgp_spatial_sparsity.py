@@ -12,6 +12,7 @@ import stgp
 from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
+from stgp.trainers.standard import VB_NG_ADAM, ADAM
 
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 
@@ -135,16 +136,18 @@ else:
     )
 
     lik_arr = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)]
+    for lik in lik_arr:
+        lik.fix()
 
     if False:
         #Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 10)[:, None]
         Z_s = data.X_space
-        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=True)
+        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=False)
         Ms = Z_sparsity.raw_Z.Ns
         Nt = data.Nt
     else:
-        Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 15)[:, None]
-        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=True)
+        Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 5)[:, None]
+        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=False)
         Ms = Z_sparsity.raw_Z.Ns
         Nt = data.Nt
 
@@ -210,12 +213,27 @@ else:
 
 m.print()
 
-print(m.get_objective())
-breakpoint()
-
-NatGradTrainer(m).train(1.0, 1)
+jitted_objective = objax.Jit(m.get_objective, m.vars())
 
 print(m.get_objective())
+print(jitted_objective())
+
+
+if False:
+    NatGradTrainer(m).train(1.0, 1)
+elif True:
+    trainer = VB_NG_ADAM(m)
+    lc, _ = trainer.train([0.01, 1.0], [100, [1, 1]])
+    plt.plot(lc)
+    plt.show()
+else:
+
+    trainer = ADAM(m)
+    lc, _ =  trainer.train(0.01, 1000)
+    plt.plot(lc)
+    plt.show()
+
+print(jitted_objective())
 
 pred_mu, pred_var = m.predict_f(XS)
 

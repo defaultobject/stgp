@@ -292,6 +292,7 @@ def spatial_conditional(
     mean_x = np.zeros([pred_mean.shape[1], 1])
     mean_xs = np.zeros([data_xs.Ns * out_dim, 1])
 
+
     # batch over time
     mu, var = jax.vmap(
         gaussian_linear_operator_spatial_conditional,
