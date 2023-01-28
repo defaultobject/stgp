@@ -34,6 +34,16 @@ class ProductLikelihood(Likelihood):
         for lik in self.likelihood_arr:
             lik.release()
 
+
+    def log_likelihood_scalar(self, y, f):
+        ll_arr = []
+        for i, lik in enumerate(self.likelihood_arr):
+            ll_arr.append(
+                lik.log_likelihood_scalar(y[i], f[i])
+            )
+
+        return np.array(ll_arr)
+
     def conditional_var(self, f):
         var_arr = []
         for i, lik in enumerate(self.likelihood_arr):

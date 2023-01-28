@@ -79,7 +79,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
         # compute spatial conditonal
         sparsity =  prior.base_prior.get_sparsity_list()
 
-
         out_block_dim = 1
         mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
             data, 

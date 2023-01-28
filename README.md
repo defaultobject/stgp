@@ -2,6 +2,22 @@
 
 `stgp` is a Gaussian process library written in `Jax`.
 
+## Installation
+
+### m1 specific steps
+
+```bash
+ conda create -n stgp_lib_only python=3.10
+ conda activate stgp_lib_only
+ conda install -c apple tensorflow-deps
+ pip install -e ".[m1]"
+ pip install numpy --upgrade
+```
+
+
+
+
+
 ## Table of contents
 
 - [Implemented models](#implemented_models)
@@ -43,5 +59,3 @@ pip install -e stgp
 ### GP - Variational Inference <a name="gp_vi"></a>
 
 ### GP - State Space <a name="gp_sde"></a>
-
-

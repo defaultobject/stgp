@@ -280,7 +280,8 @@ def spatial_conditional(
     K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
 
     # [Ds x Ns] x [Ns] format
-    K_spatial_sz = K_spatial_ss[:, :Ns]
+    K_spatial_sz = prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
+    K_spatial_sz = K_spatial_sz[:, :Ns]
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -291,7 +292,6 @@ def spatial_conditional(
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])
     mean_xs = np.zeros([data_xs.Ns * out_dim, 1])
-
 
     # batch over time
     mu, var = jax.vmap(

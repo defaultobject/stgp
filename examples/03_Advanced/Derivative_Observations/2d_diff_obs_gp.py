@@ -13,10 +13,13 @@ from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32
+from stgp.means.mean import FirstOrderDerivativeMean
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D
 from stgp.likelihood import Gaussian
 from stgp.models import GP
 from stgp.transforms.pdes import DifferentialOperatorJoint
+from stgp.transforms import Independent
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior
 from stgp.data import Data
 
 import matplotlib.pyplot as plt

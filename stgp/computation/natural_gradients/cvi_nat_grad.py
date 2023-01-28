@@ -404,6 +404,51 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
+def compute_conditional_lik_mean_and_var(m, y, f):
+    likelihood = m.likelihood
+
+    cond_mean = m.likelihood.log_likelihood_scalar(y, np.squeeze(f))
+    cond_var = likelihood.conditional_var(f[None, ...])
+
+    # ignore nan data
+    #cond_mean = np.nan_to_num(cond_mean)
+
+    return np.sum(cond_mean), np.diag(1/np.squeeze(cond_var))
+
+def compute_mean_and_var_with_variational_params(m, q_m, q_S):
+    data = m.data
+    q_m
+    q_S
+    likelihood = m.likelihood
+    prior = m.prior
+    approximate_posterior = m.approximate_posterior
+    inference = m.inference
+
+
+    N = data.N
+
+    if data.minibatch:
+        # TODO: minibatching only works when sparsity is used. Assert this.
+        data.batch()
+
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
+    )
+
+    return q_f_mu, q_f_var
+
+def partial_ell(m, q_m, q_S):
+    # this is expecting q_m, q_S to be in time-latent-space format
+    return compute_expected_log_liklihood_with_variational_params(
+        m.data,
+        q_m,
+        q_S,
+        m.likelihood, 
+        m.prior,
+        m.approximate_posterior,
+        m.inference
+    )
+
 @dispatch('VGP', FullConjugateGaussian, NoSparsity)
 @dispatch('VGP', FullConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
@@ -438,22 +483,50 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     #q_mu_z = np.reshape(q_mu_z, [N, Q])
     #q_var_z = np.reshape(q_var_z, [N, Q, Q])
 
-    def partial_ell(m, q_m, q_S):
-        # this is expecting q_m, q_S to be in time-latent-space format
-        return compute_expected_log_liklihood_with_variational_params(
-            m.data,
-            q_m,
-            q_S,
-            m.likelihood, 
-            m.prior,
-            m.approximate_posterior,
-            m.inference
+    if True:
+        Y = model.data.Y
+        q_mean, q_var = compute_mean_and_var_with_variational_params(model, q_mu_z, q_var_z)
+        chex.assert_rank([q_mean, q_var], [3, 4])
+
+
+        conditional_mean, conditional_var = jax.vmap(compute_conditional_lik_mean_and_var, [None, 0, 0])(model, Y, q_mean)
+
+        # delta method
+        J, _ = jax.jacrev(compute_mean_and_var_with_variational_params, argnums=1)(model, q_mu_z, q_var_z)
+        r, _ = jax.vmap(jax.jacrev(compute_conditional_lik_mean_and_var, argnums=2), [None, 0, 0])(model, Y, q_mean)
+
+        #r = np.nan_to_num(r)
+
+        # N x P x Mt x Ms
+        J = J[:, :, 0, :, :, 0]
+
+        # N x Mt x P x Ms
+        J = np.transpose(J, [0, 2, 1, 3])
+
+        # N x Mt x Ms x P 
+        J_T = np.transpose(J, [0, 1, 3, 2])
+
+        # N x 1 x P x P
+        Lambda = conditional_var[:, None, ...]
+
+        # dotr product
+        mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
+            model, q_mu_z, q_var_z
         )
 
-    # in time-latent-space 
-    mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
-        model, q_mu_z, q_var_z
-    )
+        # 0.5 comes from Barnett and Price 
+        # negative sin comes from the hessian of the Gaussian likelihood
+        _var_grads  =   - 0.5 * J_T @ (Lambda @ J)
+        var_grads = np.sum(_var_grads, axis=0)
+        var_grads = var_grads[:, None, ...]
+
+        enforce_psd_type = None
+    else:
+
+        # in time-latent-space 
+        mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
+            model, q_mu_z, q_var_z
+        )
     # grads should be same as q_mu_z, q_var_z
     chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
 
