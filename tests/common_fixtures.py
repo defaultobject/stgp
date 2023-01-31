@@ -3,7 +3,7 @@ import numpy as np
 
 import stgp
 from stgp.data import Data
-from stgp.likelihood import Gaussian
+from stgp.likelihood import Gaussian, ProductLikelihood
 from stgp.kernels import RBF, ScaleKernel
 from stgp.approximate_posteriors import GaussianApproximatePosterior
 from stgp.models import GP
@@ -212,7 +212,7 @@ def full_posterior_joint_model_no_sparsity(N, gp_prior_2d, gaussian_likelihood):
 
     diff_op_prior = DifferentialOperatorJoint(
         gp_prior_2d,
-        SecondOrderDerivativeKernel_2D(gp_prior_2d.kernel)
+        kernel = SecondOrderDerivativeKernel_2D(gp_prior_2d.kernel)
     )
 
     diff_op_prior = HeatEquation2D(diff_op_prior)
@@ -231,7 +231,7 @@ def full_posterior_joint_model_no_sparsity(N, gp_prior_2d, gaussian_likelihood):
 
     sparsity = diff_op_prior.base_prior.get_sparsity()
 
-    return q, gaussian_likelihood, diff_op_prior, sparsity, data
+    return q, ProductLikelihood([gaussian_likelihood]), diff_op_prior, sparsity, data
 
 @pytest.fixture
 def permutation_vectors(num_outputs, N):

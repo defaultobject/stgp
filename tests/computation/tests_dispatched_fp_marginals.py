@@ -42,7 +42,7 @@ def test__full_approximate_posterior_marginal(seed, N, full_posterior_joint_mode
     )
 
     # === Assert ===
-    # so sparsity is used so the variational params should be unchanged
+    # no sparsity is used so the variational params should be unchanged
     m_true = q.m
     S_true = q.S_diag[..., None]
 

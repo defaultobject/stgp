@@ -220,9 +220,18 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     chex.assert_rank(Kzz, 2)
 
     Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    # fix shapes
+    q_m = q_m[:, 0, ...]
+    q_S_chol = q_S_chol[0, 0, ...]
+
     chex.assert_equal_shape([Kzz_chol, q_S_chol])
 
     q_m, q_S_chol =  Kzz_chol @ q_m, Kzz_chol @ q_S_chol
+
+    # fix back shapes
+    q_m = q_m[:, None, ...]
+    q_S_chol = q_S_chol[None, None, ...]
 
     # we have reparemeterised the approximate posterior so we can now treat it as unwhitened
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=False)

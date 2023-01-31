@@ -36,6 +36,10 @@ class ProductLikelihood(Likelihood):
 
 
     def log_likelihood_scalar(self, y, f):
+        if len(self.likelihood_arr) == 1:
+            # just pass through
+            return self.likelihood_arr[0].log_likelihood_scalar(y, f)
+
         ll_arr = []
         for i, lik in enumerate(self.likelihood_arr):
             ll_arr.append(

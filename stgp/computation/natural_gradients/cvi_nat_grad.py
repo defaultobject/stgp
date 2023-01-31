@@ -12,12 +12,16 @@ from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, g
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
+from ..integrals.samples import _process_samples
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad
+
+from ...transforms import MultiOutput
+
 
 @partial(jit, static_argnums=(7))
 def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
@@ -435,6 +439,23 @@ def compute_mean_and_var_with_variational_params(m, q_m, q_S):
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
+    # transform through non linear part
+    if type(m.prior) == MultiOutput:
+        # transform each output separately
+        q_f_res = []
+        for i, p in enumerate(m.prior.parent):
+            t_p = _process_samples(q_f_mu[i], lambda x:x, p)
+            q_f_res.append(np.squeeze(t_p))
+    else:
+        t_p = _process_samples(q_f_mu, lambda x:x, m.prior)
+        q_f_res.append(np.squeeze(t_p))
+
+    q_f_res = np.array(q_f_res).T
+
+    # fix shapes
+    q_f_mu = q_f_res[..., None]
+
+
     return q_f_mu, q_f_var
 
 def partial_ell(m, q_m, q_S):
@@ -486,13 +507,13 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     if True:
         Y = model.data.Y
         q_mean, q_var = compute_mean_and_var_with_variational_params(model, q_mu_z, q_var_z)
-        chex.assert_rank([q_mean, q_var], [3, 4])
-
+        chex.assert_rank([q_mean], [3])
 
         conditional_mean, conditional_var = jax.vmap(compute_conditional_lik_mean_and_var, [None, 0, 0])(model, Y, q_mean)
 
         # delta method
         J, _ = jax.jacrev(compute_mean_and_var_with_variational_params, argnums=1)(model, q_mu_z, q_var_z)
+
         r, _ = jax.vmap(jax.jacrev(compute_conditional_lik_mean_and_var, argnums=2), [None, 0, 0])(model, Y, q_mean)
 
         #r = np.nan_to_num(r)

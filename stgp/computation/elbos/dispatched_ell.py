@@ -356,6 +356,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     elif isinstance(likelihood, BlockDiagonalGaussian):
         gauss_lik_flag = True
 
+
     # TODO: there is a choice here between quadrature and monte-carlo estimation
     # TODO: need to check if a likelihood has a closed form ELL
     if isinstance(model_type, LinearModel) and gauss_lik_flag:

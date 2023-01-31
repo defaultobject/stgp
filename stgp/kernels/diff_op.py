@@ -48,6 +48,8 @@ class DerivativeKernel(Kernel):
 
 
 
+
+
 class FirstOrderDerivativeKernel(DerivativeKernel):
     """ Construct FirstOrderDerivative kernel for the input index provided """
     def __init__(
@@ -301,8 +303,159 @@ class SecondOrderDerivativeKernel(DerivativeKernel):
 
         return K_reshaped
 
+class SecondOrderOnlyDerivativeKernel(DerivativeKernel):
+    """ Only Construct SecondOrderDerivativeKernel kernel for the input index provided """
+    def __init__(
+            self, 
+            parent_kernel = None,
+            input_index: int = 0,
+            parent_output_dim: int = 1
+        ):
+
+        super(SecondOrderOnlyDerivativeKernel, self).__init__(parent_kernel)
+
+        self.parent_output_dim = parent_output_dim
+        self.d_computed = 2
+        self.output_dim  = self.d_computed * self.parent_output_dim 
+        self.input_index = input_index
+
+    def _compute_derivatives(self, x1, x2, var_fn):
+        """
+        Let T to denote a differential operator: d/dt
+
+        Let D = 
+            I.,  .(T^2), 
+            (T)^2.,  (T)^2.(T^2) 
+
+        be a matrix of linear operators (where . denotes the operator input, and we ignore transposes). 
+
+        Then The full joint kernel is given by (ignoring transposes, and abusing the kronecker product notation):
+
+            K ⊗ D
+
+        When K is scalar this is given as
+
+            K,        K(T^2)             
+            (T)^2K,   (T)^2K(T^2)   
+
+        This means that the output is ordered by [f_1, (T^2)f_1, ..., f_B, (T^2)f_B]^T.
+        """
+
+        #B x B
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])
+
+        # compute blocks
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+
+        # Computes
+        # [K]
+        #B x B
+        res00 = k(x1, x2)
+
+        B = res00.shape[0]
+
+        # Computes
+        # (T^2)K
+        #  B x B x D x D
+        res20 = hessian(k, argnums=(0))(x1, x2)
+
+        # Computes
+        # K(T^2)
+        #  B x B x D x D
+        res02 = hessian(k, argnums=(1))(x1, x2)
+
+        # arg 0 are the first dim, arg1 are the final
+        # (T^2)K(T^2)
+        #  B x B x D x D x D x D
+        res22 = hessian(hessian(k, argnums=(0)), argnums=(1))(x1, x2)
+
+        # Construct full matrix
+        # K,       K(T^2)
+        # (T)^2K,  (T)^2K(T^2)
 
 
+        # for a given B_i, B_j compute the derivate kernels
+        def get_K(i, j):
+            return np.array([
+                [res00[i, j], res02[i, j, self.input_index, self.input_index]], # f
+                [res20[i, j, self.input_index, self.input_index], res22[i, j, self.input_index, self.input_index, self.input_index, self.input_index]], # d^2f/dt^2
+            ])
+
+        # stack all derivate kernels over each BxB element 
+        K = np.block([
+            [
+                get_K(b1, b2) 
+                for b2 in range(B) 
+            ]
+            for b1 in range(B) 
+        ])
+
+        chex.assert_rank(K, 2)
+        chex.assert_shape(K, [B*self.d_computed, B*self.d_computed])
+        chex.assert_shape(K, [self.output_dim, self.output_dim])
+
+        return K
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        # K is in data-diff format -- convert to diff-data format
+        K_reshaped = np.block([
+            [
+                K[:, :, d1, d2]
+                for d2 in range(self.output_dim)
+            ]
+            for d1 in range(self.output_dim)
+        ])
+
+        return K_reshaped
+
+class RemoveDiffDim(DerivativeKernel):
+    def __init__(
+            self, 
+            parent_kernel = None,
+            input_index: int = 0
+        ):
+
+        super(RemoveDiffDim, self).__init__(parent_kernel)
+
+        self.parent_kernel = parent_kernel
+        self.parent_output_dim = self.parent_kernel.output_dim
+        self.d_computed = self.parent_output_dim - 1
+        self.output_dim  = self.d_computed  
+        self.input_index = input_index
+        self.index_to_keep = list(set(range(self.parent_output_dim))-set([self.input_index]))
+
+    def K(self, X1, X2):
+        K_parent = self.parent_kernel.K(X1, X2)
+        N1 = X1.shape[0]
+        N2 = X2.shape[0]
+
+        # index to remove
+        ind_1 = N1 * self.input_index
+        ind_2 = N2 * self.input_index
+        #K_parent = K_parent[~(ind_1-1):(ind_1+N1)]
+
+        N1_index = np.arange(N1)[:, None]
+        N2_index = np.arange(N2)[:, None]
+
+        N1_index = np.tile(np.array(self.index_to_keep)[None, :], [N1, 1])*N1 + np.tile(np.arange(N1)[:, None], [1, self.output_dim])
+        N1_index = np.transpose(N1_index).reshape(N1*self.output_dim)
+
+        N2_index = np.tile(np.array(self.index_to_keep)[None, :], [N2, 1])*N2 + np.tile(np.arange(N2)[:, None], [1, self.output_dim])
+        N2_index = np.transpose(N2_index).reshape(N2*self.output_dim)
+
+        K_res = K_parent[N1_index][:, N2_index]
+
+        chex.assert_rank(K_res, 2)
+        chex.assert_shape(K_res, [N1*self.output_dim, N2*self.output_dim])
+
+        return K_res
 
 class FirstOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(

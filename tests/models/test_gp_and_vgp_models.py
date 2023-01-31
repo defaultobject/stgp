@@ -36,10 +36,12 @@ def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
     # ==== Act ====
 
     def implicit_method():
+        np.random.seed(0)
         m = GP(data=data, inference='Variational')
         return m
 
     def implicit_meanfield_method():
+        np.random.seed(0)
         m = stgp.models.GP(
             data = data, 
             kernel=RBF(lengthscales=[1.0]),
@@ -49,6 +51,7 @@ def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
         return m
 
     def explicit_meanfield_method():
+        np.random.seed(0)
         m = stgp.models.GP(
             data = data, 
             kernel=RBF(lengthscales=[1.0]),
@@ -59,6 +62,7 @@ def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
         return m
 
     def explicit_prior_meanfield_method():
+        np.random.seed(0)
         ind_prior = stgp.transforms.Independent([
             stgp.models.GP(
                 sparsity = stgp.sparsity.NoSparsity(X),
@@ -75,6 +79,7 @@ def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
         return m
 
     def implicit_ind_prior_meanfield_method():
+        np.random.seed(0)
         ind_prior = stgp.models.GP(
             sparsity = stgp.sparsity.NoSparsity(X),
             kernel = RBF(lengthscales=[1.0]),
@@ -89,6 +94,7 @@ def test__ways_to_construct_vgp_match(seed, N, NS, regression_1d_data):
         return m
 
     def explicit_full_posterior_method():
+        np.random.seed(0)
         m = stgp.models.GP(
             data = data, 
             kernel=RBF(lengthscales=[1.0]),
