@@ -84,7 +84,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
     @property
     def temporal_output_dim(self):
         """ Returns the full state.  """
-        return self._state_space_dim
+        #return self._state_space_dim
+        return 3
 
     @property
     def _output_dim(self):
@@ -94,6 +95,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         # Observe both f and df
         H_t = np.eye(self._state_space_dim)
+        # TODO: hardcoded hack
+        H_t = H_t[:3]
 
         #When there are no spatial points there is no need to permute
         #as it will automatically be in time-latent format

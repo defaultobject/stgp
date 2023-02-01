@@ -220,6 +220,7 @@ class Matern52(StationaryKernel, MarkovKernel):
 
 
 class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
+    """ See https://github.com/AaltoML/BayesNewton/blob/main/bayesnewton/kernels.py """
     def state_space_dim(self):
         return 3
 
@@ -294,3 +295,75 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
 
         return  variance * (1.0 + sqrt5 * r + (5.0/3.0) * r * r) * np.exp(-sqrt5 * r)
 
+
+class ScaledMatern72(StationaryVarianceKernel, MarkovKernel):
+    """ See https://github.com/AaltoML/BayesNewton/blob/main/bayesnewton/kernels.py#L280 """
+
+    def state_space_dim(self):
+        return 4
+
+    def to_ss(self, X_spatial=None):
+        """ Return state space representation """
+        chex.assert_equal(self.input_dim, 1)
+
+        var = self.variance
+        ls = self.lengthscales[0]
+
+        lam = 7.0**0.5 / ls
+        F = np.array([[0.0,       1.0,           0.0,           0.0],
+                      [0.0,       0.0,           1.0,           0.0],
+                      [0.0,       0.0,           0.0,           1.0],
+                      [-lam**4.0, -4.0*lam**3.0, -6.0*lam**2.0, -4.0*lam]])
+        L = np.array([[0.0],
+                      [0.0],
+                      [0.0],
+                      [1.0]])
+        Qc = np.array([[var * 10976.0 * 7.0 ** 0.5 / 5.0 / ls ** 7.0]])
+        H = np.array([[1, 0, 0, 0]])
+        kappa = 7.0 / 5.0 * var / ls**2.0
+        kappa2 = 9.8 * var / ls**4.0
+        Pinf = np.array([[var,   0.0,    -kappa, 0.0],
+                         [0.0,    kappa,   0.0,    -kappa2],
+                         [-kappa, 0.0,     kappa2, 0.0],
+                         [0.0,    -kappa2, 0.0,    343.0*var / ls**6.0]])
+
+        return F, L, Qc, H, Pinf
+
+    def state_size(self):
+        return 4
+
+    def expm(self, dt, X_spatial=None):
+        """
+        Calculation of the discrete-time state transition matrix A = expm(FΔt) for the Matern-5/2 prior.
+        :param dt: step size(s), Δtₙ = tₙ - tₙ₋₁ [scalar]
+        :return: state transition matrix A [3, 3]
+        """
+        ls = self.lengthscales[0]
+
+        lam = np.sqrt(7.0) / ls
+        lam2 = lam * lam
+        lam3 = lam2 * lam
+        dtlam = dt * lam
+        dtlam2 = dtlam ** 2
+        A = np.exp(-dtlam) \
+            * (dt * np.array([[lam * (1.0 + 0.5 * dtlam + dtlam2 / 6.0),      1.0 + dtlam + 0.5 * dtlam2,
+                              0.5 * dt * (1.0 + dtlam),                       dt ** 2 / 6],
+                              [-dtlam2 * lam ** 2.0 / 6.0,                    lam * (1.0 + 0.5 * dtlam - 0.5 * dtlam2),
+                              1.0 + dtlam - 0.5 * dtlam2,                     dt * (0.5 - dtlam / 6.0)],
+                              [lam3 * dtlam * (dtlam / 6.0 - 0.5),            dtlam * lam2 * (0.5 * dtlam - 2.0),
+                              lam * (1.0 - 2.5 * dtlam + 0.5 * dtlam2),       1.0 - dtlam + dtlam2 / 6.0],
+                              [lam2 ** 2 * (dtlam - 1.0 - dtlam2 / 6.0),      lam3 * (3.5 * dtlam - 4.0 - 0.5 * dtlam2),
+                              lam2 * (4.0 * dtlam - 6.0 - 0.5 * dtlam2),      lam * (1.5 * dtlam - 3.0 - dtlam2 / 6.0)]])
+               + np.eye(4))
+        return A
+
+    def _K_scaler(self, x1, x2, lengthscale, variance):
+        """
+        r = |X1 - X2|/l
+        K(X1, X2) = σ (1 + √5 r + (5/3) r^2) exp{-√5 r}
+        """
+
+        r  = np.abs(x1-x2) / lengthscale
+
+        sqrt7 = np.sqrt(7.0)
+        return variance * (1. + sqrt7 * r + 14. / 5. * np.square(r) + 7. * sqrt7 / 15. * r**3) * np.exp(-sqrt7 * r)

@@ -109,6 +109,9 @@ class Data(objax.Module):
             generator=self.generator
         )
 
+    def fix(self):
+        self._Y.fix()
+
     @property
     def base(self):
         return self

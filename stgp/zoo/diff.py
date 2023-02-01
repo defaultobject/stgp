@@ -6,7 +6,7 @@ from stgp import settings
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.means.mean import FirstOrderDerivativeMean, SecondOrderDerivativeMean
-from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel
 from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms import OutputMap
@@ -465,8 +465,11 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
             space_kern = FirstOrderDerivativeKernel( input_index = 1,)
             space_mean = FirstOrderDerivativeMean(input_index=1)
         elif space_diff == 2:
-            space_kern = SecondOrderDerivativeKernel( input_index = 1,)
+            space_kern = SecondOrderDerivativeKernel( input_index = 1)
             space_mean = SecondOrderDerivativeMean(input_index=1)
+
+            space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1)
+            space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
 
         # construct P(S | T)
         diff_op_prior = DifferentialOperatorJoint(
@@ -506,6 +509,10 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
             full_state_observed = True
         )
     )
+
+    if prior_fn is not None:
+        # construct PDE transform
+        diff_op_prior = prior_fn(diff_op_prior)
 
     # Create Model
     m = stgp.models.GP(
