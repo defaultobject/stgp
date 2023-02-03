@@ -7,12 +7,16 @@ from batchjax import batch_or_loop, BatchType
 from functools import partial
 
 from ... import settings
+from ...utils.nan_utils import get_same_shape_mask 
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
+from ..integrals.approximators import mv_block_monte_carlo
+
+from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
@@ -408,21 +412,28 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-def compute_conditional_lik_mean_and_var(m, y, f):
+def compute_conditional_lik_mean_and_var(m, y, f, single_output=False):
     likelihood = m.likelihood
 
-    cond_mean = m.likelihood.log_likelihood_scalar(y, np.squeeze(f))
+
+
+    cond_mean = m.likelihood.log_likelihood_scalar(np.squeeze(y), np.squeeze(f))
     cond_var = likelihood.conditional_var(f[None, ...])
 
     # ignore nan data
     #cond_mean = np.nan_to_num(cond_mean)
 
-    return np.sum(cond_mean), np.diag(1/np.squeeze(cond_var))
+    if single_output:
+        return np.sum(cond_mean), 1/np.squeeze(cond_var)[0]
 
-def compute_mean_and_var_with_variational_params(m, q_m, q_S):
+    if len(cond_var.shape) == 5:
+        return np.sum(cond_mean), np.diag(1/np.squeeze(cond_var))
+    
+    # TODO: clean this up
+    return np.sum(cond_mean), (1/cond_var[0, 0, 0])[:, None]
+
+def compute_u_to_f(m, q_m, q_S):
     data = m.data
-    q_m
-    q_S
     likelihood = m.likelihood
     prior = m.prior
     approximate_posterior = m.approximate_posterior
@@ -435,9 +446,19 @@ def compute_mean_and_var_with_variational_params(m, q_m, q_S):
         # TODO: minibatching only works when sparsity is used. Assert this.
         data.batch()
 
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
-        data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
+    q_f_mu, q_f_var = evoke('marginal_predict', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
+        data.X, data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
+
+
+    return q_f_mu, q_f_var
+
+def compute_f_to_tf(m, q_f_mu, q_f_var):
+    data = m.data
+
+    if data.minibatch:
+        # TODO: minibatching only works when sparsity is used. Assert this.
+        data.batch()
 
     # transform through non linear part
     if type(m.prior) == MultiOutput:
@@ -454,6 +475,50 @@ def compute_mean_and_var_with_variational_params(m, q_m, q_S):
 
     # fix shapes
     q_f_mu = q_f_res[..., None]
+
+
+    return q_f_mu
+
+def compute_mean_and_var_with_variational_params(m, q_m, q_S, single_output=False):
+    data = m.data
+    likelihood = m.likelihood
+    prior = m.prior
+    approximate_posterior = m.approximate_posterior
+    inference = m.inference
+
+
+    N = data.N
+
+    if data.minibatch:
+        # TODO: minibatching only works when sparsity is used. Assert this.
+        data.batch()
+
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
+        data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
+    )
+
+    q_f_res = []
+    # transform through non linear part
+    if type(m.prior) == MultiOutput:
+        # transform each output separately
+        for i, p in enumerate(m.prior.parent):
+            t_p = _process_samples(q_f_mu[i], lambda x:x, p)
+            q_f_res.append(np.squeeze(t_p))
+
+        if single_output:
+            q_f_res = [q_f_res[0]]
+
+        q_f_res = np.array(q_f_res).T
+    else:
+        t_p = _process_samples(q_f_mu, lambda x:x, m.prior)
+        q_f_res.append(np.squeeze(t_p))
+        q_f_res = np.array(q_f_res)
+
+
+    # fix shapes
+    #q_f_mu = q_f_res[..., None]
+    # ensure rank 3
+    q_f_mu = np.reshape(q_f_res, [q_f_res.shape[0], q_f_res.shape[1], 1])
 
 
     return q_f_mu, q_f_var
@@ -504,72 +569,12 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     #q_mu_z = np.reshape(q_mu_z, [N, Q])
     #q_var_z = np.reshape(q_var_z, [N, Q, Q])
 
-    if enforce_psd_type=='laplace_gauss_newton':
-        Y = model.data.Y
-        q_mean, q_var = compute_mean_and_var_with_variational_params(model, q_mu_z, q_var_z)
-        chex.assert_rank([q_mean], [3])
+    mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
 
-        conditional_mean, conditional_var = jax.vmap(compute_conditional_lik_mean_and_var, [None, 0, 0])(model, Y, q_mean)
-
-        # N x 1 x P x P
-        Lambda = conditional_var[:, None, ...]
-
-        f = lambda q_mu_z: compute_mean_and_var_with_variational_params(model, q_mu_z, q_var_z)[0][:, :, 0]
-
-        y_vjp, vjp_fun = jax.vjp(f,  q_mu_z)
-        Lamba_chol = cholesky(vec_add_jitter(Lambda[:, 0, :, :], settings.ng_jitter))
-
-        res = jax.vmap(
-                lambda x: vjp_fun(x)[0],
-            [2]
-        )(Lamba_chol)
-
-        res = np.transpose(res[..., 0], [1, 2, 0]) 
-        #jax.jvp(f,  [q_mu_z], [Lambda[:, :, :, 0]])
-
-        #vjp_fun(Lambda[:, 0, :, 0])
-        #y, u = jvp(f, (q_mu_z,), (Lambda,))
-
-
-        # dotr product
-        mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
-            model, q_mu_z, q_var_z
-        )
-
-        # 0.5 comes from Barnett and Price 
-        # negative sin comes from the hessian of the Gaussian likelihood
-        if False:
-            # delta method
-            J, _ = jax.jacrev(compute_mean_and_var_with_variational_params, argnums=1)(model, q_mu_z, q_var_z)
-
-            r, _ = jax.vmap(jax.jacrev(compute_conditional_lik_mean_and_var, argnums=2), [None, 0, 0])(model, Y, q_mean)
-
-
-
-            #r = np.nan_to_num(r)
-
-            # N x P x Mt x Ms
-            J = J[:, :, 0, :, :, 0]
-
-            # N x Mt x P x Ms
-            J = np.transpose(J, [0, 2, 1, 3])
-
-            # N x Mt x Ms x P 
-            J_T = np.transpose(J, [0, 1, 3, 2])
-
-            _var_grads  =   - 0.5 * J_T @ (Lambda @ J)
-            var_grads = np.sum(_var_grads, axis=0)
-            var_grads_old = var_grads[:, None, ...]
-
-        _var_grad = res @ np.transpose(res, [0, 2, 1])
-        _var_grad = -0.5 * _var_grad
-        var_grads = _var_grad[:, None, ...]
-
-        if False:
-            print(np.sum(var_grads-var_grads_old))
-            breakpoint()
-        #breakpoint()
-
+    if enforce_psd_type=='laplace_gauss_newton' or enforce_psd_type=='laplace_gauss_newton--single':
+        var_grads = get_full_gaussian_hessian_approximation(model, beta, 100, enforce_psd_type)
         enforce_psd_type = None
     else:
 

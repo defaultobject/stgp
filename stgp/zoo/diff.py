@@ -18,7 +18,7 @@ from stgp.kernels.spectral_mixture import SM_Component
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian
 from stgp.transforms import Independent
 from stgp.trainers.standard import VB_NG_ADAM, LBFGS, LikNoiseSplitTrainer, ADAM
-from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
+from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE, LTI_SDE_Full_State_Obs_With_Mask
 
 import numpy as onp
 
@@ -253,7 +253,7 @@ def diff_hierarchical_vgp(X, Y, time_diff = 1, space_diff = 1, base_kernel = Non
     return m
 
 
-def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, ell_samples=None, prior_fn = None):
+def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, ell_samples=None, prior_fn = None, keep_dims = None):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
@@ -340,7 +340,12 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
     )
 
     latent_sde_gp = Independent([latent_sde_gp])
-    latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+
+    if keep_dims is None:
+        latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+    else:
+        latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(latent_sde_gp, keep_dims=keep_dims)
+
 
     if include_space:
         Q = diff_op_prior_time.output_dim
@@ -393,7 +398,7 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
 
     return m
 
-def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None):
+def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
@@ -468,8 +473,9 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
             space_kern = SecondOrderDerivativeKernel( input_index = 1)
             space_mean = SecondOrderDerivativeMean(input_index=1)
 
-            space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1)
-            space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
+            if True:
+                space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1)
+                space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
 
         # construct P(S | T)
         diff_op_prior = DifferentialOperatorJoint(
@@ -485,12 +491,16 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
 
     # surrogate model prior
     latent_sde_gp = GP(
-        sparsity=stgp.sparsity.NoSparsity(Z=X), 
+        sparsity=Z_sparsity, 
         kernel = base_sde_kernel
     )
 
     latent_sde_gp = Independent([latent_sde_gp])
-    latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+
+    if keep_dims is None:
+        latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+    else:
+        latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(latent_sde_gp, keep_dims=keep_dims)
 
 
     Q = diff_op_prior_time.output_dim
@@ -509,6 +519,8 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
             full_state_observed = True
         )
     )
+
+    # cannot train Z...
 
     if prior_fn is not None:
         # construct PDE transform

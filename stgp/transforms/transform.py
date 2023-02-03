@@ -353,6 +353,13 @@ class Independent(Transform):
     def full_var_blocks(self, X1: np.ndarray) -> np.ndarray:
         return self.covar_blocks(X1, X1)
 
+    @property
+    def temporal_output_dim(self):
+        """
+        Only return `f'
+        """
+        return self.output_dim
+
     def state_space_dim(self):
         # use loop so that we get a list of int outputs
         return  [latent.kernel.state_space_dim() for latent in self.parent]

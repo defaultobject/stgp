@@ -303,7 +303,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     When predicting we can simply use the predictive distribution of the conjugate posterior.
     """
-    breakpoint()
+    #breakpoint()
     # TODO: assuming that data_xs and data_x are of the same type
     chex.assert_rank([q_m, q_S], [3, 4])
 

@@ -170,6 +170,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_xs
     )
 
+
     # in time-latent-space format
     var = var[:, None, ...]
 
@@ -244,6 +245,8 @@ def spatial_conditional(
     XS_time = data_xs.X_time
     X_time = data_x.X_time
 
+    # Data is the sparsity object
+    #X_space = sparsity[0].raw_Z.X_space
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
     X_space = data_x.X_space
@@ -322,7 +325,9 @@ def spatial_conditional(
     mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
     var_p_bd = batched_block_diagional(var_p, out_dim)
     var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
+    #breakpoint()
 
+    #breakpoint()
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
     return mu_p_bd, var_p_bd
 

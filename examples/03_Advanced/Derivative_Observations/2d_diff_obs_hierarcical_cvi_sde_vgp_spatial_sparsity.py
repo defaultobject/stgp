@@ -147,7 +147,7 @@ else:
         Nt = data.Nt
     else:
         Z_s = np.linspace(np.min(data.X_space), np.max(data.X_space), 5)[:, None]
-        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=False)
+        Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z_s, train=True)
         Ms = Z_sparsity.raw_Z.Ns
         Nt = data.Nt
 

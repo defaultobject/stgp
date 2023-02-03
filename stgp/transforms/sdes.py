@@ -84,8 +84,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
     @property
     def temporal_output_dim(self):
         """ Returns the full state.  """
-        #return self._state_space_dim
-        return 3
+        return self._state_space_dim
+        #return 3
 
     @property
     def _output_dim(self):
@@ -96,7 +96,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         # Observe both f and df
         H_t = np.eye(self._state_space_dim)
         # TODO: hardcoded hack
-        H_t = H_t[:3]
+        #H_t = H_t[:3]
 
         #When there are no spatial points there is no need to permute
         #as it will automatically be in time-latent format
@@ -112,6 +112,49 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         return H
 
+class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
+    """
+    Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
+    """
+    def __init__(self, gp: 'Model', keep_dims):
+        self.gp = gp
+        self._state_space_dim = sum(self.gp.state_space_dim())
+        self.keep_dims = np.array(keep_dims)
+
+    @property
+    def temporal_output_dim(self):
+        """ Returns the full state.  """
+        return self.keep_dims.shape[0]
+
+    @property
+    def _output_dim(self):
+        return self.temporal_output_dim * self.spatial_output_dim
+
+    def H(self, x, X_s, t):
+
+        # Observe both f and df
+        H_t = np.eye(self._state_space_dim)
+        # only keep the deriatives that we care about
+        H_t = H_t[self.keep_dims]
+
+        #When there are no spatial points there is no need to permute
+        #as it will automatically be in time-latent format
+        if X_s is None:
+            return H_t
+
+        # need to permute from latent-space-state to latent-state-space
+        # TODO: assuming that latent = 1 and we are treating state as latent
+        Ns = self.spatial_output_dim * X_s.shape[0]
+        P = self.temporal_output_dim
+        full_P = self._state_space_dim
+
+        H = data_order_to_output_order(full_P, Ns).T
+
+        idx = np.tile(np.arange(Ns), P) + np.repeat(self.keep_dims, Ns)*Ns
+        H = H[idx]
+
+
+        return H
 
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):

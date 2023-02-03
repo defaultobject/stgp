@@ -51,6 +51,11 @@ class Input(objax.Module):
         """ Mimic Parameter object. """
         return self.X
 
+    def fix(self):
+        self._X.fix()
+    def release(self):
+        self._X.release()
+
 
 class SpatialTemporalInput(Input):
     def __init__(self, X_time, X_space, train=False):
@@ -79,6 +84,11 @@ class SpatialTemporalInput(Input):
         X = np.hstack([X_t, X_s])
 
         return X
+
+    def fix(self):
+        self._X_space.fix()
+    def release(self):
+        self._X_space.release()
 
 
 class Data(objax.Module):

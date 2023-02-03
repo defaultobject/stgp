@@ -284,7 +284,7 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
         )
         return A
 
-    def _K_scaler(self, x1, x2, lengthscale, variance):
+    def _K_scaler_with_var(self, x1, x2, lengthscale, variance):
         """
         r = |X1 - X2|/l
         K(X1, X2) = σ (1 + √5 r + (5/3) r^2) exp{-√5 r}
@@ -357,7 +357,7 @@ class ScaledMatern72(StationaryVarianceKernel, MarkovKernel):
                + np.eye(4))
         return A
 
-    def _K_scaler(self, x1, x2, lengthscale, variance):
+    def _K_scaler_with_var(self, x1, x2, lengthscale, variance):
         """
         r = |X1 - X2|/l
         K(X1, X2) = σ (1 + √5 r + (5/3) r^2) exp{-√5 r}
