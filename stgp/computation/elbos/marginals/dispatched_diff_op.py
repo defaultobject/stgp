@@ -28,7 +28,6 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if not prior.hierarchical:
-        breakpoint()
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)
 
@@ -98,7 +97,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if not prior.hierarchical:
         if out_block == Block.LATENT:
-            raise NotImplementedError()
             out_block_dim = 1
             mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
                 data, 

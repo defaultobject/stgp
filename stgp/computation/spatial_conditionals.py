@@ -230,7 +230,7 @@ def spatial_conditional(
     data_x, 
     pred_mean, 
     pred_var, 
-    approximate_posterior, 
+    aapproximate_posterioipproximate_posterior, 
     likelihood, 
     prior, 
     sparsity,
@@ -271,25 +271,48 @@ def spatial_conditional(
 
     # covar is ordered by K ⊗ D
     # base prior kernel function
-    base_kernel = prior.base_prior.derivative_kernel.parent_kernel
+    if prior.hierarchical:
+        base_kernel = prior.base_prior.derivative_kernel.parent_kernel
+        base_time_kernel = base_kernel.k1
+        base_space_kernel = base_kernel.k2
+
+        # Ns x Ns
+        K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
+
+        # Dt - Ds - space format
+        # [Ds x Ns] x [Ds x Ns]
+        K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
+
+        # [Ds x Ns] x [Ns] format
+        K_spatial_sz = prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
+        K_spatial_sz = K_spatial_sz[:, :Ns]
+
+
+    else:
+        # when the prior is sparse and defined over all the derivates we have to compute K^{delta}_spatial
+        diff_op_space_prior = prior.base_prior
+
+        base_kernel = prior.base_prior.parent.derivative_kernel.parent_kernel
+        base_time_kernel = base_kernel.k1
+        base_space_kernel = base_kernel.k2
+
+        # [Ds x N] x [Ds x N]
+        K_base_spatial_zz = diff_op_space_prior.covar_from_fn(X_space, X_space, base_space_kernel.K)
+
+        # Dt - Ds - space format
+        # [Ds x Ns] x [Ds x Ns]
+        K_spatial_ss = diff_op_space_prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
+
+        # [Ds x Ns] x [Ds x N]
+        K_spatial_sz = diff_op_space_prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
+
+
+
     #base_kernel = prior.base_prior.parent.derivative_kernel.parent_kernel
-    base_time_kernel = base_kernel.k1
-    base_space_kernel = base_kernel.k2
 
     # K_x_t computes K_F at all the time points independently
     #time - Dt format
     K_x_t = jax.vmap(lambda t: prior.base_prior.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
-
-    # Ns x Ns
-    K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
-
-    # Dt - Ds - space format
-    # [Ds x Ns] x [Ds x Ns]
-    K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
-
-    # [Ds x Ns] x [Ns] format
-    K_spatial_sz = prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
-    K_spatial_sz = K_spatial_sz[:, :Ns]
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -336,9 +359,7 @@ def spatial_conditional(
     mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
     var_p_bd = batched_block_diagional(var_p, out_dim)
     var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
-    #breakpoint()
 
-    #breakpoint()
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
     return mu_p_bd, var_p_bd
 
@@ -394,7 +415,7 @@ def spatial_conditional(
     diff_op_space_prior = prior.base_prior
     diff_op_time_prior = prior.base_prior.parent
 
-    base_kernel = diff_op_time_prior.derivative_kernel.parent_kernel
+    base_kernel = prior.base_prior.parent.derivative_kernel.parent_kernel
     base_time_kernel = base_kernel.k1
     base_space_kernel = base_kernel.k2
 
