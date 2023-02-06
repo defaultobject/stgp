@@ -198,7 +198,7 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
 
     def to_ss(self, X_spatial):
         # if the spatial kernel is a derivate kernel, just evaluate the base kernel
-        #€K_spatial = self.k2.base.K(X_spatial, X_spatial)
+        #K_spatial = self.k2.base.K(X_spatial, X_spatial)
         # add on dummy time dimension
         X_spatial = np.hstack([np.zeros([X_spatial.shape[0], 1]), X_spatial])
         K_spatial = self.k2.K(X_spatial, X_spatial)

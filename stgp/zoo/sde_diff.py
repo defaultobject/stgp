@@ -136,6 +136,7 @@ def diff_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None,
         hierarchical=False
     )
 
+
     # surrogate model prior
     latent_sde_gp = GP(
         sparsity=Z_sparsity, 
@@ -183,5 +184,6 @@ def diff_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None,
         approximate_posterior=q,
         ell_samples=ell_samples
     )
+
 
     return m

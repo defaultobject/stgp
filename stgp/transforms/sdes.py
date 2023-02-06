@@ -105,10 +105,15 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             return H_t
 
         # need to permute from latent-space-state to latent-state-space
+        # need to permute from ds-space-df to df-ds-space
         # assuming that latent = 1 and we are treating state as latent
+
+        # the latent-data is (diff_s x space) x diff_t
+        # is (Ns) x P
         Ns = self.spatial_output_dim * X_s.shape[0]
         P = self.temporal_output_dim
 
+        # the result will now be (diff_t x diff_s x space)
         H = data_order_to_output_order(P, Ns).T
 
         return H

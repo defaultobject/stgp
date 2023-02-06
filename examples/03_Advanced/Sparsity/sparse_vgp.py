@@ -20,6 +20,7 @@ from stgp.transforms import Independent
 from stgp import settings
 from tqdm import trange
 
+
 import stgp
 from stgp.models import GP
 

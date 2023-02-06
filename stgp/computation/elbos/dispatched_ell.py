@@ -60,6 +60,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     # ensure Y is of the correct shape
     X_blocks = np.reshape(X, [num_blocks, -1, X.shape[-1]])
 
+
     # Y is in (time-space)-latent format
     # reshape to time - (space-latent) format
     Y = np.reshape(Y, [num_blocks, block_size, 1])

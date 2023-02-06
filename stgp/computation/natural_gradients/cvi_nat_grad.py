@@ -15,6 +15,7 @@ from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo
+from ..permutations import data_order_to_output_order
 
 from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation
 
@@ -553,7 +554,10 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     # Collect CVI parameters
     # time-latent-space format
+    #Y_tilde_arr is in data-latent format
     raw_Y_arr, Y_tilde_arr, V_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y, q.surrogate.likelihood.variance
+
+    Nt, Nl, Ns = raw_Y_arr.shape
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
@@ -577,17 +581,19 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
         var_grads = get_full_gaussian_hessian_approximation(model, beta, 100, enforce_psd_type)
         enforce_psd_type = None
     else:
-
         # in time-latent-space 
-        mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
-            model, q_mu_z, q_var_z
-        )
+        var_grads = var_test
+
     # grads should be same as q_mu_z, q_var_z
     chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
 
     # Fix shapes
     # Y_tilde_arr is in data-latent format, this reshape will preserve that
     Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
+    # convert to latent-data format
+
+    H = data_order_to_output_order(Nl, Ns).T
+    Y_tilde_arr = jax.vmap(lambda a: H @ a)(Y_tilde_arr)
 
     # update for each N
     new_Y_tilde, new_V_tilde = jax.vmap(

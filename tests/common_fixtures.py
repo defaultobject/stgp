@@ -28,6 +28,22 @@ def regression_1d_diff_obs_data(N):
     Y_all = np.hstack([y[:, None], dy[:, None]])
     return x[:, None], Y_all
 
+
+
+
+
+def get_data(X):
+    N = X.shape[0]
+
+    np.random.seed(0)
+    f_train= f(X) + 0.01 * np.random.randn(N)
+    dfdx_train= df_dx(X) + 0.01 * np.random.randn(N)
+    dfdy_train= df_dy(X) + 0.01 * np.random.randn(N)
+    ddfdxdy_train= ddf_dxdy(X) + 0.01 * np.random.randn(N)
+    #  need it in [f, ds, dt, dtds]
+    return np.hstack([f_train[:, None],  dfdy_train[:, None], dfdx_train[:, None], ddfdxdy_train[:, None]])
+
+
 @pytest.fixture
 def regression_2d_diff_obs_data(N):
     """ Create grid of size NxN. """
@@ -39,18 +55,20 @@ def regression_2d_diff_obs_data(N):
     N = X.shape[0]
 
     # Construct data
-    f = lambda x1, x2: np.sin(10*x1*x2)
-    df_x1 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x2
-    df_x2 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x1
+    f = lambda x: np.sin(x[:, 1]) +x[:, 0]**3
+    df_dy = lambda x: np.cos(x[:, 1]) 
+    df_dx = lambda x: 3.0 * x[:, 0] ** 3 
+    ddf_dxdy = lambda x: x[:, 0]*0.0 
 
     np.random.seed(0)
-    y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
-    dy_x1 = df_x1(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
-    dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
+    f_train= f(X) + 0.01 * np.random.randn(N)
+    dfdx_train= df_dx(X) + 0.01 * np.random.randn(N)
+    dfdy_train= df_dy(X) + 0.01 * np.random.randn(N)
+    ddfdxdy_train= ddf_dxdy(X) + 0.01 * np.random.randn(N)
+    #  need it in [f, ds, dt, dtds]
+    Y = np.hstack([f_train[:, None],  dfdy_train[:, None], dfdx_train[:, None], ddfdxdy_train[:, None]])
+    return X, Y 
 
-    Y = np.hstack([y[:, None], dy_x1[:, None]*np.NaN, dy_x2[:, None]*np.NaN, dy_x1[:, None] * np.NaN])
-
-    return X, Y
 
 
 @pytest.fixture

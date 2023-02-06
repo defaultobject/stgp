@@ -10,6 +10,10 @@ from .matrix_ops import to_block_diag
 def data_order_to_output_order(num_outputs: int, N: int):
     """
     A permutation matrix to convert from latent-data to data-latent order
+
+    For example if  we have a vector in Y = [data-latent] format with N-P
+    then we can convert to [latent-data] format by
+        data_order_to_output_order(P, N).T @ Y
     """
     total_N = N*num_outputs
 

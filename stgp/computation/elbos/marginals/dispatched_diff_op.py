@@ -27,51 +27,38 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    breakpoint()
+    if (out_block == Block.FULL or out_block == Block.BLOCK):
+        P = q_m.shape[1]
+        Q = prior.output_dim
+
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+        var_p = var_p[:, None, ...]
+        return mu_p, var_p
+
     if not prior.hierarchical:
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)
 
-        if (out_block == Block.FULL or out_block == Block.BLOCK):
-            P = q_m.shape[1]
-            Q = prior.output_dim
+        # q_m is in time - latent - space format
+        N = data.N
+        Nt, _, _= q_m.shape
+        Q = prior.output_dim
+        breakpoint()
 
-            mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-            var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
 
-            var_p = var_p[:, None, ...]
-            return mu_p, var_p
-        else:
-            if True:
-                # q_m is in time - latent - space format
-                N = data.N
-                Nt, _, _= q_m.shape
-                Q = prior.output_dim
+        # extract block diagonals
+        mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
+        var_p_bd = batched_block_diagional(var_p, Q)
+        var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
 
-                mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-                var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+        chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+        return mu_p_bd, var_p_bd
 
-                # extract block diagonals
-                mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
-                var_p_bd = batched_block_diagional(var_p, Q)
-                var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
-
-                chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
-                return mu_p_bd, var_p_bd
-
-            #assert out_block_dim == 1
-            out_block_dim = 1
-
-            # q_m is in time - latent - space format
-            N = data.N
-            Nt, P, Ns = q_m.shape
-
-            # convert to data-latent format
-            mu = np.reshape(np.transpose(q_m, [0, 2, 1]), [N, P, 1])
-            var_p = jax.vmap(lambda A: permute_mat(A[0], P))(q_S)
-            var = batched_block_diagional(var_p, P)
-
-            chex.assert_rank([mu, var], [3, 4])
-            return mu, var
     else:
         # compute spatial conditonal
         sparsity =  prior.base_prior.get_sparsity_list()
@@ -95,39 +82,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, SpatialSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    if not prior.hierarchical:
-        if out_block == Block.LATENT:
-            out_block_dim = 1
-            mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
-                data, 
-                sparsity[0].raw_Z, 
-                q_m, 
-                q_S[:, 0, ...], 
-                approximate_posterior,
-                likelihood,
-                prior,
-                sparsity,
-                out_block_dim,
-                whiten
-            )
-
-            chex.assert_rank([mu, var], [3, 4])
-
-            return mu, var
-        else:
-            P = q_m.shape[1]
-            Q = prior.output_dim
-            Q = 4
-
-            mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-            var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
-
-            var_p = var_p[:, None, ...]
-            return mu_p, var_p
-    else:
-        # compute spatial conditonal
-        sparsity =  prior.base_prior.get_sparsity_list()
-
+    if out_block == Block.LATENT:
         out_block_dim = 1
         mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
             data, 
@@ -143,7 +98,36 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         )
 
         chex.assert_rank([mu, var], [3, 4])
+
         return mu, var
+    else:
+        P = q_m.shape[1]
+
+
+        Ns =  data.Ns
+
+        if prior.hierarchical:
+            # when hierarchical the prior is only defined on time so we only need the time dimension
+            time_prior = prior
+            ds = 1
+            dt = time_prior.output_dim
+        else:
+            # when not hierarchical the prior is only defined on space and time
+            space_prior = prior
+            time_prior = prior.parent
+            ds = space_prior.output_dim
+            dt = time_prior.output_dim
+
+        # posterior is in [time - df - ds - space ] format
+        # we need it in [time - space - df - ds] format
+
+        H = data_order_to_output_order(Ns, ds * dt).T
+
+        mu_p = jax.vmap(lambda a: H @ a)(q_m)
+        var_p = jax.vmap(lambda A: H @ A[0] @ H.T)(q_S)
+
+        var_p = var_p[:, None, ...]
+        return mu_p, var_p
 
 # DifferentialOperatorJoint with CVI approximate posteriors
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=True)
@@ -152,7 +136,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
     sparsity =  prior.base_prior.get_sparsity_list()
 
     # handle the CVI marginal based on sparsity
-    mu, var =  evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=whiten, debug=True)(
+    mu, var =  evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=whiten, debug=False)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
     )
 

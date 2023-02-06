@@ -9,6 +9,10 @@ With multiple latent functions the full state is:
 
 because this corresponds to simply stacking the latent GPs
 
+when using derivate observations the state is organised as:
+    time-latent-ds-space-df
+    
+
 """
 import jax
 from jax import jacfwd, jit
