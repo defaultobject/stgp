@@ -146,7 +146,8 @@ class Independent(Transform):
         self, 
         latents: Optional[List['Model']] = None, 
         latent: Optional['Model'] = None,
-        prior=True
+        prior=True,
+        whiten_space=False
     ) -> None:
         """
         Args:
@@ -173,6 +174,7 @@ class Independent(Transform):
 
         self._input_dim = self.output_dim
         self._parent = ensure_module_list(latents)
+        self.whiten_space = whiten_space
 
     def transform_diagonal(self, mu, var): return mu, var
     def transform(self, mu, var): return mu, var

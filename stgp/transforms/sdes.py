@@ -77,9 +77,10 @@ class LTI_SDE(SDE):
         return self.gp.expm(t, X_s)
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
-    def __init__(self, gp: 'Model'):
+    def __init__(self, gp: 'Model', whiten_space=False):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
+        self.whiten_space = whiten_space
 
     @property
     def temporal_output_dim(self):
@@ -116,10 +117,11 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
     """
     Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
     """
-    def __init__(self, gp: 'Model', keep_dims):
+    def __init__(self, gp: 'Model', keep_dims, whiten_space=False):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.keep_dims = np.array(keep_dims)
+        self.whiten_space = whiten_space
 
     @property
     def temporal_output_dim(self):

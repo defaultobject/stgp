@@ -32,14 +32,11 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     """ Gaussian expected log likelihood component. """
     return scalar_gaussian_expected_log_likelihood(X, Y, likelihood.variance, q_f_mu, q_f_var)
 
-
-
 # TODO: rename this
 @dispatch(GaussianProductLikelihood, Block.BLOCK)
 def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     lik_var = np.diag(likelihood.variance)
     return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
-
 
 # ====================== GAUSSIAN ELLs ===================
 

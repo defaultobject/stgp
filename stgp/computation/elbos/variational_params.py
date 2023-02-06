@@ -44,6 +44,8 @@ from ...sparsity import FreeSparsity, Sparsity
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'FullSparsity', False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'FullSparsity', True)
+@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, 'SpatialSparsity', False)
+@dispatch('FullGaussianApproximatePosterior', Likelihood, Transform, 'SpatialSparsity', True)
 @dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', False)
 @dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', True)
 @dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
@@ -52,6 +54,8 @@ from ...sparsity import FreeSparsity, Sparsity
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'FullSparsity', True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', True)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'NoSparsity', False)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'SpatialSparsity', True)
+@dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'SpatialSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ For computational reasons we return S_chol """
     mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol

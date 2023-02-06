@@ -8,9 +8,9 @@ jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
-from example_utils.data_zoo import multi_output_spatial_data
+from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
-from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
+from stgp.trainers.standard import VB_NG_ADAM
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import SpatioTemporalSeperableKernel, Matern32, RBF 
 from stgp.likelihood import Gaussian, ProductLikelihood
@@ -28,32 +28,16 @@ from stgp.sparsity import NoSparsity, SpatialSparsity, StackedSparsity, StackedN
 from tqdm import trange
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 
 stgp.settings.jitter = 1e-5
 
-# Generate data
-Q = 2
-P = 2
-N = 10
-Nt = 100
-Ns = 100
-
-XS, X, Y = multi_output_spatial_data(P, N, N, Nt, Ns, seed=0)
-
-# just care about the first task
+# Construct Data
+NS_nt = 100
+NS_ns = 100
+Q = 1
 P = 1
-Q = 1 
-Zs = np.linspace(np.min(X[:, 1]), np.max(X[:, 1]), 5)[:, None]
-Y = Y[:, 0][:, None]
-
-Y[0] = np.NaN
-
-if False:
-    fig, axes = plt.subplots(1, P)
-    for i in range(P):
-        axes[i].imshow(Y[:, i].reshape(10, 10))
-
-    plt.show()
+XS, X, Y = single_output_spatial_data(10, 10, NS_nt, NS_ns, seed=0)
 
 print(f'XS: {XS.shape}, X: {X.shape}, Y: {Y.shape}')
 
@@ -61,7 +45,11 @@ st_data = SpatioTemporalData(X=X, Y=Y)
 st_data_xs = SpatioTemporalData(X=XS, Y=None)
 
 print('spatial sparsity')
-Z = [SpatialSparsity(st_data.X_time, Zs, train=False) for q in range(Q)]
+# Construct Model
+# setup 10 inducing points
+M = 3
+Zs = np.linspace(np.min(X[:, 1]), np.max(X[:, 1]), M)[:, None]
+Z = [SpatialSparsity(st_data.X_time, Zs, train=True) for q in range(Q)]
 
 Z_all = StackedSparsity(Z)
 
@@ -111,59 +99,40 @@ m = stgp.models.GP(
 
 m.print()
 
-if False:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
-    m.print()
-    print(m.get_objective())
-    ng_trainer.train(1.0, 1)
-    print(m.get_objective())
-
+# Train
 if True:
-    max_iters = 500
-
-    ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-
-    ll_arr, _ = ng_trainer.train(1.0, 1)
-    ll_arr = [float(ll_arr)]
-
-    trainer.train(0.01, 1)
-
     print(m.get_objective())
-
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
-        ll_i, _ = ng_trainer.train(1.0, 1)
-        ll_arr.append(float(ll_i))
-
+    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+    trainer.ng_trainer.train(1.0, 1)
     print(m.get_objective())
+    m.print()
 
-    plt.plot(ll_arr)
+    max_iters = 100
+    lc, _ = trainer.train([0.01, 1.0], [max_iters, [1, 1]], callback=progress_bar_callback(max_iters))
+
+    plt.plot(lc)
     plt.show()
+    print(m.get_objective())
 
 m.print()
 
-pred_mu, pred_var = m.predict_f(XS, squeeze=False)
+pred_mu, pred_var = m.predict_y(XS, squeeze=False)
 
-pred_train_mu = m.predict_f(X, squeeze=False)
+fig, axes = plt.subplots(1, 2, squeeze=False)
+Nt = st_data.Nt
+Ns = st_data.Ns
 
-print(np.nanmean(np.square(np.squeeze(pred_train_mu)-np.squeeze(Y))))
+norm = Normalize(np.min(Y[:, 0]), np.max(Y[:, 0]))
 
-
-if True:
-    fig, axes = plt.subplots(2, P, squeeze=False)
-    for i in range(P):
-        axes[0][i].imshow(
-            pred_mu[:, i].reshape(Nt, Ns), 
-            extent=[np.min(XS[:, 0]), np.max(XS[:, 0]), np.min(XS[:, 1]), np.max(XS[:, 1])],
-            origin='lower'
-        )
-        axes[0][i].scatter(X[:, 1], X[:, 0], c=Y[:, 0], edgecolor='white')
-        axes[1][i].imshow(Y[:, i].reshape(N, N))
-    plt.show()
+axes[0][0].imshow(
+    pred_mu.reshape(NS_nt, NS_ns), 
+    extent=[np.min(XS[:, 0]), np.max(XS[:, 0]), np.min(XS[:, 1]), np.max(XS[:, 1])],
+    origin='lower',
+    norm=norm
+)
+axes[0][0].scatter(X[:, 1], X[:, 0], c=Y[:, 0], edgecolor='white', norm=norm)
+plt.show()
 
 breakpoint()
+
 

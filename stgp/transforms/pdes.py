@@ -23,7 +23,8 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         kernel = None,
         is_base:bool = True,
         has_parent:bool = False,
-        hierarchical = False
+        hierarchical = False,
+        whiten_space=False
     ):
         if base_latent is None:
             raise RuntimeError('Latent gp must be passed')
@@ -36,6 +37,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self._is_base = is_base
         self.has_parent = has_parent
         self.hierarchical = hierarchical
+        self.whiten_space = whiten_space
 
     @property
     def full_transform(self):

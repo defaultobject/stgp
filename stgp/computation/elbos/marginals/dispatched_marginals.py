@@ -208,7 +208,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=True)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
-    # first reparameterise and then we can treat as use
+    # first reparameterise and then we can treat as usual
 
     # reparameterise
     base_prior = prior.base_prior
