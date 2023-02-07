@@ -557,6 +557,8 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     #Y_tilde_arr is in data-latent format
     raw_Y_arr, Y_tilde_arr, V_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y, q.surrogate.likelihood.variance
 
+    breakpoint()
+
     Nt, Nl, Ns = raw_Y_arr.shape
 
     # Different models store Y with different dimensions so we store it here so can 
@@ -591,7 +593,6 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     # Y_tilde_arr is in data-latent format, this reshape will preserve that
     Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
     # convert to latent-data format
-
     H = data_order_to_output_order(Nl, Ns).T
     Y_tilde_arr = jax.vmap(lambda a: H @ a)(Y_tilde_arr)
 
@@ -604,6 +605,9 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     )
 
     # reshape will preserve the data-latent format
+    # convert back  to data-latent format
+   # new_Y_tilde = jax.vmap(lambda a: H.T @ a)(new_Y_tilde)
+
     new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde

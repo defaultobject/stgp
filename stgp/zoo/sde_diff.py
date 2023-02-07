@@ -169,7 +169,6 @@ def diff_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None,
         )
     )
 
-    # cannot train Z...
 
     if prior_fn is not None:
         # construct PDE transform

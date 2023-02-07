@@ -317,7 +317,6 @@ def spatial_conditional(
         K_x_t = jax.vmap(lambda t: prior.base_prior.parent.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
 
 
-
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
         lambda S: cholesky(add_jitter(S, settings.jitter)),
@@ -365,6 +364,7 @@ def spatial_conditional(
     var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+
 
     return mu_p_bd, var_p_bd
 

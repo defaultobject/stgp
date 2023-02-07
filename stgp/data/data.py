@@ -482,10 +482,10 @@ class SpatioTemporalData(SequentialData):
     @property
     def Y_flat(self):
         """ Return Y in data-latent format """
-        # X is returned in time-space ordering  so we return Y in the same order
-        # Y is already sorted by time - time -space
+        # Y is already sorted by time - latent -space
         # Therefore all we have to is reorder and reshape
 
+        # reorder to time-space-latent format
         Y = np.reshape(
             np.transpose(self.Y_st, [0, 2, 1]),
             [-1, self.P]

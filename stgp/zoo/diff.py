@@ -481,10 +481,9 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
         elif space_diff == 2:
             space_kern = SecondOrderDerivativeKernel( input_index = 1)
             space_mean = SecondOrderDerivativeMean(input_index=1)
-
-            if True:
-                space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1)
-                space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
+        elif space_diff == -2:
+            space_kern = SecondOrderOnlyDerivativeKernel(input_index = 1)
+            space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
 
         # construct P(S | T)
         diff_op_prior = DifferentialOperatorJoint(
