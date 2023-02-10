@@ -9,6 +9,7 @@ from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get
 
 from ...core.block_types import get_block_type, compare_block_types, Block
 
+
 def _process_samples(f, fn, prior, *args):
     """
     Args:
@@ -56,10 +57,9 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
         return ell
     else:
 
-        # TODO: add this to settings
-        num_quad_points = 10
+        num_quad_points = num_samples
 
-        x, w = hermgauss(num_quad_points)
+        x, w = onp.hermgauss(num_quad_points)
         const = np.pi**-0.5
 
         q_f_var = np.squeeze(q_f_var)

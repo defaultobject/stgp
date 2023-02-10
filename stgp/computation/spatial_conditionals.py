@@ -175,7 +175,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_xs
     )
 
-
     # in time-latent-space format
     var = var[:, None, ...]
 
@@ -292,7 +291,6 @@ def spatial_conditional(
         # when hierarchical prior.base_prior will point to the time prior
         K_x_t = jax.vmap(lambda t: prior.base_prior.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
 
-
     else:
         # when the prior is sparse and defined over all the derivates we have to compute K^{delta}_spatial
         diff_op_space_prior = prior.base_prior
@@ -349,7 +347,6 @@ def spatial_conditional(
         mean_x, 
         mean_xs
     )
-
     # mu in time x [Dt x Ds x space] format
     # var in time x [Dt x Ds x space] x [Dt x Ds x space]
 

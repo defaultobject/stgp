@@ -28,7 +28,7 @@ sys.path.append('/Users/ohamelijnck/Documents/projects/stgp/examples')
 from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
-stgp.settings.jitter = 1e-4
+stgp.settings.jitter = 1e-7
 
 # construct 2d grid for X
 NS = 15
@@ -118,6 +118,24 @@ m = stgp.models.GP(
     inference='Sequential',
     full_state_observed=True
 )
+
+pred_mu, pred_var = m.predict_f(data.X)
+post_mu, post_var = m.posterior_blocks()
+
+from stgp.computation.permutations import data_order_to_output_order, permute_vec
+
+if True:
+    #H = data_order_to_output_order(4, data.Ns)
+    #H = data_order_to_output_order(data.Ns, 4).T
+    #p_post_mu = jax.vmap(lambda a: H @ a)(post_mu)
+    p_post_mu = jax.vmap(lambda a: permute_vec(a, 4))(post_mu)
+else:
+    p_post_mu = post_mu
+p_post_mu = np.reshape(p_post_mu, [-1, 4])[..., None]
+
+print(p_post_mu-pred_mu)
+print(np.sum(pred_mu) - np.sum(post_mu))
+breakpoint()
 
 print(m.get_objective())
 

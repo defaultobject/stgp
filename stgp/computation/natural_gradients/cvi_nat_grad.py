@@ -15,7 +15,7 @@ from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo
-from ..permutations import data_order_to_output_order
+from ..permutations import data_order_to_output_order, permute_mat, permute_vec
 
 from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation
 
@@ -413,117 +413,6 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-def compute_conditional_lik_mean_and_var(m, y, f, single_output=False):
-    likelihood = m.likelihood
-
-
-
-    cond_mean = m.likelihood.log_likelihood_scalar(np.squeeze(y), np.squeeze(f))
-    cond_var = likelihood.conditional_var(f[None, ...])
-
-    # ignore nan data
-    #cond_mean = np.nan_to_num(cond_mean)
-
-    if single_output:
-        return np.sum(cond_mean), 1/np.squeeze(cond_var)[0]
-
-    if len(cond_var.shape) == 5:
-        return np.sum(cond_mean), np.diag(1/np.squeeze(cond_var))
-    
-    # TODO: clean this up
-    return np.sum(cond_mean), (1/cond_var[0, 0, 0])[:, None]
-
-def compute_u_to_f(m, q_m, q_S):
-    data = m.data
-    likelihood = m.likelihood
-    prior = m.prior
-    approximate_posterior = m.approximate_posterior
-    inference = m.inference
-
-
-    N = data.N
-
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
-
-    q_f_mu, q_f_var = evoke('marginal_predict', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
-        data.X, data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
-    )
-
-
-    return q_f_mu, q_f_var
-
-def compute_f_to_tf(m, q_f_mu, q_f_var):
-    data = m.data
-
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
-
-    # transform through non linear part
-    if type(m.prior) == MultiOutput:
-        # transform each output separately
-        q_f_res = []
-        for i, p in enumerate(m.prior.parent):
-            t_p = _process_samples(q_f_mu[i], lambda x:x, p)
-            q_f_res.append(np.squeeze(t_p))
-    else:
-        t_p = _process_samples(q_f_mu, lambda x:x, m.prior)
-        q_f_res.append(np.squeeze(t_p))
-
-    q_f_res = np.array(q_f_res).T
-
-    # fix shapes
-    q_f_mu = q_f_res[..., None]
-
-
-    return q_f_mu
-
-def compute_mean_and_var_with_variational_params(m, q_m, q_S, single_output=False):
-    data = m.data
-    likelihood = m.likelihood
-    prior = m.prior
-    approximate_posterior = m.approximate_posterior
-    inference = m.inference
-
-
-    N = data.N
-
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
-
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
-        data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
-    )
-
-    q_f_res = []
-    # transform through non linear part
-    if type(m.prior) == MultiOutput:
-        # transform each output separately
-        for i, p in enumerate(m.prior.parent):
-            t_p = _process_samples(q_f_mu[i], lambda x:x, p)
-            q_f_res.append(np.squeeze(t_p))
-
-        if single_output:
-            q_f_res = [q_f_res[0]]
-
-        q_f_res = np.array(q_f_res).T
-    else:
-        t_p = _process_samples(q_f_mu, lambda x:x, m.prior)
-        q_f_res.append(np.squeeze(t_p))
-        q_f_res = np.array(q_f_res)
-
-
-    # fix shapes
-    #q_f_mu = q_f_res[..., None]
-    # ensure rank 3
-    q_f_mu = np.reshape(q_f_res, [q_f_res.shape[0], q_f_res.shape[1], 1])
-
-
-    return q_f_mu, q_f_var
-
 def partial_ell(m, q_m, q_S):
     # this is expecting q_m, q_S to be in time-latent-space format
     return compute_expected_log_liklihood_with_variational_params(
@@ -554,10 +443,9 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     # Collect CVI parameters
     # time-latent-space format
-    #Y_tilde_arr is in data-latent format
+    #Y_tilde_arr is in time-space-latent format
     raw_Y_arr, Y_tilde_arr, V_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y, q.surrogate.likelihood.variance
 
-    breakpoint()
 
     Nt, Nl, Ns = raw_Y_arr.shape
 
@@ -575,12 +463,13 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     #q_mu_z = np.reshape(q_mu_z, [N, Q])
     #q_var_z = np.reshape(q_var_z, [N, Q, Q])
 
+    # still in time-latent-space
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
 
-    if enforce_psd_type=='laplace_gauss_newton' or enforce_psd_type=='laplace_gauss_newton--single':
-        var_grads = get_full_gaussian_hessian_approximation(model, beta, 100, enforce_psd_type)
+    if enforce_psd_type in ['laplace_gauss_newton', 'laplace_gauss_newton--single', 'laplace_gauss_newton_delta_f']:
+        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
         enforce_psd_type = None
     else:
         # in time-latent-space 
@@ -590,11 +479,8 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
 
     # Fix shapes
-    # Y_tilde_arr is in data-latent format, this reshape will preserve that
-    Y_tilde_arr = np.reshape(Y_tilde_arr, q_mu_z.shape)
-    # convert to latent-data format
-    H = data_order_to_output_order(Nl, Ns).T
-    Y_tilde_arr = jax.vmap(lambda a: H @ a)(Y_tilde_arr)
+    # raw_Y_arr is in time-latent-space format, this reshape will preserve that
+    Y_tilde_arr = np.reshape(raw_Y_arr, q_mu_z.shape)
 
     # update for each N
     new_Y_tilde, new_V_tilde = jax.vmap(
@@ -605,9 +491,10 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     )
 
     # reshape will preserve the data-latent format
-    # convert back  to data-latent format
-   # new_Y_tilde = jax.vmap(lambda a: H.T @ a)(new_Y_tilde)
 
+    # convert back  to data-latent format
+    #H = data_order_to_output_order(Nl, Ns).T
+    #new_Y_tilde = jax.vmap(lambda a: H.T @ a)(new_Y_tilde)
     new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
 
     return new_Y_tilde, new_V_tilde

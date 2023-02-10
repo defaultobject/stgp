@@ -272,10 +272,11 @@ class Independent(Transform):
 
         k_arr = np.array(k_arr)
 
-        k_arr = np.reshape(
-            k_arr, 
-            [self.output_dim, X1.shape[0], X2.shape[0]]
-        )
+        if False:
+            k_arr = np.reshape(
+                k_arr, 
+                [self.output_dim, X1.shape[0], X2.shape[0]]
+            )
 
         return k_arr
 

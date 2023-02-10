@@ -315,6 +315,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, Independent)
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     X = data.X
@@ -325,8 +326,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     P = Y.shape[1]
 
     # hack for now
-    block_size = P
-    # can only return blocks of size P
+    block_size = likelihood.block_size
     chex.assert_equal(block_size, P)
 
     # compute prior covariances in latent-data format
@@ -342,7 +342,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     NS = likelihood_var.shape[0]
 
     # convert likelihodo to latent-data format
-    permutation = data_order_to_output_order(P, N)
+    permutation = data_order_to_output_order(P, likelihood.num_blocks)
     lik_var = permutation.T @ likelihood_var @ permutation
 
     mean_x = prior.mean(X)
@@ -352,6 +352,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
     # TODO: this is v. inefficient
     # Compute full matrix in latent-data format
+    print('lik_var: ', lik_var.shape)
+    breakpoint()
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     NS = var.shape[0]

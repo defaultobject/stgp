@@ -27,7 +27,7 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    breakpoint()
+    #breakpoint()
     if (out_block == Block.FULL or out_block == Block.BLOCK):
         P = q_m.shape[1]
         Q = prior.output_dim
@@ -46,8 +46,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         N = data.N
         Nt, _, _= q_m.shape
         Q = prior.output_dim
-        breakpoint()
 
+        # convert to time-space-latent format
         mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
         var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
 
@@ -254,6 +254,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
                 mean_zz, 
                 mean_xx
             )
+
+            #breakpoint()
            
             post_mu = mu[..., None]
             post_var = var[:, None, ...]

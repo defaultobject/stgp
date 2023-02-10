@@ -29,6 +29,9 @@ def get_time_diff_kernel_mean(time_kernel, time_diff):
     elif time_diff == 2:
         time_kern = SecondOrderDerivativeKernel(time_kernel, input_index = 0)
         time_mean = SecondOrderDerivativeMean(parent_output_dim=1)
+    elif time_diff == -2:
+        time_kern = SecondOrderOnlyDerivativeKernel(time_kernel, input_index = 0)
+        time_mean = SecondOrderOnlyDerivativeKernel(parent_output_dim=1) # not used
 
     return time_kern, time_mean
 
@@ -52,9 +55,10 @@ def get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None):
     elif space_diff == -2:
         if time_diff_kern is None:
             space_kern = SecondOrderOnlyDerivativeKernel(space_kernel, input_index = 1)
-            space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
+            space_mean = SecondOrderDerivativeMean(input_index=1) # not used
         else:
-            raise NotImplementedError()
+            space_kern = SecondOrderOnlyDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
+            space_mean = SecondOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim) # not used
 
     return space_kern, space_mean
 

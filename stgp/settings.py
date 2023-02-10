@@ -11,6 +11,7 @@ force_black_box = False
 
 jitter = 1e-5
 ng_jitter = 1e-7
+ng_samples = 10
 
 
 class strict_mode:

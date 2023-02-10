@@ -80,6 +80,7 @@ class GPPrior(Prior):
 
     def mean(self, XS):
         """ Assume a zero mean GP """
+        breakpoint()
         return np.zeros(XS.shape[0])[:, None]
 
     def b_mean(self, XS):
@@ -117,7 +118,7 @@ class GPPrior(Prior):
 
     def covar(self, X1, X2):
         k = self.kernel.K(X1, X2)
-        chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
+        #chex.assert_shape(k, [X1.shape[0], X2.shape[0]])
         return k
 
     def b_covar(self, X1, X2):

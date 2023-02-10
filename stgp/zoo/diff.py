@@ -38,6 +38,9 @@ def diff_gp(X, Y, time_diff = 1, space_diff = 1, base_kernel = None, fix_y=False
             kern = FirstOrderDerivativeKernel(base_kernel, input_index = 0)
         elif time_diff == 2:
             kern = SecondOrderDerivativeKernel(base_kernel, input_index = 0)
+
+        elif time_diff == -2:
+            kern = SecondOrderOnlyDerivativeKernel(base_kernel, input_index = 0)
     else:
         kern = base_kernel
 
@@ -50,6 +53,12 @@ def diff_gp(X, Y, time_diff = 1, space_diff = 1, base_kernel = None, fix_y=False
             )
         elif space_diff == 2:
             kern = SecondOrderDerivativeKernel(
+                kern,
+                input_index = 1,
+                parent_output_dim = kern.output_dim
+            )
+        elif space_diff == -2:
+            kern = SecondOrderOnlyDerivativeKernel(
                 kern,
                 input_index = 1,
                 parent_output_dim = kern.output_dim
@@ -94,6 +103,9 @@ def diff_vgp(X, Y, time_diff = 1, space_diff = 1, diff_kern = None, base_kernel 
                 kern = FirstOrderDerivativeKernel(base_kernel, input_index = 0)
             elif time_diff == 2:
                 kern = SecondOrderDerivativeKernel(base_kernel, input_index = 0)
+
+            elif time_diff == -2:
+                kern = SecondOrderOnlyDerivativeKernel(base_kernel, input_index = 0)
         else:
             kern = base_kernel
 
@@ -106,6 +118,12 @@ def diff_vgp(X, Y, time_diff = 1, space_diff = 1, diff_kern = None, base_kernel 
                 )
             elif space_diff == 2:
                 kern = SecondOrderDerivativeKernel(
+                    kern,
+                    input_index = 1,
+                    parent_output_dim = kern.output_dim
+                )
+            elif space_diff == 2:
+                kern = SecondOrderOnlyDerivativeKernel(
                     kern,
                     input_index = 1,
                     parent_output_dim = kern.output_dim
@@ -176,6 +194,11 @@ def diff_hierarchical_vgp(X, Y, time_diff = 1, space_diff = 1, base_kernel = Non
             time_kern = SecondOrderDerivativeKernel(base_kernel, input_index = 0)
             time_mean = SecondOrderDerivativeMean(parent_output_dim=1)
 
+        elif time_diff == -2:
+            time_kern = SecondOrderOnlyDerivativeKernel(base_kernel, input_index = 0)
+            # TODO: is this ok?
+            time_mean = SecondOrderDerivativeMean(parent_output_dim=1)
+
         time_output_dim = time_kern.output_dim
     else:
         time_output_dim = 1
@@ -188,7 +211,9 @@ def diff_hierarchical_vgp(X, Y, time_diff = 1, space_diff = 1, base_kernel = Non
             space_kern = SecondOrderDerivativeKernel( input_index = 1, parent_output_dim = time_output_dim)
             space_mean = SecondOrderDerivativeMean(parent_output_dim=time_output_dim, input_index=1)
 
-
+        elif space_diff == -2:
+            space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1, parent_output_dim = time_output_dim)
+            space_mean = SecondOrderDerivativeMean(parent_output_dim=time_output_dim, input_index=1)
 
     if prior_fn is None:
         lik_arr = [Gaussian(lik_var) for p in range(P)]
@@ -269,7 +294,6 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
 
     N, P = Y.shape
 
-
     if include_space:
         data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
 
@@ -327,6 +351,10 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
             space_mean = FirstOrderDerivativeMean(input_index=1)
         elif space_diff == 2:
             space_kern = SecondOrderDerivativeKernel( input_index = 1,)
+            space_mean = SecondOrderDerivativeMean(input_index=1)
+
+        elif space_diff == -2:
+            space_kern = SecondOrderOnlyDerivativeKernel( input_index = 1,)
             space_mean = SecondOrderDerivativeMean(input_index=1)
 
         # construct P(S | T)
@@ -552,23 +580,27 @@ def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
-    if space_kernel is None:
-        raise RuntimeError('Space Kernel must be passed!')
 
     include_space = not(space_kernel is None)
 
     N, P = Y.shape
 
-    data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
+    if include_space:
+        data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
+        base_kernel = time_kernel * space_kernel
+    else:
+        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y, sort=True)
+        base_kernel = time_kernel
+
     Ms = data.Ns
 
-    base_kernel = time_kernel * space_kernel
-
+    if type(lik_var) is not list:
+        lik_var = [lik_var for p in range(P)]
 
     if prior_fn is None:
-        lik_arr = [Gaussian(lik_var) for p in range(P)]
+        lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
     else:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var)]) for p in range(P)]
+        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
 
     if fix_y:
         for lik in lik_arr:
@@ -605,36 +637,41 @@ def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_
         hierarchical=False
     )
 
-    if space_diff == 1:
-        # for surrogate SDE
-        space_kern = FirstOrderDerivativeKernel(space_kernel, input_index = 1)
-        space_mean = FirstOrderDerivativeMean(input_index=1)
 
-        # for vi model
-        base_space_kern = FirstOrderDerivativeKernel(base_time_kern, input_index = 1, parent_output_dim=base_time_kern.output_dim)
-    elif space_diff == 2:
-        space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
-        space_mean = SecondOrderDerivativeMean(input_index=1)
+    if include_space:
+        if space_diff == 1:
+            # for surrogate SDE
+            space_kern = FirstOrderDerivativeKernel(space_kernel, input_index = 1)
+            space_mean = FirstOrderDerivativeMean(input_index=1)
 
-        if False:
+            # for vi model
+            base_space_kern = FirstOrderDerivativeKernel(base_time_kern, input_index = 1, parent_output_dim=base_time_kern.output_dim)
+        elif space_diff == 2:
+            space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
+            space_mean = SecondOrderDerivativeMean(input_index=1)
+        elif space_diff - 2:
             space_kern = SecondOrderOnlyDerivativeKernel(space_kernel, input_index = 1)
             space_mean = SecondOrderOnlyDerivativeKernel(input_index=1)
 
-    base_sde_kernel = SpatioTemporalSeperableKernel(
-        time_kern, 
-        space_kern,
-        spatial_output_dim = space_kern.output_dim
-    )
+        base_sde_kernel = SpatioTemporalSeperableKernel(
+            time_kern, 
+            space_kern,
+            spatial_output_dim = space_kern.output_dim
+        )
 
-    # construct P(S | T)
-    diff_op_prior = DifferentialOperatorJoint(
-        diff_op_prior_time,
-        kernel = base_space_kern,
-        mean = space_mean,
-        is_base = True,
-        has_parent=True,
-        hierarchical=False
-    )
+        # construct P(S | T)
+        diff_op_prior = DifferentialOperatorJoint(
+            diff_op_prior_time,
+            kernel = base_space_kern,
+            mean = space_mean,
+            is_base = True,
+            has_parent=True,
+            hierarchical=False
+        )
+    else:
+        diff_op_prior = diff_op_prior_time
+        base_sde_kernel = base_kernel
+
 
     # surrogate model prior
     latent_sde_gp = GP(
@@ -650,6 +687,12 @@ def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_
         latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(latent_sde_gp, keep_dims=keep_dims)
 
 
+    def get_data(X, Y):
+        # we need gradients Y so set to be trainable
+        if include_space:
+            return stgp.data.SpatioTemporalData(X=X, Y=onp.reshape(Y, [data.Nt,  Q, Ms]), sort=False, train_y=True) 
+        return stgp.data.MultiOutputTemporalData(X=X, Y=onp.reshape(Y, [data.Nt,  Q, Ms]), sort=False, train_y=True)
+
     Q = diff_op_prior.output_dim
     B = Ms * Q
     q = FullConjugateGaussian(
@@ -659,7 +702,7 @@ def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_
         num_blocks = data.Nt,
         surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
             # in state-space format
-            data = stgp.data.SpatioTemporalData(X=X, Y=onp.reshape(Y, [data.Nt,  Q, Ms]), sort=False, train_y=True), # we need gradients Y so set to be trainable
+            data = get_data(X, Y),
             likelihood=likelihood, 
             prior=latent_sde_gp,
             inference='Sequential',

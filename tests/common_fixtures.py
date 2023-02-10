@@ -57,7 +57,7 @@ def regression_2d_diff_obs_data(N):
     # Construct data
     f = lambda x: np.sin(x[:, 1]) +x[:, 0]**3
     df_dy = lambda x: np.cos(x[:, 1]) 
-    df_dx = lambda x: 3.0 * x[:, 0] ** 3 
+    df_dx = lambda x: 3.0 * x[:, 0] ** 2 
     ddf_dxdy = lambda x: x[:, 0]*0.0 
 
     np.random.seed(0)

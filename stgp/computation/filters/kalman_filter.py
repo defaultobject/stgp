@@ -98,6 +98,15 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
 
+    if False:
+        if np.any(np.isnan(cholesky(add_jitter(P_k, settings.jitter)))):
+            breakpoint()
+        if np.any(np.isnan(log_Z_k)):
+            log_gaussian(Y_k, mu, add_jitter(S, 1e-5))
+            breakpoint()
+        else:
+            print(log_Z_k)
+
     return {
         'm': m_k, 'P': P_k 
     }, {

@@ -8,6 +8,9 @@ from . import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianAppro
 from ..likelihood import DiagonalGaussian, ProductLikelihood, BlockDiagonalGaussian
 from ..utils.utils import get_batch_type
 
+from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
+from ..computation.matrix_ops import add_jitter
+
 import numpy as onp
 
 
@@ -163,13 +166,24 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         else:
             self.num_blocks = num_blocks
 
-        Y_tilde = 1e-5*np.ones([self.M, self.block_size])*onp.random.rand(self.M, self.block_size)
-        Y_tilde = 1e-5*np.ones([self.M, self.block_size])
+        if True:
+            Y_tilde = 1e-5*np.ones([self.M, self.block_size])
 
-        V_tilde = np.tile(
-            np.eye(self.block_size) , 
-            [self.num_blocks, 1, 1]
-        )
+            V_tilde = np.tile(
+                np.eye(self.block_size) , 
+                [self.num_blocks, 1, 1]
+            )
+        else:
+            Z = int(((int(self.block_size)-1)*self.block_size)/2)
+            Z = onp.random.rand(Z)
+            V_rand = get_correlation_cholesky(correlation_transform(Z, 1.0), self.block_size, self.block_size)
+
+            Y_tilde = np.ones([self.M, self.block_size])*onp.random.rand(self.M, self.block_size)
+
+            V_tilde = np.tile(
+                add_jitter(V_rand, 1.0), 
+                [self.num_blocks, 1, 1]
+            )
 
         surrogate_likelihood = BlockDiagonalGaussian(
             block_size=self.block_size,

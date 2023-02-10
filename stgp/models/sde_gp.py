@@ -203,6 +203,7 @@ class BASE_SDE_GP(Posterior):
         )
 
     def posterior_blocks(self):
+        """ Compute the posterior p(f_t | Y) for all t in time-latent-space format.  """
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
@@ -495,10 +496,13 @@ class ST_SDE_GP(BASE_SDE_GP):
             mu_t = mu_t[:, :self.data.Ns, :]
             var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
 
-        # Compute spatial conditions to get posterior at new spatial points
-        mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
-            xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
-        )
+        if True:
+            # Compute spatial conditions to get posterior at new spatial points
+            mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
+                xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
+            )
+        else:
+            mu, var = mu_t, var_t[:, None, ...]
 
         # mu/var is in  time - (latent x space) format
         # Unsort data and remove the training data
@@ -510,7 +514,6 @@ class ST_SDE_GP(BASE_SDE_GP):
         if self.full_state_observed:
             out_dim = self.prior.spatial_output_dim*self.prior.temporal_output_dim
 
-            # if using full sate this will already be in time-space format
             mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu_time_unsorted)
             var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var_time_unsorted)
 
