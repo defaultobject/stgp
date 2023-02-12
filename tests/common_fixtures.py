@@ -90,6 +90,28 @@ def regression_2d_data(N):
     return X, y[:, None]
 
 @pytest.fixture
+def random_covariance_matrix(P, seed=0):
+    np.random.seed(seed)
+
+    # number of free varying params
+    Q = int(P*(P-1)/2)
+
+    z = correlation_transform(np.random.randn(Q)*1.0, 1.0)
+
+    # Random correlation cholesky
+    L = np.array(get_correlation_cholesky(z, P, Q))
+    R = L @ L.T
+
+    # Random (postive) variances
+    V = np.exp(np.random.uniform(0, 1, P))
+
+    # Get random covariance cholesky
+    W = np.diag(V) @ L
+
+    return W, W @ W.T
+
+
+@pytest.fixture
 def multi_output_timeseries(P, N, seed=0):
     np.random.seed(seed)
 
