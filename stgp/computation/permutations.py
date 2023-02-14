@@ -42,6 +42,11 @@ def permute_vec_blocks(v_blocks):
 @partial(jit, static_argnums=(1))
 def permute_vec(v, num_latents):
     """ Permute vec and return vec"""
+
+    # TODO: write test
+    N = int(v.shape[0]/num_latents)
+    return np.reshape(np.reshape(v, [num_latents, N]).T, [-1, 1])
+
     chex.assert_rank(v, 2)
     P = data_order_to_output_order(
         num_latents,
@@ -88,6 +93,16 @@ def permute_blocks(A_blocks, num_latents):
 @partial(jit, static_argnums=(1))
 def left_permute_mat(A, num_latents):
     chex.assert_rank(A, 2)
+    if False:
+        # TODO: write test
+        N = int(A.shape[0]/num_latents)
+        return np.reshape(
+            np.transpose(
+                np.reshape(A, [num_latents, N, A.shape[1]]),
+                [1, 0, 2]
+            ),
+            [-1, A.shape[1]]
+        )
 
     left_P = data_order_to_output_order(
         num_latents,
@@ -98,6 +113,8 @@ def left_permute_mat(A, num_latents):
 
 @partial(jit, static_argnums=(1))
 def right_permute_mat(A, num_latents):
+
+    return left_permute_mat(A.T, num_latents).T
     chex.assert_rank(A, 2)
 
     right_P = data_order_to_output_order(

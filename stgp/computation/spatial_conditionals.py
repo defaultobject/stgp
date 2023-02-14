@@ -2,7 +2,7 @@
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
-from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional
+from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks
 from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block
 from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
@@ -280,6 +280,145 @@ def spatial_conditional(
 
         # Dt - Ds - space format
         # [Ds x Ns] x [Ds x Ns]
+        #K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
+        K_spatial_ss = jax.vmap(lambda x: prior.covar_from_fn(x[None, :], x[None, :], base_space_kernel.K))(XS_space)
+
+        # [Ds x Ns] x [Ns] format
+        K_spatial_sz = prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
+        K_spatial_sz = K_spatial_sz[:, :Ns]
+
+        # K_x_t computes K_F at all the time points independently
+        #time - Dt format
+        # when hierarchical prior.base_prior will point to the time prior
+        K_x_t = jax.vmap(lambda t: prior.base_prior.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
+
+    else:
+        # when the prior is sparse and defined over all the derivates we have to compute K^{delta}_spatial
+        diff_op_space_prior = prior.base_prior
+
+        base_kernel = prior.base_prior.parent.derivative_kernel.parent_kernel
+        base_time_kernel = base_kernel.k1
+        base_space_kernel = base_kernel.k2
+
+        # [Ds x N] x [Ds x N]
+        K_base_spatial_zz = diff_op_space_prior.covar_from_fn(X_space, X_space, base_space_kernel.K)
+
+        # Dt - Ds - space format
+        # [Ds x Ns] x [Ds x Ns]
+        K_spatial_ss = jax.vmap(lambda x: diff_op_space_prior.covar_from_fn(x[None, :], x[None, :], base_space_kernel.K))(XS_space)
+        #K_spatial_ss = diff_op_space_prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
+
+        # [Ds x Ns] x [Ds x N]
+        K_spatial_sz = diff_op_space_prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
+
+        # K_x_t computes K_F at all the time points independently
+        #time - Dt format
+        # when not hierarchical prior.base_prior will point to the space prior
+        K_x_t = jax.vmap(lambda t: prior.base_prior.parent.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
+
+
+    # compute cholesky at each time stamp
+    pred_var_chol = jax.vmap(
+        lambda S: cholesky(add_jitter(S, settings.jitter)),
+        0,
+    )(pred_var)
+
+    # TODO: check this
+    mean_x = np.zeros([pred_mean.shape[1], 1])
+    mean_xs = np.zeros([data_xs.Ns * out_dim, 1])
+
+    if prior.whiten_space:
+        # whiten transform in space
+        Kzz_chol = cholesky(add_jitter(K_base_spatial_zz, settings.jitter))
+        Kzz_chol = np.kron(np.eye(K_x_t.shape[1]), Kzz_chol)
+        pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
+
+
+    # batch over time
+    mu_p, var_p_bd = jax.vmap(
+        gaussian_linear_operator_spatial_conditional_blocks,
+        [None, None, None, None, None, None, 0, 0, 0, None, None],
+    )( 
+        out_dim,
+        XS_space, 
+        X_space, 
+        K_base_spatial_zz, 
+        K_spatial_sz, 
+        K_spatial_ss, 
+        K_x_t, #batching 
+        pred_mean, #batching
+        pred_var_chol, #batching
+        mean_x, 
+        mean_xs
+    )
+
+    mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
+    var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
+
+    chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+
+    return mu_p_bd, var_p_bd
+
+
+
+# TODO: delete when spatial_blocks is working
+#@dispatch(Data, DifferentialOperatorJoint, FullConjugateGaussian)
+def spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    aapproximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
+):
+    """
+    Let P be the number of outputs then:
+
+    In:
+        pred_mean: Nt x Ns*P x 1
+        pred_var: Nt x Ns*P x Ns*P
+
+    where pred_mean, pred_var are in latent-data format.    
+    """
+    XS_time = data_xs.X_time
+    X_time = data_x.X_time
+
+    # Data is the sparsity object
+    #X_space = sparsity[0].raw_Z.X_space
+    # Get spatial locations with dummy time dimension so kernel evaluations are correct
+    XS_space = data_xs.X_space
+    X_space = data_x.X_space
+
+    space_dim = X_space.shape[1]
+    Ns = data_x.Ns
+
+    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
+    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
+
+    X_time = np.hstack([X_time[:, None], np.zeros([X_time.shape[0], 1])])
+
+    # TODO: assuming that data_xs and data_x are the same
+
+    base_prior_output = prior.base_prior.output_dim
+    prior_added_output = prior.derivative_kernel.d_computed
+    out_dim = base_prior_output * prior_added_output
+
+    # covar is ordered by K ⊗ D
+    # base prior kernel function
+    if prior.hierarchical:
+        base_kernel = prior.base_prior.derivative_kernel.parent_kernel
+        base_time_kernel = base_kernel.k1
+        base_space_kernel = base_kernel.k2
+
+        # Ns x Ns
+        K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
+
+        # Dt - Ds - space format
+        # [Ds x Ns] x [Ds x Ns]
         K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
 
         # [Ds x Ns] x [Ns] format
@@ -331,6 +470,7 @@ def spatial_conditional(
         Kzz_chol = np.kron(np.eye(2), Kzz_chol)
         pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
+
     # batch over time
     mu, var = jax.vmap(
         gaussian_linear_operator_spatial_conditional,
@@ -347,6 +487,8 @@ def spatial_conditional(
         mean_x, 
         mean_xs
     )
+
+    #batched_block_diagional([permute_mat(K_spatial_ss, 2)], 2)
     # mu in time x [Dt x Ds x space] format
     # var in time x [Dt x Ds x space] x [Dt x Ds x space]
 
@@ -359,6 +501,9 @@ def spatial_conditional(
     mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
     var_p_bd = batched_block_diagional(var_p, out_dim)
     var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
+
+    print('mu_p_bd: ', np.sum(mu_p_bd))
+    print('var_p_bd: ', np.sum(var_p_bd))
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
 

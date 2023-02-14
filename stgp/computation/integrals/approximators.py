@@ -193,3 +193,69 @@ def mv_mean_field_block_monte_carlo(fn, mu_arr, var_arr, fn_args =[], generator=
         return fn_samples
 
 
+def mv_block_monte_carlo_list(fn, mu_arr, var_arr, generator=None, num_samples=100, average=True):
+    """
+    multi-variate monte-carlo 
+
+    Args:
+        fn: Callable - 
+        mu_arr: List[N x Q x B]
+        var_arr: List[N x 1 x QB x QB]
+    """
+
+    if generator == None: raise RuntimeError()
+    list_dim = len(mu_arr)
+
+    var_arr = [V[:, 0, :, :] for V in var_arr]
+
+    # reshape to 2d for sampling
+    mu_arr = [np.reshape(mu, [mu.shape[0], -1]) for mu in mu_arr]
+
+    white_samples = [
+        objax.random.normal([num_samples]+list(mu.shape), mean=0.0, stddev=1.0, generator=generator)
+        for mu in mu_arr
+    ]
+    
+    def add_tiled_jit(V):
+        tiled_jit = np.tile(
+            np.eye(V.shape[1])*settings.jitter,
+            [V.shape[0], 1, 1]
+        )
+
+        return V+ tiled_jit
+
+    def get_chol_list(V):
+        # add jit for numerical stability when computing samples
+        chol_arr = [
+            np.linalg.cholesky(add_tiled_jit(V)) for V in var_arr
+        ]
+        return chol_arr 
+
+    chol_arr = get_chol_list(var_arr)
+
+    def reparameterise(fn, mu_arr, chol_arr, *samples):
+        samples = [s[..., None] for s in samples]
+        mu_arr = [mu[..., None] for mu in mu_arr]
+
+        # reparemeterise
+        s = [mu_arr[i] + chol_arr[i] @ samples[i] for i in range(list_dim)]
+
+        return fn(s)
+
+
+    vmap_params = [fn, mu_arr, chol_arr] + white_samples
+    # batch over samples
+    fn_samples = jax.vmap(
+        reparameterise,
+        [None, None, None] + [0]*list_dim,
+        0
+    )(*vmap_params)
+
+    if average:
+        # Return average across all samples
+        if type(fn_samples) is list:
+            return [np.mean(f, axis=0) for f in fn_samples]
+
+        return np.mean(fn_samples, axis=0)
+    else: 
+        return fn_samples

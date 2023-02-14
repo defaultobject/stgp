@@ -22,8 +22,8 @@ class VB_NG_ADAM(Trainer):
     """ 
     A variational bayes algorithm that uses Natural gradients to update the approximate posterior and Adam for the rest of the parameters.
     """
-    def __init__(self, m, enforce_psd_type = None):
-        self.ng_trainer = NatGradTrainer(m, enforce_psd_type = enforce_psd_type)
+    def __init__(self, m, enforce_psd_type = None, ng_schedule=None):
+        self.ng_trainer = NatGradTrainer(m, enforce_psd_type = enforce_psd_type, schedule=ng_schedule)
 
         # do not use adam to train the approximate posterior
         m.approximate_posterior.fix()

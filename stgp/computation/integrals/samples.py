@@ -14,7 +14,6 @@ def _process_samples(f, fn, prior, *args):
     """
     Args:
         f: N x P x B - sampled f
-
     """
     chex.assert_rank(f, 3)
     non_linear_prior_part = get_non_linear_model_part(prior)
@@ -40,9 +39,10 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
     var = var[..., 0]
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
 
-    if True:
-        if num_samples == 1:
-            return wrapped_fn(mu,  *fn_args)[None, ...]
+    if not settings.use_quadrature:
+        if False:
+            if num_samples == 1:
+                return wrapped_fn(mu,  *fn_args)[None, ...]
 
         ell =  mv_indepentdent_monte_carlo(
             wrapped_fn,
@@ -56,7 +56,6 @@ def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, b
 
         return ell
     else:
-
         num_quad_points = num_samples
 
         x, w = onp.hermgauss(num_quad_points)
@@ -85,18 +84,23 @@ def approximate_blocked_expectation(fn, mu, var, prior, fn_args, num_samples, bl
 
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
 
-    if num_samples == 1:
-        return wrapped_fn(mu,  *fn_args)[None, ...]
+    if not settings.use_quadrature:
+        if False:
+            if num_samples == 1:
+                return wrapped_fn(mu,  *fn_args)[None, ...]
 
-    samples = mv_block_monte_carlo(
-        wrapped_fn,
-        mu, 
-        var, 
-        fn_args = fn_args,
-        generator = generator, 
-        num_samples = num_samples,
-        average = average
-    )
+        samples = mv_block_monte_carlo(
+            wrapped_fn,
+            mu, 
+            var, 
+            fn_args = fn_args,
+            generator = generator, 
+            num_samples = num_samples,
+            average = average
+        )
+    else:
+        raise NotImplementedError()
+
 
     return samples
 

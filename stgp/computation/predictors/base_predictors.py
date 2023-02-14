@@ -109,8 +109,23 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
 
     return mu, sig
 
-#@partial(jit, static_argnums=(0, 1))
+@partial(jit, static_argnums=(0, 1))
 def gaussian_prediction_blocks(group_size, block_size, Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
+    """
+    We want to compute
+        blk_diag(Kxz Kzz^{-1} m), 
+        blk_diag(Kxx - Kxz Kzz^{-1} Kzx)
+
+    The first term only takes O(NM + M^3) so we do not worry about it. For the variance
+        we want to avoid forming any O(N^2) matrices so we compute it as:
+
+        blk_diag(Kxx) - blk_diag(Kxz Kzz^{-1} Kzx) =
+        blk_diag(Kxx) - blk_diag_cholesky_product(Kxz Kzz^{-1/2})
+
+    where blk_diag(Kxx) is passed through as K_xs
+
+    # TODO: what is group size meant to do, and assert that K_xs is of block size
+    """
     N = K_xs.shape[0]
     M = K_xs_x.shape[1]
     Q = block_size

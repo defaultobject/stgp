@@ -19,7 +19,7 @@ from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_l
 from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
-from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo
+from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo, mv_block_monte_carlo_list
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
@@ -58,6 +58,8 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False):
 
     if not(type(q_f_mu) is list):
         chex.assert_rank([q_f_mu, q_f_var], [3, 4])
+        q_f_mu = [q_f_mu]
+        q_f_var = [q_f_var]
 
     if return_var_only:
         return q_f_var
@@ -97,9 +99,7 @@ def compute_f_to_tf(m, q_f_mu, q_f_var):
 
         q_f_res = q_f_res[..., None]
     else:
-        t_p = _process_samples(q_f_mu, lambda x:x, m.prior)
-        chex.assert_rank(t_p, 3)
-        q_f_res = t_p
+        q_f_res = _process_samples(q_f_mu[0], lambda x:x, m.prior)
 
     chex.assert_rank(q_f_res, 3)
 
@@ -117,9 +117,6 @@ def compute_u_to_tf(model, q_mu_z, q_var_z):
     return T_f
 
 def gauss_newton_delta_f(u, S, model):
-    """
-    S will be ignored but it is required for the marginal evoke
-    """
     chex.assert_rank([u, S], [3, 4])
 
     q = model.approximate_posterior
@@ -128,47 +125,56 @@ def gauss_newton_delta_f(u, S, model):
 
     if True:
         q_f_mu, q_f_var = compute_u_to_f(model, u, S)
-        T_f = compute_f_to_tf(model, q_f_mu, q_f_var)
 
-        # assume f is a single element
-        #compute_f_to_tf(model, q_f_mu, None)
-        f2tf = lambda *f: compute_f_to_tf(model, [fi[None, ...] for fi in f], None)[0]
-        T_f = jax.vmap(f2tf)(*q_f_mu)
-        Q = len(q_f_mu)
+        def J_f(f):
+            T_f = compute_f_to_tf(model, f, None)
 
-        # N x P x B x P x B
-        J = jax.vmap(jax.jacfwd(f2tf, argnums=range(Q)))(*q_f_mu)
+            f2tf = lambda *f: compute_f_to_tf(model, [fi[None, ...] for fi in f], None)[0]
+            T_f = jax.vmap(f2tf)(*f)
+            Q = len(f)
 
-        # N x Q x P 
-        #J = J[:, :, 0, :, 0]
+            # N x P x B x P x B
+            J = jax.vmap(jax.jacfwd(f2tf, argnums=range(Q)))(*f)
 
-        # TODO: only works for Gaussian atm
-        # Assuming that the likelihood components are (conditionally) indpedent
-        # N x P x P
-        # Approximating d^2 log P(Y | T) / dT^2 ~ - COV(Y | T)^{-1}
-        neg_Lambda = jax.vmap(lambda f: np.diag(1/np.squeeze(model.likelihood.conditional_var(f[None, :]))))(T_f[..., 0])
+            # N x Q x P 
+            #J = J[:, :, 0, :, 0]
 
+            # TODO: only works for Gaussian atm
+            # Assuming that the likelihood components are (conditionally) indpedent
+            # N x P x P
+            # Approximating d^2 log P(Y | T) / dT^2 ~ - COV(Y | T)^{-1}
+            neg_Lambda = jax.vmap(lambda f: np.diag(1/np.squeeze(model.likelihood.conditional_var(f[None, :]))))(T_f[..., 0])
 
-        # Generalised Gauss-Newton
-        #J_sum = (J**2) * neg_Lambda
-
-        J_list = []
-        for i in range(Q):
-            J_i  = np.transpose(J[i][:, :, 0, :, 0], [0, 2, 1])
-            J_vec = jax.vmap(lambda a, b, c: a @ b @ c.T)(J_i, neg_Lambda, J_i)
-            J_list.append(J_vec[:, None, ...])
-        
-        if False:
             # Mask out entries corresponding to missing observations
             # These should just be ignored from the sums
             # N x P
             Y_mask = get_same_shape_mask(Y)
-            Y_mask = np.tile(Y_mask[..., None], [1, 1, 4])
+            Y_mask = np.tile(Y_mask[..., None], [1, 1, Y.shape[1]])
+            neg_Lambda = neg_Lambda * Y_mask
 
-            # Mask
-            J_sum = J_sum * Y_mask
+            # Generalised Gauss-Newton
+            #J_sum = (J**2) * neg_Lambda
 
-        _, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
+            J_list = []
+            for i in range(Q):
+                J_i  = np.transpose(J[i][:, :, 0, :, 0], [0, 2, 1])
+                J_vec = jax.vmap(lambda a, b, c: a @ b @ c.T)(J_i, neg_Lambda, J_i)
+                J_list.append(J_vec[:, None, ...])
+
+            return J_list
+
+        if False:
+            J_list = J_f(q_f_mu)
+        else:
+            J_list = mv_block_monte_carlo_list(
+                J_f, 
+                q_f_mu, 
+                q_f_var, 
+                generator = model.inference.generator, 
+                num_samples = 100
+            )
+      
+        S_f, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
         var_grads = vjp_fn(J_list)[0]
         approx_hessian = - 0.5 * var_grads[:, 0, ...]
     else:

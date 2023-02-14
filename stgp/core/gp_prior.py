@@ -80,7 +80,6 @@ class GPPrior(Prior):
 
     def mean(self, XS):
         """ Assume a zero mean GP """
-        breakpoint()
         return np.zeros(XS.shape[0])[:, None]
 
     def b_mean(self, XS):

@@ -9,6 +9,11 @@ use_loop_mode = False
 
 force_black_box = False
 
+safe_mode = False
+
+use_quadrature = False
+
+
 jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10

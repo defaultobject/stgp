@@ -16,6 +16,8 @@ from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
 from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky, get_block_diagonal, block_from_vec
 
+from .permutations import left_permute_mat, permute_vec
+
 from .predictors.base_predictors import gaussian_prediction_blocks
 
 @jit
@@ -85,6 +87,8 @@ def gaussian_linear_operator_spatial_conditional(XS:np.ndarray, X: np.ndarray, K
         var =  Ktt ⊗  blkdiag[ Kss - Ksz Kzz⁻¹ Kzs] + blkdiag[ [I_Dt ⊗  Ksz Kzz⁻¹] Stt [I_Dt ⊗  Ksz Kzz⁻¹]^T ]^T_t
     """
 
+
+
     # number of dimensions in the time prior
     Dt = Ktt.shape[0]
 
@@ -116,11 +120,75 @@ def gaussian_linear_operator_spatial_conditional(XS:np.ndarray, X: np.ndarray, K
         (Kxsxs - A.T @ A)  #N x N
     ) + A2 @ A2.T
 
-    #ensure correct shapes
-    #mu = np.reshape(mu, [N, 1])
-    #sig = np.reshape(sig, [N, N])
+
 
     return mu, sig
+
+@partial(jit, static_argnums=(0))
+def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxx, Ktt, m, S_chol, mean_x, mean_xs):
+    # number of dimensions in the time prior
+    Dt = Ktt.shape[0]
+
+    # N = number of spatial points
+    #P = number of spatial outputs
+
+
+
+    N, P, _  = Kxx.shape
+    M = m.shape[0]
+
+    # permute
+    # convert from latent-space to space-latent  format
+    Kxz_up = Kxz
+    Kxz_p = left_permute_mat(Kxz, P)
+
+    I_t = np.eye(Dt)
+    Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    # compute 
+    #blkdiag[Ksz Kzz⁻¹ Kzs]
+
+    A = triangular_solve(
+        Kzz_chol, 
+        Kxz_p.T, 
+        lower=True
+    )
+    A1 = triangular_solve(Kzz_chol.T, A, lower=False) # M x N
+
+    A_up = triangular_solve(
+        Kzz_chol, 
+        Kxz_up.T, 
+        lower=True
+    )
+    A1_up = triangular_solve(Kzz_chol.T, A_up, lower=False) # M x N
+
+    # 
+    B = block_diagonal_from_cholesky(A.T, P)
+
+    #blkdiag[Ksz Kzz⁻¹ Kzs]
+    spatial_pred_var = Kxx  - B
+
+    B1 = left_permute_mat(np.kron(I_t, A1_up.T)  @ S_chol, block_size)
+    B1 = block_diagonal_from_cholesky(B1, block_size)
+
+    pred_var = np.kron(Ktt, spatial_pred_var) + B1
+
+    A1_t = np.kron(I_t, A1_up)
+
+    pred_mean = mean_xs + A1_t.T @ (m-mean_x) # N x 1
+
+    pred_mean = permute_vec(pred_mean, block_size)
+    pred_mean = np.reshape(pred_mean, [N, block_size])
+
+    chex.assert_shape(pred_mean, [N, block_size])
+    chex.assert_shape(pred_var, [N, block_size, block_size])
+
+    pred_mean = pred_mean[..., None]
+    pred_var = pred_var[:, None, ...]
+
+    return pred_mean, pred_var
+
+  
 
 
 @jit
@@ -173,8 +241,21 @@ def gaussian_conditional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, m, S_cho
 
 @partial(jit, static_argnums=(0, 1))
 def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.ndarray, Kzz, K_xz, Kxx, m, S_chol, mean_x, mean_xs) -> np.ndarray:
+    """
+    We want to compute
+        blk_diag(Kxz Kzz^{-1} m), 
+        blk_diag(Kxx - Kxz Kzz^{-1} Kzx + Kxz Kzz^{-1} S  Kzz^{-1} Kzx)
 
-    if True:
+    We rewrite the variance as 
+
+        blk_diag(Kxx - Kxz Kzz^{-1} Kzx)  + blk_diag (Kxz Kzz^{-1} S  Kzz^{-1} Kzx) = R1 + R2
+
+    We can compute R1 using gaussian_prediction_blocks. R2 is computed as:
+        
+        R2 = blk_diag_cholesky_product(Kxz Kzz^{-1}) S^{1/2})
+    """
+
+    if settings.safe_mode:
         NS  = XS.shape[0]
         N = X.shape[0]
         Q = block_size
@@ -187,9 +268,7 @@ def gaussian_conditional_blocks(group_size, block_size, XS:np.ndarray, X: np.nda
 
         return mu, var
 
-
-
-    #TODO: THERE IS A JIT BUG IN HERE SOMEWHERE
+    #TODO: THERE IS A JIT BUG IN HERE SOMEWHERE??
     M = X.shape[1]
     N = XS.shape[0]
     Q = block_size
@@ -247,7 +326,6 @@ def whitened_gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, K
             g2 defines the distribution that the expectation is wrt E_{q(f)} [ . ]
 
     """
-
 
     k_zz = Kzz
     k_xz = Kxz

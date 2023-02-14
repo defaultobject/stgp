@@ -153,6 +153,7 @@ def block_diagonal_from_cholesky(L, block_size):
     Extracts block diagonals from L L^T
     """
 
+    # TODO: clean up
     if False:
         R = L @ L.T
 
