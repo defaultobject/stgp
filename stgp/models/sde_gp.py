@@ -10,12 +10,12 @@ from ..dispatch import dispatch
 from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
-from ..computation.filters import kalman_filter, rts_smoother
+from ..computation.filters import kalman_filter, rts_smoother, parallel_kalman_filter, parallel_rts_smoother
 from ..computation.matrix_ops import batched_block_diagional
 from ..computation.permutations import permute_mat, permute_vec
 
 from ..defaults import get_default_likelihood
-from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj
+from ..data import TemporalData, SpatioTemporalData, get_sequential_data_obj, SpatialTemporalInput
 from ..data.sequential import add_temporal_points
 from ..kernels import Matern32
 from ..likelihood import get_product_likelihood, ProductLikelihood
@@ -47,6 +47,7 @@ class BASE_SDE_GP(Posterior):
         whiten=False, 
         fix_input=True,
         full_state_observed = False,
+        parallel = False,
         **kwargs
     ):
         # Use the sorted X and Y to construct the model on
@@ -59,6 +60,10 @@ class BASE_SDE_GP(Posterior):
         self.full_state_observed = full_state_observed
 
         self.set_defaults()
+
+        self.parallel  = parallel
+
+        
 
     @property
     def likelihood(self): return self._likelihood 
@@ -139,7 +144,8 @@ class BASE_SDE_GP(Posterior):
         lml, _  = kalman_filter.filter_loop(
             self.data,
             self.prior,
-            self.likelihood.variance
+            self.likelihood.variance,
+            parallel = self.parallel
         )
 
         return lml
@@ -192,14 +198,16 @@ class BASE_SDE_GP(Posterior):
         _, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
-            R
+            R,
+            parallel = self.parallel
         ) 
 
         return rts_smoother.smoother_loop(
             data, 
             prior,
             kf_res,
-            full_state=full_state
+            full_state=full_state,
+            parallel = self.parallel
         )
 
     def posterior_blocks(self):
@@ -450,14 +458,23 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True
         )
 
+        dummy_training_data = get_sequential_data_obj(
+            SpatialTemporalInput(
+                self.data.X_time, 
+                np.tile(np.arange(self.data.X_space.shape[0])[:, None], [1, self.data.X_space.shape[1]])
+            ),
+            self.data.Y_st,
+            sort=False 
+        )
+
         # Collect Training Data
-        X = onp.array(self.data.X)
+        X = onp.array(dummy_training_data.X)
 
         # self.data.Y is stored in time-space-latent format, reshape into data-latent
-        Y = onp.reshape(self.data.Y_flat, [-1, self.output_dim])
+        Y = onp.reshape(dummy_training_data.Y_flat, [-1, self.output_dim])
 
         # create new data with the same spatial points as self.data but with all time points across XS and X
-        XS_temporal_new = add_temporal_points(XS_data, self.data)
+        XS_temporal_new = add_temporal_points(XS_data, dummy_training_data)
         YS_temporal_new_nans = onp.NaN * onp.ones([XS_temporal_new.shape[0], self.output_dim]) # data-latent format
 
         # Stack X first so that training data does not get removed when sorting data
@@ -466,11 +483,37 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         # ST data object across all (unique) training and testing temporal points but only 
         #   at the training spatial locations
+
+        # this should not sort space!!
+        # we should not be sorting space for test_data as this is also used for induicng points
+        # . where ordering in space is not guarenteed
+        # so we first order to get the unique points
         temporal_test_data = get_sequential_data_obj(
             X_stacked,
             Y_stacked,
             sort=True 
         )
+
+        XS_temporal_new = add_temporal_points(XS_data, self.data)
+        YS_temporal_new_nans = onp.NaN * onp.ones([XS_temporal_new.shape[0], self.output_dim]) # data-latent format
+
+        # Stack X first so that training data does not get removed when sorting data
+        Y_stacked = onp.vstack([self.data.Y, YS_temporal_new_nans])
+
+        _X = X_stacked[temporal_test_data.unique_idx][temporal_test_data.sort_idx]
+        _Y = Y_stacked[temporal_test_data.unique_idx][temporal_test_data.sort_idx]
+
+
+        # we now have a spatio-temporal grid where the spatial part is unchanged
+        temporal_test_data = get_sequential_data_obj(
+            SpatialTemporalInput(
+                temporal_test_data.X_time, 
+                self.data.X_space,
+            ),
+            np.transpose(np.reshape(_Y, [-1, self.data.Ns, self.data.P]), [0, 2, 1]),
+            sort=False
+        )
+
 
         # Compute posterior at temporal_test_data
         mu_t, var_t = self.filter_and_smooth(
@@ -478,6 +521,9 @@ class ST_SDE_GP(BASE_SDE_GP):
             self.prior,
             self.get_likelihood_for_prediction(all_temporal_data)
         )
+        mu_p = jax.vmap(lambda a: permute_vec(a, 2))(mu_t)
+        mu_p = np.reshape(mu_p, [-1, 2, 1])
+
 
         # construct testing data at new spatial locations
         XS_spatial_new = add_temporal_points(all_temporal_data, XS_data)
@@ -534,5 +580,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         # unsort to original permutation in XS
         mu_p_unsorted = XS_data.unsort(mu_p)
         var_p_unsorted = XS_data.unsort(var_p)
+
+
 
         return mu_p_unsorted, var_p_unsorted

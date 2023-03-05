@@ -18,7 +18,7 @@ class LinearLFM(LatentForce):
 class NonLinearLFM(LatentForce):
     def __init__(self, latent_lti_sde):
 
-        self._latent_obj = latent_lti_sde
+        self.latent_obj = latent_lti_sde
 
     def f(self, x, X_s, t):
         x_lfm = x[:self.state_size]

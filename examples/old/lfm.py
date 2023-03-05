@@ -60,13 +60,14 @@ YS = np.ones([XS.shape[0], 2])*np.NaN
 X = np.vstack([X, XS])
 Y = np.vstack([Y, YS])
 
-Y = (Y - np.nanmean(Y, axis=0))/np.nanstd(Y, axis=0)
+#Y = (Y - np.nanmean(Y, axis=0))/np.nanstd(Y, axis=0)
 
 
 data = MultiOutputTemporalData(X=X, Y=Y)
 
 latents = [
-    GP(sparsity=NoSparsity(), kernel=ApproxSDEPeriodic(5, 10.0, 1.0, 15))
+    #GP(sparsity=NoSparsity(), kernel=ApproxSDEPeriodic(5, 10.0, 1.0, 15))
+    GP(sparsity=NoSparsity(), kernel=ScaledMatern32(input_dim = 1, lengthscales = [1.0], variance = 1.0))
     for q in range(2)
 ]
 
@@ -89,9 +90,9 @@ delta = -0.2
 gamma = -0.17
 
 #m_lfm = PopulationLotkaVolterra(base_gp, 3.2, 0.6, 50.0, 0.56, 125.0, 1.6, init_state = Y[0, :])
-#m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = Y[0, :])
+m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = Y[0, :])
 
-if True:
+if False:
     alpha = 5.0
     K = 0.8
     beta = 1.48
@@ -118,7 +119,7 @@ if True:
     #trainer = ScipyTrainer(m, 'L-BFGS-B')
     #trainer = ScipyTrainer(m, 'CG')
 
-    epochs = 100
+    epochs = 200
     callback = progress_bar_callback(epochs)
     learning_rates, _ = trainer.train(0.001, epochs, callback=callback)
 
@@ -127,11 +128,22 @@ if True:
     m.print()
 
 pred_mu, pred_var = m.predict_f(XS)
+pred_mu = np.squeeze(pred_mu)
+pred_var = pred_var[:, 0, :, 0]
 
 fig, axes = plt.subplots(2, 1)
 for i in range(2):
-    axes[i].fill_between(np.squeeze(XS), pred_mu[:, i] + np.sqrt(pred_var[:, 1]), pred_mu[:, i] - np.sqrt(pred_var[:, 1]), alpha=0.4)
-    axes[i].plot(XS, pred_mu[:, i])
+    axes[i].fill_between(
+        np.squeeze(XS), 
+        pred_mu[:, i] + np.sqrt(pred_var[:, 1]), 
+        pred_mu[:, i] - np.sqrt(pred_var[:, 1]), 
+        alpha=0.4
+    )
+    axes[i].plot(
+        XS, 
+        pred_mu[:, i],
+        label=f'pred - {i}'
+    )
     axes[i].scatter(X_vis, Y_vis[:, i], c='black')
-    axes[i].scatter(X, Y[:, i], c='grey')
+    axes[i].scatter(X, Y[:, i], c='grey', label=f'train - {i}')
 plt.show()

@@ -38,6 +38,8 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
     mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
     chex.assert_rank([mu, var], [3, 4])
 
+    post_mu, post_var = approximate_posterior.surrogate.posterior_blocks()
+
     return mu, var
 
 

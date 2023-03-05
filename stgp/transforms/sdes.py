@@ -16,6 +16,7 @@ class SDE(Transform):
 class LTI_SDE(SDE):
     def __init__(self, gp: 'Model'):
         self.gp = gp
+        self.whiten_space = False # required for api consistentcy
 
     @property
     def temporal_output_dim(self):
@@ -151,13 +152,13 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
         # TODO: assuming that latent = 1 and we are treating state as latent
         Ns = self.spatial_output_dim * X_s.shape[0]
         P = self.temporal_output_dim
-        full_P = self._state_space_dim
+        P = self._state_space_dim
 
-        H = data_order_to_output_order(full_P, Ns).T
+        # the result will now be (diff_t x diff_s x space)
+        H = data_order_to_output_order(P, Ns).T
 
-        idx = np.tile(np.arange(Ns), P) + np.repeat(self.keep_dims, Ns)*Ns
-        H = H[idx]
-
+        H = np.reshape(H, [P, Ns, -1])[self.keep_dims, ...]
+        H = np.reshape(H, [self.temporal_output_dim * Ns, -1])
 
         return H
 

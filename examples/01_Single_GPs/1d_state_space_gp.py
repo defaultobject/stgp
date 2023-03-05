@@ -39,18 +39,19 @@ latent_gp = GP(
 )
 prior = LTI_SDE(Independent([latent_gp])) 
 
-breakpoint()
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=True)
 
 # Train
-print(m.get_objective())
-if False:
+#print(m.get_objective())
+if True:
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 # Predict
-pred_mu, pred_var = m.predict_y(XS)
+pred_mu, pred_var = m.predict_f(XS)
+pred_mu = np.squeeze(pred_mu)
+pred_var = np.squeeze(pred_var)
 
 plt.fill_between(
     np.squeeze(XS), 

@@ -83,7 +83,7 @@ def rts_step(model, carry, x, X_s, full_state):
         # force full state
         H_k = np.eye(x['m'].shape[0])
     else:
-        H_k = prior.H(None, X_s, None)
+        H_k = model.H(None, X_s, None)
 
     f_fn = lambda m: model.f_dt(
         m, X_s, x['t'], x['dt']
@@ -125,38 +125,14 @@ def step_wrapper(data, m, full_state):
 
     return _fn
 
-def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False):
-    """
-    Args:
-        full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
-    """
-    # Set up data
-    X_t = data.X_time
-    X_s =  data.X_space
-
-    N_t = data.Nt
-    N_s = data.Ns
-    P = data.P
-
-    out_dim = N_s * P
-
-    dt = np.diff(X_t)
-    # TODO: fix this
-    dt = np.hstack([dt, np.zeros(1)])
-
-    step_wrap = step_wrapper(data, model, full_state)
+@dispatch('sequential')
+def smoother(data, model, filter_res, dt, X_t, X_s, H_k, full_state):
 
 
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
-
-    if full_state:
-        # force full state
-        H_k = np.eye(m_init.shape[0])
-    else:
-        H_k = model.H(None, X_s, None)
-
+    step_wrap = step_wrapper(data, model, full_state)
 
     carry, ys = scan(
         step_wrap,
@@ -180,5 +156,45 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
 
     return np.flip(m, axis=0), np.flip(P, axis=0)
+
+def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False, parallel=False):
+    """
+    Args:
+        full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
+    """
+    # Set up data
+    X_t = data.X_time
+    X_s =  data.X_space
+
+    N_t = data.Nt
+    N_s = data.Ns
+    P = data.P
+
+    out_dim = N_s * P
+
+    dt = np.diff(X_t)
+    # TODO: fix this
+    dt = np.hstack([dt, np.zeros(1)])
+
+
+    if full_state:
+        # force full state
+        H_k = np.eye(m_init.shape[0])
+    else:
+        H_k = model.H(None, X_s, None)
+
+    if parallel:
+        smoother_fn = evoke('smoother', 'parallel')
+        #smoother_fn = evoke('smoother', 'sequential')
+    else:
+        smoother_fn = evoke('smoother', 'sequential')
+
+    lml, filter_res =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
+
+    return lml, filter_res
+
+
+
+
 
 

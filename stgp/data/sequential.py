@@ -84,6 +84,7 @@ def order_sequentially_np(X, Y = None):
         X: Nt x Ns x D
         (optional) Y: Nt x Nd x P
     """
+    _X = np.copy(X)
     chex.assert_rank(X, 2)
 
     if Y is not None:

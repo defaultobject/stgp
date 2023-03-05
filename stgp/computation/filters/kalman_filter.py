@@ -54,7 +54,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         x:
     """
 
-
     # in latent - space format
     Y_k = x['Y']
 
@@ -69,7 +68,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         m_vec,
         np.eye(Y_k.shape[0])
     )
-
 
     # -- KALMAN UPDATE --
     # m_, P_ is in latent - space -state format
@@ -98,15 +96,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
 
-    if False:
-        if np.any(np.isnan(cholesky(add_jitter(P_k, settings.jitter)))):
-            breakpoint()
-        if np.any(np.isnan(log_Z_k)):
-            log_gaussian(Y_k, mu, add_jitter(S, 1e-5))
-            breakpoint()
-        else:
-            print(log_Z_k)
-
     return {
         'm': m_k, 'P': P_k 
     }, {
@@ -114,7 +103,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     }
 
 
-@dispatch(LTI_SDE)
+@dispatch(LTI_SDE, 'sequential')
 def kf_predict_step(prior, carry, x, X_s):
     """ Linear Kalman Filter Predict Step """
 
@@ -136,7 +125,7 @@ def kf_predict_step(prior, carry, x, X_s):
     return kf_update_step(m_, P_, H_k, R_k, carry, x)
 
 
-@dispatch(SDE)
+@dispatch(SDE, 'sequential')
 def kf_predict_step(model, carry, x, X_s):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
@@ -166,7 +155,7 @@ def kf_predict_step(model, carry, x, X_s):
 
 
 def filter_step_wrapper(data, m):
-    kf_predict_fn = evoke('kf_predict_step', m)
+    kf_predict_fn = evoke('kf_predict_step', m, 'sequential')
 
 
     def _fn(carry, x):
@@ -174,7 +163,37 @@ def filter_step_wrapper(data, m):
 
     return _fn
 
-def filter_loop(data: 'SequentialData', prior: 'Prior', R):
+@dispatch('sequential')
+def filter(data, prior, R, Y, X_t, X_s, dt):
+
+    # steady state does not depend on time
+    # in latent-space-state format
+    m_inf = prior.m_inf(None, X_s, None)
+    P_inf = prior.P_inf(None, X_s, None)
+
+    step_wrap = filter_step_wrapper(data, prior)
+
+    carry, ys = scan(
+        step_wrap,
+        {
+            'm': m_inf,
+            'P': P_inf
+        },
+        {
+            'dt': dt,
+            't': X_t,
+            'Y': Y,
+            'R': R
+        }
+    )
+
+    lml = np.sum(ys['lml'])
+
+    filter_res = {'m': ys['m'], 'P': ys['P']}
+
+    return lml, filter_res
+
+def filter_loop(data: 'SequentialData', prior: 'Prior', R, parallel=False):
     """
     Args:
         R: in time - latent - space format
@@ -188,13 +207,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
     P = data.P
 
     out_dim = N_s * P
-
-    step_wrap = filter_step_wrapper(data, prior)
-
-    # steady state does not depend on time
-    # in latent-space-state format
-    m_inf = prior.m_inf(None, X_s, None)
-    P_inf = prior.P_inf(None, X_s, None)
 
     # Set up data
     X_t = data.X_time
@@ -217,22 +229,13 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R):
     # Ensure rank 2 at each time step
     Y = Y[..., None]
 
-    carry, ys = scan(
-        step_wrap,
-        {
-            'm': m_inf,
-            'P': P_inf
-        },
-        {
-            'dt': dt,
-            't': X_t,
-            'Y': Y,
-            'R': R
-        }
-    )
+    
+    if parallel:
+        filter_fn = evoke('filter', 'parallel')
+    else:
+        filter_fn = evoke('filter', 'sequential')
 
-    lml = np.sum(ys['lml'])
-
-    filter_res = {'m': ys['m'], 'P': ys['P']}
+    lml, filter_res =  filter_fn(data, prior, R, Y, X_t, X_s, dt)
 
     return lml, filter_res
+

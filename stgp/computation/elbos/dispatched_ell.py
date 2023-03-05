@@ -88,6 +88,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     chex.assert_equal(Y.shape, q_f_mu.shape)
     chex.assert_shape(q_f_var, [N, block_size, block_size])
 
+
     # block X
     if False:
         X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
@@ -170,6 +171,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     Y = Y[..., None]
     q_f_mu = q_f_mu[..., None]
     q_f_var = q_f_var[..., None]
+
 
     fn = evoke('scalar_expected_log_likelihood', likelihood)
 
@@ -555,6 +557,7 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         likelihood_p = likelihood.likelihood_arr[p]
         q_f_mu_p = q_f_mu_arr[p]
         q_f_var_p = q_f_var_arr[p]
+
 
         chex.assert_rank([q_f_mu_p, q_f_var_p], [3, 4])
 

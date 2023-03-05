@@ -7,6 +7,7 @@ from functools import partial
 import chex
 from jax import jacfwd, jacrev, grad
 import objax
+from .. import settings
 
 
 def first_axis_dim(X):
@@ -353,3 +354,7 @@ def get_block(A, i1:int, i2:int, B1:int, B2:int):
         i1 * block_size_1 : (i1+1) * block_size_1,
         i2 * block_size_2 : (i2+1) * block_size_2,
     ]
+
+def mat_inv(A):
+    A_chol = cholesky(add_jitter(A, settings.jitter))
+    return cholesky_solve(A_chol, np.eye(A.shape[0]))
