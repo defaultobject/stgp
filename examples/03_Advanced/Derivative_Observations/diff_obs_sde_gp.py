@@ -38,7 +38,7 @@ Y_all = np.hstack([y[:, None], dy[:, None]])
 
 # remove non derivative observations
 Y = np.copy(Y_all)
-Y[int(N*0.2):, 0] = np.NaN
+#Y[int(N*0.2):, 0] = np.NaN
 
 # testing locations
 XS = np.linspace(-5, 6, 1000)[:, None]
@@ -70,7 +70,8 @@ m = stgp.models.GP(
     prior = latent_gp,
     likelihood = lik,
     full_state_observed = True,
-    inference='Sequential'
+    inference='Sequential',
+    parallel=True
 )
 m.print()
 
@@ -87,6 +88,8 @@ else:
 
 # predict
 pred_mu, pred_var = m.predict_f(XS)
+pred_mu = pred_mu[..., 0]
+pred_var = pred_var[:, 0, :, 0]
 
 # plot
 D = 2

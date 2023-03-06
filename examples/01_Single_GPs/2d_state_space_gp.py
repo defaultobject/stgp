@@ -13,6 +13,7 @@ from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
 import stgp
+from stgp import settings
 from stgp.models import GP
 from stgp.trainers import ScipyTrainer, GradDescentTrainer
 from stgp.trainers.callbacks import progress_bar_callback
@@ -24,8 +25,12 @@ from stgp.transforms import Independent
 
 import matplotlib.pyplot as plt
 
+settings.jitter = 1e-7
+
 # Construct Data
 XS, X, Y = single_output_spatial_data(20, 20, 200, 200, seed=0)
+
+Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
 # Construct Model
 data = SpatioTemporalData(X=X, Y=Y, sort=True)
@@ -43,12 +48,16 @@ latent_gp = GP(
 
 prior = LTI_SDE(Independent([latent_gp])) 
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=True)
+
+print(m.get_objective())
 
 # Train
 max_iters = 100
 trainer = ScipyTrainer(m, 'L-BFGS-B')
 trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+
+print(m.get_objective())
 
 # Predict
 pred_mu, pred_var = m.predict_f(XS)

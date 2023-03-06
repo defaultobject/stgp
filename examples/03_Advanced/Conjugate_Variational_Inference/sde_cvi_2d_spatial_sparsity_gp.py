@@ -95,7 +95,8 @@ q = FullConjugateGaussian(
         likelihood=likelihood, 
         prior=LTI_SDE_Full_State_Obs_With_Mask(Independent(latent_gps), keep_dims=[0]),
         inference='Sequential',
-        full_state_observed = False
+        full_state_observed = False,
+        parallel=False
     )
 )
 

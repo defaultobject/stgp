@@ -190,6 +190,8 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
     lml = np.sum(ys['lml'])
 
     filter_res = {'m': ys['m'], 'P': ys['P']}
+    #print(ys['lml'])
+    #breakpoint()
 
     return lml, filter_res
 
@@ -236,6 +238,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R, parallel=False):
         filter_fn = evoke('filter', 'sequential')
 
     lml, filter_res =  filter_fn(data, prior, R, Y, X_t, X_s, dt)
+
 
     return lml, filter_res
 

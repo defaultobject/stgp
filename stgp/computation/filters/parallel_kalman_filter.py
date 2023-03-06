@@ -2,11 +2,14 @@
 Closely following 
     https://github.com/EEA-sensors/parallel-gps/blob/main/pssgp/kalman/parallel.py
     https://github.com/AaltoML/BayesNewton/blob/61cb0ebb23afb12de0008882bc3d16b864b7149e/bayesnewton/ops.py#L521
+    https://github.com/tensorflow/probability/blob/399cfcb4edda192c9f0f070ac04035dcb0e5b3a5/tensorflow_probability/python/experimental/parallel_filter/parallel_kalman_filter_lib.py#L701
 """
 import jax
 from jax import jacfwd, jit
 import jax.numpy as np
 from jax.lax import scan, associative_scan
+
+import tensorflow_probability
 
 from ... import settings 
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv
@@ -20,13 +23,16 @@ from ...transforms.sdes import SDE, LTI_SDE
 import objax
 import chex
 
+def fix_psd(A):
+    return 0.5 * (A+A.T)
+
 def _first_filtering_element(m, P, F, Q, H, R, y):
     m_ = F @ m
     P_ = F @ P @ F.T + Q
 
     S1 = H @ P_ @ H.T + R
-    S1_chol = cholesky(add_jitter(S1, settings.jitter))
-    K = cholesky_solve(S1_chol, H @ P_).T
+    S1_chol = cholesky(S1)
+    K = cholesky_solve(S1_chol, H @ P_.T).T
 
     A = np.zeros_like(F)
     b = m_ + K @ (y - H @ m_)
@@ -34,10 +40,15 @@ def _first_filtering_element(m, P, F, Q, H, R, y):
 
 
     S = H @ Q @ H.T + R
-    S_chol = cholesky(add_jitter(S, settings.jitter))
+    S_chol = cholesky(S)
 
-    eta = F.T @ H.T @ cholesky_solve(S_chol, y)
-    J = F.T @ H.T @  cholesky_solve(S_chol, H @ F) 
+    FH_S_inv = cholesky_solve(S_chol, H @ F).T
+
+    eta = FH_S_inv @ y
+    J = FH_S_inv @ H @ F 
+
+    C = fix_psd(C)
+    J = fix_psd(J)
 
     return A, b, C, J, eta
 
@@ -57,7 +68,7 @@ def _generic_filtering_element(F, Q, H, R, y):
     I = np.eye(F.shape[0])
 
     S = H @ Q @ H.T + R
-    S_chol = cholesky(add_jitter(S, settings.jitter))
+    S_chol = cholesky(S)
     K = cholesky_solve(S_chol, H @ Q.T).T
 
     A = (I - K @ H) @ F
@@ -78,6 +89,8 @@ def _generic_filtering_element_nan(F, Q, H, R, y):
     return A, b, C, J, eta
 
 
+
+
 def filtering_operator(x1, x2):
     """ combine individual elements """
     A_i, b_i, C_i, J_i, eta_i = x1
@@ -90,20 +103,39 @@ def filtering_operator(x1, x2):
         """ compute (I + AB)^{-1} = [A(A^-1 + B)]^{-1} = [(A^-1 + B)]^{-1} A^{-1}"""
         A_inv = mat_inv(A)
         tmp = A_inv + B
-        tmp_chol = cholesky(add_jitter(tmp, settings.jitter))
+        #tmp_chol = cholesky(add_jitter(tmp, settings.jitter))
+        tmp_chol = cholesky(tmp)
         inv_tmp = cholesky_solve(tmp_chol, A_inv)
         return inv_tmp
 
-    inv_tmp = fix_inv(C_i, J_j)
-    Aj_tmp = A_j @ inv_tmp
+    if True:
+        #Aj_tmp = np.linalg.solve(I+C_i@J_j, A_j.T).T
+        #inv_tmp = fix_inv(C_i, J_j)
+        #Aj_tmp = A_j @ inv_tmp
+        inner_tmp = I+C_i@J_j
+        Aj_tmp = np.linalg.solve(inner_tmp.T, A_j.T).T
+        #hpsd_solve(add_jitter(inner_tmp.T, settings.jitter), A_j.T).T 
+    else:
+        tmp = fix_psd(I+C_i @ J_j)
+        tmp_chol = cholesky(tmp)
+        Aj_tmp = cholesky_solve(tmp_chol, A_j.T).T
 
     A = Aj_tmp @ A_i
     C = Aj_tmp @ C_i @ A_j.T + C_j
     b = Aj_tmp @ (b_i + C_i @ eta_j)+b_j
 
-    inv_tmp = fix_inv(J_j, C_i)
-    eta = A_i.T @ inv_tmp @ (eta_j - J_j @ b_i) + eta_i
-    J = A_i.T @ inv_tmp @ J_j @ A_i + J_i
+    if True:
+        #inv_tmp = fix_inv(J_j, C_i)
+        #A_i_tmp = A_i.T @ inv_tmp
+        inner_tmp = I+J_j@C_i
+        A_i_tmp = np.linalg.solve(inner_tmp.T, A_i).T
+    else:
+        tmp = fix_psd(I+J_j @ C_i)
+        tmp_chol = cholesky(tmp)
+        A_i_tmp = cholesky_solve(tmp_chol, A_i).T
+
+    eta = A_i_tmp @ (eta_j - J_j @ b_i) + eta_i
+    J = A_i_tmp @ J_j @ A_i + J_i
 
     # FORCE PSD
     # required to fix very small errors that propogate
@@ -192,6 +224,9 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
     ) (Y, obs_means, obs_covs)
         
     log_Z = np.sum(log_Z_k)
+
+    #print(log_Z)
+    #breakpoint()
 
     return log_Z, {'m': res[1], 'P': res[2]}
 

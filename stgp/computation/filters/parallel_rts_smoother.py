@@ -24,7 +24,8 @@ def _generic_smoothing_element(F, Q, m , P):
     Pp_chol = cholesky(add_jitter(Pp, settings.jitter))
     E = cholesky_solve(Pp_chol, F @ P).T
     g = m - E @ F @ m
-    L = P - E @ F @ P
+    #L = P - E @ F @ P
+    L = P - E @ Pp @ E.T
 
     # FORCE PSD
     # required to fix very small errors that propogate
@@ -40,6 +41,11 @@ def smoothing_operator(x1, x2):
     E = E_i @ E_j
     g = E_i @ g_j + g_i
     L = E_i @ L_j @ E_i.T +  L_i
+
+
+    # FORCE PSD
+    # required to fix very small errors that propogate
+    L = 0.5 * (L + L.T)
 
     return E, g, L
 
@@ -81,15 +87,10 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, H_k, full_state):
     m = res[1]
     P = res[2]
 
-    # Extract observations
+    # Extract obdereved state
     m = jax.vmap(lambda H_k, m_k: H_k @ m_k)(H_arr, m)
     P = jax.vmap(lambda H_k, P_k: H_k @ P_k @ H_k.T)(H_arr, P)
 
-    #m = np.vstack([(H_k @ m_init)[None, ...], H_k @ m])
-    
-    # P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], H_k @ P @ H_k.T])
-
-    #return np.flip(m, axis=0), np.flip(P, axis=0)
 
     return m, P
 

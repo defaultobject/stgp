@@ -434,7 +434,7 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
 
     return m
 
-def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False):
+def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False, parallel=False):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
@@ -553,7 +553,8 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
             likelihood=likelihood, 
             prior=latent_sde_gp,
             inference='Sequential',
-            full_state_observed = True
+            full_state_observed = True,
+            parallel=parallel
         )
     )
 
