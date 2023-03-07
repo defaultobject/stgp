@@ -52,7 +52,10 @@ def get_vars_to_update(model, vc):
             m_name_list.append(Y_name)
             S_chol_name_list.append(V_chol_name)
 
-    elif q_type == 'FullConjugateGaussian':
+    elif q_type in ['FullConjugateGaussian', 'FullConjugatePrecisionGaussian']:
+        # precision gaussian simply extend the full conjugate gaussian
+        # and so , confusingly, the precision is actually stored in variance_param
+
         q = approx_posterior
 
         lik_var = q.surrogate.likelihood.variance_param
@@ -97,7 +100,7 @@ def update_vars(model, vars_to_update, params):
     elif q_type == 'FullGaussianApproximatePosterior':
         vars_to_update.assign(params)
 
-    elif q_type == 'FullConjugateGaussian':
+    elif q_type in ['FullConjugateGaussian', 'FullConjugatePrecisionGaussian']:
         lik_var = approx_posterior.surrogate.likelihood.variance_param
 
         new_params = [

@@ -141,6 +141,7 @@ def _get_mf_params(model, diagonal=True):
         batch_type = get_batch_type(q_list)
     )
 
+    breakpoint()
     # each component returns rank [3, 4]. Remove the extra dimension and fix ordering.
     q_mu_z = np.transpose(q_mu_z[..., 0], [1, 0, 2])
     q_var_z = np.transpose(q_var_z[:, :, 0, ...], [1, 0, 2, 3])
@@ -174,6 +175,8 @@ def partial_ell(m, q_m, q_S):
 @dispatch('VGP', MeanFieldConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
+    print(q_mu_z.shape)
+    breakpoint()
 
 
     # Different models store Y with different dimensions so we store it here so can 

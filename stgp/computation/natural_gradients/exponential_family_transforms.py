@@ -28,10 +28,11 @@ def theta_to_lambda(theta_1, theta_2):
 
     theta_2_chol = cholesky(theta_2+jit)
 
-    theta_2_chol_inv = triangular_solve(theta_2_chol, np.eye(M), lower=True)
+    #theta_2_chol_inv = triangular_solve(theta_2_chol, np.eye(M), lower=True)
 
     lambda_1 = cholesky_solve(theta_2_chol, theta_1)
-    lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
+    #lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
+    lambda_2 = -0.5*cholesky_solve(theta_2_chol, np.eye(theta_2_chol.shape[0]))
 
     return lambda_1, lambda_2
 

@@ -5,7 +5,7 @@ from batchjax import batch_or_loop
 
 from . import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior
 
-from ..likelihood import DiagonalGaussian, ProductLikelihood, BlockDiagonalGaussian
+from ..likelihood import DiagonalGaussian, ProductLikelihood, BlockDiagonalGaussian, PrecisionBlockDiagonalGaussian
 from ..utils.utils import get_batch_type
 
 from ..computation.parameter_transforms import get_correlation_cholesky, correlation_transform
@@ -186,6 +186,58 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
             )
 
         surrogate_likelihood = BlockDiagonalGaussian(
+            block_size=self.block_size,
+            num_blocks = self.num_blocks,
+            num_latents = self.num_latents,
+            variance=V_tilde
+        )
+
+        self.surrogate = surrogate_model(
+            X = X,
+            Y = Y_tilde,
+            likelihood = surrogate_likelihood
+        )
+
+    @property
+    def likelihood(self):
+        return self.surrogate.likelihood
+
+    @property
+    def X(self):
+        return self.surrogate.X 
+
+    @property
+    def Y(self):
+        return self.surrogate.Y
+
+class FullConjugatePrecisionGaussian(FullConjugateGaussian):
+    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None, num_blocks: int = None):
+        """
+        A full conjugate gaussian with the surrogate likelihood stored by it precision
+        """
+
+        self.block_size = block_size
+        self.num_latents = num_latents
+
+        if num_blocks is None:
+            self.M = X.shape[0]
+        else:
+            self.M = num_blocks
+
+        if num_blocks is None:
+            self.num_blocks = int((self.num_latents*self.M)/block_size)
+        else:
+            self.num_blocks = num_blocks
+
+        Y_tilde = np.ones([self.M, self.block_size])
+
+        V_tilde = np.tile(
+            np.eye(self.block_size) , 
+            [self.num_blocks, 1, 1]
+        )
+
+
+        surrogate_likelihood = PrecisionBlockDiagonalGaussian(
             block_size=self.block_size,
             num_blocks = self.num_blocks,
             num_latents = self.num_latents,

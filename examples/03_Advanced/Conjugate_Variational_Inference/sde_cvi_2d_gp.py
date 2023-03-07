@@ -73,7 +73,7 @@ m = GP(
     approximate_posterior = approximate_posterior
 )
 
-#print(m.get_objective())
+print(m.get_objective())
 #print(m.predict_f(X))
 
 

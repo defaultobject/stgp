@@ -14,13 +14,13 @@ from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel
-from stgp.likelihood import Gaussian, BlockDiagonalGaussian
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, PrecisionBlockDiagonalGaussian
 from stgp.models import GP
 from stgp.transforms import Independent
 from stgp.transforms.pdes import DifferentialOperatorJoint
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
 from stgp.data import Data
-from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior
+from stgp.approximate_posteriors import MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, FullGaussianApproximatePosterior, FullConjugatePrecisionGaussian
 
 import matplotlib.pyplot as plt
 
@@ -102,6 +102,7 @@ q = FullConjugateGaussian(
         prior=latent_gp
     )
 )
+
 
 # Create Model
 m = stgp.models.GP(

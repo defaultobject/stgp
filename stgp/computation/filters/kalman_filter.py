@@ -190,8 +190,6 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
     lml = np.sum(ys['lml'])
 
     filter_res = {'m': ys['m'], 'P': ys['P']}
-    #print(ys['lml'])
-    #breakpoint()
 
     return lml, filter_res
 

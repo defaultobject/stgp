@@ -2,7 +2,7 @@ from .approximate_posterior import ApproximatePosterior
 from .gaussian_approximate_posterior import GaussianApproximatePosterior, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, DiagonalGaussianApproximatePosterior
 from .mean_field_approximate_posterior import MeanFieldApproximatePosterior
 from .mm_gaussian_inner_layer_posterior import MM_GaussianInnerLayerApproximatePosterior
-from .conjugate_gaussian_approximate_posterior import ConjugateApproximatePosterior, ConjugateGaussian, MeanFieldConjugateGaussian, DiagonalConjugateGaussian, BlockDiagonalConjugateGaussian, FullConjugateGaussian
+from .conjugate_gaussian_approximate_posterior import ConjugateApproximatePosterior, ConjugateGaussian, MeanFieldConjugateGaussian, DiagonalConjugateGaussian, BlockDiagonalConjugateGaussian, FullConjugateGaussian, FullConjugatePrecisionGaussian
 
 __all__ = [
     'ApproximatePosterior', 
@@ -17,5 +17,6 @@ __all__ = [
     'MeanFieldConjugateGaussian',
     "FullConjugateGaussian",
     "DataLatentBlockDiagonalApproximatePosterior", 
-    "DiagonalGaussianApproximatePosterior"
+    "DiagonalGaussianApproximatePosterior",
+    "FullConjugatePrecisionGaussian",
 ]

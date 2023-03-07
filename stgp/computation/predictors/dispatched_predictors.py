@@ -352,8 +352,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
     # TODO: this is v. inefficient
     # Compute full matrix in latent-data format
-    print('lik_var: ', lik_var.shape)
-    breakpoint()
+    #print('lik_var: ', lik_var.shape)
+    #print('K_xs: ', K_xs.shape)
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     NS = var.shape[0]

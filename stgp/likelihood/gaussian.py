@@ -11,7 +11,7 @@ from ..core import Block
 
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..computation.gaussian import log_gaussian_scalar
-from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular, to_block_diag, batched_diag
+from ..computation.matrix_ops import vectorized_lower_triangular_cholesky, vectorized_lower_triangular, to_block_diag, batched_diag, mat_inv
 from ..computation.integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 
 class FullGaussian(FullLikelihood):
@@ -83,6 +83,18 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
     @property
     def full_variance(self) -> np.ndarray:
         return to_block_diag(self.variance)
+
+class PrecisionBlockDiagonalGaussian(BlockDiagonalGaussian):
+    """ BlockDiagonalGaussian storing the precision not the variance """
+    @property
+    def variance(self) -> np.ndarray:
+        return jax.vmap(mat_inv)(self.precision)
+
+    @property
+    def precision(self) -> np.ndarray:
+        precision_chol =  self.variance_param.value
+        # Compute LL^T for each block
+        return precision_chol @ np.transpose(precision_chol, [0, 2, 1])
 
 class ReshapedBlockDiagonalGaussian(BlockDiagonalGaussian):
     def __init__(self, bd_lik, block_size:int=None, num_blocks:int=None):

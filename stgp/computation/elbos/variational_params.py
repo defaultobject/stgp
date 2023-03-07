@@ -135,7 +135,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     chex.assert_rank([mu, var], [2, 3])
 
     # add latentmissing dimensions
-    mu = mu[:, None, ...]
+    mu = mu[:, :, None]
     var = var[:, None, ...]
 
     chex.assert_rank([mu, var], [3, 4])
