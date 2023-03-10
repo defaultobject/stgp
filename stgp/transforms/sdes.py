@@ -165,6 +165,7 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):
         self.base_sde = base_sde
+        self.whiten_space = False # required for api consistentcy
 
     def H(self, x, X_s, t):
         return self.base_sde.H(x, X_s, t)

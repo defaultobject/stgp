@@ -218,7 +218,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_f(self, XS, diagonal=True, squeeze=True, output_first = False, fix_shapes = True, num_samples = None, posterior=False):
+    def predict_f(self, XS, diagonal=True, squeeze=False, output_first = False, fix_shapes = False, num_samples = None, posterior=False):
 
         mean, var = self.inference.predict_f(
             XS, 

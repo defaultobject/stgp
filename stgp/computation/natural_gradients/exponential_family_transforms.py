@@ -3,6 +3,7 @@ from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter,
 
 import jax
 import jax.numpy as np
+from jax.scipy.sparse.linalg import cg
 from jax import  jit, vjp
 import chex
 from functools import partial
@@ -27,12 +28,15 @@ def theta_to_lambda(theta_1, theta_2):
     jit = settings.ng_jitter * np.eye(M) 
 
     theta_2_chol = cholesky(theta_2+jit)
+    I = np.eye(theta_2_chol.shape[0])
 
-    #theta_2_chol_inv = triangular_solve(theta_2_chol, np.eye(M), lower=True)
 
-    lambda_1 = cholesky_solve(theta_2_chol, theta_1)
+    #lambda_1 = cholesky_solve(theta_2_chol, theta_1)
     #lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
-    lambda_2 = -0.5*cholesky_solve(theta_2_chol, np.eye(theta_2_chol.shape[0]))
+    #lambda_2 = -0.5*cholesky_solve(theta_2_chol, I)
+
+    lambda_1 = cg(theta_2, theta_1)[0]
+    lambda_2 = -0.5*cg(theta_2, I)[0]
 
     return lambda_1, lambda_2
 

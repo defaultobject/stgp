@@ -73,6 +73,14 @@ m = GP(
     approximate_posterior = approximate_posterior
 )
 
+print(m.data.X.shape)
+print(m.data.Y.shape)
+print(m.approximate_posterior.approx_posteriors[0].surrogate.data.X.shape)
+print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y.shape)
+print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y_st.shape)
+print(m.approximate_posterior.approx_posteriors[0].surrogate.likelihood.variance.shape)
+breakpoint()
+
 print(m.get_objective())
 #print(m.predict_f(X))
 

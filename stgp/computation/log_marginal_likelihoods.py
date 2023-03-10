@@ -58,6 +58,33 @@ def log_marginal_likelihood(
 
     return log_gaussian_with_nans(Y, mean, k) 
 
+@dispatch(BlockDiagonalGaussian)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray
+):
+    """
+    Log marginal likelihood of GP prior with Gaussian likelihood.
+
+    Computes:
+        log N(Y | 0, K(X, X) + lik.variance*I)
+
+    """
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 3)
+
+    # Y is in time - latent - space format
+    # convert to time - latent format
+    Y = np.reshape(Y, [-1, 1])
+
+    N = X.shape[0]
+
+    lik_noise = likelihood.full_variance
+
+    k = K + lik_noise 
+
+    return log_gaussian_with_nans(Y, mean, k) 
+
+
 
 @dispatch(Gaussian)
 def log_marginal_likelihood(
@@ -245,6 +272,10 @@ def log_marginal_likelihood( data, m, likelihood, prior):
 
 @dispatch(TransformedData, Model, Likelihood, Transform)
 def log_marginal_likelihood( data, m, likelihood, prior):
+    """
+    Let Y = T(A) then
+        log p(Y | f) = log p(T^{-1}(Y) | f) + log |dT/dY|
+    """
 
     model_type = get_model_type(prior)
 

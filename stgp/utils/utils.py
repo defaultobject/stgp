@@ -4,6 +4,7 @@ import objax
 import chex
 from .. import Parameter
 from .. import settings
+from ..core.block_types import Block, get_block_dim
 from batchjax import BatchType
 import numpy as onp
 
@@ -240,6 +241,37 @@ def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = F
 
     if squeeze:
         mu, var = np.squeeze(mu), np.squeeze(var) 
+
+    return mu, var
+
+def fix_block_shapes(m, S, data, likelihood, approximate_posterior, block_type):
+    chex.assert_rank([m, S], [3, 4])
+
+    block_dim = get_block_dim(
+        block_type, 
+        data = data, 
+        likelihood = likelihood, 
+        approximate_posterior = approximate_posterior
+    )
+
+    N, P, B = m.shape
+
+    if N ==1:
+        # m, S is a whole block
+        if block_dim == B:
+            mu, var = m, S
+        elif block_dim == 1:
+            # convert block to N
+            mu = np.transpose(m, [2, 1, 0])
+            var = np.diagonal(S[0], axis1=1, axis2=2).T[..., None, None]
+        else:
+            raise NotImplementedError()
+
+    else:
+        if block_dim == B:
+            mu, var = m, S
+        else:
+            raise NotImplementedError()
 
     return mu, var
 

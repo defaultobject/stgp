@@ -87,8 +87,12 @@ def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, bloc
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     # this function only supports one output, but for compatability add the extra dimensions
-    mu = (mu.T)[None, ...]
-    var = var[None, None, ...]
+    if block_size == NS:
+        # block size is NS so the shape of mu should be 1 x 1 x Ns
+        mu = (mu.T)[None, ...]
+        var = var[None, None, ...]
+    else:
+        raise NotImplementedError()
 
     chex.assert_rank([mu, var], [3, 4])
 
@@ -320,6 +324,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     X = data.X
     Y = data.Y
+
+    breakpoint()
 
     Ns = XS.shape[0]
     N = X.shape[0]

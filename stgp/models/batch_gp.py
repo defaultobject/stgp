@@ -173,7 +173,7 @@ class BatchGP(Posterior):
         return var_arr
 
 
-    def predict_f(self, XS,  diagonal=True, squeeze=True):
+    def predict_f(self, XS,  diagonal=True, squeeze=False):
         mu_arr, var_arr =  self.inference.predict_f(
             XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
         )
@@ -183,7 +183,7 @@ class BatchGP(Posterior):
 
         return mu_arr, var_arr
 
-    def predict_y(self, XS, diagonal=True, squeeze=True):
+    def predict_y(self, XS, diagonal=True, squeeze=False):
         mu_arr, var_arr =  self.inference.predict_y(
             XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
         )

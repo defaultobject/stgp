@@ -5,6 +5,7 @@ import objax
 
 from ....dispatch import dispatch, evoke
 from .... import settings
+from ....utils.utils import fix_block_shapes
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, gaussian_spatial_conditional
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, batched_block_diagional
@@ -35,12 +36,14 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
     Q = prior.base_prior.output_dim
 
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False)
+    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
     chex.assert_rank([mu, var], [3, 4])
 
-    post_mu, post_var = approximate_posterior.surrogate.posterior_blocks()
+    # fix block sizes
+    pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
+    chex.assert_rank([pred_mu, pred_var], [3, 4])
 
-    return mu, var
+    return pred_mu, pred_var
 
 
 # ========================= Gaussian Approximate Posterior Marginal Blocks =========================

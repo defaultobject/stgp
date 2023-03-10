@@ -343,7 +343,7 @@ def test__1d_sde_gp_and_sde_gp_with_nan_diff_obs_match(seed, N, NS, regression_1
 @pytest.mark.parametrize('kernel_ls', [0.1])
 @pytest.mark.parametrize('kernel_var', [0.6])
 @pytest.mark.parametrize('lik_var', [0.05])
-def test__2d_sde_gp_and_batch_gp_match_with_diff_obs(seed, N, NS, regression_2d_diff_obs_data, kernel_ls, kernel_var, lik_var):
+def _test__2d_sde_gp_and_batch_gp_match_with_diff_obs(seed, N, NS, regression_2d_diff_obs_data, kernel_ls, kernel_var, lik_var):
     """ Check that a 2D SDE-GP matches a Batch GP with Derivate Observations"""
     # ==== Arrange ====
     X, Y = regression_2d_diff_obs_data

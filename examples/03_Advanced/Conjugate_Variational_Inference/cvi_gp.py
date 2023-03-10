@@ -1,4 +1,4 @@
-""" Conjugate Variational Gaussian Process Regression """
+""" Conjugate Variational Gaussian Process Regression on a temporal dataset"""
 import sys
 sys.path.append('../')
 sys.path.append('../../')
@@ -13,10 +13,11 @@ from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import RBF, ScaleKernel
+from stgp.kernels import RBF, ScaleKernel, Matern52, ScaledMatern52
 from stgp.likelihood import Gaussian, ProductLikelihood, GaussianProductLikelihood
 from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
+from stgp.transforms.sdes import LTI_SDE
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
 
 from tqdm import trange
@@ -31,66 +32,105 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
-# Construct Model
-Q = 1
-sparsity = stgp.sparsity.NoSparsity(Z = X)
+def cvi_gp():
+    """ CVI-GP with a standard GP surrogate model parameterised using moment parameterisation.  """
+    # Construct Model
+    Q = 1
+    sparsity = stgp.sparsity.NoSparsity(Z = X)
 
-kern = ScaleKernel(RBF(input_dim=1, lengthscales=[0.1]))
-latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
+    kern = ScaleKernel(Matern52(input_dim=1, lengthscales=[0.1]))
+    latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
-data = Data(X, Y)
-m = GP(
-    data = data,
-    prior = Independent(latent_gps),
-    likelihood = GaussianProductLikelihood([Gaussian()]),
-    approximate_posterior = MeanFieldConjugateGaussian([
-        ConjugateGaussian(
-            X=sparsity,
-            num_blocks = data.N,
-            block_size=1,
-            num_latents=1,
-            surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-                data=Data(X.X, Y), # Data should already be in the correct format
-                prior=Independent([latent_gps[q]]), 
-                likelihood=[likelihood[q]]
-            )  
-        )
-        for q in range(Q)
-    ]),
-    inference='Variational'
-)
+    data = Data(X, Y)
+    m = GP(
+        data = data,
+        prior = Independent(latent_gps),
+        likelihood = GaussianProductLikelihood([Gaussian(variance=0.1)]),
+        approximate_posterior = MeanFieldConjugateGaussian([
+            ConjugateGaussian(
+                X=sparsity,
+                num_blocks = data.N,
+                block_size=1,
+                num_latents=1,
+                surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                    data=Data(X.X, Y), # Data should already be in the correct format
+                    prior=Independent([latent_gps[q]]), 
+                    likelihood=[likelihood] 
+                )  
+            )
+            for q in range(Q)
+        ]),
+        inference='Variational'
+    )
+    return m
 
-# Train
+def cvi_sde_gp(parallel=False):
+    """ CVI-GP with a state-space GP surrogate model parameterised using moment parameterisation.  """
+    # Construct Model
+    Q = 1
+    sparsity = stgp.sparsity.NoSparsity(Z = X)
+
+    kern = ScaledMatern52(input_dim=1, lengthscales=[0.1], variance=1.0)
+    latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
+
+    data = Data(X, Y)
+    m = GP(
+        data = data,
+        prior = Independent(latent_gps),
+        likelihood = GaussianProductLikelihood([Gaussian(variance=0.1)]),
+        approximate_posterior = MeanFieldConjugateGaussian([
+            ConjugateGaussian(
+                X=sparsity,
+                num_blocks = data.N,
+                block_size=1,
+                num_latents=1,
+                surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                    data=TemporalData(X.X, Y, sort=False), # Data should already be in the correct format
+                    prior=LTI_SDE(Independent([latent_gps[q]])), 
+                    likelihood=[likelihood],
+                    inference='Sequential',
+                    parallel=parallel
+                )  
+            )
+            for q in range(Q)
+        ]),
+        inference='Variational'
+    )
+    return m
+
+models = {
+    'cvi_gp': cvi_gp(),
+    'cvi_sde_gp_seq': cvi_sde_gp(parallel=False),
+    'cvi_sde_gp_parallel': cvi_sde_gp(parallel=True),
+}
+
 if True:
-    max_iters = 500
+    for k, m in models.items():
+        ng_trainer = NatGradTrainer(m)
+        ng_trainer.train(1.0, 1)
 
-    ng_trainer = NatGradTrainer(m)
-    m.approximate_posterior.fix()
+N_models = len(models)
 
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+fig, axes = plt.subplots(N_models, 1, squeeze=False)
 
-    lc, _ = ng_trainer.train(1.0, 1)
-    lc_arr = [lc]
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
-        lc_i, _ = ng_trainer.train(1.0, 1)
-        lc_arr.append(lc_i)
+for i, key   in enumerate(models):
+    m = models[key]
 
-    plt.plot(lc_arr)
-    plt.show()
+    ax_i = axes[i][0]
 
-pred_mu, pred_var = m.predict_y(XS)
+    pred_mu, pred_var = m.predict_f(XS)
+    pred_mu = np.squeeze(pred_mu)
+    pred_var = np.squeeze(pred_var)
 
-plt.fill_between(
-    np.squeeze(XS), 
-    np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), 
-    np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), 
-    facecolor=colors.LINE_COL, 
-    alpha=0.3
-)
-plt.plot(XS, pred_mu, color=colors.LINE_COL, label='GP Fit')
-plt.scatter(X, Y, color='black', label='Training Data')
-plt.legend()
+    ax_i.fill_between(
+        np.squeeze(XS), 
+        np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), 
+        np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), 
+        facecolor=colors.LINE_COL, 
+        alpha=0.3
+    )
+    ax_i.plot(XS, pred_mu, color=colors.LINE_COL, label='GP Fit')
+    ax_i.scatter(X, Y, color='black', label='Training Data')
+    ax_i.set_title(key)
+    ax_i.legend()
 plt.show()
-
-

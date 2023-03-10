@@ -22,8 +22,13 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
         """
         A conjugate gaussian represents the approximate posterior as:
             q(u) \propto N(Y_tilde | u, V_tilde) p(u)
-        For computational reasons it is generally more efficient to store V_tilde latent-data format. 
+        For computational reasons it is generally more efficient to store V_tilde data-latent format. 
         For consistency we also store Y_tilde in the same way.
+
+        Args:
+            num_blocks: typically refers to the number of temporal points, or total number of data points
+            block_size: typically refers to the numer of spatial points (or 1)
+            num_latents: the number of latent functions we are defining this block-diagonal likelihood over
         """
 
         if X is None:
@@ -46,12 +51,12 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
 
         V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
 
-        surrogate_likelihood = [BlockDiagonalGaussian(
+        surrogate_likelihood = BlockDiagonalGaussian(
             block_size=self.block_size,
             num_blocks = self.num_blocks,
             num_latents = self.num_latents,
             variance=V_tilde
-        )]
+        )
 
         self.surrogate = surrogate_model(
             X = X,
@@ -62,29 +67,6 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
     def fix(self):
         self.surrogate.likelihood.fix()
         self.surrogate.data.fix()
-
-class DiagonalConjugateGaussian(ConjugateApproximatePosterior):
-    def __init__(self, dim: int=None, surrogate_model: 'Model' = None):
-
-        if dim is None :
-            raise RuntimeError('Dim must be passed')
-
-        self.dim = dim
-        self.surrogate = surrogate_model
-
-        # TODO: Nat params
-
-
-class BlockDiagonalConjugateGaussian(ConjugateApproximatePosterior):
-    def __init__(self, dim: int=None, surrogate_model: 'Model' = None):
-
-        if dim is None :
-            raise RuntimeError('Dim must be passed')
-
-        self.dim = dim
-        self.surrogate = surrogate_model
-
-        # TODO: Nat params
 
 class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproximatePosterior):
     def __init__(self, approximate_posteriors: Optional[List[ConjugateGaussian]]=None):
@@ -166,24 +148,13 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         else:
             self.num_blocks = num_blocks
 
-        if True:
-            Y_tilde = 1e-5*np.ones([self.M, self.block_size])
+        Y_tilde = 1e-5*np.ones([self.M, self.block_size])
 
-            V_tilde = np.tile(
-                np.eye(self.block_size) , 
-                [self.num_blocks, 1, 1]
-            )
-        else:
-            Z = int(((int(self.block_size)-1)*self.block_size)/2)
-            Z = onp.random.rand(Z)
-            V_rand = get_correlation_cholesky(correlation_transform(Z, 1.0), self.block_size, self.block_size)
+        V_tilde = np.tile(
+            np.eye(self.block_size) , 
+            [self.num_blocks, 1, 1]
+        )
 
-            Y_tilde = np.ones([self.M, self.block_size])*onp.random.rand(self.M, self.block_size)
-
-            V_tilde = np.tile(
-                add_jitter(V_rand, 1.0), 
-                [self.num_blocks, 1, 1]
-            )
 
         surrogate_likelihood = BlockDiagonalGaussian(
             block_size=self.block_size,
