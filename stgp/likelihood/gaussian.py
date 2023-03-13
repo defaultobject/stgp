@@ -96,6 +96,10 @@ class PrecisionBlockDiagonalGaussian(BlockDiagonalGaussian):
         # Compute LL^T for each block
         return precision_chol @ np.transpose(precision_chol, [0, 2, 1])
 
+    @property
+    def full_precision(self) -> np.ndarray:
+        return to_block_diag(self.precision)
+
 class ReshapedBlockDiagonalGaussian(BlockDiagonalGaussian):
     def __init__(self, bd_lik, block_size:int=None, num_blocks:int=None):
         self.bd_lik = bd_lik

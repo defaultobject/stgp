@@ -1,10 +1,10 @@
 # Import Types
 from ..data import Data, TransformedData
 from ..kernels import Kernel, RBF
-from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian, DiagonalGaussian
+from ..likelihood import Likelihood, Gaussian, GaussianParameterised, ProductLikelihood, GaussianProductLikelihood, BlockDiagonalGaussian, DiagonalGaussian, PrecisionBlockDiagonalGaussian
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
-from .gaussian import log_gaussian, log_gaussian_with_nans
+from .gaussian import log_gaussian, log_gaussian_with_nans, log_gaussian_with_additive_precision_noise_with_nans
 from ..transforms import Independent, LinearTransform, Transform, Joint
 from .model_ops import get_diagonal_gaussian_likelihood_variances
 from .matrix_ops import vec_columns, stack_rows
@@ -58,9 +58,27 @@ def log_marginal_likelihood(
 
     return log_gaussian_with_nans(Y, mean, k) 
 
+@dispatch(PrecisionBlockDiagonalGaussian)
+def log_marginal_likelihood(
+        X: np.ndarray, Y: np.ndarray, likelihood: PrecisionBlockDiagonalGaussian, K: np.ndarray, mean: np.ndarray
+):
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 3)
+
+    # Y is in time - latent - space format
+    # convert to time - latent format
+    Y = np.reshape(Y, [-1, 1])
+
+    N = X.shape[0]
+
+    lik_precison = likelihood.full_precision
+
+    return log_gaussian_with_additive_precision_noise_with_nans(Y, mean, K, lik_precison) 
+
+
 @dispatch(BlockDiagonalGaussian)
 def log_marginal_likelihood(
-        X: np.ndarray, Y: np.ndarray, likelihood: Gaussian, K: np.ndarray, mean: np.ndarray
+        X: np.ndarray, Y: np.ndarray, likelihood: BlockDiagonalGaussian, K: np.ndarray, mean: np.ndarray
 ):
     """
     Log marginal likelihood of GP prior with Gaussian likelihood.
@@ -113,6 +131,12 @@ def log_marginal_likelihood(
     return log_gaussian_with_nans(Y, mean, k) 
 
 # =================================== Multioutput Models ===================================
+
+@dispatch(PrecisionBlockDiagonalGaussian, Transform)
+def log_marginal_likelihood(
+        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: Transform
+):
+    breakpoint()
 
 @dispatch(BlockDiagonalGaussian, Transform)
 def log_marginal_likelihood(

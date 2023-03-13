@@ -15,7 +15,7 @@ where
 # Import Types
 from ...data import Data
 from ...kernels import Kernel, RBF
-from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, DiagonalGaussian, Likelihood, BlockDiagonalGaussian
+from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, DiagonalGaussian, Likelihood, BlockDiagonalGaussian, PrecisionBlockDiagonalGaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
@@ -30,7 +30,7 @@ from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal, stack_rows
 from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
-from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks
+from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks, gaussian_prediction_diagonal_with_additive_noise_precision, gaussian_prediction_with_additive_noise_precision
 
 import jax
 from jax import jit
@@ -42,6 +42,31 @@ from batchjax import batch_or_loop, BatchType
 
 
 # =========================== Likelihood specific GPR prediction equations ===========================
+
+@dispatch('BatchGP', PrecisionBlockDiagonalGaussian)
+def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
+    NS = XS.shape[0]
+    N = X.shape[0]
+    chex.assert_equal(K_xx.shape, (N, N))
+    chex.assert_equal(K_xs_x.shape, (NS, N))
+    chex.assert_equal(K_xs.shape, (NS, ))
+    chex.assert_rank(Y, 2)
+
+    chex.assert_equal(Y.shape[1], likelihood.block_size)
+
+    # Convert Gaussian likelihood noise to diagonal matrix
+    lik_inv_var = likelihood.full_precision
+
+    Y_vec = vec_columns(Y)
+
+    mu, var = gaussian_prediction_diagonal_with_additive_noise_precision(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_inv_var)
+
+    # this function only supports one output, but for compatability add the extra dimensions
+    mu = mu[..., None]
+    var = var[..., None, None]
+
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
 
 @dispatch('BatchGP', BlockDiagonalGaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
@@ -66,6 +91,36 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, 
     var = var[..., None, None]
 
     chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
+@dispatch('BatchGP', PrecisionBlockDiagonalGaussian)
+def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
+    NS = XS.shape[0]
+    N = X.shape[0]
+    chex.assert_equal(K_xx.shape, (N, N))
+    chex.assert_equal(K_xs_x.shape, (NS, N))
+    chex.assert_equal(K_xs.shape, (NS, NS))
+    chex.assert_rank(Y, 2)
+
+    chex.assert_equal(Y.shape[1], likelihood.block_size)
+
+    # Convert Gaussian likelihood noise to diagonal matrix
+    lik_var_inv = likelihood.full_precision
+
+    Y_vec = vec_columns(Y)
+
+    mu, var = gaussian_prediction_with_additive_noise_precision(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var_inv)
+
+    # this function only supports one output, but for compatability add the extra dimensions
+    if block_size == NS:
+        # block size is NS so the shape of mu should be 1 x 1 x Ns
+        mu = (mu.T)[None, ...]
+        var = var[None, None, ...]
+    else:
+        raise NotImplementedError()
+
+    chex.assert_rank([mu, var], [3, 4])
+
     return mu, var
 
 @dispatch('BatchGP', BlockDiagonalGaussian)
@@ -152,6 +207,8 @@ def predict_covar(XS_1, XS_2, X, Y, likelihood, K_xs, K_xs_x, K_xx, K_x_xs, mean
     lik_var = likelihood.full_variance
 
     return  gaussian_predictive_covar(Y, K_xs, K_xs_x, K_xx, K_x_xs, mean_x, mean_xs, lik_var)
+
+
 
 @dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
 def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):

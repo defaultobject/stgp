@@ -15,7 +15,7 @@ from ....transforms import Transform, LinearTransform, Independent, NonLinearTra
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms.latent_variable import LatentVariable
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, ConjugatePrecisionGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
 from ....sparsity import FreeSparsity, Sparsity, SpatialSparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
@@ -28,6 +28,7 @@ from .linear_marginals import linear_marginal_blocks
 
 # ========================= Conjugate Gaussian Approximate Posterior Marginal Blocks =========================
 
+@dispatch(ConjugatePrecisionGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)

@@ -11,7 +11,7 @@ from ...core import GPPrior
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ...dispatch import dispatch
-from ..gaussian import log_gaussian, log_gaussian_with_nans
+from ..gaussian import log_gaussian, log_gaussian_with_nans, log_gaussian_with_precision_noise_with_nans
 from ..matrix_ops import add_jitter, cholesky, cholesky_solve
 from ... import utils
 from ...utils.nan_utils import get_mask, mask_to_identity, mask_vector
@@ -115,10 +115,41 @@ def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.n
     return ell
 
 @jit
+def full_gaussian_expected_log_precision_likelihood(X:np.ndarray, Y:np.ndarray, noise_precision:np.ndarray, q_mu:np.ndarray, q_covar:np.ndarray) ->  np.ndarray:
+    """
+    Block expected log likelihood where the likelihood is parameterised by its precision
+    """
+    chex.assert_rank(X, 2)
+    chex.assert_rank(Y, 2)
+    chex.assert_rank(q_covar,  2)
+    chex.assert_equal(Y.shape[1], 1)
+    chex.assert_equal(Y.shape, q_mu.shape)
+    chex.assert_shape(q_covar, [Y.shape[0], Y.shape[0]])
+    chex.assert_shape(noise_precision, q_covar.shape)
+
+    ml =  log_gaussian_with_precision_noise_with_nans(Y, q_mu, noise_precision) 
+
+    mask = get_mask(Y)
+
+    masked_q_covar = mask_to_identity(q_covar, mask)
+
+    traced_term = noise_precision @ q_covar
+    masked_trace_term = mask_vector(traced_term, mask)
+
+    trace_term = -0.5*np.trace(masked_trace_term)
+
+    ell =  ml + trace_term
+
+    chex.assert_rank(ell, 0)
+    return ell
+
+
+@jit
 def scalar_poisson_expected_log_likelihood(X:np.ndarray, Y:np.ndarray,  binsize:float, q_mu:np.ndarray, q_covar_diag:np.ndarray) -> np.ndarray:
     """
         X, Y, q_mu, q_covar are all scalars
-        Let a = E[f] = m and b = E[exp(f)] = exp(m+v/2) then
+        Let a = E[f] = m and b = E[exp(f)] = exp(m+v/2)  and Possion(y|m) = e^{-m} * (m^y) / (y!) then
+
             E[log Poisson(y | exp(f)*binsize)] = Y log binsize  + E[Y * log exp(f)] - E[binsize * exp(f)] - log Y!
                                                = Y log binsize + Y * m - binsize * exp(m + v/2) - log Y!
 

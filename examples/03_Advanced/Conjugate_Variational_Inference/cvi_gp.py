@@ -18,7 +18,7 @@ from stgp.likelihood import Gaussian, ProductLikelihood, GaussianProductLikeliho
 from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
 from stgp.transforms.sdes import LTI_SDE
-from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
+from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian, ConjugatePrecisionGaussian
 
 from tqdm import trange
 
@@ -32,8 +32,14 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
-def cvi_gp():
-    """ CVI-GP with a standard GP surrogate model parameterised using moment parameterisation.  """
+def cvi_gp(parameterisation):
+    """ 
+    CVI-GP with a standard GP surrogate model
+    Args:
+        parameterisation:
+            [covariance] - the surrogate GP likelihood will be parameterised using covariances
+            [precision] - the surrogate GP likelihood will be parameterised using precisions
+    """
     # Construct Model
     Q = 1
     sparsity = stgp.sparsity.NoSparsity(Z = X)
@@ -41,13 +47,20 @@ def cvi_gp():
     kern = ScaleKernel(Matern52(input_dim=1, lengthscales=[0.1]))
     latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
+    if parameterisation == 'covariance':
+        cvi_class = ConjugateGaussian
+    elif parameterisation == 'precision':
+        cvi_class = ConjugatePrecisionGaussian
+    else:
+        raise NotImplementedError()
+
     data = Data(X, Y)
     m = GP(
         data = data,
         prior = Independent(latent_gps),
         likelihood = GaussianProductLikelihood([Gaussian(variance=0.1)]),
         approximate_posterior = MeanFieldConjugateGaussian([
-            ConjugateGaussian(
+            cvi_class(
                 X=sparsity,
                 num_blocks = data.N,
                 block_size=1,
@@ -62,6 +75,7 @@ def cvi_gp():
         ]),
         inference='Variational'
     )
+    print(m.get_objective())
     return m
 
 def cvi_sde_gp(parallel=False):
@@ -98,16 +112,27 @@ def cvi_sde_gp(parallel=False):
     )
     return m
 
-models = {
-    'cvi_gp': cvi_gp(),
-    'cvi_sde_gp_seq': cvi_sde_gp(parallel=False),
-    'cvi_sde_gp_parallel': cvi_sde_gp(parallel=True),
-}
+if False:
+    models = {
+        'cvi_gp_cov': cvi_gp(parameterisation='covariance'),
+        'cvi_sde_gp_seq': cvi_sde_gp(parallel=False),
+        'cvi_sde_gp_parallel': cvi_sde_gp(parallel=True),
+    }
+else:
+    models = {
+        'cvi_gp_precision': cvi_gp(parameterisation='precision'),
+        'cvi_gp': cvi_gp(parameterisation='covariance')
+    }
 
 if True:
     for k, m in models.items():
         ng_trainer = NatGradTrainer(m)
         ng_trainer.train(1.0, 1)
+
+# check that the ELBOs remain the same after
+if True:
+    for k, m in models.items():
+        print(f'{k}: {m.get_objective()}')
 
 N_models = len(models)
 

@@ -17,6 +17,58 @@ import numpy as onp
 class ConjugateApproximatePosterior(ApproximatePosterior):
     pass
 
+class ConjugatePrecisionGaussian(GaussianApproximatePosterior, ConjugateApproximatePosterior):
+    def __init__(self, X, block_size: int, num_blocks:int = None, num_latents: int = None, Y_tilde = None, surrogate_model: 'Model' = None):
+        """
+        A conjugate gaussian represents the approximate posterior as:
+            q(u) \propto N(Y_tilde | u, V_tilde) p(u)
+        For computational reasons it is generally more efficient to store V_tilde data-latent format. 
+        For consistency we also store Y_tilde in the same way.
+
+        Args:
+            num_blocks: typically refers to the number of temporal points, or total number of data points
+            block_size: typically refers to the numer of spatial points (or 1)
+            num_latents: the number of latent functions we are defining this block-diagonal likelihood over
+        """
+
+        if X is None:
+            raise RuntimeError('X must be passed')
+
+        self.dim = X.shape[0]
+
+        self.block_size = block_size
+        self.num_latents = num_latents
+
+        if num_blocks is None:
+            self.num_blocks = int(self.dim/self.block_size)
+        else:
+            self.num_blocks = num_blocks
+            
+        if Y_tilde is not None:
+            Y_tilde = np.array(Y_tilde)
+        else:
+            Y_tilde = 1e-5*np.ones([self.num_blocks, self.block_size, 1])
+
+        V_tilde = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+        surrogate_likelihood = PrecisionBlockDiagonalGaussian(
+            block_size=self.block_size,
+            num_blocks = self.num_blocks,
+            num_latents = self.num_latents,
+            variance=V_tilde
+        )
+
+        self.surrogate = surrogate_model(
+            X = X,
+            Y = Y_tilde,
+            likelihood = surrogate_likelihood
+        )
+
+    def fix(self):
+        self.surrogate.likelihood.fix()
+        self.surrogate.data.fix()
+
+
 class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePosterior):
     def __init__(self, X, block_size: int, num_blocks:int = None, num_latents: int = None, Y_tilde = None, surrogate_model: 'Model' = None):
         """

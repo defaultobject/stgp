@@ -67,6 +67,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     return mu, var_chol
 
 
+@dispatch('ConjugatePrecisionGaussian', Likelihood, 'GPPrior', 'NoSparsity', False)
 @dispatch('ConjugateGaussian', Likelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
@@ -83,6 +84,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     chex.assert_rank([mu, var], [2, 3])
     return mu, var
 
+@dispatch('ConjugatePrecisionGaussian', Gaussian, 'GPPrior', 'SpatialSparsity', False)
+@dispatch('ConjugatePrecisionGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity', False)
 @dispatch('ConjugateGaussian', Gaussian, 'GPPrior', 'SpatialSparsity', False)
 @dispatch('ConjugateGaussian', DiagonalLikelihood, 'GPPrior', 'SpatialSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
@@ -101,6 +104,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     chex.assert_rank([mu, var], [2, 3])
     return mu, var
 
+@dispatch('ConjugatePrecisionGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity, False)
+@dispatch('ConjugatePrecisionGaussian', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', Sparsity, False)
 @dispatch('ConjugateGaussian', BlockDiagonalLikelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
@@ -195,6 +200,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 
     chex.assert_rank([q_m, q_S], [3, 4])
 
+    # must return rank [2, 3] as this is for a single latent function
     q_m = q_m[..., 0]
     q_S = q_S[:, 0, ...]
     return q_m, q_S

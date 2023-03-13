@@ -10,7 +10,7 @@ def get_product_likelihood(likelihood_arr):
     if all(type(lik) == Gaussian for lik in likelihood_arr):
         return GaussianProductLikelihood(likelihood_arr)
 
-    if all(type(lik) == BlockDiagonalGaussian for lik in likelihood_arr):
+    if all(issubclass(type(lik), BlockDiagonalGaussian) for lik in likelihood_arr):
         return BlockGaussianProductLikelihood(likelihood_arr)
 
     return ProductLikelihood(likelihood_arr)

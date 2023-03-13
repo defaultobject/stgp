@@ -12,7 +12,7 @@ from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import get_mask, mask_vector, mask_matrix, get_same_shape_mask
 from ...utils.utils import get_batch_type
 from ...likelihood import ProductLikelihood, DiagonalLikelihood, Likelihood, DiagonalGaussian, Gaussian, BlockDiagonalGaussian, GaussianProductLikelihood, PowerLikelihood
-from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood
+from .expected_log_likelihoods import scalar_gaussian_expected_log_likelihood, gaussian_expected_log_likelihood, full_gaussian_expected_log_likelihood, full_gaussian_expected_log_precision_likelihood
 from ..integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ..integrals.samples import approximate_expectation
 from ...approximate_posteriors import MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, ApproximatePosterior
@@ -94,19 +94,35 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
         X_blocks = np.tile(X[None, ...], [block_size, 1, 1])
         X_blocks = np.transpose(X_blocks, [1, 0, 2])
 
-    # likelihood is time - latent - space format
-    lik_var = likelihood.variance
-    chex.assert_shape(lik_var, q_f_var.shape)
 
 
-    # convert to time - space - latent format
-    lik_var = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_var)
+    fn = full_gaussian_expected_log_likelihood
+
+    if str(type(likelihood).__name__) == 'PrecisionBlockDiagonalGaussian':
+        fn = full_gaussian_expected_log_precision_likelihood
+
+        lik_inv = likelihood.precision
+        chex.assert_shape(lik_inv, q_f_var.shape)
+
+
+        # convert to time - space - latent format
+        lik_inv = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_inv)
+        lik_mat = lik_inv
+    else:
+        # likelihood is time - latent - space format
+        lik_var = likelihood.variance
+        chex.assert_shape(lik_var, q_f_var.shape)
+
+
+        # convert to time - space - latent format
+        lik_var = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_var)
+        lik_mat = lik_var
 
     ell_arr = jax.vmap(
-        full_gaussian_expected_log_likelihood,
+        fn,
         [0, 0, 0, 0, 0],
         0
-    )(X_blocks, Y, lik_var, q_f_mu, q_f_var)
+    )(X_blocks, Y, lik_mat, q_f_mu, q_f_var)
 
     ell = np.sum(ell_arr)
 
@@ -443,6 +459,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         else:
             raise RuntimeError()
     except Exception as e:
+        raise e
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 

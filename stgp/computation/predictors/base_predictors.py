@@ -87,6 +87,34 @@ def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
 
     return mu, sig
 
+@jit 
+def gaussian_prediction_with_additive_noise_precision(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, sigma_inv):
+    mask = get_mask(Y)
+    M = get_diag_mask(mask)
+    Y = mask_vector(Y, mask)
+
+    Ns = K_xs.shape[0]
+
+    K_m = M.T @ K_xx @ M
+
+    # TODO: this might need to be symetrissed :( 
+    A = K_m @ sigma_inv + np.eye(K_m.shape[0])
+    A_chol = cholesky(A)
+
+    # TODO: figure out M transpose here
+    mu = K_xs_x @ M.T @ sigma_inv @  cholesky_solve(A_chol, Y-mean_x) + mean_xs
+
+    A1 = K_xs_x @ M.T @ sigma_inv
+    A2 = cholesky_solve(A_chol, M @ K_xs_x.T)
+
+    sig = K_xs - A1 @ A2
+
+    mu = np.reshape(mu, [Ns, 1])
+    sig = np.reshape(sig, [Ns, Ns])
+
+    return mu, sig
+
+
 
 @jit 
 def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
@@ -103,6 +131,33 @@ def gaussian_prediction_diagonal(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var
     mu = K_xs_x  @ M @ cholesky_solve(k_chol, Y-mean_x) + mean_xs
 
     sig = K_xs - np.sum(np.square(A1), axis=0)
+    sig = sig[:, None]
+
+    chex.assert_equal(mu.shape, sig.shape)
+
+    return mu, sig
+
+@jit 
+def gaussian_prediction_diagonal_with_additive_noise_precision(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, sigma_inv):
+    mask = get_mask(Y)
+    M = get_diag_mask(mask)
+    Y = mask_vector(Y, mask)
+
+    K_m = M.T @ K_xx @ M
+
+    # TODO: this might need to be symetrissed :( 
+    sigma_inv_chol = cholesky(add_jitter(sigma_inv, settings.jitter))
+
+    A = K_m @ sigma_inv + np.eye(K_m.shape[0])
+    A_chol = cholesky(A)
+
+    # TODO: figure out M transpose here
+    mu = K_xs_x @ M.T @ sigma_inv @  cholesky_solve(A_chol, Y-mean_x) + mean_xs
+
+    A1 = K_xs_x @ M.T @ sigma_inv
+    A2 = cholesky_solve(A_chol, M @ K_xs_x.T)
+
+    sig = K_xs - np.sum(np.multiply(A1.T, A2), axis=0)
     sig = sig[:, None]
 
     chex.assert_equal(mu.shape, sig.shape)
