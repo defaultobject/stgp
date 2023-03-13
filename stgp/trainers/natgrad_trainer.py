@@ -72,6 +72,9 @@ def get_vars_to_update(model, vc):
     return vc_keep_vars(vc, [*m_name_list, *S_chol_name_list])
 
 def update_vars(model, vars_to_update, params):
+    """
+    Natural gradients are computed in the natural parameterisation.
+    """
     approx_posterior = model.approximate_posterior
 
     q_type = _ensure_str(approx_posterior)

@@ -23,7 +23,6 @@ from ..sparsity import NoSparsity
 from ..utils.utils import ensure_module_list, fix_prediction_shapes
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 
-
 @dispatch(Model, 'Variational')
 class VGP(Posterior):
     def __init__(

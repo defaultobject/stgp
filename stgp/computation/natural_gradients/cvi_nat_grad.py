@@ -18,12 +18,13 @@ from ..integrals.approximators import mv_block_monte_carlo
 from ..permutations import data_order_to_output_order, permute_mat, permute_vec
 
 from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation
+from .parameterisations import get_parameterisation_class 
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
 from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
-from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad
+from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad, lambda_to_theta_precision
 
 from ...transforms import MultiOutput
 
@@ -91,9 +92,9 @@ def cvi_block_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_t
     #lambda_2_new = np.clip(lambda_2_new, a_max = -1e-5)
 
     # Convert to theta
-    theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)
+    #theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)
 
-    return theta_1, theta_2
+    return lambda_1_new, lambda_2_new
 
 
 @jit
@@ -499,13 +500,58 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
 
     return new_Y_tilde, new_V_tilde
 
-@dispatch('VGP', ApproximatePosterior)
-def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
+# =================== Different Parameterisations Entry Points ====================
+# TODO: refactor to remove duplicated code
+@dispatch('VGP', MeanFieldConjugateGaussian, "NG_Moment")
+def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
     q = model.approximate_posterior
     prior = model.prior
     sparsity_arr = prior.base_prior.get_sparsity_list()
+    parameterisation = get_parameterisation_class(q)
 
+    # compute natural gradient update in natural parameterisation
     # TODO: assuming sparsity is constant across all latents
-    return evoke('natural_gradients', model, q, sparsity_arr[0])(
+    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
         model, beta, enforce_psd_type
+    )
+    # convert to mean and covariance
+    # vmap over P and blocks
+    theta_1, theta_2 = jax.vmap(jax.vmap(lambda_to_theta))(lambda_1, lambda_2)
+    return theta_1, theta_2
+
+@dispatch('VGP', MeanFieldConjugateGaussian, "NG_Precision")
+def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
+    q = model.approximate_posterior
+    prior = model.prior
+    sparsity_arr = prior.base_prior.get_sparsity_list()
+    parameterisation = get_parameterisation_class(q)
+
+    # compute natural gradient update in natural parameterisation
+    # TODO: assuming sparsity is constant across all latents
+    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
+        model, beta, enforce_psd_type
+    )
+
+    # convert to mean and precision
+    # vmap over P and blocks
+    theta_1, theta_2 = jax.vmap(jax.vmap(lambda_to_theta_precision))(lambda_1, lambda_2)
+    return theta_1, theta_2
+
+@dispatch('VGP', FullConjugateGaussian, "NG_Moment")
+def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
+    breakpoint()
+
+@dispatch('VGP', FullConjugateGaussian, "NG_Precision")
+def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
+    breakpoint()
+
+# =================== NG Entry Points ====================
+
+@dispatch('VGP', ApproximatePosterior)
+def natural_gradients(model, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
+    q = model.approximate_posterior
+    parameterisation = get_parameterisation_class(q)
+
+    return evoke('natural_gradients', model, q, parameterisation)(
+        model, parameterisation, beta, enforce_psd_type, prediction_samples
     )

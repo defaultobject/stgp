@@ -72,6 +72,18 @@ def lambda_to_theta(lambda_1, lambda_2):
     return theta_1, theta_2
 
 @jit
+def lambda_to_theta_precision(lambda_1, lambda_2):
+    M = lambda_1.shape[0]
+    jit = settings.ng_jitter * np.eye(M) 
+
+    lambda_2_chol = cholesky(-2*lambda_2+jit)
+
+    theta_2 =  -2*lambda_2
+    theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
+
+    return theta_1, theta_2
+
+@jit
 def xi_to_lambda(xi1, xi2):
     theta_1, theta_2 = xi_to_theta(xi1, xi2)
     return theta_to_lambda(theta_1, theta_2)
