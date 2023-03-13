@@ -71,6 +71,9 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
 @dispatch('ConjugateGaussian', Likelihood, 'GPPrior', 'NoSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """
+    With no sparsity there is no conditional we need to integrate through in the 
+        approxiamte posterior so we directly return the maginal predictions at training data points 
+
     output:
         mu: Mx1
         var: Mx1x1

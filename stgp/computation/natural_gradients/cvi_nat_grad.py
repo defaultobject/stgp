@@ -175,6 +175,7 @@ def partial_ell(m, q_m, q_S):
 @dispatch('VGP', MeanFieldConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, diagonal=False)
+    breakpoint()
 
 
     # Different models store Y with different dimensions so we store it here so can 
@@ -188,6 +189,10 @@ def natural_gradients(model, beta: float, enforce_psd_type) -> np.ndarray:
     #q_mu_z = np.reshape(q_mu_z, [Q, N*B, 1])
     #q_var_z = np.reshape(q_var_z, [Q, N*B, 1])
 
+    # TODO --
+    # We haev no sparsity and so q_mu, q_var should be diagonal/marginals
+    #   however to keep code relatively simply we use the same block-diagonal likelihood as the sparsity case
+    #   so to keep shapes consistent we extract the block diagonals here 
     # Compute dELL/dm, dEll/dS
     mu_grads, var_grads = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z

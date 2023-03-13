@@ -80,8 +80,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         # to space-latent format, and then we can just reshape
 
         # convert to time-space-latent
-        print(q_m.shape)
-        breakpoint()
         mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
         var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
 

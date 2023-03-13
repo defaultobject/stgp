@@ -58,7 +58,7 @@ approximate_posterior = MeanFieldConjugateGaussian([
         surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
             data=SpatioTemporalData(X=X, Y=np.reshape(Y, [st_data.Nt, 1, st_data.Ns]), sort=False), # Data should already be in the correct format
             prior=LTI_SDE(Independent([latent_gp])), 
-            likelihood=[likelihood[q]],
+            likelihood=[likelihood],
             inference='Sequential'
         )  
     )
@@ -79,7 +79,6 @@ print(m.approximate_posterior.approx_posteriors[0].surrogate.data.X.shape)
 print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y.shape)
 print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y_st.shape)
 print(m.approximate_posterior.approx_posteriors[0].surrogate.likelihood.variance.shape)
-breakpoint()
 
 print(m.get_objective())
 #print(m.predict_f(X))
