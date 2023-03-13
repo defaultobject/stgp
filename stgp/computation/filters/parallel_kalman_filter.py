@@ -13,7 +13,7 @@ import tensorflow_probability
 
 from ... import settings 
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv
-from ..gaussian import log_gaussian, log_gaussian_with_mask
+from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 
@@ -25,6 +25,35 @@ import chex
 
 def fix_psd(A):
     return 0.5 * (A+A.T)
+
+def _first_filtering_element_lik_precision(m, P, F, Q, H, R_inv, y):
+    m_ = F @ m
+    P_ = F @ P @ F.T + Q
+
+    T1 =  H @ P_ @ H.T
+    T = T1 @ R_inv + np.eye(T1.shape[0])
+    T_chol = cholesky(T)
+    R_inv_chol = cholesky(add_jitter(R_inv, settings.jitter))
+
+    K = (R_inv @ cholesky_solve(T_chol, H @ P_.T)).T
+
+    A = np.zeros_like(F)
+    b = m_ + K @ (y - H @ m_)
+    C = P_ - K @ T @ cholesky_solve(R_inv_chol,  K.T)
+
+    T1 =  H @ Q @ H.T
+    T = T1 @ R_inv + np.eye(T1.shape[0])
+    T_chol = cholesky(T)
+
+    FH_S_inv = (R_inv @ cholesky_solve(T_chol, H @ F)).T
+
+    eta = FH_S_inv @ y
+    J = FH_S_inv @ H @ F 
+
+    C = fix_psd(C)
+    J = fix_psd(J)
+
+    return A, b, C, J, eta
 
 def _first_filtering_element(m, P, F, Q, H, R, y):
     m_ = F @ m
@@ -62,10 +91,31 @@ def _first_filtering_element_nan(m, P, F, Q, H, R, y):
 
     return A, b, C, J, eta
 
+# Does not depend on R
+_first_filtering_element_nan_lik_precision = _first_filtering_element_nan
 
+
+def _generic_filtering_element_lik_precision(F, Q, H, R_inv, y):
+    I = np.eye(F.shape[0])
+
+    T1 =  H @ Q @ H.T
+    T = T1 @ R_inv + np.eye(T1.shape[0])
+    T_chol = cholesky(T)
+
+
+    K = (R_inv @ cholesky_solve(T_chol, H @ Q.T)).T
+
+    A = (I - K @ H) @ F
+    b = K @ y
+    C = (I - K @ H) @ Q
+    eta = F.T @ H.T @ R_inv @ cholesky_solve(T_chol, y)
+    J = F.T @ H.T @  R_inv @ cholesky_solve(T_chol, H @ F) 
+
+    return A, b, C, J, eta
 
 def _generic_filtering_element(F, Q, H, R, y):
     I = np.eye(F.shape[0])
+
 
     S = H @ Q @ H.T + R
     S_chol = cholesky(S)
@@ -88,6 +138,8 @@ def _generic_filtering_element_nan(F, Q, H, R, y):
 
     return A, b, C, J, eta
 
+# does not depend on R
+_generic_filtering_element_nan_lik_precision = _generic_filtering_element_nan
 
 
 
@@ -147,7 +199,7 @@ def make_filtering_elements():
     pass
 
 @dispatch('parallel')
-def filter(data, prior, R, Y, X_t, X_s, dt):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
     m_inf = prior.m_inf(None, X_s, None)
@@ -156,10 +208,10 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
     # precompute all filtering parameters
     # TODO: this is O(N_t)!! need to distribute
     #dt = np.ones(Y.shape[0])*dt[1]
-    R_arr = R
+    lik_mat_arr = lik_mat
     A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
     Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
-    H_arr = np.tile(H[None, ...], [R.shape[0], 1, 1])
+    H_arr = np.tile(H[None, ...], [lik_mat_arr.shape[0], 1, 1])
     #Q_arr = Q_arr.at[0].set(P_inf)
 
     mask = get_same_shape_mask(Y)
@@ -168,8 +220,14 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
 
     Y = np.nan_to_num(Y)
 
-    x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], P_inf, H, R[0], Y[0])
-    x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_arr[0], P_inf, H, R[0], Y[0])
+    if lik_cov_flag:
+        # lik_mat is a covariance
+        x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
+        x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
+    else:
+        # lik_mat is a precision
+        x_0 = _first_filtering_element_lik_precision(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
+        x_0_nan = _first_filtering_element_nan_lik_precision(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
 
     # combine nan and observered
     x_0 = [
@@ -177,13 +235,22 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
         for i in range(5)
     ]
 
-    x_all = jax.vmap(
-        _generic_filtering_element
-    )(A_arr, Q_arr, H_arr, R, Y)
+    if lik_cov_flag:
+        x_all = jax.vmap(
+            _generic_filtering_element
+        )(A_arr, Q_arr, H_arr, lik_mat_arr, Y)
 
-    x_all_nan = jax.vmap(
-        _generic_filtering_element_nan
-    )(A_arr, Q_arr, H_arr, R, Y)
+        x_all_nan = jax.vmap(
+            _generic_filtering_element_nan
+        )(A_arr, Q_arr, H_arr, lik_mat_arr, Y)
+    else:
+        x_all = jax.vmap(
+            _generic_filtering_element_lik_precision
+        )(A_arr, Q_arr, H_arr, lik_mat_arr, Y)
+
+        x_all_nan = jax.vmap(
+            _generic_filtering_element_nan_lik_precision
+        )(A_arr, Q_arr, H_arr, lik_mat_arr, Y)
 
     # combine nan and observered
     def get_mask(mask, r):
@@ -212,21 +279,28 @@ def filter(data, prior, R, Y, X_t, X_s, dt):
     ) (
         H_arr, filtered_means, A_arr
     ) 
-    obs_covs = jax.vmap(
-        lambda H_k, P_k, R_k, F_k, Q_k: H_k @ F_k @ P_k @ F_k.T @ H_k.T  + H_k @ Q_k @ H_k.T + R_k
-    )(H_arr, filtered_cov, R_arr, A_arr, Q_arr)
+    obs_pred_cov = jax.vmap(
+        lambda H_k, P_k, F_k, Q_k: H_k @ F_k @ P_k @ F_k.T @ H_k.T  + H_k @ Q_k @ H_k.T
+    )(H_arr, filtered_cov, A_arr, Q_arr)
 
 
-    log_Z_k = jax.vmap(
-        lambda Y_k, mu_k, S_k: np.sum(
-            log_gaussian_with_mask(np.nan_to_num(Y_k), mu_k, S_k, get_same_shape_mask(Y_k)[:, 0])
-        )
-    ) (Y, obs_means, obs_covs)
+
+    if lik_cov_flag:
+        log_Z_k = jax.vmap(
+            lambda Y_k, mu_k, S_k, R_k: np.sum(
+                log_gaussian_with_mask(np.nan_to_num(Y_k), mu_k, S_k+R_k, get_same_shape_mask(Y_k)[:, 0])
+            )
+        ) (Y, obs_means, obs_pred_cov, lik_mat_arr)
+    else:
+        log_Z_k = jax.vmap(
+            lambda Y_k, mu_k, S_k, R_inv_k: np.sum(
+                log_gaussian_with_additive_precision_noise_with_mask(
+                    np.nan_to_num(Y_k), mu_k, S_k, R_inv_k, get_same_shape_mask(Y_k)[:, 0]
+                )
+            )
+        ) (Y, obs_means, obs_pred_cov, lik_mat_arr)
         
     log_Z = np.sum(log_Z_k)
-
-    #print(log_Z)
-    #breakpoint()
 
     return log_Z, {'m': res[1], 'P': res[2]}
 

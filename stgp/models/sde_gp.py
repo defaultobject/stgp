@@ -27,6 +27,21 @@ from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
 from ..sparsity import NoSparsity
 
+def get_R_R_inv(likelihood):
+    """
+    Note: that when predicting on xs the variance is always used
+    """
+    if str(type(likelihood).__name__) in ['BlockGaussianProductLikelihood']:
+        likelihood = likelihood.likelihood_arr[0]
+
+    if str(type(likelihood).__name__) in ['PrecisionBlockDiagonalGaussian']:
+        return None, likelihood.precision
+
+    elif str(type(likelihood).__name__) in ['ReshapedBlockDiagonalGaussian', 'BlockDiagonalGaussian']:
+        return likelihood.variance, None
+
+    raise RuntimeError('Likelihood type not found!')
+
 @dispatch(Model, 'Sequential')
 class SDE_GP(Posterior):
     def __new__(cls, data, *args, **kwargs):
@@ -141,10 +156,13 @@ class BASE_SDE_GP(Posterior):
 
 
     def log_marginal_likelihood(self):
+        R, R_inv = get_R_R_inv(self.likelihood)
+
         lml, _  = kalman_filter.filter_loop(
             self.data,
             self.prior,
-            self.likelihood.variance,
+            R = R,
+            R_inv = R_inv,
             parallel = self.parallel
         )
 
@@ -194,11 +212,12 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter_and_smooth(self, data, prior, R, full_state=False):
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False):
         _, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
-            R,
+            R = R,
+            R_inv = R_inv,
             parallel = self.parallel
         ) 
 
@@ -212,10 +231,13 @@ class BASE_SDE_GP(Posterior):
 
     def posterior_blocks(self):
         """ Compute the posterior p(f_t | Y) for all t in time-latent-space format.  """
+        R, R_inv = get_R_R_inv(self.likelihood)
+
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
-            self.likelihood.variance
+            R = R,
+            R_inv = R_inv
         )
 
         var = var[:, None, ...]
@@ -225,11 +247,12 @@ class BASE_SDE_GP(Posterior):
         return mu, var
 
     def posterior(self, diagonal=True, full_state=False):
+        R, R_inv = get_R_R_inv(self.likelihood)
         mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
-            #self.get_likelihood_for_prediction(self.data),
-            self.likelihood.variance,
+            R = R,
+            R_inv = R_inv,
             full_state = full_state
         )
 
@@ -274,7 +297,7 @@ class BASE_SDE_GP(Posterior):
         mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            self.get_likelihood_for_prediction(test_data)
+            R = self.get_likelihood_for_prediction(test_data)
         )
 
         # mu, var are in time - space format
@@ -311,10 +334,9 @@ class T_SDE_GP(BASE_SDE_GP):
     def get_likelihood_for_prediction(self, data):
         # Currently the likelihood is only defined on the training points. 
         # But due to the implementation we need to provide likelihood values everywhere
-        # Jax will silently wraps around in this setting if less data is passed through
-
+        #  we need to be careful becasuse Jax will silently wraps 
+        #  around in this setting if less data is passed through
         R = self.likelihood.variance
-        #R = self.likelihood.likelihood_arr[0].variance
 
         out_dim = R.shape[-1]
 
@@ -350,7 +372,7 @@ class T_SDE_GP(BASE_SDE_GP):
         mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            self.get_likelihood_for_prediction(test_data)
+            R = self.get_likelihood_for_prediction(test_data)
         )
 
         # mu, var are in time - latent- space format but space is 1
@@ -519,7 +541,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         mu_t, var_t = self.filter_and_smooth(
             temporal_test_data,
             self.prior,
-            self.get_likelihood_for_prediction(all_temporal_data)
+            R = self.get_likelihood_for_prediction(all_temporal_data)
         )
         mu_p = jax.vmap(lambda a: permute_vec(a, 2))(mu_t)
         mu_p = np.reshape(mu_p, [-1, 2, 1])

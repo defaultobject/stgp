@@ -115,6 +115,19 @@ class BlockGaussianProductLikelihood(ProductLikelihood):
             batch_type = get_batch_type(self.likelihood_arr)
         )
 
-
         return np.vstack(var_arr)
+
+    @property
+    def precision(self):
+        output_dim = len(self.likelihood_arr)
+        precision_arr = batch_or_loop(
+            lambda lik:  lik.precision,
+            [self.likelihood_arr],
+            [0],
+            dim = output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.likelihood_arr)
+        )
+
+        return np.vstack(precision_arr)
 

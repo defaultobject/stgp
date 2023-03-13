@@ -84,6 +84,14 @@ class BlockDiagonalGaussian(BlockDiagonalLikelihood):
     def full_variance(self) -> np.ndarray:
         return to_block_diag(self.variance)
 
+    @property
+    def precision(self) -> np.ndarray:
+        return jax.vmap(mat_inv)(self.variance)
+
+    @property
+    def full_precision(self) -> np.ndarray:
+        return to_block_diag(self.precision)
+
 class PrecisionBlockDiagonalGaussian(BlockDiagonalGaussian):
     """ BlockDiagonalGaussian storing the precision not the variance """
     @property

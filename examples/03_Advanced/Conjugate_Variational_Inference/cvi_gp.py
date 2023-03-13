@@ -6,6 +6,7 @@ sys.path.append('../../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
@@ -78,7 +79,7 @@ def cvi_gp(parameterisation):
     print(m.get_objective())
     return m
 
-def cvi_sde_gp(parallel=False):
+def cvi_sde_gp(parallel=False, parameterisation='covariance'):
     """ CVI-GP with a state-space GP surrogate model parameterised using moment parameterisation.  """
     # Construct Model
     Q = 1
@@ -87,13 +88,20 @@ def cvi_sde_gp(parallel=False):
     kern = ScaledMatern52(input_dim=1, lengthscales=[0.1], variance=1.0)
     latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
+    if parameterisation == 'covariance':
+        cvi_class = ConjugateGaussian
+    elif parameterisation == 'precision':
+        cvi_class = ConjugatePrecisionGaussian
+    else:
+        raise NotImplementedError()
+
     data = Data(X, Y)
     m = GP(
         data = data,
         prior = Independent(latent_gps),
         likelihood = GaussianProductLikelihood([Gaussian(variance=0.1)]),
         approximate_posterior = MeanFieldConjugateGaussian([
-            ConjugateGaussian(
+            cvi_class(
                 X=sparsity,
                 num_blocks = data.N,
                 block_size=1,
@@ -112,17 +120,15 @@ def cvi_sde_gp(parallel=False):
     )
     return m
 
-if False:
-    models = {
-        'cvi_gp_cov': cvi_gp(parameterisation='covariance'),
-        'cvi_sde_gp_seq': cvi_sde_gp(parallel=False),
-        'cvi_sde_gp_parallel': cvi_sde_gp(parallel=True),
-    }
-else:
-    models = {
-        'cvi_gp_precision': cvi_gp(parameterisation='precision'),
-        'cvi_gp': cvi_gp(parameterisation='covariance')
-    }
+
+models = {
+    'cvi_gp_precision': cvi_gp(parameterisation='precision'),
+    'cvi_gp': cvi_gp(parameterisation='covariance'),
+    'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
+    'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
+    'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
+    'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+}
 
 if True:
     for k, m in models.items():

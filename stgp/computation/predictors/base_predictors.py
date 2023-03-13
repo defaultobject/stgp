@@ -84,7 +84,6 @@ def gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var):
     mu = np.reshape(mu, [Ns, 1])
     sig = np.reshape(sig, [Ns, Ns])
 
-
     return mu, sig
 
 @jit 
