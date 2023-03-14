@@ -29,7 +29,8 @@ from stgp.models import GP
 import matplotlib.pyplot as plt
 
 # Construct Data
-XS, X, Y = single_output_spatial_data(10, 10, 100, 100, seed=0)
+NS = 100
+XS, X, Y = single_output_spatial_data(10, 10, NS, NS, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
@@ -128,12 +129,12 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
 
 
 models = {
-    #'cvi_gp_precision': cvi_gp(parameterisation='precision'),
-    #'cvi_gp': cvi_gp(parameterisation='covariance'),
-    #'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
+    'cvi_gp_precision': cvi_gp(parameterisation='precision'),
+    'cvi_gp': cvi_gp(parameterisation='covariance'),
+    'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
     'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
-    #'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
-    #'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+    'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
+    'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
 }
 
 if True:
@@ -148,27 +149,25 @@ if True:
 
 N_models = len(models)
 
-fig, axes = plt.subplots(N_models, 1, squeeze=False)
+fig, axes = plt.subplots(N_models, 2, squeeze=False)
 
 for i, key   in enumerate(models):
     m = models[key]
 
-    ax_i = axes[i][0]
+    ax_i = axes[i]
 
     pred_mu, pred_var = m.predict_f(XS)
     pred_mu = np.squeeze(pred_mu)
     pred_var = np.squeeze(pred_var)
 
-    ax_i.fill_between(
-        np.squeeze(XS), 
-        np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), 
-        np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), 
-        facecolor=colors.LINE_COL, 
-        alpha=0.3
-    )
-    ax_i.plot(XS, pred_mu, color=colors.LINE_COL, label='GP Fit')
-    ax_i.scatter(X, Y, color='black', label='Training Data')
-    ax_i.set_title(key)
-    ax_i.legend()
+    pred_mu = pred_mu.reshape(NS, NS)
+    pred_var = pred_var.reshape(NS, NS)
+
+    ax_i[0].set_title('Mean')
+    ax_i[0].imshow(pred_mu)
+
+
+    ax_i[1].set_title('Var')
+    ax_i[1].imshow(pred_var)
 plt.show()
 
