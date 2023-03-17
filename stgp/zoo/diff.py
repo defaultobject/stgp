@@ -15,7 +15,7 @@ from stgp.data import Data
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import  progress_bar_callback
 from stgp.kernels.spectral_mixture import SM_Component
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian, FullConjugatePrecisionGaussian
 from stgp.transforms import Independent
 from stgp.trainers.standard import VB_NG_ADAM, LBFGS, LikNoiseSplitTrainer, ADAM
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE, LTI_SDE_Full_State_Obs_With_Mask
@@ -434,7 +434,7 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
 
     return m
 
-def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False, parallel=False):
+def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False, parallel=False, precision=True):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
@@ -542,7 +542,13 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
 
     Q = diff_op_prior_time.output_dim
     B = Ms * Q
-    q = FullConjugateGaussian(
+
+    if precision:
+        q_cls = FullConjugatePrecisionGaussian
+    else:
+        q_cls = FullConjugateGaussian
+
+    q = q_cls(
         X = Z_sparsity,
         num_latents =  Q,
         block_size= B,

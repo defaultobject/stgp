@@ -16,6 +16,7 @@ from .permutations import data_order_to_output_order
 from ..core.models import Model
 from ..core.model_types import get_model_type, LinearModel, NonLinearModel
 
+from ..dispatch import _ensure_str
 
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from ..utils.utils import can_batch
@@ -132,12 +133,8 @@ def log_marginal_likelihood(
 
 # =================================== Multioutput Models ===================================
 
-@dispatch(PrecisionBlockDiagonalGaussian, Transform)
-def log_marginal_likelihood(
-        data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: Transform
-):
-    breakpoint()
 
+@dispatch(PrecisionBlockDiagonalGaussian, Transform)
 @dispatch(BlockDiagonalGaussian, Transform)
 def log_marginal_likelihood(
         data, gp: 'Posterior', likelihood: BlockDiagonalGaussian, prior: Transform
@@ -156,7 +153,7 @@ def log_marginal_likelihood(
 
     chex.assert_equal(P, likelihood.block_size)
 
-    # Y in latent-data format
+    # Convert Y to latent-data format
     Y_vec = vec_columns(Y)
 
     # precompute prior covariance
@@ -165,24 +162,37 @@ def log_marginal_likelihood(
     mean_arr = prior.mean(X) 
 
     # in data-latent format
-    likelihood_var = likelihood.full_variance
+    if _ensure_str(likelihood) == 'BlockDiagonalGaussian':
+        likelihood_mat = likelihood.full_variance
+    elif _ensure_str(likelihood) == 'PrecisionBlockDiagonalGaussian':
+        likelihood_mat = likelihood.full_precision
 
-    # Permute so that the ordering between likelihood_var and Y is the same
+    # Permute so that the ordering between likelihood_mat and Y is the same
     N = X.shape[0]
-    NS = likelihood_var.shape[0]
+    NS = likelihood_mat.shape[0]
 
-    # convert likelihood_var to latent-data format
-    P = data_order_to_output_order(P, N)
-    ordered_likelihood_var = P @ likelihood_var @ P.T
+    # convert likelihood_mat to latent-data format
+    # TODO: FIGURE OUT WHY THIS IS THE CASE
+    # TODO: GENERALISE THIS TO MAKE IT EASIER TO REMEMBER ld_dl() dl_to_ld() etc etc
+    P = data_order_to_output_order(P, N).T
+    ordered_likelihood_mat = P @ likelihood_mat @ P.T
 
     chex.assert_shape(Y_vec, mean_arr.shape)
-    chex.assert_shape(k_xx_arr, ordered_likelihood_var.shape)
+    chex.assert_shape(k_xx_arr, ordered_likelihood_mat.shape)
 
-    return log_gaussian_with_nans(
-        Y_vec,
-        mean_arr,
-        k_xx_arr + ordered_likelihood_var
-    )
+    if _ensure_str(likelihood) == 'BlockDiagonalGaussian':
+        return log_gaussian_with_nans(
+            Y_vec,
+            mean_arr,
+            k_xx_arr + ordered_likelihood_mat
+        )
+    elif _ensure_str(likelihood) == 'PrecisionBlockDiagonalGaussian':
+        return log_gaussian_with_additive_precision_noise_with_nans(
+            Y_vec,
+            mean_arr,
+            k_xx_arr,
+            ordered_likelihood_mat
+        )
 
 @dispatch(ProductLikelihood, Joint)
 @dispatch(ProductLikelihood, LinearTransform)

@@ -124,16 +124,16 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
 models = {
     'cvi_gp_precision': cvi_gp(parameterisation='precision'),
     'cvi_gp': cvi_gp(parameterisation='covariance'),
-    'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
-    'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
-    'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
-    'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+    #'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
+    #'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
+    #'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
+    #'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
 }
 
 if True:
     for k, m in models.items():
         ng_trainer = NatGradTrainer(m)
-        ng_trainer.train(1.0, 1)
+        ng_trainer.train(0.9, 1)
 
 # check that the ELBOs remain the same after
 if True:

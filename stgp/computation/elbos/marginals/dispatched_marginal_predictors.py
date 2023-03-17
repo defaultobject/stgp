@@ -264,6 +264,10 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
+@dispatch(MeanFieldConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=True)
+@dispatch(MeanFieldConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=True)
+@dispatch(FullConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 

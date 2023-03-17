@@ -7,6 +7,7 @@ To keep track we use these enums.
 """
 
 from enum import Enum
+from ..dispatch import _ensure_str
 
 class Block(Enum):
     DIAGONAL = 1
@@ -33,7 +34,11 @@ def get_block_dim(block_type: Block, data = None, likelihood = None, approximate
 
     if block_type == Block.BLOCK:
         if likelihood is not None:
-            return likelihood.block_size
+            if _ensure_str(likelihood) in ['BlockDiagonalLikelihood', 'PrecisionBlockDiagonalGaussian']:
+                return likelihood.block_size
+
+        if approximate_posterior is not None:
+            return approximate_posterior.num_latents
 
     if block_type == Block.LATENT:
         if approximate_posterior is not None:

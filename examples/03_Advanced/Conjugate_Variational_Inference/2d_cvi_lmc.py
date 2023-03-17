@@ -217,7 +217,7 @@ models = {
     #'batch': batch_lmc(),
     #'vi': vi_lmc(),
     'cvi_gp_lmc_covariance': cvi_gp_lmc(parameterisation='covariance'),
-    #'cvi_gp_lmc_precision': cvi_gp_lmc(parameterisation='precision'),
+    'cvi_gp_lmc_precision': cvi_gp_lmc(parameterisation='precision'),
 }
 
 if True:

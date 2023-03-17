@@ -31,14 +31,27 @@ def theta_to_lambda(theta_1, theta_2):
     I = np.eye(theta_2_chol.shape[0])
 
 
-    #lambda_1 = cholesky_solve(theta_2_chol, theta_1)
-    #lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
-    #lambda_2 = -0.5*cholesky_solve(theta_2_chol, I)
-
-    lambda_1 = cg(theta_2, theta_1)[0]
-    lambda_2 = -0.5*cg(theta_2, I)[0]
+    if True:
+        lambda_1 = cholesky_solve(theta_2_chol, theta_1)
+        lambda_2 = -0.5*cholesky_solve(theta_2_chol, I)
+        #lambda_2 = -0.5*theta_2_chol_inv.T @ theta_2_chol_inv
+    else:
+        lambda_1 = cg(theta_2, theta_1)[0]
+        lambda_2 = -0.5*cg(theta_2, I)[0]
 
     return lambda_1, lambda_2
+
+@jit
+def theta_precision_to_lambda(theta_1, theta_2):
+    M = theta_1.shape[0]
+    jit = settings.ng_jitter * np.eye(M) 
+
+    theta_2_chol = cholesky(theta_2+jit)
+    lambda_1 = cholesky_solve(theta_2_chol, theta_1)
+    lambda_2 = -0.5*theta_2
+
+    return lambda_1, lambda_2
+
 
 @jit
 def theta_to_lambda_diagonal(theta_1, theta_2):
@@ -65,9 +78,9 @@ def lambda_to_theta(lambda_1, lambda_2):
     #theta_2 = inv_chol.T @ inv_chol
 
     theta_2 =  cholesky_solve(lambda_2_chol, np.eye(M))
-    theta_1 =  theta_2 @ lambda_1
+    #theta_1 =  theta_2 @ lambda_1
 
-    #theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
+    theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
 
     return theta_1, theta_2
 

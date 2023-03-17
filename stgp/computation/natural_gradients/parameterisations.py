@@ -17,10 +17,10 @@ def get_parameterisation_class(approx_posterior):
     if str(type(approx_posterior).__name__) in ['MeanFieldConjugateGaussian', 'MeanFieldApproximatePosterior']:
         approx_posterior = approx_posterior.approx_posteriors[0]
 
-    if str(type(approx_posterior).__name__) in ['ConjugateGaussian']:
+    if str(type(approx_posterior).__name__) in ['ConjugateGaussian', 'FullConjugateGaussian']:
         return NG_Moment()
 
-    elif str(type(approx_posterior).__name__) in ['ConjugatePrecisionGaussian']:
+    elif str(type(approx_posterior).__name__) in ['ConjugatePrecisionGaussian', 'FullConjugatePrecisionGaussian']:
         return NG_Precision()
 
     breakpoint()

@@ -270,6 +270,8 @@ def fix_block_shapes(m, S, data, likelihood, approximate_posterior, block_type):
     else:
         if block_dim == B:
             mu, var = m, S
+        elif block_dim == P:
+            mu, var = m, S
         else:
             raise NotImplementedError()
 

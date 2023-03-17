@@ -55,8 +55,8 @@ def test__gp_and_vgp_match_after_natgrad(seed, N, NS, vgp, gp):
 
     # === Assert  ===
     np.testing.assert_allclose(vgp_elbo, gp_elbo, rtol=1e-5)
-    np.testing.assert_allclose(gp_pred_mu, vgp_pred_mu, rtol=1e-3)
-    np.testing.assert_allclose(gp_pred_var, vgp_pred_var, rtol=1e-3)
+    np.testing.assert_allclose(np.squeeze(gp_pred_mu), np.squeeze(vgp_pred_mu), rtol=1e-3)
+    np.testing.assert_allclose(np.squeeze(gp_pred_var), np.squeeze(vgp_pred_var), rtol=1e-3)
 
 
 @pytest.mark.parametrize('seed', [0])
@@ -89,6 +89,7 @@ def test__lmc_and_vi_fp_lmc_match_after_natgrad(seed, P, N, NS, vi_fp_lmc, lmc):
 
     # === Assert  ===
     np.testing.assert_allclose(vgp_elbo, gp_elbo, rtol=1e-4)
-    np.testing.assert_allclose(gp_pred_mu, vgp_pred_mu, rtol=1e-2)
-    np.testing.assert_allclose(gp_pred_var, vgp_pred_var, rtol=1e-2)
+    np.testing.assert_allclose(np.squeeze(gp_pred_mu), np.squeeze(vgp_pred_mu), rtol=1e-2)
+    np.testing.assert_allclose(np.squeeze(gp_pred_var), np.squeeze(vgp_pred_var), rtol=1e-2)
+
 

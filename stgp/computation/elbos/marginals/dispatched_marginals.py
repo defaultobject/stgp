@@ -61,12 +61,13 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     N = q_m.shape[0]
     Q = prior.output_dim
     block_size = q_S.shape[-1]
+
     out_block_dim = get_block_dim(
         out_block, 
         approximate_posterior=approximate_posterior,
         likelihood = likelihood
     )
-
+    
     if block_size == 1:
         q_m = np.reshape(q_m, [N, prior.output_dim, 1])
         q_S = np.reshape(q_S, [N, 1, prior.output_dim, prior.output_dim])
@@ -79,10 +80,13 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         # to convert to data-latent format we first need convert each time point
         # to space-latent format, and then we can just reshape
 
-        # convert to time-space-latent
-        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
-
+        if False:
+            # convert to time-space-latent
+            mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+        else:
+            mu_p = q_m
+            var_p = q_S[:, 0, ...]
 
         if out_block_dim == block_size:
             var_p = var_p[:, None, ...]

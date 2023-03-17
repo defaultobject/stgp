@@ -456,7 +456,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         else:
             raise RuntimeError()
     except Exception as e:
-        raise e
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 
