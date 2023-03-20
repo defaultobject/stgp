@@ -246,13 +246,19 @@ def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = F
 
 def fix_block_shapes(m, S, data, likelihood, approximate_posterior, block_type):
     chex.assert_rank([m, S], [3, 4])
+    
+    # TODO: hacky hard code
+    if type(block_type) == int:
+        if block_type == 1:
+            block_dim = 1
 
-    block_dim = get_block_dim(
-        block_type, 
-        data = data, 
-        likelihood = likelihood, 
-        approximate_posterior = approximate_posterior
-    )
+    else:
+        block_dim = get_block_dim(
+            block_type, 
+            data = data, 
+            likelihood = likelihood, 
+            approximate_posterior = approximate_posterior
+        )
 
     N, P, B = m.shape
 

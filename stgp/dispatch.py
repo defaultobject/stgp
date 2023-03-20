@@ -3,6 +3,9 @@ import inspect
 
 from enum import Enum
 
+class DispatchNotFound(Exception):
+    def __init__(self, s):
+        self.s = s
 
 _REGISTERED = {}
 
@@ -137,7 +140,7 @@ def dispatch(*args, **kwargs):
             k = _REGISTERED_KEY(obj, args, kwargs)
 
         else:
-            raise RuntimeError(f'Cannot Dispatch {obj}')
+            raise DispatchNotFound(f'Cannot Dispatch {obj}')
 
         _REGISTERED[k] = obj
 
@@ -183,4 +186,4 @@ def evoke(*args, debug=False, **kwargs):
             print('=============')
         return matched_item
 
-    raise RuntimeError(f'Cannot evoke {args}, {kwargs}')
+    raise DispatchNotFound(f'Cannot evoke {args}, {kwargs}')

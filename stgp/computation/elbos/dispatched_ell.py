@@ -3,7 +3,7 @@ import jax
 import jax.numpy as np
 import objax
 
-from ...dispatch import dispatch, evoke
+from ...dispatch import dispatch, evoke, DispatchNotFound
 from ..matrix_ops import block_from_vec, block_from_mat, stack_rows, shape_rank
 
 from ...data import Data, TransformedData
@@ -445,17 +445,14 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     try:
         # see if there is a closed form expression
         # if model is non linear then there will be no closed form expressions
-        if  isinstance(model_type, LinearModel):
-            ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
-               X, Y, q_f_mu, q_f_var, likelihood, block_type
-            )
+        ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
+           X, Y, q_f_mu, q_f_var, likelihood, block_type
+        )
 
-            ell = np.sum(ell)
+        ell = np.sum(ell)
 
-            return ell
-        else:
-            raise RuntimeError()
-    except Exception as e:
+        return ell
+    except DispatchNotFound as e:
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 
