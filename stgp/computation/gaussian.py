@@ -176,7 +176,7 @@ def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, ma
         N(Y | mu, K + sigma_inv^{-1}) = -(1/2) [N log 2π + log |K + sigma_inv^{-1})| + (Y-m)^T [K + sigma_inv^{-1}]⁻¹ (Y-m)]
 
     The log det is given by
-        log |K + sigma_inv^{-1})| = log|K| - log|sigma_inv|
+        log |K + sigma_inv^{-1})| = log|Ksigma_inv + I| - log|sigma_inv|
 
 
     Let Y_m, Y_o indicate the missing and observed datapoints and S = K + sigma_inv^{-1} then this function computes 
@@ -213,7 +213,12 @@ def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, ma
 
     c1 = -0.5 * N * np.log(2 * np.pi) 
     # negative as we are working with previsions
-    c2 = - 0.5 * (log_chol_matrix_det(K_chol) + (-1)*log_chol_matrix_det(sigma_inv_chol))
+    c2 = - 0.5 * (
+        log_chol_matrix_det(
+            cholesky(K @ sigma_inv + np.eye(sigma_inv.shape[0]))
+        ) + 
+        (-1)*log_chol_matrix_det(sigma_inv_chol)
+    )
     c = c1+c2
 
     err = Y - mu
