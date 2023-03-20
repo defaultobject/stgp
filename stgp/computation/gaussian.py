@@ -6,7 +6,7 @@ from jax import jit
 import chex
 from .. import settings
 
-from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det, add_jitter
+from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det, add_jitter, solve_with_additive_inverse
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 @jit
@@ -171,9 +171,15 @@ def log_gaussian_with_precision_noise_with_mask(Y, mu, sigma_inv, mask):
 @jit
 def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, mask):
     """
-    Gaussian of the form N(Y | mu, K + lambda^{-1}) 
+    Gaussian of the form N(Y | mu, K + sigma_inv^{-1}) which is computed as 
 
-    Let Y_m, Y_o indicate the missing and observed datapoints and S = K + lambda^{-1} then this function computes 
+        N(Y | mu, K + sigma_inv^{-1}) = -(1/2) [N log 2π + log |K + sigma_inv^{-1})| + (Y-m)^T [K + sigma_inv^{-1}]⁻¹ (Y-m)]
+
+    The log det is given by
+        log |K + sigma_inv^{-1})| = log|K| - log|sigma_inv|
+
+
+    Let Y_m, Y_o indicate the missing and observed datapoints and S = K + sigma_inv^{-1} then this function computes 
 
         log N(Y | m, S) = log N(Y_o | m_o, S_o) N(Y_m | m_m, S_m)
 
@@ -203,19 +209,15 @@ def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, ma
     sigma_inv_chol = cholesky(add_jitter(sigma_inv, settings.jitter))
     K_chol = cholesky(add_jitter(K, settings.jitter))
 
-    # TODO: this might need to be symetrissed :( 
-    A = K @ sigma_inv + np.eye(K.shape[0])
-    A_chol = cholesky(A)
-
     N = Y.shape[0]
 
     c1 = -0.5 * N * np.log(2 * np.pi) 
     # negative as we are working with previsions
-    c2 = - 0.5 * (log_chol_matrix_det(A_chol) + (-1)*log_chol_matrix_det(sigma_inv_chol))
+    c2 = - 0.5 * (log_chol_matrix_det(K_chol) + (-1)*log_chol_matrix_det(sigma_inv_chol))
     c = c1+c2
 
     err = Y - mu
-    mahal = err.T @ sigma_inv @ cholesky_solve(A_chol, err)
+    mahal = err.T  @ solve_with_additive_inverse(K, sigma_inv,  err)
 
     ml = c - 0.5 * mahal
 

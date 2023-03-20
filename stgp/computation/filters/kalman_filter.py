@@ -20,7 +20,7 @@ import jax.numpy as np
 from jax.lax import scan
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
@@ -81,19 +81,27 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
     # all in latent-space format
     v = Y_k - mu
 
-    A = var @ R_inv_k + np.eye(var.shape[0])
-    A_chol = cholesky(A)
-
     #Kalman Gain
-    K = (cholesky_solve(A_chol, R_inv_k  @ M @ H_k @ P_)).T
+    #  K = P_ @ H.T @ S^{-1}
+    #    = [S^{-1} @ (H @ P_.T)].T
+    K = solve_with_additive_inverse(var, R_inv_k, M @ H_k @ P_).T
 
     R_inv_k_chol = cholesky(add_jitter(R_inv_k, settings.jitter))
 
     # Kalman Update
     # convert to latent-space-state format before updating
     m_k = m_ + K @ v
+    # P_k = P - K @ S @ K.T
+    #     = P - K @ [var + R_k] @ K.T
+    #     = P - K @ [var R_k_inv + I] @ R_k @ K.T
+    #     = P - K @ [var R_k_inv + I] @ [R_k_inv]^{-1} K.T
+
+    A = var @ R_inv_k + np.eye(var.shape[0])
+    A_chol = cholesky(A)
+
     P_k = P_ - K @ A @ cholesky_solve(R_inv_k_chol, K.T)
 
+    P_k = force_symmetric(P_k)
 
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(
@@ -330,8 +338,10 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, pa
     else:
         filter_fn = evoke('filter', 'sequential')
 
-    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)
+    jax.vmap(mat_inv)(lik_mat)
 
+    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)
+    lml_cov, filter_res_cov =  filter_fn(data, prior, jax.vmap(mat_inv)(lik_mat), Y, X_t, X_s, dt, True)
 
     return lml, filter_res
 

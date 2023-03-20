@@ -130,7 +130,7 @@ def elbo(
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
-    #print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {ELL_surrogate + ML_surrogate}')
+    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {ELL_surrogate + ML_surrogate}')
     #elbo =  ELL 
 
     return elbo

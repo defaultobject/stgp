@@ -355,6 +355,28 @@ def get_block(A, i1:int, i2:int, B1:int, B2:int):
         i2 * block_size_2 : (i2+1) * block_size_2,
     ]
 
+@jit
 def mat_inv(A):
     A_chol = cholesky(add_jitter(A, settings.jitter))
     return cholesky_solve(A_chol, np.eye(A.shape[0]))
+
+@jit
+def solve_with_additive_inverse(A, B_inv, C):
+    """ 
+    Solves equations of the form (A + B)^{-1} C without forming B
+    
+    Rewrite as:
+        (A + B)^{-1} C = [(A B_inv + I) B ]^{-1} C
+                       = B_inv [ A B_inv + I]^{-1} C
+    """
+    I = np.eye(A.shape[0])
+    tmp = A @ B_inv + I
+    if False:
+        tmp_chol = cholesky(tmp)
+        return B_inv @ cholesky_solve(tmp_chol, C)
+    else:
+        return B_inv @ np.linalg.solve(tmp, C)
+
+@jit
+def force_symmetric(A):
+    return 0.5 * (A+A.T)
