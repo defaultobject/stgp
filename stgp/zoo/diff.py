@@ -464,10 +464,13 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
         base_kernel = time_kernel
         base_sde_kernel = base_kernel
 
+    if type(lik_var) is not list:
+        lik_var = [lik_var for i in range(P)]
+
     if prior_fn is None:
-        lik_arr = [Gaussian(lik_var) for p in range(P)]
+        lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
     else:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var)]) for p in range(P)]
+        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
 
     if fix_y:
         for lik in lik_arr:

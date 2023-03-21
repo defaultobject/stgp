@@ -6,7 +6,7 @@ from jax import jit
 import chex
 from .. import settings
 
-from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det, add_jitter, solve_with_additive_inverse
+from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det, add_jitter, solve_with_additive_inverse, force_symmetric
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 @jit
@@ -178,7 +178,6 @@ def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, ma
     The log det is given by
         log |K + sigma_inv^{-1})| = log|Ksigma_inv + I| - log|sigma_inv|
 
-
     Let Y_m, Y_o indicate the missing and observed datapoints and S = K + sigma_inv^{-1} then this function computes 
 
         log N(Y | m, S) = log N(Y_o | m_o, S_o) N(Y_m | m_m, S_m)
@@ -213,12 +212,21 @@ def log_gaussian_with_additive_precision_noise_with_mask(Y, mu, K, sigma_inv, ma
 
     c1 = -0.5 * N * np.log(2 * np.pi) 
     # negative as we are working with previsions
-    c2 = - 0.5 * (
-        log_chol_matrix_det(
-            cholesky(K @ sigma_inv + np.eye(sigma_inv.shape[0]))
-        ) + 
-        (-1)*log_chol_matrix_det(sigma_inv_chol)
-    )
+    T = K @ sigma_inv + np.eye(sigma_inv.shape[0])
+
+    if False:
+        c2 = - 0.5 * (
+            log_chol_matrix_det(cholesky(T)) + 
+            (-1)*log_chol_matrix_det(sigma_inv_chol)
+        )
+    else:
+        # the form of T makes cholesky unstable, so just directly take log determinants
+
+        c2 = - 0.5 * (
+            np.linalg.slogdet(T)[1] + 
+            (-1)*log_chol_matrix_det(sigma_inv_chol)
+        ) 
+
     c = c1+c2
 
     err = Y - mu

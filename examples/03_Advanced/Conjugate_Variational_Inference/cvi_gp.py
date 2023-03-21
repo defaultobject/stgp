@@ -124,10 +124,10 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
 models = {
     'cvi_gp_precision': cvi_gp(parameterisation='precision'),
     'cvi_gp': cvi_gp(parameterisation='covariance'),
-    #'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
-    #'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
-    #'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
-    #'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+    'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
+    'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
+    'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
+    'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
 }
 
 if True:

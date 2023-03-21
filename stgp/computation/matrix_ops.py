@@ -2,6 +2,7 @@
 
 import jax
 import jax.numpy as np
+from jax.scipy.sparse.linalg import cg
 from jax import jit, grad
 from functools import partial
 import chex
@@ -371,11 +372,12 @@ def solve_with_additive_inverse(A, B_inv, C):
     """
     I = np.eye(A.shape[0])
     tmp = A @ B_inv + I
-    if False:
-        tmp_chol = cholesky(tmp)
-        return B_inv @ cholesky_solve(tmp_chol, C)
-    else:
+    #tmp = force_symmetric(tmp)
+
+    if True:
         return B_inv @ np.linalg.solve(tmp, C)
+    else:
+        return B_inv @ cg(tmp, C)[0]
 
 @jit
 def force_symmetric(A):
