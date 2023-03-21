@@ -27,7 +27,6 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    #breakpoint()
     if (out_block == Block.FULL or out_block == Block.BLOCK):
         P = q_m.shape[1]
         Q = prior.output_dim

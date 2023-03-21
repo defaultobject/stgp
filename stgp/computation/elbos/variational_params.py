@@ -155,11 +155,13 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
     base_prior = prior.base_prior
-    num_latents = base_prior.output_dim
 
     latents_arr = base_prior.parent
+    num_latents = len(latents_arr)
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = base_prior.get_sparsity_list()
+
+    
 
     likelihood_arr = likelihood.likelihood_arr
 
@@ -167,6 +169,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
 
     whiten_arr = [whiten for q in range(num_latents)]
+
 
     q_m, q_S = batch_over_module_types(
         evoke_name = 'variational_params',

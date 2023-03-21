@@ -6,7 +6,7 @@ import chex
 
 from batchjax import batch_or_loop
 from ...utils.utils import get_batch_type
-from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior, FullConjugateGaussian
+from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian
 from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
 from ...dispatch import dispatch, evoke
@@ -109,6 +109,12 @@ def elbo(
 
 
     return ELL - ELL_surrogate + ML_surrogate
+
+@dispatch(Likelihood, Transform, MeanFieldConjugateGaussian)
+def elbo(
+    data, likelihood: Likelihood, prior: Transform, approx_posterior: ConjugateApproximatePosterior, inference: 'Variational'
+):
+    breakpoint()
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(

@@ -372,6 +372,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = get_permutated_prior(prior)
+    breakpoint()
 
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
 
@@ -382,12 +383,69 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return mu, var
 
-
+@dispatch(GaussianApproximatePosterior, Likelihood, Independent, whiten=True)
+@dispatch(GaussianApproximatePosterior, Likelihood, Independent, whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+    breakpoint()
 
 # Mean-field entry point
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    latents_arr = prior.parent
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    likelihood_arr = likelihood.likelihood_arr
+
+    num_latents = len(latents_arr)
+    N = data.X.shape[0]
+
+    #TODO: assuming that all likelihoods are the same
+    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
+
+    whiten_arr = [whiten for q in range(num_latents)]
+
+    # TODO: fix block sizes here
+    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
+
+    # Compute q(f) for each output
+    # add additional dimension to q_m and q_S_chol to ensure rank [3, 4] after batching
+    marginal_mu, marginal_var = batch_over_module_types(
+        evoke_name = 'marginal_blocks',
+        evoke_params = [],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr],
+        fn_params = [data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr,  out_block_arr, whiten_arr],
+        fn_axes = [None, 1, 1, 0, 0, 0, 0, 0],
+        dim = len(latents_arr),
+        out_dim  = 2,
+        evoke_kwargs = {'whiten': whiten}
+    )
+    breakpoint()
+
+    chex.assert_rank([marginal_mu, marginal_var], [4, 5])
+    # fix shapes
+    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
+    #   and reshape into the proper shape
+    marginal_mu = marginal_mu[..., 0]
+    marginal_var = marginal_var[..., 0]
+
+    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+
+    out_block_dim = get_block_dim(out_block_arr[0])
+
+    chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
+    chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
+
+    return marginal_mu, marginal_var
+
+
+# Mean-field entry point
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=False)
+def _marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     latents_arr = prior.parent

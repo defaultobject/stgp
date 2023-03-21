@@ -3,7 +3,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 import jax.numpy as jnp
 
 import objax
@@ -23,6 +23,7 @@ from stgp.models import GP
 from stgp.transforms import Independent
 from stgp.transforms.pdes import DifferentialOperatorJoint
 from stgp.data import Data
+from stgp.trainers.standard import VB_NG_ADAM
 
 import matplotlib.pyplot as plt
 
@@ -62,7 +63,7 @@ Z = np.linspace(0, 1, 5)[:, None]
 #sparsity=stgp.sparsity.FullSparsity(Z=Z)
 sparsity=stgp.sparsity.NoSparsity(Z=X)
 #base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
-base_kernel_1d = ScaleKernel(Matern52(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
 
 base_gp = Independent([
     GP(
@@ -98,31 +99,13 @@ m = stgp.models.GP(
 m.print()
 
 if True:
+    trainer = VB_NG_ADAM(m)
+    lc_arr, _ = trainer.train([1e-3, 1.0], [100, [1, 1]], callback=progress_bar_callback(100))
+
     print(m.get_objective())
-    max_iters = 100
 
-    ng_trainer = NatGradTrainer(m)
-    ng_trainer.train(1.0, 1)
-
-    if False:
-        print(m.get_objective())
-        breakpoint()
-        m.approximate_posterior.fix()
-
-        trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-
-        lc_arr_1, _ = ng_trainer.train(0.01, 10)
-        lc_arr = np.array(lc_arr_1).tolist()
-
-        if False:
-            for i in trange(max_iters):
-                trainer.train(1.0, 1)
-                lc_arr_i, _  = ng_trainer.train(0.1, 1)
-                lc_arr.append(float(lc_arr_i[0]))
-
-
-        plt.plot(lc_arr)
-        plt.show()
+    plt.plot(lc_arr)
+    plt.show()
 
     m.print()
 else:
@@ -130,6 +113,8 @@ else:
 
 # predict
 pred_mu, pred_var = m.predict_f(XS)
+pred_mu = np.squeeze(pred_mu)
+pred_var = np.squeeze(pred_var)
 
 
 # plot

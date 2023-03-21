@@ -202,7 +202,17 @@ class Independent(Transform):
         for p in self.parent:
             sparsity_list += p.get_sparsity_list()
 
+        # hack for now
+        if type(sparsity_list[0]) is list:
+            # assuming only one latent per mean field
+            sparsity_list = [s[0] for s in sparsity_list]
+
+
+
         return sparsity_list
+
+    def get_sparsity(self): return self.get_sparsity_list()
+
 
     def get_Z_stacked(self):
         Z_arr = batch_or_loop(
