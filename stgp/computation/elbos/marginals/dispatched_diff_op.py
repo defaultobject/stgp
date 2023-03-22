@@ -3,7 +3,7 @@ import jax
 import jax.numpy as np
 import objax
 
-from ....dispatch import dispatch, evoke
+from ....dispatch import dispatch, evoke, _ensure_str
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
@@ -59,6 +59,11 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         return mu_p_bd, var_p_bd
 
     else:
+        if _ensure_str(data) == 'Data':
+            # TODO: why is this necessary?
+            q_m = np.transpose(q_m, [0, 2, 1])
+            return q_m, q_S
+
         # compute spatial conditonal
         sparsity =  prior.base_prior.get_sparsity_list()
 

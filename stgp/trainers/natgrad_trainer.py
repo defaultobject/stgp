@@ -14,6 +14,12 @@ from ..utils.utils import vc_keep_vars, match_suffix, get_parameters, get_var_na
 
 from ..dispatch import _ensure_str
 
+def _get_likelihood(lik):
+    try:
+        return lik.likelihood_arr[0]
+    except Exception as e:
+        return lik
+
 def get_vars_to_update(model, vc):
     approx_posterior = model.approximate_posterior
 
@@ -44,7 +50,7 @@ def get_vars_to_update(model, vc):
 
 
         for q in approx_posterior.approx_posteriors:
-            lik_var = q.surrogate.likelihood.likelihood_arr[0].variance_param
+            lik_var = _get_likelihood(q.surrogate.likelihood).variance_param
 
             Y_name = get_var_name_with_id(model, id(q.surrogate.data._Y.raw_var), param_dict)
             V_chol_name = get_var_name_with_id(model, id(lik_var.raw_var), param_dict)
@@ -94,9 +100,10 @@ def update_vars(model, vars_to_update, params):
         new_params = []
         for q in range(len(q_arr)):
 
-            lik_var = q_arr[q].surrogate.likelihood.likelihood_arr[0].variance_param
+            lik_var = _get_likelihood(q_arr[q].surrogate.likelihood).variance_param
 
-            new_params += [params[0][q], lik_var.inv_transform(params[1][q])]
+            Y_shape = q_arr[q].surrogate.data._Y.raw_var.shape
+            new_params += [np.reshape(params[0][q], Y_shape), lik_var.inv_transform(params[1][q])]
 
         vars_to_update.assign(new_params)
 

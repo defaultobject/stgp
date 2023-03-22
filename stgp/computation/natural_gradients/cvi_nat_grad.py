@@ -8,7 +8,7 @@ from functools import partial
 
 from ... import settings
 from ...utils.nan_utils import get_same_shape_mask 
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag, get_block_diagonal
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
@@ -23,36 +23,15 @@ from .parameterisations import get_parameterisation_class
 from ...dispatch import _ensure_str
 
 # Types imports
-from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
+from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian
 from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad, lambda_to_theta_precision, theta_precision_to_lambda
 
 from ...transforms import MultiOutput
 
+from .cvi_nat_grad_utils import reparametise_vec_grad, _get_fp_params, _get_mf_params, _get_marginals, partial_ell
 
-@partial(jit, static_argnums=(7))
-def cvi_diagonal_update(Y_tilde, V_tilde, m, s, m_grad, s_grad, beta, enforce_psd_type):
-    breakpoint()
-    # Get natural parameters for approximate likelihood
-    lambda_1, lambda_2 = theta_to_lambda_diagonal(Y_tilde, V_tilde)
-
-    # mu_grad and var_grad are ∂ell/∂θ 
-    #calculate ∂ell/∂μ  = ∂ell/∂θ ∂θ/∂μ 
-    grad_1 = m_grad - 2*s_grad*m
-    grad_2 = s_grad
-
-    # Natural gradient update updatae
-    lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
-    if enforce_psd_type == None:
-        lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
-    else:
-        raise NotImplementedError()
-
-    # Convert to theta
-    theta_1, theta_2 = lambda_to_theta_diagonal(lambda_1_new, lambda_2_new)
-
-    return theta_1, theta_2
 
 @partial(jit, static_argnums=(7))
 def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd_type):
@@ -77,6 +56,7 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
     # Natural gradient update updatae
     lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
 
+    # lambda 2 approximation to enforce psd
     if enforce_psd_type == None:
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
     elif enforce_psd_type == 'retraction':
@@ -92,131 +72,12 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
         #raise NotImplementedError()
     else:
         raise NotImplementedError()
-    #lambda_2_new = np.clip(lambda_2_new, a_max = -1e-5)
-
-    # Convert to theta
-    #theta_1, theta_2 = lambda_to_theta(lambda_1_new, lambda_2_new)
 
     return lambda_1_new, lambda_2_new
 
-
-@jit
-def reparametise_vec_grad(m, m_grad, prior):
-    #Calculate ∂L/μ = ∂L/∂ξ ∂ξ/μ 
-    x, u = vjp(
-        lambda v: prior.unpermute_vec(v), 
-        m
-    )
-    m_grad = u(m_grad)[0]
-
-    return m_grad
-
-
-def _get_fp_params(q_mu_z, model, parameterisation):
-    q = model.approximate_posterior
-
-    raw_Y_arr, Y_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y
-
-    # Fix shapes
-    #raw_Y_arr is in time-latent-space format, this reshape will preserve that
-    Y_tilde_arr = np.reshape(raw_Y_arr, q_mu_z.shape)
-
-    if _ensure_str(parameterisation) == 'NG_Moment':
-        lambda_1_arr, lambda_2_arr = jax.vmap(theta_to_lambda)(Y_tilde_arr, q.surrogate.likelihood.variance)
-    elif _ensure_str(parameterisation) == 'NG_Precision':
-        lambda_1_arr, lambda_2_arr = jax.vmap(theta_precision_to_lambda)(Y_tilde_arr, q.surrogate.likelihood.precision)
-    else:
-        raise RuntimeError()
-
-    return raw_Y_arr, lambda_1_arr, lambda_2_arr
-
-def _get_mf_params(model, parameterisation, diagonal=True):
-    """ Helper function to wrap up batching over the latent GPs to collect variational parameters"""
-    q = model.approximate_posterior
-    # TODO: this should only return lambdas
-
-    # Get natural parameters
-    q_list = model.approximate_posterior.approx_posteriors
-    Q = len(q_list)
-
-    # Collect CVI parameters
-    if _ensure_str(parameterisation) == 'NG_Moment':
-        raw_Y, Y_tilde_arr, V_tilde_arr = batch_or_loop(
-            lambda q: (q.surrogate.data.base._Y.value, q.surrogate.data.base.Y, q.surrogate.likelihood.likelihood_arr[0].base.variance),
-            [q_list],
-            [0],
-            dim=len(q_list),
-            out_dim=2,
-            batch_type = get_batch_type(q_list)
-        )
-    elif _ensure_str(parameterisation) == 'NG_Precision':
-        raw_Y, Y_tilde_arr, V_tilde_arr = batch_or_loop(
-            lambda q: (q.surrogate.data.base._Y.value, q.surrogate.data.base.Y, q.surrogate.likelihood.likelihood_arr[0].base.precision),
-            [q_list],
-            [0],
-            dim=len(q_list),
-            out_dim=2,
-            batch_type = get_batch_type(q_list)
-        )
-
-    if diagonal:
-        fn = lambda q: q.surrogate.posterior(diagonal=True)
-    else:
-        fn = lambda q: q.surrogate.posterior_blocks()
-
-    # Compute q_m_z, q_S_z
-    q_mu_z, q_var_z = batch_or_loop(
-        fn,
-        [q_list],
-        [0],
-        dim = Q,
-        out_dim=2,
-        batch_type = get_batch_type(q_list)
-    )
-
-    # each component returns rank [3, 4]. Remove the extra dimension and fix ordering.
-    q_mu_z = np.transpose(q_mu_z[..., 0], [1, 0, 2])
-    q_var_z = np.transpose(q_var_z[:, :, 0, ...], [1, 0, 2, 3])
-
-    if _ensure_str(parameterisation) == 'NG_Moment':
-        lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_to_lambda))(Y_tilde_arr, V_tilde_arr)
-    elif _ensure_str(parameterisation) == 'NG_Precision':
-        lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_precision_to_lambda))(Y_tilde_arr, V_tilde_arr)
-    else:
-        raise RuntimeError()
-
-    # convert Y, V to natural parameters
-
-    return raw_Y, lambda_1_arr, lambda_2_arr, q_mu_z, q_var_z
-
-def _get_marginals(model):
-    q_m, q_S = evoke('variational_params', model.approximate_posterior, model.likelihood, model.prior.base_prior, model.inference.whiten)(
-        model.data, model.approximate_posterior, model.likelihood, model.prior, model.inference.whiten
-    )
-
-    q_f_mu, q_f_var = evoke('marginal', model.approximate_posterior, model.likelihood, model.prior, whiten=model.inference.whiten)(
-        model.data, q_m, q_S, model.approximate_posterior, model.likelihood, model.prior, model.inference.whiten
-    )
-    return q_f_mu, q_f_var 
-
-def partial_ell(m, q_m, q_S):
-    """ Helper function to compute the expected log likelihood using the variational paramters q_m, q_S"""
-
-    return compute_expected_log_liklihood_with_variational_params(
-        m.data,
-        q_m,
-        q_S,
-        m.likelihood, 
-        m.prior,
-        m.approximate_posterior,
-        m.inference
-    )
-
-
-@dispatch('VGP', MeanFieldConjugateGaussian, NoSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     raw_Y_arr, lambda_1_arr, lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
-
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
@@ -241,7 +102,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
         model, q_mu_z, q_var_z
     )
 
-
     # Fix shapes for Natgrads
     lambda_1_arr = np.reshape(lambda_1_arr, [Q, N, B, 1])
     lambda_2_arr = np.reshape(lambda_2_arr, [Q, N, B, B])
@@ -265,7 +125,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     return new_lambda_1, new_lambda_2
 
-@dispatch('VGP', MeanFieldConjugateGaussian, SpatialSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     breakpoint()
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
@@ -310,7 +170,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     return new_Y_tilde, new_V_tilde
 
 
-@dispatch('VGP', MeanFieldConjugateGaussian, FreeSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, FreeSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     """
     Block CVI Natural Gradients
@@ -463,18 +323,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     return new_Y_tilde, new_V_tilde
 
-def partial_ell(m, q_m, q_S):
-    # this is expecting q_m, q_S to be in time-latent-space format
-    return compute_expected_log_liklihood_with_variational_params(
-        m.data,
-        q_m,
-        q_S,
-        m.likelihood, 
-        m.prior,
-        m.approximate_posterior,
-        m.inference
-    )
-
 @dispatch('VGP', FullConjugateGaussian, NoSparsity)
 @dispatch('VGP', FullConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
@@ -544,101 +392,75 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     return new_lambda_1, new_lambda_2
 
-# =================== Different Parameterisations Entry Points ====================
-# TODO: also need to use parameterisation inside the NG function, otherwise we convert from lambda->theta->lambda internally
-# TODO: refactor to remove duplicated code
-@dispatch('VGP', MeanFieldConjugateGaussian, "NG_Moment")
-def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
-    q = model.approximate_posterior
-    prior = model.prior
-    sparsity_arr = prior.base_prior.get_sparsity_list()
+# =================== Meanfield Approximate Posterior ====================
 
-    # compute natural gradient update in natural parameterisation
-    # TODO: assuming sparsity is constant across all latents
-    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
+@dispatch('VGP', MeanFieldConjugateGaussian, FullConjugateGaussian, NoSparsity)
+def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
+    """ Meanfield approximate posterior with FullConjugateGaussian compoenents """
+    raw_Y_arr, _lambda_1_arr, _lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
+
+    P, N, Q = raw_Y_arr.shape
+
+    # construct block diagonals of parameters
+
+    Y = np.reshape(
+        np.transpose(raw_Y_arr, [1, 0, 2]),
+        [N, -1]
+    )
+
+    lambda_1_arr = np.reshape(
+        np.transpose(_lambda_1_arr, [1, 0, 2]),
+        [N, -1, 1]
+    )
+    lambda_2_arr = np.transpose(_lambda_2_arr, [1, 0, 2, 3])
+    lambda_2_arr = jax.vmap(to_block_diag)(lambda_2_arr)
+    lambda_2_arr = lambda_2_arr[:, None, ...]
+
+
+    # still in time-latent-space
+    mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
+        model, q_mu_z, q_var_z
+    )
+
+    # TODO: assuming block size of 1
+    mu_grads = np.reshape(mu_grads, [q_mu_z.shape[0], -1, 1])
+    var_test = jax.vmap(to_block_diag)(var_test)[:, None, ...]
+
+    # TODO: assuming block size of 1
+    q_mu_z = np.reshape(q_mu_z, [q_mu_z.shape[0], -1, 1])
+    q_var_z = jax.vmap(to_block_diag)(q_var_z)[:, None, ...]
+
+    if enforce_psd_type in ['laplace_gauss_newton', 'laplace_gauss_newton--single', 'laplace_gauss_newton_delta_f']:
+        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
+        enforce_psd_type = None
+    else:
+        # in time-latent-space 
+        var_grads = var_test
+
+    # update for each N
+    new_lambda_1, new_lambda_2 = jax.vmap(
+        cvi_block_update,
+        [0, 0, 0, 0, 0, 0, None, None]
+    )(
+        lambda_1_arr, lambda_2_arr[:, 0, ...], q_mu_z, q_var_z[:, 0, ...], mu_grads, var_grads[:, 0, ...], beta, enforce_psd_type
+    )
+
+    # fix shapes
+    new_lambda_1 = np.transpose(np.reshape(new_lambda_1, [N, P, Q]), [1, 0, 2])
+    new_lambda_2 = jax.vmap(lambda A: get_block_diagonal(A, Q))(new_lambda_2)
+
+    return new_lambda_1[:, :, None, :], np.transpose(new_lambda_2, [1, 0, 2, 3])
+
+
+@dispatch('VGP', MeanFieldConjugateGaussian, Sparsity)
+def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
+    q = model.approximate_posterior
+    mf_component_type = q.approx_posteriors[0]
+    sparsity_arr = model.prior.base_prior.get_sparsity_list()
+
+    return evoke('natural_gradients', model, q, mf_component_type, sparsity_arr[0])(
         model, beta, enforce_psd_type, parameterisation
     )
-    # convert to mean and covariance
-    # vmap over P and blocks
-
-    # Lambda_1 is in Q x Nt x 1 x B
-    # Lambda_2 is in Q x Nt x B x B
-    theta_1, theta_2 = jax.vmap(jax.vmap(lambda_to_theta))(
-        lambda_1[:, :, 0, :][..., None], # Q x Nt x B x 1
-        lambda_2
-    )
-    # convert back to the same shame as lambda_1
-    theta_1 = theta_1[:, :, None, :, 0]
-    return theta_1, theta_2
-
-@dispatch('VGP', MeanFieldConjugateGaussian, "NG_Precision")
-def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
-    q = model.approximate_posterior
-    prior = model.prior
-    sparsity_arr = prior.base_prior.get_sparsity_list()
-
-    # compute natural gradient update in natural parameterisation
-    # TODO: assuming sparsity is constant across all latents
-    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
-        model, beta, enforce_psd_type, parameterisation
-    )
-
-    # convert to mean and precision
-    # vmap over P and blocks
-    # Lambda_1 is in Q x Nt x 1 x B
-    # Lambda_2 is in Q x Nt x B x B
-
-    theta_1, theta_2 = jax.vmap(jax.vmap(lambda_to_theta_precision))(
-        lambda_1[:, :, 0, :][..., None], # Q x Nt x B x 1
-        lambda_2
-    )
-    # convert back to the same shame as lambda_1
-    theta_1 = theta_1[:, :, None, :, 0]
-    return theta_1, theta_2
-
-@dispatch('VGP', FullConjugateGaussian, "NG_Moment")
-def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
-    q = model.approximate_posterior
-    prior = model.prior
-    sparsity_arr = prior.base_prior.get_sparsity_list()
-
-    # compute natural gradient update in natural parameterisation
-    # TODO: assuming sparsity is constant across all latents
-    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
-        model, beta, enforce_psd_type, parameterisation
-    )
-
-    theta_1, theta_2 = jax.vmap(lambda_to_theta)(
-        lambda_1, 
-        lambda_2
-    )
-
-    Y_shape = q.surrogate.data._Y.value.shape
-    theta_1 = np.reshape(theta_1, Y_shape)
-
-    return theta_1, theta_2
-
-@dispatch('VGP', FullConjugateGaussian, "NG_Precision")
-def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, prediction_samples: int = None) -> np.ndarray:
-    q = model.approximate_posterior
-    prior = model.prior
-    sparsity_arr = prior.base_prior.get_sparsity_list()
-
-    # compute natural gradient update in natural parameterisation
-    # TODO: assuming sparsity is constant across all latents
-    lambda_1, lambda_2 = evoke('natural_gradients', model, q, sparsity_arr[0])(
-        model, beta, enforce_psd_type, parameterisation
-    )
-
-    theta_1, theta_2 = jax.vmap(lambda_to_theta_precision)(
-        lambda_1, 
-        lambda_2
-    )
-
-    Y_shape = q.surrogate.data._Y.value.shape
-    theta_1 = np.reshape(theta_1, Y_shape)
-
-    return theta_1, theta_2
 
 # =================== NG Entry Points ====================
 

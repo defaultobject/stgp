@@ -34,6 +34,7 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     N = XS.shape[0]
 
@@ -108,7 +109,6 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
 
     return mu, var
-
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)

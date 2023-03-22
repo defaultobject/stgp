@@ -374,7 +374,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = get_permutated_prior(prior)
-    breakpoint()
 
     fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
 

@@ -28,6 +28,11 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
 
     prior_list = get_linear_model_part_list(prior)
 
+    if False:
+        # TODO: hack to get to work
+        if len(prior_list) == 0:
+            prior_list = [prior]
+
     # get linear part input dim
     if prior_list[0].in_block_dim is None:
         # we do not need to worry about the block size
@@ -45,7 +50,10 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
             data, q_m, q_S, approximate_posterior, likelihood, parent_prior, parent_out_block_dim, whiten
         ) 
     else:
-        mu_parent, var_parent  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, parent_prior, sparsity[0], whiten=whiten)(
+        if type(sparsity) is not list:
+            sparsity = [sparsity]
+
+        mu_parent, var_parent  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, parent_prior, sparsity[0], whiten=whiten, debug=True)(
             XS, data, q_m, q_S, approximate_posterior, likelihood, parent_prior, sparsity, parent_out_block_dim, whiten
         ) 
 

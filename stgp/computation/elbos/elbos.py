@@ -67,7 +67,28 @@ def elbo(
 
     return  ELL - KL
 
+# ============ CVI ELBOs ==================
+
 @dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
+@dispatch(Likelihood, Transform, FullConjugateGaussian)
+def cvi_kl(
+    data, likelihood: Likelihood, prior: Transform, approx_posterior: ConjugateApproximatePosterior, inference: 'Variational'
+):
+   # Compute surrogate ELL
+    ELL_surrogate = compute_expected_log_liklihood(
+        approx_posterior.surrogate.data, 
+        approx_posterior.surrogate.likelihood, 
+        prior.base_prior, 
+        approx_posterior, 
+        inference
+    )
+    ML_surrogate = - approx_posterior.surrogate.get_objective()
+
+    negKL =  - ELL_surrogate + ML_surrogate
+    return -negKL
+
+
+#@dispatch(Likelihood, Transform, ConjugateApproximatePosterior)
 def elbo(
     data, likelihood: Likelihood, prior: Transform, approx_posterior: ConjugateApproximatePosterior, inference: 'Variational'
 ):
@@ -114,7 +135,24 @@ def elbo(
 def elbo(
     data, likelihood: Likelihood, prior: Transform, approx_posterior: ConjugateApproximatePosterior, inference: 'Variational'
 ):
-    breakpoint()
+    # Compute ELL
+    ELL = compute_expected_log_liklihood(data, likelihood, prior, approx_posterior, inference)
+
+    # compute KL
+    q_list = approx_posterior.approx_posteriors
+    kl_fn = evoke('cvi_kl', likelihood, prior, q_list[0])
+
+    KL_arr =  batch_or_loop(
+        lambda qq: kl_fn(data, likelihood, prior, qq, inference),
+        [q_list],
+        [0],
+        dim=len(q_list),
+        out_dim = 1,
+        batch_type = get_batch_type(q_list)
+    )
+    KL = np.sum(KL_arr)
+
+    return ELL - KL
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(
