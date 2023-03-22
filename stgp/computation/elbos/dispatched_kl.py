@@ -19,6 +19,9 @@ from ...transforms import DataLatentPermutation, Joint
 @dispatch(FullGaussianApproximatePosterior, GPPrior, whiten=False)
 def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
+    # we must use the base prior
+    prior = prior.base_prior
+
     Z = prior.get_Z_stacked()
     Z = np.array(Z)
 

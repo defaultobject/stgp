@@ -28,7 +28,7 @@ from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional, to_block_diag
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
 from ....core import Block, get_block_dim
 
@@ -422,76 +422,27 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         out_dim  = 2,
         evoke_kwargs = {'whiten': whiten}
     )
-    breakpoint()
 
     chex.assert_rank([marginal_mu, marginal_var], [4, 5])
+    Q1, N1, P1, B1 = marginal_mu.shape
+    Q2, N2, P2, B2, _ = marginal_var.shape
+
     # fix shapes
-    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
-    #   and reshape into the proper shape
-    marginal_mu = marginal_mu[..., 0]
-    marginal_var = marginal_var[..., 0]
-
-    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-
-    out_block_dim = get_block_dim(out_block_arr[0])
-
-    chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
-    chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
-
-    return marginal_mu, marginal_var
-
-
-# Mean-field entry point
-@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)
-@dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=False)
-def _marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
-    chex.assert_rank([q_m, q_S_chol], [3, 4])
-
-    latents_arr = prior.parent
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-    sparsity_arr = prior.get_sparsity_list()
-    likelihood_arr = likelihood.likelihood_arr
-
-    num_latents = len(sparsity_arr)
-    N = data.X.shape[0]
-
-    #TODO: assuming that all likelihoods are the same
-    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
-
-    whiten_arr = [whiten for q in range(num_latents)]
-
-    # TODO: fix block sizes here
-    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
-
-    # TODO: pre-compute Kzz and Kzx so that any kernel can be used in the latents and batching can still be used.
-    # Compute q(f) for each output
-    # add additional dimension to q_m and q_S_chol to ensure rank [3, 4] after batching
-    marginal_mu, marginal_var = batch_over_module_types(
-        evoke_name = 'marginal_blocks',
-        evoke_params = [],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
-        fn_axes = [None, 1, 1, 0, 0, 0, 0, 0, 0],
-        dim = len(latents_arr),
-        out_dim  = 2,
-        evoke_kwargs = {'whiten': whiten}
+    #  each component will return rank (3, 4). stack into independent (block diagonal)
+    # convert to N - (Q - P) - B
+    marginal_mu = np.reshape(
+        np.transpose(marginal_mu, [1, 0, 2, 3]), 
+        [N1, Q1*P1, B1]
     )
-
-    chex.assert_rank([marginal_mu, marginal_var], [4, 5])
-    # fix shapes
-    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
-    #   and reshape into the proper shape
-    marginal_mu = marginal_mu[..., 0]
-    marginal_var = marginal_var[..., 0]
-
-    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-
+    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3, 4]) 
+    marginal_var = marginal_var[:, :, 0, :, :]
+    marginal_var = jax.vmap(to_block_diag)(marginal_var)
+    marginal_var = marginal_var[:, None, ...]
+    
     out_block_dim = get_block_dim(out_block_arr[0])
 
-    chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
-    chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
+    #chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
+    #chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
 
     return marginal_mu, marginal_var
 
