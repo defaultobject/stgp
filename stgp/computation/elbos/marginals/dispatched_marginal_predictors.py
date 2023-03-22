@@ -10,6 +10,8 @@ from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, gaussian_spatial_conditional
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, batched_block_diagional
 
+from .meanfield_utils import meanfield_marginal_blocks
+
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
@@ -219,45 +221,14 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
-    latents_arr = prior.latents
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-    sparsity_arr = sparsity
-    likelihood_arr = likelihood.likelihood_arr
-
-    num_latents = len(sparsity_arr)
-    N = XS.shape[0]
-
-    #TODO: assuming that all likelihoods are the same
-    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
-    whiten_arr = [whiten for q in range(num_latents)]
-    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
-
-    # Compute q(f) for each output
-    marginal_mu, marginal_var = batch_over_module_types(
-        evoke_name = 'marginal_prediction_blocks',
-        evoke_params = [],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-        fn_params = [XS, data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
-        fn_axes = [None, None, 1, 1, 0, 0, 0, 0, 0, 0],
-        dim = len(latents_arr),
-        out_dim  = 2,
-        evoke_kwargs = {'whiten': whiten}
+    marginal_mu, marginal_var = meanfield_marginal_blocks(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, 
+        XS = XS,
+        sparsity=sparsity,
+        prediction=True
     )
 
-    # fix shapes
-    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
-    #   and reshape into the proper shape
-    marginal_mu = marginal_mu[..., 0]
-    marginal_var = marginal_var[..., 0]
-
-    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-
-    # Mean field so we do not capture the correlations between Q
-    out_block_dim = get_block_dim(out_block_arr[0])
-    chex.assert_shape(marginal_mu, [N, prior.output_dim,  out_block_dim])
-    chex.assert_shape(marginal_var, [N, prior.output_dim, out_block_dim, out_block_dim])
-
+    chex.assert_rank([marginal_mu, marginal_var], [3, 4])
     return marginal_mu, marginal_var
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)

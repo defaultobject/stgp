@@ -32,6 +32,8 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
 from ....core import Block, get_block_dim
 
+from .meanfield_utils import meanfield_marginal_blocks
+
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
@@ -395,54 +397,11 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
-    latents_arr = prior.parent
-    approx_posteriors_arr = approximate_posterior.approx_posteriors
-    likelihood_arr = likelihood.likelihood_arr
-
-    num_latents = len(latents_arr)
-    N = data.X.shape[0]
-
-    #TODO: assuming that all likelihoods are the same
-    likelihood_arr = [likelihood_arr[0] for q in range(num_latents)]
-
-    whiten_arr = [whiten for q in range(num_latents)]
-
-    # TODO: fix block sizes here
-    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
-
-    # Compute q(f) for each output
-    # add additional dimension to q_m and q_S_chol to ensure rank [3, 4] after batching
-    marginal_mu, marginal_var = batch_over_module_types(
-        evoke_name = 'marginal_blocks',
-        evoke_params = [],
-        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr],
-        fn_params = [data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr,  out_block_arr, whiten_arr],
-        fn_axes = [None, 1, 1, 0, 0, 0, 0, 0],
-        dim = len(latents_arr),
-        out_dim  = 2,
-        evoke_kwargs = {'whiten': whiten}
+    marginal_mu, marginal_var = meanfield_marginal_blocks(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, prediction=False
     )
 
-    chex.assert_rank([marginal_mu, marginal_var], [4, 5])
-    Q1, N1, P1, B1 = marginal_mu.shape
-    Q2, N2, P2, B2, _ = marginal_var.shape
-
-    # fix shapes
-    #  each component will return rank (3, 4). stack into independent (block diagonal)
-    # convert to N - (Q - P) - B
-    marginal_mu = np.reshape(
-        np.transpose(marginal_mu, [1, 0, 2, 3]), 
-        [N1, Q1*P1, B1]
-    )
-    marginal_var = np.transpose(marginal_var, [1, 0, 2, 3, 4]) 
-    marginal_var = marginal_var[:, :, 0, :, :]
-    marginal_var = jax.vmap(to_block_diag)(marginal_var)
-    marginal_var = marginal_var[:, None, ...]
-    
-    out_block_dim = get_block_dim(out_block_arr[0])
-
-    #chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
-    #chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
+    chex.assert_rank([marginal_mu, marginal_var], [3, 4])
 
     return marginal_mu, marginal_var
 
