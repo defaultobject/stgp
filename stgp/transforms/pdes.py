@@ -168,7 +168,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
     def covar_blocks(self, X1, X2):
         # TODO: this might need to be permutated 
-        raise NotImplementedError() 
+        #raise NotImplementedError() 
         K_full = self.covar(X1, X2)
 
         return get_block_diagonal(
@@ -192,6 +192,13 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
         chex.assert_rank(res, 2)
         return res
+
+    def var_blocks(self, X):
+        fn = jax.vmap(lambda p,x: p.covar(x[None, :], x[None, :]), [None, 0])
+        res = fn(self, X)
+        diag_vec = np.diagonal(res, axis1=1, axis2=2)
+
+        return diag_vec.T[..., None]
 
     @property
     def base_prior(self):

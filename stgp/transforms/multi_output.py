@@ -334,7 +334,10 @@ class LMC(LMC_Base):
         if type(latents) == list:
             latents = Independent(latents)
 
-        super().__init__(latents, input_dim=latents.input_dim, output_dim=output_dim)
+        if input_dim is None:
+            input_dim = latents.input_dim
+
+        super().__init__(latents, input_dim=input_dim, output_dim=output_dim)
 
         if W is None:
             W = np.eye(self.output_dim, self.input_dim)
