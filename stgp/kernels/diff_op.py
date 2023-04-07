@@ -457,6 +457,9 @@ class RemoveDiffDim(DerivativeKernel):
 
         return K_res
 
+# ================== special cases ==============
+# required as stacking DerivativeKernel above can make jitting slow
+
 class FirstOrderDerivativeKernel_1D(DerivativeKernel):
     def __init__(
             self, 
@@ -473,9 +476,8 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
 
         The full joint kernel is given by (ignoring transposes):
 
-            K,       K(T),       K(T^2)             
-            (T)K,    (T)K(T),    (T)K(T^2)        
-            (T)^2K,  (T)^2K(T),  (T)^2K(T^2)   
+            K,       K(T)          
+            (T)K,    (T)K(T)       
 
         """
         k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
@@ -497,7 +499,6 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
         # Computes
         # (T)K(T)
         res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
-
 
         # Construct full matrix
         # K,       K(T))
@@ -525,7 +526,7 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
 
         return K_reshaped
 
-class FirstOrderDerivativeKernel_2D(DerivativeKernel):
+class FirstOrderKroneckerDerivativeKernel_2D(DerivativeKernel):
     """
     Compute first order derivates in x1 \kron x2 format.
     """
@@ -551,6 +552,7 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
             (T)(S)K, (T)(S)K(T), (T)(S)K(S), (T)(S)K(S)(T)
 
         """
+        raise NotImplementedError()
         k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
 
         # compute blocks
@@ -601,8 +603,6 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
             argnums=(outer_axis)
         )(x1, x2)[outer]
 
-        breakpoint()
-
         res_st_k = joint_diff(0, 0, 0, 1)
         res_k_st = joint_diff(1, 1, 1, 0)
 
@@ -620,8 +620,6 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
         #  K(T)(T), K(S)(T)
         #  K(S)(T), K(S)(S)
         res12 = jacfwd(grad(k, argnums=(1)), argnums=(0, 1))(x1, x2)
-
-        breakpoint()
 
 
         # Construct full matrix
@@ -1058,6 +1056,85 @@ class FirstOrderDerivativeKernel_3D(DerivativeKernel):
             [K[:, :, 1, 0], K[:, :, 1, 1], K[:, :, 1, 2], K[:, :, 1, 3]],
             [K[:, :, 2, 0], K[:, :, 2, 1], K[:, :, 2, 2], K[:, :, 2, 3]],
             [K[:, :, 3, 0], K[:, :, 3, 1], K[:, :, 3, 2], K[:, :, 3, 3]]
+        ])
+
+        return K_reshaped
+
+
+class FirstOrderDerivativeKernel_2D(DerivativeKernel):
+    """
+    Compute first order derivates 
+    """
+    def __init__(
+            self, 
+            parent_kernel = None,
+        ):
+
+        super(FirstOrderDerivativeKernel_2D, self).__init__(parent_kernel)
+        # f, df/dx1, df/dx2
+        self.output_dim = 3
+        # TODO: this is a bit confusing
+        self.d_computed = 3
+
+    def _compute_derivatives(self, x1, x2, var_fn):
+        """
+        Let x1 have columns denotes by [t, s1] then we use 
+            T, S1 to denote the differential operators d/dt, d/ds1
+
+        The full joint kernel is given by (ignoring transposes):
+
+            K,       K(T),      K(S1),       
+            (T)K,    (T)K(T),   (T)K(S1),      
+            (S1)K,   (S1)K(T),  (S1)K(S1),   
+
+        """
+        # fix shapes
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])[0, 0]
+
+        # compute blocks
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+        #scalar
+        res00 = k(x1, x2)
+
+        # D dimensional jacobian vector
+        # [(T)K, (S1)K]
+        res10 = grad(k, argnums=(0))(x1, x2)
+        # [K(T), K(S1)]^T
+        res01 = grad(k, argnums=(1))(x1, x2)
+
+        # Computes
+        # (T)K(T), (T)K(S1)
+        # (S1)K(T), (S1)K(S1)
+        res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
+
+
+        # Construct full matrix
+        # K,       K(T),       K(S1)
+        # (T)K,    (T)K(T),    (T)K(S1)
+        # (S1)K,   (S1)K(T),   (S1)K(S1)
+
+        K = np.array([
+            [res00,       res01[0],        res01[1]], # f
+            [res10[0],    res11[0, 0],     res11[0, 1]], # df/dt
+            [res10[1],    res11[1, 0],     res11[1, 1]], # df / dx1
+        ])
+
+        return K
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        #return K[:, :, 0, 0]
+        #reshape to NxN
+        K_reshaped =  np.block([
+            [K[:, :, 0, 0], K[:, :, 0, 1], K[:, :, 0, 2]],
+            [K[:, :, 1, 0], K[:, :, 1, 1], K[:, :, 1, 2]],
+            [K[:, :, 2, 0], K[:, :, 2, 1], K[:, :, 2, 2]],
         ])
 
         return K_reshaped

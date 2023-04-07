@@ -25,7 +25,7 @@ import jax.numpy as np
 from ...dispatch import dispatch, evoke
 from ...utils.batch_utils import batch_over_module_types
 from ..marginals import gaussian_conditional_diagional, gaussian_conditional
-from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec
+from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, to_block_diag
 
 # Import Types
 from ...transforms import Transform, LinearTransform, Independent, NonLinearTransform
@@ -161,8 +161,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     approx_posteriors_arr = approximate_posterior.approx_posteriors
     sparsity_arr = base_prior.get_sparsity_list()
 
-    
-
     likelihood_arr = likelihood.likelihood_arr
 
     #TODO: assuming that all likelihoods are the same
@@ -181,16 +179,27 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         out_dim  = 2
     )
 
-    #q_m = np.array(q_m)
-    #q_S = np.array(q_S)
-
     if type(q_m) is list:
         # hack for now to get models with mixed number of inducing points to work
         return q_m, q_S
 
-    # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis
-    q_m = np.transpose(q_m, [1, 0, 2])
-    q_S = np.transpose(q_S, [1, 0, 2, 3])
+    # TODO: very hacky for now
+    if q_S.shape[1] == 1:
+        # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis
+        q_m = np.transpose(q_m, [1, 0, 2])
+        q_S = np.transpose(q_S, [1, 0, 2, 3])
+
+    else:
+        L = base_prior.parent[0].output_dim
+        Q, N, LB = q_m.shape
+        q_m = np.reshape(q_m, [Q, N, L, -1])
+        B = q_m.shape[-1]
+
+        q_m = np.transpose(q_m, [1, 0, 2, 3])
+        q_m = np.reshape(q_m, [N, Q*L, B])
+
+        q_S = np.transpose(q_S, [1, 0, 2, 3])
+
 
     chex.assert_rank([q_m, q_S], [3, 4])
     return q_m, q_S

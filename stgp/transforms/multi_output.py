@@ -30,7 +30,7 @@ class GPRN_Base(NonLinearTransform):
 
     @property
     def base_prior(self):
-        return self.parent
+        return self.parent.base_prior
 
     @property
     def forward(self, f):
@@ -221,7 +221,7 @@ class LMC_Base(LinearTransform):
 
     @property
     def base_prior(self):
-        return self.parent
+        return self.parent.base_prior
 
     @property
     def W(self):

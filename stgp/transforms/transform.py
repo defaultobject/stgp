@@ -467,6 +467,11 @@ class MultiOutput(Transform):
         return self.parent[0].base_prior
 
 
+    @property
+    def hierarchical_base_prior(self):
+        return self.parent[0].hierarchical_base_prior
+
+
 class NonLinearIdentity(NonLinearTransform):
     def __init__(self, parent):
         super(NonLinearIdentity, self).__init__(parent)

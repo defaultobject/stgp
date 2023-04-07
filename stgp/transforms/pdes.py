@@ -435,3 +435,96 @@ class AllenCahn(PDE):
 
         return np.array([res])
 
+
+class _LorenzSystemX(PDE):
+    def __init__(self, latent, sigma, train=True):
+
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+
+        self.sigma_param = Parameter(
+            np.array(sigma), 
+            name ='LorenzSystem/sigma', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 6 corresponding to x, xt, y, yt, z, zt 
+        """
+        x, xt, y, yt, z, zt = f
+        sigma = self.sigma_param.value
+
+        return (xt - sigma * (y - x))[:, None]
+
+class _LorenzSystemY(PDE):
+    def __init__(self, latent, rho, train=True):
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.rho_param = Parameter(
+            np.array(rho), 
+            name ='LorenzSystem/rho', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 6 corresponding to x, xt, y, yt, z, zt 
+        """
+        x, xt, y, yt, z, zt = f
+        rho = self.rho_param.value
+
+        return (yt - x * (rho - z) + y)[:, None]
+
+class _LorenzSystemZ(PDE):
+
+    def __init__(self, latent, beta, train=True):
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.beta_param = Parameter(
+            np.array(beta), 
+            name ='LorenzSystem/beta', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 6 corresponding to x, xt, y, yt, z, zt 
+        """
+        x, xt, y, yt, z, zt = f
+        beta = self.beta_param.value
+
+        return (zt - x * y + beta * z)[:, None]
+
+
+def LorenzSystem(latent, sigma, rho, beta, train=True):
+    """
+    THe lorenz stystem describes the following system of equations
+
+        dx/dt = sig * (y-x)
+        dy/dt = x * ( rho - z) - y
+        dz/dt = x * y - beta * z
+    """
+    return [
+        _LorenzSystemX(latent[0], sigma, train=train), 
+        _LorenzSystemY(latent[1], rho, train=train), 
+        _LorenzSystemZ(latent[2], beta, train=train), 
+    ]

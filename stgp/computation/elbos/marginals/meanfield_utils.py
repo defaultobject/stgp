@@ -26,6 +26,12 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
     # TODO: fix block sizes here
     out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
 
+    N, Q, LB, _ = q_S_chol.shape
+    N, QL, B = q_m.shape
+    L = int(QL/Q)
+
+    q_m = np.reshape(q_m, [N, Q, L, B])
+    
     if not prediction:
         # Compute q(f) for each output
         # add additional dimension to q_m and q_S_chol to ensure rank [3, 4] after batching
@@ -33,7 +39,7 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
             evoke_name = 'marginal_blocks',
             evoke_params = [],
             module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr],
-            fn_params = [data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr,  out_block_arr, whiten_arr],
+            fn_params = [data, q_m, q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr,  out_block_arr, whiten_arr],
             fn_axes = [None, 1, 1, 0, 0, 0, 0, 0],
             dim = len(latents_arr),
             out_dim  = 2,
@@ -46,7 +52,7 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
             evoke_name = 'marginal_prediction_blocks',
             evoke_params = [],
             module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr],
-            fn_params = [XS, data, q_m[:, :, None, ...], q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
+            fn_params = [XS, data, q_m, q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, out_block_arr, whiten_arr],
             fn_axes = [None, None, 1, 1, 0, 0, 0, 0, 0, 0],
             dim = len(latents_arr),
             out_dim  = 2,

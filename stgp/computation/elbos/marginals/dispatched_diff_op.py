@@ -22,6 +22,7 @@ from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_permutated_prior
 from ....sparsity import SpatialSparsity, NoSparsity
+from ....data import SpatioTemporalData
 
 from .linear_marginals import linear_marginal_blocks
 
@@ -60,7 +61,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     else:
         if _ensure_str(data) == 'Data':
-            # TODO: why is this necessary?
+            # TODO: why is this necessary? :(
             q_m = np.transpose(q_m, [0, 2, 1])
             return q_m, q_S
 
@@ -147,6 +148,59 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
     chex.assert_rank([mu, var], [3, 4])
 
     return mu, var
+
+@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
+@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
+    if not prior.hierarchical:
+        chex.assert_rank([q_m, q_S], [3, 4])
+        chex.assert_equal(q_S.shape[1], 1)
+
+        # q_m is in time - latent - space format
+        N = data.N
+        Nt, _, _= q_m.shape
+        Q = prior.output_dim
+
+        # convert to time-space-latent format
+        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+        # extract block diagonals
+        mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
+        var_p_bd = batched_block_diagional(var_p, Q)
+        var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
+
+        chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+        return mu_p_bd, var_p_bd
+
+    else:
+        data_xs = SpatioTemporalData(X=XS, Y=None, sort=True)
+        if _ensure_str(data) == 'Data':
+            # TODO: why is this necessary? :(
+            q_m = np.transpose(q_m, [0, 2, 1])
+            return q_m, q_S
+
+        # compute spatial conditonal
+        sparsity =  prior.base_prior.get_sparsity_list()
+
+        out_block_dim = 1
+        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+            data_xs, 
+            sparsity[0].raw_Z, 
+            q_m, 
+            q_S[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior,
+            sparsity,
+            out_block_dim,
+            whiten
+        )
+
+        chex.assert_rank([mu, var], [3, 4])
+        return mu, var
+
+
 
 # DifferentialOperatorJoint with (non-CVI) approximate posteriors
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
