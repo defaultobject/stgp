@@ -3,6 +3,7 @@ import jax
 import jax.numpy as np
 import objax
 
+from ....utils.utils import fix_block_shapes
 from ....dispatch import dispatch, evoke, _ensure_str
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
@@ -152,6 +153,19 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, ou
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
+
+    if True:
+        # predict in time first
+        mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
+        chex.assert_rank([mu, var], [3, 4])
+
+        # fix block sizes
+        pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
+
+        q_m, q_S = pred_mu, pred_var
+
+
     if not prior.hierarchical:
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)

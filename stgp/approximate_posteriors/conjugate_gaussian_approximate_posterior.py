@@ -166,7 +166,7 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
         ])
 
 class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior):
-    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None, num_blocks: int = None):
+    def __init__(self, X, num_latents: int, block_size: int, surrogate_model: 'Model' = None, num_blocks: int = None, Y_tilde = None, V_tilde = None):
         """
         A conjugate gaussian represents the approximate posterior as:
 
@@ -200,12 +200,14 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         else:
             self.num_blocks = num_blocks
 
-        Y_tilde = 1e-5*np.ones([self.M, self.block_size])
+        if Y_tilde is None:
+            Y_tilde = 1e-5*np.ones([self.M, self.block_size])
 
-        V_tilde = np.tile(
-            np.eye(self.block_size) , 
-            [self.num_blocks, 1, 1]
-        )
+        if V_tilde is None:
+            V_tilde = np.tile(
+                np.eye(self.block_size) , 
+                [self.num_blocks, 1, 1]
+            )
 
 
         surrogate_likelihood = BlockDiagonalGaussian(

@@ -189,6 +189,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         q_m = np.transpose(q_m, [1, 0, 2])
         q_S = np.transpose(q_S, [1, 0, 2, 3])
 
+
+
     else:
         L = base_prior.parent[0].output_dim
         Q, N, LB = q_m.shape

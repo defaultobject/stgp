@@ -399,24 +399,39 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     """ Meanfield approximate posterior with FullConjugateGaussian compoenents """
     raw_Y_arr, _lambda_1_arr, _lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
 
-    P, N, Q = raw_Y_arr.shape
+    if len(raw_Y_arr.shape) == 4:
+        Q, N, L, B = raw_Y_arr.shape
 
-    # construct block diagonals of parameters
+        q_mu_z = np.reshape(q_mu_z, [N, Q*L, B])
 
-    Y = np.reshape(
-        np.transpose(raw_Y_arr, [1, 0, 2]),
-        [N, -1]
-    )
+        _lambda_1_arr = np.transpose(_lambda_1_arr, [1, 0, 2])
+        lambda_1_arr = np.reshape(_lambda_1_arr, [N, Q*L, B])
+        _lambda_2_arr = np.transpose(_lambda_2_arr, [1, 0, 2, 3])
+        lambda_2_arr = jax.vmap(to_block_diag)(_lambda_2_arr)
+        lambda_2_arr = lambda_2_arr[:, None, ...]
 
-    lambda_1_arr = np.reshape(
-        np.transpose(_lambda_1_arr, [1, 0, 2]),
-        [N, -1, 1]
-    )
-    lambda_2_arr = np.transpose(_lambda_2_arr, [1, 0, 2, 3])
-    lambda_2_arr = jax.vmap(to_block_diag)(lambda_2_arr)
-    lambda_2_arr = lambda_2_arr[:, None, ...]
+        P = Q
+        Q = L
 
+    else:
+        P, N, Q = raw_Y_arr.shape
 
+        # construct block diagonals of parameters
+
+        Y = np.reshape(
+            np.transpose(raw_Y_arr, [1, 0, 2]),
+            [N, -1]
+        )
+
+        lambda_1_arr = np.reshape(
+            np.transpose(_lambda_1_arr, [1, 0, 2]),
+            [N, -1, 1]
+        )
+        lambda_2_arr = np.transpose(_lambda_2_arr, [1, 0, 2, 3])
+        lambda_2_arr = jax.vmap(to_block_diag)(lambda_2_arr)
+        lambda_2_arr = lambda_2_arr[:, None, ...]
+
+    
     # still in time-latent-space
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z

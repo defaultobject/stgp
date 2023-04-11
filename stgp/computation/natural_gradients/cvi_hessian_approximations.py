@@ -13,13 +13,15 @@ from functools import partial
 
 from ... import settings
 from ...utils.nan_utils import get_same_shape_mask 
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo, mv_block_monte_carlo_list
+
+from ...dispatch import _ensure_str
 
 # Types imports
 from ...approximate_posteriors import ConjugateApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullConjugateGaussian, FullGaussianApproximatePosterior, DataLatentBlockDiagonalApproximatePosterior, ApproximatePosterior, DiagonalGaussianApproximatePosterior, MeanFieldConjugateGaussian
@@ -50,7 +52,7 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False):
         data.batch()
 
     # compute the marginal q(f)
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=True)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
     # If the model is Multioutput q_f_mu will be a list and each element of the list
@@ -175,10 +177,7 @@ def gauss_newton_delta_f(u, S, model):
   
     S_f, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
     var_grads = vjp_fn(J_list)[0]
-    approx_hessian = - 0.5 * var_grads[:, 0, ...]
-
-    # fix shape
-    approx_hessian = approx_hessian[:, None, ...]
+    approx_hessian = - 0.5 * var_grads
     chex.assert_rank(approx_hessian, 4)
 
     return approx_hessian
@@ -188,12 +187,42 @@ def laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_appr
     q = model.approximate_posterior
 
 
-    # get parameters of q(u) in time-latent-space order
-    q_mu_z, q_var_z = q.surrogate.posterior_blocks()
-    chex.assert_rank([q_mu_z, q_var_z], [3, 4])
+    if _ensure_str(q) == 'MeanFieldConjugateGaussian':
+        # block diagonal
+
+
+        approx_posteriors = q.approx_posteriors
+        q_mu_z, q_var_z = batch_or_loop(
+            lambda q: q.surrogate.posterior_blocks(),
+            [approx_posteriors],
+            [0],
+            dim = len(approx_posteriors),
+            out_dim=2,
+            batch_type = get_batch_type(approx_posteriors)
+        )
+
+        # fix shapes
+        Q, N, L, B = q_mu_z.shape
+        q_mu_z = np.transpose(q_mu_z, [1, 0, 2, 3])
+        q_mu_z = np.reshape(q_mu_z, [N, Q*L, B])
+
+        q_var_z = np.transpose(q_var_z[:, :, 0, ...], [1, 0, 2, 3])
+        #q_var_z = jax.vmap(to_block_diag)(q_var_z)
+        #q_var_z = q_var_z[:, None, ...]
+        
+    else:
+        # get parameters of q(u) in time-latent-space order
+        q_mu_z, q_var_z = q.surrogate.posterior_blocks()
+        chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # delta u
     approx_hessian = gauss_newton_delta_f(q_mu_z, q_var_z , model)
+
+    if _ensure_str(q) == 'MeanFieldConjugateGaussian':
+        # fix shapes
+        approx_hessian = jax.vmap(to_block_diag)(approx_hessian)
+        approx_hessian = approx_hessian[:, None, ...]
+        breakpoint()
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian
 
