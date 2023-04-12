@@ -15,12 +15,13 @@ from ..common_fixtures import regression_2d_data, regression_1d_data, regression
 from stgp.models import GP
 from stgp.kernels import Matern32, SpatioTemporalSeperableKernel, ScaledMatern32, ScaleKernel
 from stgp.data import Data, SpatioTemporalData, TemporalData
-from stgp.likelihood import Gaussian, ReshapedGaussian, DiagonalGaussian, BlockDiagonalGaussian, ReshapedDiagonalGaussian
+from stgp.likelihood import Gaussian, ReshapedGaussian, DiagonalGaussian, BlockDiagonalGaussian, ReshapedDiagonalGaussian, ProductLikelihood
 from stgp.transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
 from stgp.transforms import Independent
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel
 from stgp.transforms.pdes import DifferentialOperatorJoint
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior
+from stgp.means.mean import FirstOrderDerivativeMean
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior, MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, FullConjugateGaussian
 from stgp.trainers import NatGradTrainer
 
 from stgp.zoo.sde_diff import diff_sparse_sde_vgp
@@ -622,3 +623,180 @@ def test__2d_sde_vgp_gps_with_spatial_diff_obs_match(seed, N, NS, regression_2d_
     np.testing.assert_allclose(np.sum(batch_var), np.sum(vgp_var), rtol=1e-3)
     #np.testing.assert_allclose(np.sum(batch_var), np.sum(sparse_vgp_var), rtol=1e-3)
 
+
+@pytest.mark.parametrize('seed', [0])
+@pytest.mark.parametrize('N', [20])
+@pytest.mark.parametrize('NS', [100])
+@pytest.mark.parametrize('kernel_ls', [0.1])
+@pytest.mark.parametrize('kernel_var', [0.6])
+@pytest.mark.parametrize('lik_var', [[0.05, 1.3]])
+def test__1d_multi_latent_recover_independent(seed, N, NS, regression_1d_diff_obs_data, kernel_ls, kernel_var, lik_var):
+    # ==== Arrange ====
+    X, Y1 = regression_1d_diff_obs_data
+    Y2 = 5*np.copy(Y1)
+    Y = np.hstack([Y1, Y2])
+
+
+    XS = np.linspace(np.min(X), np.max(X), NS)[:, None]
+
+    # shuffle the rows of XS
+    np.random.seed(seed)
+    np.random.shuffle(XS)
+
+    stgp.settings.jitter = 1e-7
+
+    def separate_batch_model(X, Y):
+        base_kernel = ScaleKernel(
+            Matern32(input_dim = 1, lengthscales = [kernel_ls], active_dims=[0])  
+        , kernel_var)
+
+        # only compute derivate kernel on the temporal dimension (axis=0)
+        kern = FirstOrderDerivativeKernel(base_kernel, input_index=0)
+
+        diff_op_prior = DifferentialOperatorJoint(
+            GP(
+                sparsity=stgp.sparsity.NoSparsity(Z=X), 
+                kernel = base_kernel
+            ),
+            kernel = kern,
+            is_base = True,
+            has_parent=False
+        )
+
+
+        # Create Model
+        m = stgp.models.GP(
+            data = stgp.data.Data(X, Y),
+            prior = diff_op_prior,
+            likelihood = [Gaussian(lik_var[0]), Gaussian(lik_var[1])],
+        )
+
+        return m
+
+    def independent_batch_model(X, Y):
+        base_kernel = ScaleKernel(
+            Matern32(input_dim = 1, lengthscales = [kernel_ls], active_dims=[0])  
+        , kernel_var)
+
+        # only compute derivate kernel on the temporal dimension (axis=0)
+        kern = FirstOrderDerivativeKernel(base_kernel, input_index=0)
+
+        diff_op_prior = DifferentialOperatorJoint(
+            GP(
+                sparsity=stgp.sparsity.NoSparsity(Z=X), 
+                kernel = base_kernel
+            ),
+            kernel = kern,
+            is_base = True,
+            has_parent=False
+        )
+
+        prior = Independent([diff_op_prior, diff_op_prior])
+
+
+        # Create Model
+        m = stgp.models.GP(
+            data = stgp.data.Data(X, Y),
+            prior = prior,
+            likelihood = [ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])]), ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])])],
+        )
+
+        return m
+
+    def multi_latent_cvi_model(X, Y):
+        Z = np.linspace(0, 1, 5)[:, None]
+        P = 2
+        #sparsity=stgp.sparsity.FullSparsity(Z=Z)
+        sparsity=stgp.sparsity.NoSparsity(Z=X)
+        base_kernel_1d = ScaledMatern32(input_dim = 1, lengthscales = [kernel_ls], variance=kernel_var)
+
+        base_gp = GP(
+            sparsity=sparsity, 
+            kernel = base_kernel_1d
+        )
+
+        kern = FirstOrderDerivativeKernel(base_kernel_1d, parent_output_dim=base_gp.output_dim)
+
+        prior = Independent([
+            DifferentialOperatorJoint(
+                base_gp,
+                kernel = kern,
+                is_base = True,
+                has_parent=False,
+                hierarchical = False
+            )
+            for p in range(P)
+        ])
+
+        st_data = stgp.data.MultiOutputTemporalData(X, Y)
+        N = X.shape[0]
+        q = MeanFieldConjugateGaussian(
+            approximate_posteriors = [
+                FullConjugateGaussian(
+                    X = st_data._X,
+                    num_latents =  2,
+                    block_size= 2,
+                    num_blocks = st_data.Nt,
+                    surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                        # in state-space format
+                        data = stgp.data.MultiOutputTemporalData(X=X, Y=np.reshape(Y, [st_data.Nt, 2, 1]), sort=False), # we need gradients Y so set to be trainable
+                        likelihood=likelihood, 
+                        prior=LTI_SDE_Full_State_Obs(Independent([prior.parent[p].parent])),
+                        inference='Sequential',
+                        parallel=False
+                    )
+                )
+                for p in range(P)
+            ]
+        )
+
+        if False :
+            likelihood_arr = [
+                ProductLikelihood([Gaussian(lik_var[0])]), 
+                ProductLikelihood([Gaussian(lik_var[1])]), 
+                ProductLikelihood([Gaussian(lik_var[0])]), 
+                ProductLikelihood([Gaussian(lik_var[1])]),
+            ]
+        elif True:
+            likelihood_arr = [Gaussian(lik_var[0]), Gaussian(lik_var[1]), Gaussian(lik_var[0]), Gaussian(lik_var[1])]
+        else:
+            likelihood_arr = [
+                ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])]), 
+                ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])])
+            ]
+
+        # Create Model
+        m = stgp.models.GP(
+            data = st_data,
+            prior = prior,
+            likelihood =likelihood_arr,
+            inference='Variational',
+            approximate_posterior = q
+        )
+
+        return m
+
+    m1_batch = separate_batch_model(X, Y1)
+    m2_batch = separate_batch_model(X, Y2)
+    m1_ind = independent_batch_model(X, Y)
+    m_cvi = multi_latent_cvi_model(X, Y)
+
+    NatGradTrainer(m_cvi).train(1.0, 1)
+
+    # assert same log marginal likelihood
+    np.testing.assert_allclose(
+        np.sum(m_cvi.get_objective()), 
+        np.sum(m1_batch.get_objective()+m2_batch.get_objective()), 
+    rtol=1e-5)
+
+    m1_batch_pred_mu, m1_batch_pred_var = m1_batch.predict_f(XS)
+    m2_batch_pred_mu, m2_batch_pred_var = m2_batch.predict_f(XS)
+    m_batch_pred_mu = np.hstack([np.squeeze(m1_batch_pred_mu), np.squeeze(m2_batch_pred_mu)])
+    m_batch_pred_var = np.hstack([np.squeeze(m1_batch_pred_var), np.squeeze(m2_batch_pred_var)])
+
+    m_cvi_pred_mu, m_cvi_pred_var = m_cvi.predict_f(XS)
+    m_cvi_pred_mu = np.squeeze(m_cvi_pred_mu)
+    m_cvi_pred_var = np.diagonal(m_cvi_pred_var, axis1=2, axis2=3)[:, 0, :]
+
+    np.testing.assert_allclose( np.sum(m_cvi_pred_mu), np.sum(m_batch_pred_mu), rtol=1e-5)
+    np.testing.assert_allclose( np.sum(m_batch_pred_var), np.sum(m_cvi_pred_var), rtol=1e-5)

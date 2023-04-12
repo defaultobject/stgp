@@ -453,6 +453,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
     except DispatchNotFound as e:
+        breakpoint()
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 

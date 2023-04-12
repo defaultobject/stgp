@@ -52,7 +52,7 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False):
         data.batch()
 
     # compute the marginal q(f)
-    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=True)(
+    q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=False)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
     # If the model is Multioutput q_f_mu will be a list and each element of the list
@@ -164,7 +164,7 @@ def gauss_newton_delta_f(u, S, model):
 
         return J_list
 
-    if False:
+    if True:
         J_list = J_f(q_f_mu)
     else:
         J_list = mv_block_monte_carlo_list(
@@ -222,7 +222,6 @@ def laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_appr
         # fix shapes
         approx_hessian = jax.vmap(to_block_diag)(approx_hessian)
         approx_hessian = approx_hessian[:, None, ...]
-        breakpoint()
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian
 

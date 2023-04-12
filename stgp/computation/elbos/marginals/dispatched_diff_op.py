@@ -63,7 +63,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     else:
         if _ensure_str(data) == 'Data':
             # TODO: why is this necessary? :(
-            q_m = np.transpose(q_m, [0, 2, 1])
+            #q_m = np.transpose(q_m, [0, 2, 1])
             return q_m, q_S
 
         # compute spatial conditonal
