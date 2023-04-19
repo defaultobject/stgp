@@ -1,5 +1,6 @@
 from . import Transform, Independent
 from ..computation.permutations import data_order_to_output_order
+from ..computation.matrix_ops import to_block_diag
 
 import jax.numpy as np
 
@@ -87,14 +88,12 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
     def temporal_output_dim(self):
         """ Returns the full state.  """
         return self._state_space_dim
-        #return 3
 
     @property
     def _output_dim(self):
         return self.temporal_output_dim * self.spatial_output_dim
 
     def H(self, x, X_s, t):
-
         # Observe both f and df
         H_t = np.eye(self._state_space_dim)
 
@@ -104,16 +103,32 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             return H_t
 
         # need to permute from latent-space-state to latent-state-space
-        # need to permute from ds-space-df to df-ds-space
-        # assuming that latent = 1 and we are treating state as latent
+        # need to permute from latent-ds-space-df to latent-df-ds-space
+        Ns = X_s.shape[0]
+        Q = len(self.gp.state_space_dim())
+        dt = self.gp.state_space_dim()[0]
+        ds = self.spatial_output_dim
 
-        # the latent-data is (diff_s x space) x diff_t
-        # is (Ns) x P
-        Ns = self.spatial_output_dim * X_s.shape[0]
-        P = self.temporal_output_dim
+        # convert from [Q, ds, ns, dt] -> [Q, dt, ds, ns]
+        H = to_block_diag([
+            data_order_to_output_order(ds, dt * Ns).T 
+            for q in range(Q)
+        ])
 
-        # the result will now be (diff_t x diff_s x space)
-        H = data_order_to_output_order(P, Ns).T
+
+
+        # convert from [ds, ns, df, Q] -> 
+
+        
+        if False:
+            # the latent-data is (diff_s x space) x diff_t
+            # is (Ns) x P
+            Ns = self.spatial_output_dim * X_s.shape[0]
+            P = self.temporal_output_dim
+
+            # the result will now be (diff_t x diff_s x space)
+            H = data_order_to_output_order(P, Ns).T
+
 
         return H
 

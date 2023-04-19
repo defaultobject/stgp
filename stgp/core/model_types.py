@@ -1,9 +1,10 @@
 """ Helper functions and classes for classifying if a model is linear or non linear """
 from .models import Model
 from ..transforms import LinearTransform, NonLinearTransform, MultiOutput, Joint, Independent, CompositeTransform
-from ..transforms import JointDataLatentPermutation, IndependentDataLatentPermutation
+from ..transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, IndependentJointDataLatentPermutation
 from .gp_prior import GPPrior
 from . import Block, get_block_dim
+from ..dispatch import _ensure_str
 
 class LinearModel(Model):
     def __init__(self, prior):
@@ -162,10 +163,11 @@ def get_non_linear_model_part(prior) -> list:
 def get_permutated_prior(prior):
     base_prior = prior.base_prior
     if isinstance(base_prior, Joint):
-        base_prior = JointDataLatentPermutation(base_prior)
+        return  JointDataLatentPermutation(base_prior)
     elif isinstance(base_prior, Independent):
-        base_prior = IndependentDataLatentPermutation(base_prior)
-    else:
-        raise RuntimeError()
+        if _ensure_str(base_prior.parent[0]) ==  GPPrior:
+            return  IndependentDataLatentPermutation(base_prior)
+        else:
+            return  IndependentJointDataLatentPermutation(base_prior)
+    raise RuntimeError()
 
-    return base_prior

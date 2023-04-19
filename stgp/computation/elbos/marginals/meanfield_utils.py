@@ -8,7 +8,15 @@ from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diag
 from ....core import Block, get_block_dim
 
 def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten: bool, XS=None, sparsity=None, prediction=True):
-    """ Helper function to collect marginals across a mean-field approximate posterior"""
+    """ 
+    Helper function to collect marginals across a mean-field approximate posterior
+    
+    This function only accepts an independent prior as we simply batch over the posterior-prior pairs
+    and then combine the results into a block diagonal approximate posterior
+
+    NOTE: we combine into a block diagonal matrix as there is no guarentee that the ELL will 
+        decompose across these latents and so for simplicty we just assume that it wont
+    """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     latents_arr = prior.parent
@@ -60,25 +68,33 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
         )
 
     chex.assert_rank([marginal_mu, marginal_var], [4, 5])
-    Q1, N1, P1, B1 = marginal_mu.shape
-    Q2, N2, P2, B2, _ = marginal_var.shape
+    Q1, N1, LB_mu, _ = marginal_mu.shape
+    Q, N, _, LB, _ = marginal_var.shape
+
+    chex.assert_equal(LB_mu, LB)
+    chex.assert_equal(Q, Q1)
+    chex.assert_equal(N, N1)
 
     # fix shapes
     #  each component will return rank (3, 4). stack into independent (block diagonal)
-    # convert to N - (Q - P) - B
+    # convert to N - (Q - P - B ) - 1
     marginal_mu = np.reshape(
         np.transpose(marginal_mu, [1, 0, 2, 3]), 
-        [N1, Q1*P1, B1]
+        [N, Q*LB, 1]
     )
+    # Convert to [N, Q, 1, LB, LB]
     marginal_var = np.transpose(marginal_var, [1, 0, 2, 3, 4]) 
+    # Remove reduant dim ->  [N, Q, LB, LB]
     marginal_var = marginal_var[:, :, 0, :, :]
+    # compute block diagonal ->  [N,QPB, QPB]
     marginal_var = jax.vmap(to_block_diag)(marginal_var)
+    # add back missing dim  ->  [N,1, QPB, QPB]
     marginal_var = marginal_var[:, None, ...]
     
     out_block_dim = get_block_dim(out_block_arr[0])
 
-    #chex.assert_shape(marginal_mu, [N, num_latents,  out_block_dim])
-    #chex.assert_shape(marginal_var, [N, num_latents, out_block_dim, out_block_dim])
+    chex.assert_shape(marginal_mu, [N, Q*LB,  1])
+    chex.assert_shape(marginal_var, [N, 1, Q*LB,  Q*LB])
 
     return marginal_mu, marginal_var
 

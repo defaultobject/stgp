@@ -27,6 +27,58 @@ from ....data import SpatioTemporalData
 
 from .linear_marginals import linear_marginal_blocks
 
+@dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, NoSparsity, whiten=False)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    """
+    Args:
+        q_m: [Nt, Q - L - Ns, 1]
+        q_S: [Nt, 1, Q - L - Ns, Q - L - Ns]
+    """
+
+    #dummy base prior
+    base_prior = prior.parent[0]
+
+    QL = prior.output_dim
+    L = base_prior.output_dim
+
+
+    # TODO: figure out the format of q_m and q_S
+    if (out_block == Block.FULL or out_block == Block.BLOCK):
+        mu_p = jax.vmap(lambda a: permute_vec(a, QL))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], QL))(q_S)
+
+        var_p = var_p[:, None, ...]
+        return mu_p, var_p
+    elif (out_block == Block.LATENT):
+        if not base_prior.hierarchical:
+            chex.assert_rank([q_m, q_S], [3, 4])
+            chex.assert_equal(q_S.shape[1], 1)
+
+            # q_m is in time - latent - space format
+            N = data.N
+            Nt, _, _= q_m.shape
+            Q = prior.output_dim
+            _, _, QNs, _ = q_S.shape
+
+            # ensure correct dim
+            q_m = np.reshape(q_m, [Nt, QNs, 1])
+
+            # convert to time-space-latent format
+            mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
+
+            # extract block diagonals
+            mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
+            var_p_bd = batched_block_diagional(var_p, Q)
+            var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
+
+            chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+            return mu_p_bd, var_p_bd
+
+    raise NotImplementedError()
+
+
+
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if (out_block == Block.FULL or out_block == Block.BLOCK):

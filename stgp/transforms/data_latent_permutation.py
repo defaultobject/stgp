@@ -172,6 +172,9 @@ class DataLatentPermutation(LinearTransform):
 class IndependentDataLatentPermutation(DataLatentPermutation):
     pass
 
+class IndependentJointDataLatentPermutation(DataLatentPermutation):
+    pass
+
 class JointDataLatentPermutation(DataLatentPermutation):
     """
     Converts a prior from latent-data format to data-latent format.

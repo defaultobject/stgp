@@ -37,7 +37,7 @@ from .meanfield_utils import meanfield_marginal_blocks
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
 from ....transforms.pdes import DifferentialOperatorJoint
-from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation, IndependentJointDataLatentPermutation
 from ....transforms.latent_variable import LatentVariable
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior, FullConjugateGaussian
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
@@ -58,6 +58,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     
     q_m is in time-(space x)latent format. 
     """
+    breakpoint()
     chex.assert_rank([q_m, q_S], [3, 4])
 
     N = q_m.shape[0]
@@ -165,15 +166,30 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return q_m, q_S
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=False)
+
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, 'DifferentialOperatorJoint', 'NoSparsity', whiten=False)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, 'IndependentDataLatentPermutation', 'NoSparsity', whiten=False)
+# TODO: check this
+#@dispatch(FullGaussianApproximatePosterior, Likelihood, 'JointDataLatentPermutation', 'NoSparsity', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """
     The approximate posterior (and prior) is stored in latent-data format, this is because the prior is generally block diagional.
     However when computing the expected log likelihood, the likelihood decomposes across data points and hence we need in data-latent format.
+
+    q_m, q_S_chol are paramters of a full Gaussian posterior and so is dense:
+        q_m: [QN, 1, 1]
+        q_S_chol: [1, 1, QN, QN]
+
+    NOTE: this method is only for IndependentDataLatentPermutation, this functions are simply Independent single output GPs
     """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
+    # needed as a fix for the DifferentialOperatorJoint case
+    prior = get_permutated_prior(prior)
+
+    # [QN , 1]
     q_m = q_m[:, 0, ...]
+    # [QN , QN]
     q_S_chol = q_S_chol[0, 0, ...]
 
     assert isinstance(prior, DataLatentPermutation)
@@ -194,15 +210,21 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     # X is shaped so that all outputs are grouped together
     # We need to instead group by each input
 
+    # [NQ, 1]
     m_p = prior.permute_vec(m, num_latents)
+    # [NQ, NQ]
     S_p = prior.permute_mat(S, num_latents)
 
+    # [N, Q]
     m_p = np.reshape(m_p, [-1, num_latents])
 
     # Extract block diagonals
+    # [N, Q, Q]
     S_blocks = get_block_diagonal(S_p, num_latents)
 
+    # [N, Q, 1]
     m_p = m_p[..., None]
+    # [N, 1, Q, Q]
     S_blocks = S_blocks[:, None, ...]
 
     # Assert shapes are correct
@@ -379,18 +401,28 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
-    breakpoint()
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
 
     base_prior = get_permutated_prior(prior)
 
-    fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
+    # TODO: refactor to make the structure the same
+    if isinstance(base_prior, IndependentJointDataLatentPermutation):
+        # we need to a special structure that unpacks the prior 
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, prior.parent[0], sparsity_arr[0], whiten=whiten)
 
-    mu, var = fn(
-        data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten
-    ) 
+        # we dont need to pass through the permutated prior as this will be handled down stream
+        mu, var = fn(
+            data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_arr, out_block, whiten
+        ) 
+
+    else:
+        fn = evoke('marginal_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
+
+        mu, var = fn(
+            data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten
+        ) 
     chex.assert_rank([mu, var], [3, 4])
 
     return mu, var

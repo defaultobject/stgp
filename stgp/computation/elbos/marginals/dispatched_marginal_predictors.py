@@ -14,7 +14,7 @@ from .meanfield_utils import meanfield_marginal_blocks
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate, Joint
-from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation
+from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation, IndependentJointDataLatentPermutation
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms.latent_variable import LatentVariable
 from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateGaussian, FullConjugateGaussian, ConjugatePrecisionGaussian
@@ -110,8 +110,7 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, 'DifferentialOperatorJoint', 'NoSparsity', whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DataLatentPermutation, Sparsity, whiten=False)
@@ -213,7 +212,33 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     return _m, _S
 
 
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
+@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
+    # TODO: assuming that sparsity is the same across latents
+    sparsity_arr = prior.base_prior.get_sparsity_list()
+    base_prior = get_permutated_prior(prior)
 
+
+    # TODO: refactor to make the structure the same
+    if isinstance(base_prior, IndependentJointDataLatentPermutation):
+        # we need to a special structure that unpacks the prior 
+        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior, prior.parent[0], sparsity_arr[0], whiten=whiten)
+
+        # we dont need to pass through the permutated prior as this will be handled down stream
+        marginal_mu, marginal_var = fn(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_arr, out_block, whiten
+        ) 
+
+    else:
+        fn = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, base_prior, sparsity_arr[0], whiten=whiten)
+
+        marginal_mu, marginal_var = fn(
+            XS, data, q_m, q_S_chol, approximate_posterior, likelihood, base_prior, sparsity_arr, out_block, whiten
+        ) 
+    chex.assert_rank([marginal_mu, marginal_var], [3, 4])
+
+    return marginal_mu, marginal_var
 
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
@@ -230,6 +255,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 
     chex.assert_rank([marginal_mu, marginal_var], [3, 4])
     return marginal_mu, marginal_var
+
+
+
 
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)

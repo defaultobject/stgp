@@ -107,6 +107,8 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     Ksz_full = to_block_diag(Ksz)
     Kzz_full = to_block_diag(Kzz)
 
+    Q = Kzz.shape[0]
+
     # if the temporal kernel is a derivate kernel this will return a rank 3 matrix
     if len(Ktt.shape) == 2:
         f_only_flag: bool = True
@@ -135,7 +137,9 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
 
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])
-    mean_xs = np.zeros([prior.temporal_output_dim * Kss_full.shape[0], 1])
+
+    # prior.temporal_output_dim actually returns the state dim across all latents
+    mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[0], 1])
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(

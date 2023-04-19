@@ -443,8 +443,11 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     model_type = get_model_type(prior)
 
     try:
-        # see if there is a closed form expression
         # if model is non linear then there will be no closed form expressions
+        if isinstance(model_type, NonLinearModel):
+            raise DispatchNotFound('Nonlinear Model Required ELL approximation')
+
+        # see if there is a closed form expression
         ell = evoke('single_output_expected_log_likelihood', likelihood, block_type)(
            X, Y, q_f_mu, q_f_var, likelihood, block_type
         )
