@@ -33,6 +33,13 @@ from ...transforms import MultiOutput
 from .cvi_nat_grad_utils import reparametise_vec_grad, _get_fp_params, _get_mf_params, _get_marginals, partial_ell
 
 
+GAUSS_NEWTON_ENFORCE_TYPES = [
+    'laplace_gauss_newton',
+    'laplace_gauss_newton_delta_u_delta_f',
+    'laplace_gauss_newton_delta_f',
+    'laplace_gauss_newton_delta_u',
+]
+
 @partial(jit, static_argnums=(7))
 def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd_type):
     """
@@ -363,7 +370,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
-    if enforce_psd_type in ['laplace_gauss_newton', 'laplace_gauss_newton--single', 'laplace_gauss_newton_delta_f']:
+    if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
         var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
         enforce_psd_type = None
     else:
@@ -405,16 +412,14 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
         q_mu_z = np.reshape(q_mu_z, [N, Q*L, B])
 
         _lambda_1_arr = np.transpose(_lambda_1_arr, [1, 0, 2])
-        lambda_1_arr = np.reshape(_lambda_1_arr, [N, Q*L, B])
+        # TODO: this wont work with an actual batch size
+        lambda_1_arr = np.reshape(_lambda_1_arr, [N, Q*L*B, 1])
         _lambda_2_arr = np.transpose(_lambda_2_arr, [1, 0, 2, 3])
         lambda_2_arr = jax.vmap(to_block_diag)(_lambda_2_arr)
         lambda_2_arr = lambda_2_arr[:, None, ...]
-
-        P = Q
-        Q = L
-
     else:
         P, N, Q = raw_Y_arr.shape
+        L = 1
 
         # construct block diagonals of parameters
 
@@ -445,12 +450,13 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     q_mu_z = np.reshape(q_mu_z, [q_mu_z.shape[0], -1, 1])
     q_var_z = jax.vmap(to_block_diag)(q_var_z)[:, None, ...]
 
-    if enforce_psd_type in ['laplace_gauss_newton', 'laplace_gauss_newton--single', 'laplace_gauss_newton_delta_f']:
+    if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
         var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
         enforce_psd_type = None
     else:
         # in time-latent-space 
         var_grads = var_test
+
 
     # update for each N
     new_lambda_1, new_lambda_2 = jax.vmap(
@@ -461,8 +467,18 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     )
 
     # fix shapes
-    new_lambda_1 = np.transpose(np.reshape(new_lambda_1, [N, P, Q]), [1, 0, 2])
-    new_lambda_2 = jax.vmap(lambda A: get_block_diagonal(A, Q))(new_lambda_2)
+    if True:
+        new_lambda_1 = np.transpose(np.reshape(new_lambda_1, [N, Q, L, B]), [1, 0, 2, 3])
+        new_lambda_2 = jax.vmap(lambda A: get_block_diagonal(A, L*B))(new_lambda_2)
+        new_lambda_2 = np.transpose(new_lambda_2, [1, 0, 2, 3])
+
+        return new_lambda_1, new_lambda_2
+    if False:
+        P = Q
+        Q = L
+
+        new_lambda_1 = np.transpose(np.reshape(new_lambda_1, [N, P, Q*L*B]), [1, 0, 2])
+        new_lambda_2 = jax.vmap(lambda A: get_block_diagonal(A, Q))(new_lambda_2)
 
     return new_lambda_1[:, :, None, :], np.transpose(new_lambda_2, [1, 0, 2, 3])
 

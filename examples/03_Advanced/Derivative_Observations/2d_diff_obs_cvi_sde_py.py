@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 import jax.numpy as jnp
 
 import objax
@@ -14,9 +14,9 @@ from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.kernels.diff_op import FirstOrderDerivativeKernel
-from stgp.likelihood import Gaussian, BlockDiagonalGaussian
+from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
-from stgp.transforms import Independent
+from stgp.transforms import Independent, OutputMap, MultiOutput
 from stgp.transforms.pdes import DifferentialOperatorJoint
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
 from stgp.data import Data
@@ -95,7 +95,6 @@ latent_diff_op = DifferentialOperatorJoint(
     has_parent = False
 )
 
-lik = [Gaussian(0.1) for q in range(Q)]
 
 # use full gaussian for consistency
 B = data.Ns * Q
@@ -114,17 +113,41 @@ q = FullConjugateGaussian(
     )
 )
 
+prior_outputs = OutputMap(
+    latent_diff_op,
+    [
+        [0], 
+        [1], 
+        [2]
+    ]
+)
+
+
+prior = MultiOutput(prior_outputs)
+
+Y = np.hstack([Y[:, [0]], Y[:, [1]], Y[:, [2]]])
+
+print('X: ', X.shape)
+print('Y: ', Y.shape, np.nanmean(Y, axis=0))
+
+# there are 3 outputs f, df/ds, df/dt
+Q = Y.shape[1]
+data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
+
+lik = [ProductLikelihood([Gaussian(0.1)]) for q in range(Q)]
+
+
 # Create Model
 m = stgp.models.GP(
     data = data,
-    prior = latent_diff_op,
+    prior = prior,
     likelihood = lik,
     inference='Variational',
     approximate_posterior = q
 )
 print(m.get_objective())
 
-NatGradTrainer(m).train(1.0, 1)
+NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u_delta_f').train(1.0, 1)
 
 print(m.get_objective())
 

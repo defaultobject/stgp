@@ -6,7 +6,7 @@ By convention in the single output / diagonal settings the output will be:
     var: M x 1
 
 Let B = the block size, N_b the number of blocks then In the multi-output/block diagonal setting: 
-    mu: N_b x B x Q
+    mu: N_b x B*Q x 1
     var: N_b x B*Q x B*Q
 
 When required we enforce these conventations through assertions.
@@ -58,6 +58,8 @@ from ...sparsity import FreeSparsity, Sparsity
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', 'SpatialSparsity', False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """ For computational reasons we return S_chol """
+
+    # M x 1, M x M
     mu, var_chol =  approximate_posterior.m, approximate_posterior.S_chol
 
     #add missing dimension
@@ -73,6 +75,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
     """
     With no sparsity there is no conditional we need to integrate through in the 
         approxiamte posterior so we directly return the maginal predictions at training data points 
+
+    This is only valid in the single latent function case
 
     output:
         mu: Mx1
@@ -142,7 +146,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     ) 
     chex.assert_rank([mu, var], [2, 3])
 
-    # add latentmissing dimensions
+
+    # there is only one latent gp so just add the single latent missing dimensions 
     mu = mu[:, :, None]
     var = var[:, None, ...]
 
@@ -153,7 +158,19 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, False)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, True)
 def variational_params(data, approximate_posterior, likelihood, prior, whiten):
-    """  Mean-field approximate posterior setting. Collect parameters across all components q(u_q) """
+    """  
+    Mean-field approximate posterior setting. Collect parameters across all components q(u_q)
+
+    There are two cases:
+        1) Each component is a single Gaussian q(u_q) (like a GaussianPosterior)
+            In this case after batching q_m will have a format like [Q, N, B] which we reorginise to
+                [N , Q*B, 1]
+        2) Each component is a multivariate Gaussian (like a FullGaussianPosterior)
+            In this case q_m may have a format like [Q, Nt, Ns*L*B] where L is the output of each component
+            Nt, and Ns are stored separately to handle spatial sparsity.
+
+
+    """
     base_prior = prior.base_prior
 
     latents_arr = base_prior.parent
@@ -168,7 +185,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     whiten_arr = [whiten for q in range(num_latents)]
 
-
     q_m, q_S = batch_over_module_types(
         evoke_name = 'variational_params',
         evoke_params = [],
@@ -179,27 +195,33 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         out_dim  = 2
     )
 
-    if type(q_m) is list:
-        # hack for now to get models with mixed number of inducing points to work
-        return q_m, q_S
+    # TODO: fix this
+    if False:
+        if type(q_m) is list:
+            # hack for now to get models with mixed number of inducing points to work
+            return q_m, q_S
 
-    # TODO: very hacky for now
     if q_S.shape[1] == 1:
         # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis
+
+        # convert to [N, Q, B] format
         q_m = np.transpose(q_m, [1, 0, 2])
         q_S = np.transpose(q_S, [1, 0, 2, 3])
 
-
+        # convert to [N, Q*B, 1] format
+        q_m = np.reshape(q_m, [q_m.shape[0], -1, 1])
 
     else:
         L = base_prior.parent[0].output_dim
         Q, N, LB = q_m.shape
-        q_m = np.reshape(q_m, [Q, N, L, -1])
-        B = q_m.shape[-1]
 
-        q_m = np.transpose(q_m, [1, 0, 2, 3])
-        q_m = np.reshape(q_m, [N, Q*L, B])
+        # Convert to [N, Q, LB] format
+        q_m = np.transpose(q_m, [1, 0, 2])
 
+        # Convert to [N, QLB, 1] format
+        q_m = np.reshape(q_m, [N, Q*LB, 1])
+
+        # convert to [Nt, Q, QLB, QLB] format
         q_S = np.transpose(q_S, [1, 0, 2, 3])
 
 
@@ -241,7 +263,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     # add missing dimension
     mu = mu[..., None]
     var = var[:, None, ...]
-
 
     chex.assert_rank([mu, var], [3, 4])
     return mu, var

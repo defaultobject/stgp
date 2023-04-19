@@ -142,15 +142,19 @@ def elbo(
     q_list = approx_posterior.approx_posteriors
     kl_fn = evoke('cvi_kl', likelihood, prior, q_list[0])
 
+    latents_arr = prior.base_prior.parent
+
     KL_arr =  batch_or_loop(
-        lambda qq: kl_fn(data, likelihood, prior, qq, inference),
-        [q_list],
-        [0],
+        lambda qq, ll: kl_fn(data, likelihood, ll, qq, inference),
+        [q_list, latents_arr],
+        [0, 0],
         dim=len(q_list),
         out_dim = 1,
         batch_type = get_batch_type(q_list)
     )
     KL = np.sum(KL_arr)
+
+    print(f'ELL: {ELL}, KL: {KL}')
 
     return ELL - KL
 
@@ -175,6 +179,5 @@ def elbo(
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
     print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {ELL_surrogate + ML_surrogate}')
-    #elbo =  ELL 
 
     return elbo

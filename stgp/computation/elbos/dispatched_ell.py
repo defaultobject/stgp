@@ -453,7 +453,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
     except DispatchNotFound as e:
-        breakpoint()
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 
@@ -540,7 +539,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     q_block_size = q_f_var_arr.shape[-1]
     lik_block_type = likelihood.block_type
 
-    # TODO: need to figure what Block.OUTPUT means...
 
     block_type_p: Block = compare_block_types(
         lik_block_type, 

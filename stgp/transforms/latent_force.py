@@ -298,3 +298,14 @@ class Linearized(LinearLFM):
 
         #Linearisation step
         return  self.mean_state + F @ (self.mean_state - init_x)
+
+class LinearODE(LinearLFM):
+    def _f(self, state_x, t):
+        """ Evalulate dx/dt"""
+        x = state_x[0]
+        y = state_x[1]
+
+        return np.array([
+            x-y,
+            y-x 
+        ])

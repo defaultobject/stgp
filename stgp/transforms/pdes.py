@@ -528,3 +528,82 @@ def LorenzSystem(latent, sigma, rho, beta, train=True):
         _LorenzSystemY(latent[1], rho, train=train), 
         _LorenzSystemZ(latent[2], beta, train=train), 
     ]
+
+
+class _LotkaVolterraSystemX(PDE):
+
+    def __init__(self, latent, alpha, beta, train=True):
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.alpha_param = Parameter(
+            np.array(alpha), 
+            name ='LotkaVolterraSystem/alpha', 
+            train=train
+        )
+
+        self.beta_param = Parameter(
+            np.array(beta), 
+            name ='LotkaVolterraSystem/beta', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        x, xt, y, yt = f
+        alpha = self.alpha_param.value
+        beta = self.beta_param.value
+
+        return (xt - (alpha * x - beta * x * y))[:, None]
+
+class _LotkaVolterraSystemY(PDE):
+
+    def __init__(self, latent, delta, gamma, train=True):
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.delta_param = Parameter(
+            np.array(delta), 
+            name ='LotkaVolterraSystem/delta', 
+            train=train
+        )
+
+        self.gamma_param = Parameter(
+            np.array(gamma), 
+            name ='LotkaVolterraSystem/gamma', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        x, xt, y, yt = f
+        delta = self.delta_param.value
+        gamma = self.gamma_param.value
+
+        return (yt - (delta * x * y  - gamma * y))[:, None]
+
+def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):
+    """
+    THe lorenz stystem describes the following system of equations
+
+        dx/dt = alpha *x - beta *x * y
+        dy/dt = delta * x * y  - gamma * y
+    """
+    return [
+        _LotkaVolterraSystemX(latent[0], alpha, beta, train=train), 
+        _LotkaVolterraSystemY(latent[1], delta, gamma, train=train), 
+    ]

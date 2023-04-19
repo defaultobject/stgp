@@ -34,7 +34,7 @@ def get_block_dim(block_type: Block, data = None, likelihood = None, approximate
 
     if block_type == Block.BLOCK:
         if likelihood is not None:
-            if _ensure_str(likelihood) in ['BlockDiagonalLikelihood', 'PrecisionBlockDiagonalGaussian']:
+            if _ensure_str(likelihood) in ['BlockDiagonalLikelihood', 'BlockDiagonalGaussian', 'PrecisionBlockDiagonalGaussian']:
                 return likelihood.block_size
 
         if approximate_posterior is not None:

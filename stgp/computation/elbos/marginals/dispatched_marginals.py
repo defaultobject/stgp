@@ -213,6 +213,15 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, 'NoSparsity', whiten=True)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    """
+    To handle whitened representations with a full gaussian posterior we simple transform the approximate posterior:
+       q_m = K^{1/2} m 
+       q_S = K^{1/2} S
+    and then treat it as an unwhitened posterior.
+
+    NOTE: This means we do not expoloit some of the algebriac simplifications of this form but 
+        it means in our implementation we can reuse the marginals already implemented for the unwhitened case.
+    """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
     # first reparameterise and then we can treat as usual
 
@@ -233,6 +242,7 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     chex.assert_equal_shape([Kzz_chol, q_S_chol])
 
+    # transform 
     q_m, q_S_chol =  Kzz_chol @ q_m, Kzz_chol @ q_S_chol
 
     # fix back shapes
@@ -309,7 +319,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     When predicting we can simply use the predictive distribution of the conjugate posterior.
     """
-    #breakpoint()
+    breakpoint()
     # TODO: assuming that data_xs and data_x are of the same type
     chex.assert_rank([q_m, q_S], [3, 4])
 
@@ -369,6 +379,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
+    breakpoint()
 
     # TODO: assuming that sparsity is the same across latents
     sparsity_arr = prior.base_prior.get_sparsity_list()
@@ -409,7 +420,13 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, LinearTransform, whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
-    """ Recursively compute the transformed linear marginal. """
+    """ 
+    Recursively compute the transformed linear marginal.
+    This is done by
+        1) first done finding the base latent GPs
+        2) Computing the full marginal 
+        3) transforming this marginal through the remaining linear transforms
+    """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     return linear_marginal_blocks(
@@ -485,7 +502,6 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     # find out if the model is linear or not
     model_type = get_model_type(prior)
 
-
     # when non linear we transform up to the last linear transform and then use sampling
     linear_model_part = get_linear_model_part(prior)
 
@@ -504,6 +520,20 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whiten: bool):
+    """
+    When using a Full Gaussian Approximate Posterior the expected log likelihood does not necessarily decompose across data and latents
+
+    There are two situations that we support:
+        ProductLikelihoods:
+            In this case we assume that the ELL decomposes across datapoints and so  we need to compute the 
+                marginals q(f_n) which are of dimension QxQ as they capture the uncertainity across the latents
+        BlockDiagonalLikelihood
+            In this case the ELL decomposes across the blocks and so we need to compute q(f_n) for each block
+
+    In general we try to push linear transforms into the prior and non-linear into the expected log likelihood. This is because we perform sampling
+        in the dispatched ELL code directly.
+
+    """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
     # find out if the model is linear or not
@@ -512,10 +542,7 @@ def marginal(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, whit
     # when non linear we transform up to the last linear transform and then use sampling
     linear_model_part = get_linear_model_part(prior)
 
-    # When using FullGaussian approximate posteriors we require the block covariances
-    #  to compute the resulting ELLs
-
-    # TODO: this is hack
+    # Check if the likelihood is a block diagonal or a product likelihood
     if likelihood.block_type == Block.DIAGONAL:
         out_block_type = Block.LATENT
     else:

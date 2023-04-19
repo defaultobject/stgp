@@ -121,7 +121,7 @@ class ScipyTrainer(Trainer):
 
         self.objective_fn = objective_fn
 
-    def train(self, learning_rate, epochs, callback=None, ng_trainer = False, ng_lr = None):
+    def train(self, learning_rate, epochs, callback=None, ng_trainer = False, ng_lr = None, raise_error=True):
         """ For consistency we accept learning_rate here although it is not used. """
 
         x0 = self.trainable_vc.tensors()
@@ -181,7 +181,8 @@ class GradDescentTrainer(Trainer):
         learning_rate,
         epochs,
         callback=None,
-        epoch_ofset = None
+        epoch_ofset = None,
+        raise_error = True
     ):
         start = timer()
         epoch_arr = []
@@ -195,7 +196,11 @@ class GradDescentTrainer(Trainer):
             grad, val = train_op()
 
             if np.isnan(val):
-                raise RuntimeError('NaN encountered whilst training!')
+                if raise_error:
+                    raise RuntimeError('NaN encountered whilst training!')
+                else:
+                    print('NaN encountered whilst training!')
+                    return jnp.array(epoch_arr).flatten(), None
 
             if callback is not None:
                 callback(i, grad, val)
@@ -243,7 +248,8 @@ class SwitchTrainer(Trainer):
         self,
         learning_rates: list,
         epochs: list,
-        callback = None
+        callback = None,
+        raise_error = True
 
     ):
         iters = epochs[1]
@@ -256,22 +262,28 @@ class SwitchTrainer(Trainer):
         total_elbos = []
         completed_epochs = [0 for j in range(num_trainers)]
 
-        for i in range(epochs):
-            for j in range(num_trainers):
-                lc_j, _ = self.trainer_list[j].train(
-                    learning_rates[j], 
-                    iters[j], 
-                    None, # We do not support individual trainer callbacks
-                    epoch_ofset = completed_epochs[j]
-                )
+        try:
+            for i in range(epochs):
+                for j in range(num_trainers):
+                    lc_j, _ = self.trainer_list[j].train(
+                        learning_rates[j], 
+                        iters[j], 
+                        None, # We do not support individual trainer callbacks
+                        epoch_ofset = completed_epochs[j],
+                        raise_error = True
+                    )
 
-                total_elbos.append(lc_j)
+                    total_elbos.append(lc_j)
 
-                completed_epochs[j] += iters[j]
+                    completed_epochs[j] += iters[j]
 
-            # After calling all individual trainers we have completed one training epoch
-            if callback is not None:
-                callback(i, None, None)
+                # After calling all individual trainers we have completed one training epoch
+                if callback is not None:
+                    callback(i, None, None)
+
+        except RuntimeError as e:
+            # it is likely that a nan was encounted
+            print('finishing early! probably due to nans')
 
         end = timer()
         training_time = end - start

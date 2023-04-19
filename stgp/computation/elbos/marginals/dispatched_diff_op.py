@@ -47,6 +47,10 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         N = data.N
         Nt, _, _= q_m.shape
         Q = prior.output_dim
+        _, _, QNs, _ = q_S.shape
+
+        # ensure correct dim
+        q_m = np.reshape(q_m, [Nt, QNs, 1])
 
         # convert to time-space-latent format
         mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)

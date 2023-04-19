@@ -485,10 +485,13 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
     if num_samples is None:
         num_samples = inference.prediction_samples 
 
-    if diagonal == True:
-        out_block = Block.DIAGONAL
+    if issubclass(type(approximate_posterior.approx_posteriors[0]), FullGaussianApproximatePosterior):
+        out_block = Block.BLOCK
     else:
-        raise NotImplementedError()
+        if diagonal == True:
+            out_block = Block.DIAGONAL
+        else:
+            raise NotImplementedError()
 
     sparsity_list = prior.base_prior.get_sparsity_list()
 
@@ -516,18 +519,36 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         out_block
     )
 
-    mu = approximate_expectation(
-        lambda f: f, 
-        mu, 
-        var, 
-        prior = prior,
-        fn_args = [],
-        generator = inference.generator, 
-        num_samples = num_samples,
-        block_type = block_type,
-        average = False
-    )
-
+    if type(mu) == list:
+        # if mu is a list then prior must be a MultiOutput
+        mu_res = []
+        for i in range(len(mu)):
+            mu_i = approximate_expectation(
+                lambda f: f, 
+                mu[i], 
+                var[i], 
+                prior = prior.parent[i],
+                fn_args = [],
+                generator = inference.generator, 
+                num_samples = num_samples,
+                block_type = block_type,
+                average = False
+            )
+            mu_res.append(mu_i)
+        mu = mu_res
+        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, 0, :]
+    else:
+        mu = approximate_expectation(
+            lambda f: f, 
+            mu, 
+            var, 
+            prior = prior,
+            fn_args = [],
+            generator = inference.generator, 
+            num_samples = num_samples,
+            block_type = block_type,
+            average = False
+        )
 
     return mu
 

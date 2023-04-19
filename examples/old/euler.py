@@ -8,7 +8,7 @@ import objax
 import numpy as np
 import stgp as lego
 from stgp.transforms import Independent
-from stgp.transforms.latent_force import NonLinearLFM, LotkaVolterra, Linearized, PopulationLotkaVolterra, RM_Population
+from stgp.transforms.latent_force import NonLinearLFM, LotkaVolterra, Linearized, PopulationLotkaVolterra, RM_Population, LinearODE
 from stgp.transforms.sdes import LTI_SDE, EulerMaruyama
 from stgp.kernels import Matern32, ScaledMatern32
 from stgp.models import GP
@@ -76,29 +76,33 @@ likelihood = ReshapedGaussian(likelihood, data.Nt, 2)
 
 base_gp = LTI_SDE(Independent(latents))
 
-a = 3.2 
-b = 0.6
-c= 50.0
-d= 0.56
-k = 125.0
-r = 1.6
+
+if True:
+    m_lfm = LinearODE()
+    res, init_x = euler(m_lfm, np.array([2.0, 1.0]), 100000, 0.001)
+    plt.plot(init_x[:, 0])
+    plt.plot(init_x[:, 1])
+    plt.show()
+    exit()
+    
+alpha = 0.5
+beta = 0.5
+delta = 1.0
+gamma = 0.5
+init_state = [0.1, 5.0]
+
+m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = init_state)
+
+if True:
 
 
-alpha = -0.57
-beta = -0.23
-delta = -0.2
-gamma = -0.17
-
-#m_lfm = PopulationLotkaVolterra(base_gp, 3.2, 0.6, 50.0, 0.56, 125.0, 1.6, init_state = Y[0, :])
-#m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = Y[0, :])
+    res, init_x = euler(m_lfm, np.array([2.0, 1.0]), 100000, 0.001)
+    plt.plot(init_x[:, 0])
+    plt.plot(init_x[:, 1])
+    plt.show()
+    exit()
 
 
-alpha = 0.9
-K = 100
-beta = 1.0
-b = 10.0
-gamma = 1.0
-delta = 0.3
 
 fig = plt.figure()
 ax = fig.add_subplot(111)
@@ -106,32 +110,40 @@ ax = fig.add_subplot(111)
 # Adjust the subplots region to leave some space for the sliders and buttons
 fig.subplots_adjust(left=0.25, bottom=0.25)
 
-m_lfm = RM_Population(base_gp, alpha, K, beta, b, gamma, delta, init_state = np.array([2.0, 1.0]))
-res, init_x = euler(m_lfm, np.array([2.0, 1.0]), 100000, 0.001)
+#m_lfm = RM_Population(base_gp, alpha, K, beta, b, gamma, delta, init_state = np.array([2.0, 1.0]))
+res, init_x = euler(m_lfm, np.array([2.0, 1.0]), 10000, 0.0001)
+
+if False:
+    plt.plot(init_x[:, 0])
+    plt.plot(init_x[:, 1])
+    plt.show()
+    exit()
+
+
+
 
 x = np.cumsum(np.ones(100000) * 0.001)
 
 def _f1(*args, **kwargs):
     breakpoint()
 
-def f1(x, a, K, beta, b, gamma, delta):
+def f1(x, a, beta, delta, gamma):
     alpha = a
-    m_lfm = RM_Population(base_gp, alpha, K, beta, b, gamma, delta, init_state = np.array([2.0, 1.0]))
+    m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = init_state)
+
     res, x = euler(m_lfm, np.array([2.0, 1.0]), 100000, 0.001)
     return x[:, 0]
 
-def f2(x, a, K, beta, b, gamma, delta):
+def f2(x, a, beta, delta, gamma):
     alpha = a
-    m_lfm = RM_Population(base_gp, alpha, K, beta, b, gamma, delta, init_state = np.array([2.0, 1.0]))
+    m_lfm = LotkaVolterra(base_gp, alpha, beta, delta, gamma, init_state = init_state)
     res, x = euler(m_lfm, np.array([2.0, 1.0]), 100000, 0.001)
     return x[:, 1]
 
-controls = iplt.plot(x, f1, a=(1e-5, 10, 1000), K=(1e-5, 100, 1000), beta=(1e-5, 10, 1000), b=(1e-5, 10, 1000), gamma=(1e-5, 20, 1000), delta=(1e-5, 20, 1000), label="f1")
+controls = iplt.plot(x, f1, a=(1e-5, 10, 1000),  beta=(1e-5, 10, 1000), gamma=(1e-5, 20, 1000), delta=(1e-5, 20, 1000), label="f1")
 controls.params = {
     'a': alpha,
-    'K': K,
     'beta': beta,
-    'b': b,
     'gamma': gamma,
     'delta': delta,
 }

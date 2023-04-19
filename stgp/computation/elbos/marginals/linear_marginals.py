@@ -22,16 +22,9 @@ from ....core.model_types import get_model_type, LinearModel, NonLinearModel, ge
 def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, out_block: int, whiten: bool, XS=None, sparsity=None):
     """ Recursively compute the transformed linear marginal. """
 
-    # TODO: this is assuming only one transform
-    # TODO: this is a hack to support operator marginals
     parent_prior = prior.hierarchical_base_prior
 
     prior_list = get_linear_model_part_list(prior)
-
-    if False:
-        # TODO: hack to get to work
-        if len(prior_list) == 0:
-            prior_list = [prior]
 
     # get linear part input dim
     if prior_list[0].in_block_dim is None:
@@ -62,8 +55,7 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
     if prior.out_block_dim != None:
         breakpoint()
 
-    # and transform 
-
+    # Check if we can use a diagonal transform or not
     if var_parent.shape[-1] == 1 and out_block == Block.DIAGONAL:
         chex.assert_rank([mu_parent, var_parent], [3, 4])
 

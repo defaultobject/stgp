@@ -118,7 +118,10 @@ def compute_u_to_tf(model, q_mu_z, q_var_z):
 
     return T_f
 
-def gauss_newton_delta_f(u, S, model):
+def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
+    """
+
+    """
     chex.assert_rank([u, S], [3, 4])
 
     q = model.approximate_posterior
@@ -128,23 +131,30 @@ def gauss_newton_delta_f(u, S, model):
     q_f_mu, q_f_var = compute_u_to_f(model, u, S)
 
     def J_f(f):
+        # N x P x 1
         T_f = compute_f_to_tf(model, f, None)
 
         f2tf = lambda *f: compute_f_to_tf(model, [fi[None, ...] for fi in f], None)[0]
+        # N x P x 1
         T_f = jax.vmap(f2tf)(*f)
         Q = len(f)
 
-        # N x P x B x P x B
+        # [N x P x B x Q x B]
         J = jax.vmap(jax.jacfwd(f2tf, argnums=range(Q)))(*f)
-
-        # N x Q x P 
-        #J = J[:, :, 0, :, 0]
 
         # TODO: only works for Gaussian atm
         # Assuming that the likelihood components are (conditionally) indpedent
-        # N x P x P
+        # N x P 
         # Approximating d^2 log P(Y | T) / dT^2 ~ - COV(Y | T)^{-1}
-        neg_Lambda = jax.vmap(lambda f: np.diag(1/np.squeeze(model.likelihood.conditional_var(f[None, :]))))(T_f[..., 0])
+        neg_Lambda = jax.vmap(
+            lambda f: np.diag(
+                1/np.squeeze(
+                    model.likelihood.conditional_var(f[None, :])
+                )
+            )
+        )(
+            T_f[..., 0]
+        )
 
         # Mask out entries corresponding to missing observations
         # These should just be ignored from the sums
@@ -154,17 +164,20 @@ def gauss_newton_delta_f(u, S, model):
         neg_Lambda = neg_Lambda * Y_mask
 
         # Generalised Gauss-Newton
-        #J_sum = (J**2) * neg_Lambda
+        #J_sum = J @ neg_Lambda @ J.T
 
         J_list = []
         for i in range(Q):
+
             J_i  = np.transpose(J[i][:, :, 0, :, 0], [0, 2, 1])
             J_vec = jax.vmap(lambda a, b, c: a @ b @ c.T)(J_i, neg_Lambda, J_i)
             J_list.append(J_vec[:, None, ...])
 
+        #breakpoint()
+
         return J_list
 
-    if True:
+    if delta_f:
         J_list = J_f(q_f_mu)
     else:
         J_list = mv_block_monte_carlo_list(
@@ -172,8 +185,92 @@ def gauss_newton_delta_f(u, S, model):
             q_f_mu, 
             q_f_var, 
             generator = model.inference.generator, 
-            num_samples = 100
+            num_samples = prediction_samples
         )
+  
+    J_true = jax.jacfwd(lambda S: compute_u_to_f(model, u, S, return_var_only=True))(S)
+
+    S_f, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
+    var_grads = vjp_fn(J_list)[0]
+    approx_hessian = - 0.5 * var_grads
+    chex.assert_rank(approx_hessian, 4)
+
+    return approx_hessian
+
+
+def _gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
+    """
+
+    """
+    chex.assert_rank([u, S], [3, 4])
+
+    q = model.approximate_posterior
+    prior = model.prior
+    Y = model.data.Y
+
+    q_f_mu, q_f_var = compute_u_to_f(model, u, S)
+
+    def J_f(f):
+        # N x P x 1
+        T_f = compute_f_to_tf(model, f, None)
+
+        f2tf = lambda *f: compute_f_to_tf(model, [fi[None, ...] for fi in f], None)[0]
+        # N x P x 1
+        T_f = jax.vmap(f2tf)(*f)
+        Q = len(f)
+
+        # List of length P with each component of size [N x P x B x Q x B]
+        J = jax.vmap(
+            jax.jacfwd(f2tf, argnums=range(Q))
+        )(*f)
+        P = len(J)
+
+
+        # TODO: only works for Gaussian atm
+        # Assuming that the likelihood components are (conditionally) indpedent
+        # N x P 
+        # Approximating d^2 log P(Y | T) / dT^2 ~ - COV(Y | T)^{-1}
+        neg_Lambda = jax.vmap(
+            lambda f: 1 / np.squeeze(
+                model.likelihood.conditional_var(f[None, :])
+            )
+        )(
+            T_f[..., 0]
+        )
+
+        # Mask out entries corresponding to missing observations
+        # These should just be ignored from the sums
+        # N x P
+        Y_mask = get_same_shape_mask(Y)
+        neg_Lambda = neg_Lambda * Y_mask
+
+        # Generalised Gauss-Newton
+        #J_sum = J @ neg_Lambda @ J.T
+
+        J_list = []
+        for i in range(P):
+            # N x Q x 1
+            J_i  = J[i][:, i, 0, :, 0][..., None]
+            # N x Q x Q
+            J_vec = jax.vmap(lambda a, b, c: a @ b @ c.T)(J_i, neg_Lambda[:, i][..., None, None], J_i)
+            J_list.append(J_vec[:, None, ...])
+
+        #breakpoint()
+
+        return J_list
+
+    if delta_f:
+        J_list = J_f(q_f_mu)
+    else:
+        J_list = mv_block_monte_carlo_list(
+            J_f, 
+            q_f_mu, 
+            q_f_var, 
+            generator = model.inference.generator, 
+            num_samples = prediction_samples
+        )
+
+    #J_true = jax.jacfwd(lambda S: compute_u_to_f(model, u, S, return_var_only=True))(S)
   
     S_f, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
     var_grads = vjp_fn(J_list)[0]
@@ -183,13 +280,12 @@ def gauss_newton_delta_f(u, S, model):
     return approx_hessian
 
 
-def laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
+def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = True):
     q = model.approximate_posterior
 
 
     if _ensure_str(q) == 'MeanFieldConjugateGaussian':
         # block diagonal
-
 
         approx_posteriors = q.approx_posteriors
         q_mu_z, q_var_z = batch_or_loop(
@@ -216,7 +312,10 @@ def laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_appr
         chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # delta u
-    approx_hessian = gauss_newton_delta_f(q_mu_z, q_var_z , model)
+    if delta_u:
+        approx_hessian = gauss_newton(q_mu_z, q_var_z , model, delta_f=delta_f, prediction_samples=prediction_samples)
+    else:
+        raise NotImplementedError()
 
     if _ensure_str(q) == 'MeanFieldConjugateGaussian':
         # fix shapes
@@ -226,6 +325,7 @@ def laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_appr
     return approx_hessian
 
 def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
+    raise NotImplementedError()
     q = model.approximate_posterior
     prior = model.prior
     Y = model.data.Y
@@ -237,7 +337,7 @@ def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_poste
 
     # sample u here
     def wrapped_fn(s):
-        return  gauss_newton_delta_f(s, q_var_z , model)
+        return  gauss_newtonf(s, q_var_z , model, delta_f = True)
 
     approx_hessian = mv_block_monte_carlo(
         wrapped_fn, 
@@ -253,9 +353,13 @@ def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_poste
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
     if enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_delta_u_delta_f_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = False, delta_f = False)
+    elif enforce_psd_type == 'laplace_gauss_newton_delta_u_delta_f':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = True)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_f':
-        approx_hessian =  laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = False, delta_f = True)
+    elif enforce_psd_type == 'laplace_gauss_newton_delta_u':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = False)
     else:
         raise RuntimeError()
 

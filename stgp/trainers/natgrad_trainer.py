@@ -177,7 +177,8 @@ class NatGradTrainer(Trainer):
         epochs, 
         callback=None,
         epoch_ofset=0,
-        verbose=False
+        verbose=False,
+        raise_error = True
     ):
 
         def gradient_step(i, global_i):
@@ -205,7 +206,6 @@ class NatGradTrainer(Trainer):
             if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
                 print('NaN encountered whilst natgrad training!')
                 return False
-                #raise RuntimeError('NaN encountered whilst natgrad training!')
 
             update_vars(self.m, self.vars_to_update, params)
             return True
@@ -215,7 +215,11 @@ class NatGradTrainer(Trainer):
             max_attempt = 10
             while not gradient_step(i, i+epoch_ofset):
                 if max_attempt == 0:
-                    raise RuntimeError('NaN encountered whilst natgrad training!')
+                    if raise_error:
+                        raise RuntimeError('NaN encountered whilst natgrad training!')
+                    else:
+                        print('NaN encountered whilst natgrad training!')
+                        return jnp.array(epoch_arr).flatten(), None
 
                 print('retrying nat grad')
                 max_attempt = max_attempt - 1

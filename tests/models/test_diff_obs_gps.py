@@ -623,7 +623,6 @@ def test__2d_sde_vgp_gps_with_spatial_diff_obs_match(seed, N, NS, regression_2d_
     np.testing.assert_allclose(np.sum(batch_var), np.sum(vgp_var), rtol=1e-3)
     #np.testing.assert_allclose(np.sum(batch_var), np.sum(sparse_vgp_var), rtol=1e-3)
 
-
 @pytest.mark.parametrize('seed', [0])
 @pytest.mark.parametrize('N', [20])
 @pytest.mark.parametrize('NS', [100])
@@ -633,7 +632,7 @@ def test__2d_sde_vgp_gps_with_spatial_diff_obs_match(seed, N, NS, regression_2d_
 def test__1d_multi_latent_recover_independent(seed, N, NS, regression_1d_diff_obs_data, kernel_ls, kernel_var, lik_var):
     # ==== Arrange ====
     X, Y1 = regression_1d_diff_obs_data
-    Y2 = 5*np.copy(Y1)
+    Y2 = np.sin(np.copy(Y1))
     Y = np.hstack([Y1, Y2])
 
 
@@ -750,20 +749,8 @@ def test__1d_multi_latent_recover_independent(seed, N, NS, regression_1d_diff_ob
             ]
         )
 
-        if False :
-            likelihood_arr = [
-                ProductLikelihood([Gaussian(lik_var[0])]), 
-                ProductLikelihood([Gaussian(lik_var[1])]), 
-                ProductLikelihood([Gaussian(lik_var[0])]), 
-                ProductLikelihood([Gaussian(lik_var[1])]),
-            ]
-        elif True:
-            likelihood_arr = [Gaussian(lik_var[0]), Gaussian(lik_var[1]), Gaussian(lik_var[0]), Gaussian(lik_var[1])]
-        else:
-            likelihood_arr = [
-                ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])]), 
-                ProductLikelihood([Gaussian(lik_var[0]), Gaussian(lik_var[1])])
-            ]
+
+        likelihood_arr = [Gaussian(lik_var[0]), Gaussian(lik_var[1]), Gaussian(lik_var[0]), Gaussian(lik_var[1])]
 
         # Create Model
         m = stgp.models.GP(
@@ -781,7 +768,7 @@ def test__1d_multi_latent_recover_independent(seed, N, NS, regression_1d_diff_ob
     m1_ind = independent_batch_model(X, Y)
     m_cvi = multi_latent_cvi_model(X, Y)
 
-    NatGradTrainer(m_cvi).train(1.0, 1)
+    NatGradTrainer(m_cvi, enforce_psd_type='laplace_gauss_newton_delta_u_delta_f').train(1.0, 1)
 
     # assert same log marginal likelihood
     np.testing.assert_allclose(

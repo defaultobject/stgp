@@ -115,7 +115,17 @@ def _get_mf_params(model, parameterisation, diagonal=True):
     q_var_z = np.transpose(q_var_z[:, :, 0, ...], [1, 0, 2, 3])
 
     if _ensure_str(parameterisation) == 'NG_Moment':
-        lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_to_lambda))(Y_tilde_arr, V_tilde_arr)
+        if True:
+            # convert momement parameters to [Nt, Q, Ns x L] format (the same as q_mu_z)
+            Nt, Q, NtL, _ = V_tilde_arr.shape
+            _Y =  np.reshape(Y_tilde_arr, [Nt, Q, NtL, 1])
+            # convert to natural parameters
+            lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_to_lambda))(_Y, V_tilde_arr)
+            # remove  extra dim so that lambda_1 is rank 3
+            lambda_1_arr = lambda_1_arr[..., 0]
+        else:
+            lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_to_lambda))(Y_tilde_arr, V_tilde_arr)
+
     elif _ensure_str(parameterisation) == 'NG_Precision':
         lambda_1_arr, lambda_2_arr = jax.vmap(jax.vmap(theta_precision_to_lambda))(Y_tilde_arr, V_tilde_arr)
     else:

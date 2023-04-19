@@ -28,11 +28,11 @@ def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, pr
     # Lambda_1 is in Q x Nt x 1 x B
     # Lambda_2 is in Q x Nt x B x B
     theta_1, theta_2 = jax.vmap(jax.vmap(lambda_to_theta))(
-        lambda_1[:, :, 0, :][..., None], # Q x Nt x B x 1
+        np.reshape(lambda_1, [lambda_1.shape[0], lambda_1.shape[1], -1, 1]), # Q x Nt x B x 1
         lambda_2
     )
     # convert back to the same shame as lambda_1
-    theta_1 = theta_1[:, :, None, :, 0]
+    theta_1 = np.reshape(theta_1, lambda_1.shape)
     return theta_1, theta_2
 
 @dispatch('VGP', MeanFieldConjugateGaussian, "NG_Precision")
