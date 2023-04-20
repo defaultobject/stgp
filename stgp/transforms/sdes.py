@@ -115,21 +115,6 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             for q in range(Q)
         ])
 
-
-
-        # convert from [ds, ns, df, Q] -> 
-
-        
-        if False:
-            # the latent-data is (diff_s x space) x diff_t
-            # is (Ns) x P
-            Ns = self.spatial_output_dim * X_s.shape[0]
-            P = self.temporal_output_dim
-
-            # the result will now be (diff_t x diff_s x space)
-            H = data_order_to_output_order(P, Ns).T
-
-
         return H
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):

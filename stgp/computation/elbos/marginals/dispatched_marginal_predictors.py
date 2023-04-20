@@ -219,7 +219,6 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
     sparsity_arr = prior.base_prior.get_sparsity_list()
     base_prior = get_permutated_prior(prior)
 
-
     # TODO: refactor to make the structure the same
     if isinstance(base_prior, IndependentJointDataLatentPermutation):
         # we need to a special structure that unpacks the prior 

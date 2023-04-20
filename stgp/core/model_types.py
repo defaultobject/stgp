@@ -145,7 +145,6 @@ def get_linear_model_part_list(prior) -> list:
 
     return linear_part
 
-
 def get_non_linear_model_part(prior) -> list:
     """
     A prior consists of a set of transformations like:
@@ -156,9 +155,6 @@ def get_non_linear_model_part(prior) -> list:
     non_linear_part = _get_non_linear_model_part(prior)
 
     return non_linear_part
-
-
-
 
 def get_permutated_prior(prior):
     base_prior = prior.base_prior

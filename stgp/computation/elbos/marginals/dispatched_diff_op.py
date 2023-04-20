@@ -27,6 +27,58 @@ from ....data import SpatioTemporalData
 
 from .linear_marginals import linear_marginal_blocks
 
+@dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, SpatialSparsity, whiten=False)
+def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
+    if out_block == Block.LATENT:
+        out_block_dim = 1
+        mu, var = evoke('spatial_conditional', data, prior, prior.parent[0], approximate_posterior)(
+            data, 
+            sparsity[0].raw_Z, 
+            q_m, 
+            q_S[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior,
+            sparsity,
+            out_block_dim,
+            whiten
+        )
+
+        chex.assert_rank([mu, var], [3, 4])
+
+        return mu, var
+    else:
+        P = q_m.shape[1]
+
+
+        Ns =  data.Ns
+        dummy_prior = prior.parent[0]
+        Q = len(prior.parent)
+
+        if dummy_prior.hierarchical:
+            raise NotImplementedError()
+            # when hierarchical the prior is only defined on time so we only need the time dimension
+            time_prior = prior
+            ds = 1
+            dt = time_prior.output_dim
+        else:
+            # when not hierarchical the prior is only defined on space and time
+            space_prior = dummy_prior
+            time_prior = dummy_prior.parent
+            ds = space_prior.output_dim
+            dt = time_prior.output_dim
+
+        # posterior is in [time - Q - dt - ds - space ] format
+        # we need it in [time - space - Q - dt - ds] format
+
+        H = data_order_to_output_order(Ns, Q * dt * ds).T
+
+        mu_p = jax.vmap(lambda a: H @ a)(q_m)
+        var_p = jax.vmap(lambda A: H @ A[0] @ H.T)(q_S)
+
+        var_p = var_p[:, None, ...]
+        return mu_p, var_p
+
 @dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """
@@ -78,7 +130,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     raise NotImplementedError()
 
 
-
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if (out_block == Block.FULL or out_block == Block.BLOCK):
@@ -126,7 +177,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         sparsity =  prior.base_prior.get_sparsity_list()
 
         out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+        mu, var = evoke('spatial_conditional', data, prior, prior, approximate_posterior)(
             data, 
             sparsity[0].raw_Z, 
             q_m, 
@@ -146,7 +197,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if out_block == Block.LATENT:
         out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+        mu, var = evoke('spatial_conditional', data, prior, prior, approximate_posterior)(
             data, 
             sparsity[0].raw_Z, 
             q_m, 
@@ -254,7 +305,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
         sparsity =  prior.base_prior.get_sparsity_list()
 
         out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, approximate_posterior)(
+        mu, var = evoke('spatial_conditional', data, prior, prior, prior, approximate_posterior)(
             data_xs, 
             sparsity[0].raw_Z, 
             q_m, 

@@ -49,6 +49,7 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         mu_parent, var_parent  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, parent_prior, sparsity[0], whiten=whiten, debug=False)(
             XS, data, q_m, q_S, approximate_posterior, likelihood, parent_prior, sparsity, parent_out_block_dim, whiten
         ) 
+        breakpoint()
 
     chex.assert_rank([mu_parent, var_parent], [3, 4])
 
