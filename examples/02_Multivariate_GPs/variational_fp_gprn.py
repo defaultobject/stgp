@@ -64,6 +64,7 @@ latent_f_gps = [
 ] 
 prior = stgp.transforms.multi_output.GPRN(latent_W_gps, latent_f_gps, output_dim = P)
 
+print(X.shape, Y.shape)
 m = stgp.models.GP(
     data=Data(X, Y), 
     likelihood=[Gaussian(0.1), Gaussian(), Gaussian()],
@@ -72,10 +73,10 @@ m = stgp.models.GP(
     ell_samples = 10,
     prediction_samples = 1000,
     approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
-
 )
+m.print()
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
-print(m.confidence_intervals(X))
+#print(m.confidence_intervals(X))
 print(m.get_objective())
 print(m.predict_f(X))
 print('NLPD: ', m.nlpd(X, Y))

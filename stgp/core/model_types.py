@@ -165,7 +165,7 @@ def get_permutated_prior(prior):
     if isinstance(base_prior, Joint):
         return  JointDataLatentPermutation(base_prior)
     elif isinstance(base_prior, Independent):
-        if _ensure_str(base_prior.parent[0]) ==  GPPrior:
+        if _ensure_str(base_prior.parent[0]) ==  'GPPrior':
             return  IndependentDataLatentPermutation(base_prior)
         else:
             return  IndependentJointDataLatentPermutation(base_prior)
