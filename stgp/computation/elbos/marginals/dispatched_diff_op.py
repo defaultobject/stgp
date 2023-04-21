@@ -56,9 +56,9 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         Q = len(prior.parent)
 
         if dummy_prior.hierarchical:
-            raise NotImplementedError()
             # when hierarchical the prior is only defined on time so we only need the time dimension
-            time_prior = prior
+            space_prior = dummy_prior
+            time_prior = dummy_prior.parent
             ds = 1
             dt = time_prior.output_dim
         else:
@@ -126,6 +126,24 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
             chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
             return mu_p_bd, var_p_bd
+        else:
+            out_block_dim = 1
+            mu, var = evoke('spatial_conditional', data, prior, prior.parent[0], approximate_posterior)(
+                data, 
+                sparsity[0].raw_Z, 
+                q_m, 
+                q_S[:, 0, ...], 
+                approximate_posterior,
+                likelihood,
+                prior,
+                sparsity,
+                out_block_dim,
+                whiten
+            )
+
+            chex.assert_rank([mu, var], [3, 4])
+
+            return mu, var
 
     raise NotImplementedError()
 

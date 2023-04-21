@@ -24,7 +24,7 @@ import objax
 from batchjax import batch_or_loop, BatchType
 
 
-def _batched_diff_kernel(prior, X_time, XS_space, X_space):
+def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
     """ 
     Helper function to compute diff-op time-space kernels separately 
 
@@ -32,15 +32,16 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space):
 
     Requires the following format:
 
-    prior = Independent: [
-        DifferentialOperatorJoint(
+    Not Hierarchical:
+        prior = Independent: [
             DifferentialOperatorJoint(
-                kern = K_time * K_space,
-                derivative_kernel = Time Only
+                DifferentialOperatorJoint(
+                    kern = K_time * K_space,
+                    derivative_kernel = Time Only
+                )
+                derivative_kernel = Space Only
             )
-            derivative_kernel = Space Only
-        )
-    ]
+        ]
     """
     q_list = prior.parent
 
@@ -57,27 +58,45 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space):
     # returns p(S | T)
     base_prior = lambda q: q.base_prior
 
-    # return K_time * K_space
-    base_kern = lambda q: base_prior(q).parent.derivative_kernel.parent_kernel
-
     # return K_time
     base_time_kernel = lambda q: base_kern(q).k1
 
     # return K_space
     base_space_kernel = lambda q: base_kern(q).k2
 
-    # Compute \nabla K_space 
-    K_base_spatial_zz_fn = lambda q: base_prior(q).covar_from_fn(X_space, X_space, base_space_kernel(q).K)
+    Ms = X_space.shape[0]
 
-    K_spatial_sz_fn = lambda q: base_prior(q).covar_from_fn(XS_space, X_space, base_space_kernel(q).K) 
+    if hierarchical:
+        # When hierarchical the base prior is directly the derivative kernel
+        base_kern = lambda q: base_prior(q).derivative_kernel.parent_kernel
+
+        # The spatial kernel on the prior does not contain derivaties
+        # These are only included in the conditional
+
+        # Ns x Ns
+        K_base_spatial_zz_fn = lambda q: base_space_kernel(q).K(X_space, X_space)
+
+        K_spatial_sz_fn = lambda q: (base_prior(q).covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
+
+        K_x_t_fn = lambda q: jax.vmap(
+            lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
+        )(X_time[:, None, :])
+    else:
+        # return K_time * K_space
+        base_kern = lambda q: base_prior(q).parent.derivative_kernel.parent_kernel
+
+        # Compute \nabla K_space 
+        K_base_spatial_zz_fn = lambda q: base_prior(q).covar_from_fn(X_space, X_space, base_space_kernel(q).K)
+
+        K_spatial_sz_fn = lambda q: base_prior(q).covar_from_fn(XS_space, X_space, base_space_kernel(q).K) 
+
+        K_x_t_fn = lambda q: jax.vmap(
+            lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K)
+        )(X_time[:, None, :])
 
     K_spatial_ss_fn = lambda q: jax.vmap(
         lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
     )(XS_space)
-
-    K_x_t_fn = lambda q: jax.vmap(
-        lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K)
-    )(X_time[:, None, :])
 
 
     # N referes to the number of spatial points
@@ -343,16 +362,15 @@ def spatial_conditional(
     # TODO: assuming that data_xs and data_x are the same
 
     dummy_prior = prior.parent[0]
+    hierarchical = dummy_prior.hierarchical
 
     # compute the outputs of each of the components of prior
     Q = len(prior.parent)
     base_prior_output = dummy_prior.base_prior.output_dim
     prior_added_output = dummy_prior.derivative_kernel.d_computed
     out_dim = base_prior_output * prior_added_output
-    if prior.parent[0].hierarchical:
-        raise NotImplementedError()
 
-    K_x_t, K_spatial_ss, K_spatial_sz, K_base_spatial_zz = _batched_diff_kernel(prior, X_time, XS_space, X_space)
+    K_x_t, K_spatial_ss, K_spatial_sz, K_base_spatial_zz = _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical)
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
