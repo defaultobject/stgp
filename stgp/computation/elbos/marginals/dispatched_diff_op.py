@@ -27,6 +27,12 @@ from ....data import SpatioTemporalData
 
 from .linear_marginals import linear_marginal_blocks
 
+# =============================================================================
+# ===================================CVI=======================================
+# =============================================================================
+
+# ===========================TRAINING MARGINALS================================
+
 @dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, SpatialSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     if out_block == Block.LATENT:
@@ -147,141 +153,105 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     raise NotImplementedError()
 
-
-@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, NoSparsity, whiten=False)
-def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    if (out_block == Block.FULL or out_block == Block.BLOCK):
-        P = q_m.shape[1]
-        Q = prior.output_dim
-
-        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
-
-        var_p = var_p[:, None, ...]
-        return mu_p, var_p
-
-    if not prior.hierarchical:
-        chex.assert_rank([q_m, q_S], [3, 4])
-        chex.assert_equal(q_S.shape[1], 1)
-
-        # q_m is in time - latent - space format
-        N = data.N
-        Nt, _, _= q_m.shape
-        Q = prior.output_dim
-        _, _, QNs, _ = q_S.shape
-
-        # ensure correct dim
-        q_m = np.reshape(q_m, [Nt, QNs, 1])
-
-        # convert to time-space-latent format
-        mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)
-
-        # extract block diagonals
-        mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
-        var_p_bd = batched_block_diagional(var_p, Q)
-        var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
-
-        chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
-        return mu_p_bd, var_p_bd
-
-    else:
-        if _ensure_str(data) == 'Data':
-            # TODO: why is this necessary? :(
-            #q_m = np.transpose(q_m, [0, 2, 1])
-            return q_m, q_S
-
-        # compute spatial conditonal
-        sparsity =  prior.base_prior.get_sparsity_list()
-
-        out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, prior, approximate_posterior)(
-            data, 
-            sparsity[0].raw_Z, 
-            q_m, 
-            q_S[:, 0, ...], 
-            approximate_posterior,
-            likelihood,
-            prior,
-            sparsity,
-            out_block_dim,
-            whiten
-        )
-
-        chex.assert_rank([mu, var], [3, 4])
-        return mu, var
-
-@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, SpatialSparsity, whiten=False)
-def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    if out_block == Block.LATENT:
-        out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, prior, approximate_posterior)(
-            data, 
-            sparsity[0].raw_Z, 
-            q_m, 
-            q_S[:, 0, ...], 
-            approximate_posterior,
-            likelihood,
-            prior,
-            sparsity,
-            out_block_dim,
-            whiten
-        )
-
-        chex.assert_rank([mu, var], [3, 4])
-
-        return mu, var
-    else:
-        P = q_m.shape[1]
-
-
-        Ns =  data.Ns
-
-        if prior.hierarchical:
-            # when hierarchical the prior is only defined on time so we only need the time dimension
-            time_prior = prior
-            ds = 1
-            dt = time_prior.output_dim
-        else:
-            # when not hierarchical the prior is only defined on space and time
-            space_prior = prior
-            time_prior = prior.parent
-            ds = space_prior.output_dim
-            dt = time_prior.output_dim
-
-        # posterior is in [time - df - ds - space ] format
-        # we need it in [time - space - df - ds] format
-
-        H = data_order_to_output_order(Ns, ds * dt).T
-
-        mu_p = jax.vmap(lambda a: H @ a)(q_m)
-        var_p = jax.vmap(lambda A: H @ A[0] @ H.T)(q_S)
-
-        var_p = var_p[:, None, ...]
-        return mu_p, var_p
-
 # DifferentialOperatorJoint with CVI approximate posteriors
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=True)
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, out_block: Block, whiten: bool):
+    """ Single Latent CVI model """
     sparsity =  prior.base_prior.get_sparsity_list()
 
+    # Wrap prior in an Independent transform to bring into the same structure as a multi-output ones
+
+    ind_prior = Independent([prior])
+
     # handle the CVI marginal based on sparsity
-    mu, var =  evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity[0], whiten=whiten, debug=False)(
-        data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block, whiten
+    mu, var =  evoke('marginal_blocks', approximate_posterior, likelihood, ind_prior, prior, sparsity[0], whiten=whiten, debug=False)(
+        data, q_m, q_S, approximate_posterior, likelihood, ind_prior, sparsity, out_block, whiten
     )
 
     chex.assert_rank([mu, var], [3, 4])
 
     return mu, var
 
+# ===========================PREDICTION MARGINALS================================
+
+@dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, Sparsity, whiten=True)
+@dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
+    dummy_prior = prior.parent[0]
+
+    if dummy_prior.hierarchical:
+        # when hierarchical we need to compute the conditional with the spatial derivate kernels
+        # to do this we first predict in time and then compute the required conditional
+
+        # predict in time first
+        xs_spatial_data, all_temporal_data, XS_data, pred_mu, pred_var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False, sort_output=False)
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
+
+
+        out_block_dim = 1
+        mu, var = evoke('spatial_conditional', data, prior, dummy_prior, approximate_posterior)(
+            xs_spatial_data, 
+            sparsity[0].raw_Z, 
+            pred_mu, 
+            pred_var[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior,
+            sparsity,
+            out_block_dim,
+            whiten
+        )
+
+        mu = np.reshape(mu, [xs_spatial_data.Nt, -1, mu.shape[1], mu.shape[2]])
+        var = np.reshape(var, [xs_spatial_data.Nt, -1, var.shape[1], var.shape[2], var.shape[3]])
+
+        # remove training data
+        mu = all_temporal_data.unsort(mu)[data.Nt:]
+        var = all_temporal_data.unsort(var)[data.Nt:]
+
+        # convert to data-latent format
+
+        mu = np.reshape(mu, [-1, mu.shape[2], mu.shape[3]])
+        var = np.reshape(var, [-1, var.shape[2], var.shape[3], var.shape[4]])
+
+        # unsort to original permutation in XS
+        mu_p_unsorted = XS_data.unsort(mu)
+        var_p_unsorted = XS_data.unsort(var)
+
+        return mu_p_unsorted, var_p_unsorted
+
+    else:
+        pred_mu, pred_var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
+
+        pred_mu, pred_var = fix_block_shapes(pred_mu, pred_var, data, likelihood, approximate_posterior, out_block)
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
+
+        return pred_mu, pred_var
+
+
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
 @dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: int, whiten: bool):
 
+    # Wrap prior in an Independent transform to bring into the same structure as a multi-output ones
+
+    ind_prior = Independent([prior])
+
+    # handle the CVI marginal based on sparsity
+    mu, var =  evoke('marginal_prediction_blocks', approximate_posterior, likelihood, ind_prior, prior, sparsity[0], whiten=whiten)(
+        XS, data, q_m, q_S, approximate_posterior, likelihood, ind_prior, sparsity, out_block, whiten
+    )
+
+    chex.assert_rank([mu, var], [3, 4])
+
+    return mu, var
+
+
     if True:
         # predict in time first
-        mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
+        mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False, sort_output=False)
         chex.assert_rank([mu, var], [3, 4])
 
         # fix block sizes
@@ -292,6 +262,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
 
     if not prior.hierarchical:
+        # When not hierarchical predict_f will already compute all teh required derivates
         chex.assert_rank([q_m, q_S], [3, 4])
         chex.assert_equal(q_S.shape[1], 1)
 
@@ -315,6 +286,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     else:
         data_xs = SpatioTemporalData(X=XS, Y=None, sort=True)
         if _ensure_str(data) == 'Data':
+            breakpoint()
             # TODO: why is this necessary? :(
             q_m = np.transpose(q_m, [0, 2, 1])
             return q_m, q_S
@@ -341,6 +313,9 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
 
 
+# =============================================================================
+# ===============================NON-CVI=======================================
+# =============================================================================
 # DifferentialOperatorJoint with (non-CVI) approximate posteriors
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)

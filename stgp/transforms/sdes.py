@@ -111,7 +111,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         # convert from [Q, ds, ns, dt] -> [Q, dt, ds, ns]
         H = to_block_diag([
-            data_order_to_output_order(ds, dt * Ns).T 
+            data_order_to_output_order(dt, ds * Ns).T 
             for q in range(Q)
         ])
 

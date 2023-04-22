@@ -161,14 +161,6 @@ def block_diagonal_from_cholesky(L, block_size):
 
         return get_block_diagonal(R, block_size)
 
-
-    if False:
-        N = int(L.shape[0]/block_size)
-        idx = np.arange(block_size)
-        A = L @ L.T
-        blocks = np.array([A[idx+p*block_size, :][:, idx+p*block_size] for p in range(N)])
-        return blocks
-
     L1 = np.reshape(
         L, 
         [-1, block_size, L.shape[-1]]

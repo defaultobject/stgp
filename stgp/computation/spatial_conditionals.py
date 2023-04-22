@@ -76,11 +76,16 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
         # Ns x Ns
         K_base_spatial_zz_fn = lambda q: base_space_kernel(q).K(X_space, X_space)
 
-        K_spatial_sz_fn = lambda q: (base_prior(q).covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
+        K_spatial_sz_fn = lambda q: (q.covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
 
         K_x_t_fn = lambda q: jax.vmap(
             lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])
+
+        K_spatial_ss_fn = lambda q: jax.vmap(
+            lambda x: q.covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
+        )(XS_space)
+
     else:
         # return K_time * K_space
         base_kern = lambda q: base_prior(q).parent.derivative_kernel.parent_kernel
@@ -94,10 +99,9 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
             lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])
 
-    K_spatial_ss_fn = lambda q: jax.vmap(
-        lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
-    )(XS_space)
-
+        K_spatial_ss_fn = lambda q: jax.vmap(
+            lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
+        )(XS_space)
 
     # N referes to the number of spatial points
 
@@ -343,13 +347,13 @@ def spatial_conditional(
         we need it in [time - space - Q - df - ds] format
     """
     XS_time = data_xs.X_time
-    X_time = data_x.X_time
 
     # Data is the sparsity object
     #X_space = sparsity[0].raw_Z.X_space
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
     X_space = data_x.X_space
+    X_time = data_xs.X_time
 
     space_dim = X_space.shape[1]
     Ns = data_x.Ns
@@ -378,6 +382,7 @@ def spatial_conditional(
         0,
     )(pred_var)
 
+
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])
     mean_xs = np.zeros([data_xs.Ns * out_dim*Q, 1])
@@ -404,6 +409,7 @@ def spatial_conditional(
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
 
+
     return mu_p_bd, var_p_bd
 
 
@@ -423,128 +429,15 @@ def spatial_conditional(
     whiten
 ):
     """
-    Let P be the number of outputs then:
-
-    In:
-        pred_mean: Nt x Ns*P x 1
-        pred_var: Nt x Ns*P x Ns*P
-
-    where pred_mean, pred_var are in latent-data format.    
+    Single Latent Function case
     """
-    XS_time = data_xs.X_time
-    X_time = data_x.X_time
-
-    # Data is the sparsity object
-    #X_space = sparsity[0].raw_Z.X_space
-    # Get spatial locations with dummy time dimension so kernel evaluations are correct
-    XS_space = data_xs.X_space
-    X_space = data_x.X_space
-
-    space_dim = X_space.shape[1]
-    Ns = data_x.Ns
-
-    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
-    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
-
-    X_time = np.hstack([X_time[:, None], np.zeros([X_time.shape[0], 1])])
-
-    # TODO: assuming that data_xs and data_x are the same
-
-    base_prior_output = prior.base_prior.output_dim
-    prior_added_output = prior.derivative_kernel.d_computed
-    out_dim = base_prior_output * prior_added_output
-
-    # covar is ordered by K ⊗ D
-    # base prior kernel function
-    if prior.hierarchical:
-        base_kernel = prior.base_prior.derivative_kernel.parent_kernel
-        base_time_kernel = base_kernel.k1
-        base_space_kernel = base_kernel.k2
-
-        # Ns x Ns
-        K_base_spatial_zz = base_space_kernel.K(X_space, X_space)
-
-        # Dt - Ds - space format
-        # [Ds x Ns] x [Ds x Ns]
-        #K_spatial_ss = prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
-        K_spatial_ss = jax.vmap(lambda x: prior.covar_from_fn(x[None, :], x[None, :], base_space_kernel.K))(XS_space)
-
-        # [Ds x Ns] x [Ns] format
-        K_spatial_sz = prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
-        K_spatial_sz = K_spatial_sz[:, :Ns]
-
-        # K_x_t computes K_F at all the time points independently
-        #time - Dt format
-        # when hierarchical prior.base_prior will point to the time prior
-        K_x_t = jax.vmap(lambda t: prior.base_prior.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
-
-    else:
-        # when the prior is sparse and defined over all the derivates we have to compute K^{delta}_spatial
-        diff_op_space_prior = prior.base_prior
-
-        base_kernel = prior.base_prior.parent.derivative_kernel.parent_kernel
-        base_time_kernel = base_kernel.k1
-        base_space_kernel = base_kernel.k2
-
-        # [Ds x N] x [Ds x N]
-        K_base_spatial_zz = diff_op_space_prior.covar_from_fn(X_space, X_space, base_space_kernel.K)
-
-        # Dt - Ds - space format
-        # [Ds x Ns] x [Ds x Ns]
-        K_spatial_ss = jax.vmap(lambda x: diff_op_space_prior.covar_from_fn(x[None, :], x[None, :], base_space_kernel.K))(XS_space)
-        #K_spatial_ss = diff_op_space_prior.covar_from_fn(XS_space, XS_space, base_space_kernel.K)
-
-        # [Ds x Ns] x [Ds x N]
-        K_spatial_sz = diff_op_space_prior.covar_from_fn(XS_space, X_space, base_space_kernel.K) 
-
-        # K_x_t computes K_F at all the time points independently
-        #time - Dt format
-        # when not hierarchical prior.base_prior will point to the space prior
-        K_x_t = jax.vmap(lambda t: prior.base_prior.parent.covar_from_fn(t, t, base_time_kernel.K))(X_time[:, None, :])
-
-
-    # compute cholesky at each time stamp
-    pred_var_chol = jax.vmap(
-        lambda S: cholesky(add_jitter(S, settings.jitter)),
-        0,
-    )(pred_var)
-
-    # TODO: check this
-    mean_x = np.zeros([pred_mean.shape[1], 1])
-    mean_xs = np.zeros([data_xs.Ns * out_dim, 1])
-
-    if prior.whiten_space:
-        # whiten transform in space
-        Kzz_chol = cholesky(add_jitter(K_base_spatial_zz, settings.jitter))
-        Kzz_chol = np.kron(np.eye(K_x_t.shape[1]), Kzz_chol)
-        pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
-
-
-    # batch over time
-    mu_p, var_p_bd = jax.vmap(
-        gaussian_linear_operator_spatial_conditional_blocks,
-        [None, None, None, None, None, None, 0, 0, 0, None, None],
-    )( 
-        out_dim,
-        XS_space, 
-        X_space, 
-        K_base_spatial_zz, 
-        K_spatial_sz, 
-        K_spatial_ss, 
-        K_x_t, #batching 
-        pred_mean, #batching
-        pred_var_chol, #batching
-        mean_x, 
-        mean_xs
+    breakpoint()
+    # Wrap prior in an Independent transform so that it is in the same format as the multi latent case
+    ind_prior = Independent([prior])
+    
+    return evoke('spatial_conditional', data, ind_prior, prior, approximate_posterior)(
+           data_xs, data_x, pred_mean, pred_var, aapproximate_posterior, likelihood, ind_prior, sparsity, out_block_dim, whiten 
     )
-
-    mu_p_bd = np.reshape(mu_p, [-1, out_dim, 1])
-    var_p_bd = np.reshape(var_p_bd, [-1, 1, out_dim, out_dim])
-
-    chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
-
-    return mu_p_bd, var_p_bd
-
 
 
 

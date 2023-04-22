@@ -33,8 +33,7 @@ from .linear_marginals import linear_marginal_blocks
 @dispatch(ConjugatePrecisionGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
-@dispatch(FullConjugateGaussian, Likelihood, Transform, SpatialSparsity, whiten=False)
-@dispatch(FullConjugateGaussian, Likelihood, DifferentialOperatorJoint, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     N = XS.shape[0]
 
@@ -51,7 +50,6 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
 
 # ========================= Gaussian Approximate Posterior Marginal Blocks =========================
-
 @dispatch('DiagonalGaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch('GaussianApproximatePosterior', Likelihood, 'GPPrior', Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
@@ -110,7 +108,6 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     return mu, var
 
-@dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, 'DifferentialOperatorJoint', 'NoSparsity', whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Joint, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, DataLatentPermutation, Sparsity, whiten=False)
@@ -212,6 +209,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     return _m, _S
 
 
+@dispatch(FullConjugateGaussian, Likelihood, Independent, Sparsity, whiten=True)
+@dispatch(FullConjugateGaussian, Likelihood, Independent, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=True)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Independent, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
@@ -268,6 +267,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 @dispatch(FullConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
+
 
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity
@@ -436,7 +436,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
                 data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part , whiten
             )
         else:
-            mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
+            mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten, debug=False)(
                 XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block , whiten
             )
         if type(linear_model_part) is not list:

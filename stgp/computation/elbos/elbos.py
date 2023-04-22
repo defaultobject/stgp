@@ -63,7 +63,7 @@ def elbo(
     # Compute expected log likelihood term
     ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
-    #print(f'ELL: {ELL}, KL: {KL}')
+    print(f'ELL: {ELL}, KL: {KL}')
 
     return  ELL - KL
 
@@ -178,6 +178,6 @@ def elbo(
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
-    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {ELL_surrogate + ML_surrogate}')
+    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
 
     return elbo

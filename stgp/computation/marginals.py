@@ -129,8 +129,8 @@ def compute_intermediate_mats(Ktt_q, Kxx_q, Kxz_q, Kzz_q, N, Dt, Ds):
     Args:
         Ktt_q: DtxDt
         Kxx_q: Nsx[Ds]x[Ds]
-        Kxz_q: [DsxNs]x[DsxN]
-        Kzz_q: [DsxN]x[DsxN]
+        Kxz_q: [DsxNs]x[DsxN] or [DsxNs]x[N]
+        Kzz_q: [DsxN]x[DsxN] or [N]x[N]
 
     We want the output to be in Ns-Dt-Ds format. We only permtue X, as it makes no difference 
         if we permute Z or not as they are integrated out.
@@ -139,30 +139,30 @@ def compute_intermediate_mats(Ktt_q, Kxx_q, Kxz_q, Kzz_q, N, Dt, Ds):
     """
     Kxz_up = Kxz_q
 
-    # In [NsxDs]x[DsxN] format
+    # In [NsxDs]x[DsxN] or [NsxDs]x[N]format
     Kxz_p = left_permute_mat(Kxz_q, Ds)
 
-    # Still in [DsxN]x[DsxN]  format
+    # Still in [DsxN]x[DsxN]  or [N]x[N] format
     Kzz_chol = cholesky(add_jitter(Kzz_q, settings.jitter))
 
-    # In [DsxN]x[NsxDs]  
+    # In [DsxN]x[NsxDs]  or [N]x[NsxDs]
     A = triangular_solve(
         Kzz_chol, 
         Kxz_p.T, 
         lower=True
     )
-    # Still in [DsxN]x[NsxDs]
+    # Still in [DsxN]x[NsxDs] or [N]x[N]
     A1 = triangular_solve(Kzz_chol.T, A, lower=False) # M x N
 
 
-    # Not permutated: In [DsxN]x[DsxNs]
+    # Not permutated: In [DsxN]x[DsxNs] or [N]x[DsxNs]
     A_up = triangular_solve(
         Kzz_chol, 
         Kxz_up.T, 
         lower=True
     )
 
-    # Not permutated: In [DsxN]x[DsxNs]
+    # Not permutated: In [DsxN]x[DsxNs] [N]x[DsxNs]
     A1_up = triangular_solve(Kzz_chol.T, A_up, lower=False) # M x N
 
     # Ns x Ds x Ds
@@ -189,13 +189,15 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
     """
     Args:
         Ktt: QxDtxDt
-        Kzz: Qx[DsxN]x[DsxN]
-        Kxz: Qx[DsxNs]x[DsxN]
+        Kzz: Qx[DsxN]x[DsxN] or Qx[Ns]x[N]
+        Kxz: Qx[DsxNs]x[DsxN] or Qx[DsxNs]x[N]
         Kxx: NsxQx[Ds]x[Ds]
 
-        m: [Q x Dt x Ds x Ns] x 1
-        S_chol: [Q x Dt x Ds x Ns] x [Q x Dt x Ds x Ns]
+        m: [Q x Dt x Ds x Ns] x 1 or [Q x Dt x Ns] x 1 
+        S_chol: [Q x Dt x Ds x Ns] x [Q x Dt x Ds x Ns] or [Q x Dt x Ns] x [Q x Dt x Ns]
         
+    or (depends on hierarchial nor not)
+
     Output 
         In Ns x [Q x Dt x Ds] format
     """
@@ -220,13 +222,14 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
         Ktt, Kxx, Kxz, Kzz, N, Dt, Ds
     )
 
-    # A1: Not permutated:  [Q x Dt - Ds- Ns] - [Q x Dt - Ds- N]
+    # A1: Not permutated:  [Q x Dt - Ds- Ns] - [Q x Dt - Ds- N] or [Q x Dt - Ds- Ns] - [Q x Dt - N]
     A1_up = to_block_diag(res[1])
-    # Not permutated: [Q x Dt - Ds- Ns] - [Q x Dt - Ds- Ns]
+    # Not permutated: [Q x Dt - Ds- Ns] - [Q x Dt - Ds- Ns] or [Q x Dt - Ns] - [Q x Dt - Ds- Ns]
     A1_t = to_block_diag(res[2])
 
     # Ns x Q x [Dt x Ds] x [Dt x Ds]
     spatial_pred_var = np.transpose(res[0], [1, 0, 2, 3])
+
 
     # Ns x [Q x Dt x Ds] x [Q x Dt x Ds]
     spatial_pred_var = jax.vmap(to_block_diag)(spatial_pred_var)
@@ -240,8 +243,8 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
     B1 = block_diagonal_from_cholesky(B1, block_size)
     pred_var = spatial_pred_var + B1
 
-    # [Q x Dt - Ds- Ns] 
-    pred_mean = A1_t.T @ m # N x 1
+    # [Q x Dt - Ds- Ns] x 1
+    pred_mean = A1_t.T @ m 
 
     # -> [Ns x Q x Dt - Ds] 
     pred_mean = permute_vec(pred_mean, block_size)
@@ -252,6 +255,7 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
 
     pred_mean = pred_mean[..., None]
     pred_var = pred_var[:, None, ...]
+    #breakpoint()
 
     return pred_mean, pred_var
 

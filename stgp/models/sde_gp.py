@@ -436,7 +436,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         return R
 
-    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False):
+    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True):
         """
         We use the Kalman filter and smoother to predict and the temporal slices of XS,
         and then use the results to extrapolate to the new spatial locations.
@@ -543,9 +543,6 @@ class ST_SDE_GP(BASE_SDE_GP):
             self.prior,
             R = self.get_likelihood_for_prediction(all_temporal_data)
         )
-        mu_p = jax.vmap(lambda a: permute_vec(a, 2))(mu_t)
-        mu_p = np.reshape(mu_p, [-1, 2, 1])
-
 
         # construct testing data at new spatial locations
         XS_spatial_new = add_temporal_points(all_temporal_data, XS_data)
@@ -564,6 +561,12 @@ class ST_SDE_GP(BASE_SDE_GP):
             mu_t = mu_t[:, :self.data.Ns, :]
             var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
 
+        if not sort_output:
+            # For certain models we do not want to actually unsort the prediction and this will be handled downstream
+
+            # we need to return the data objects so that the unsorting can be performed
+            return xs_spatial_data, all_temporal_data, XS_data, mu_t, var_t[:, None, ...]
+
         if True:
             # Compute spatial conditions to get posterior at new spatial points
             mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
@@ -571,6 +574,8 @@ class ST_SDE_GP(BASE_SDE_GP):
             )
         else:
             mu, var = mu_t, var_t[:, None, ...]
+
+
 
         # mu/var is in  time - (latent x space) format
         # Unsort data and remove the training data

@@ -31,7 +31,7 @@ sys.path.append('/Users/ohamelijnck/Documents/projects/stgp/examples')
 from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
-stgp.settings.jitter = 1e-4
+stgp.settings.jitter = 1e-7
 
 # construct 2d grid for X
 NS = 15
@@ -106,11 +106,11 @@ m = stgp.models.GP(
 
 m.print()
 
-print(m.get_objective())
-breakpoint()
+#print(m.get_objective())
 
 NatGradTrainer(m).train(1.0, 1)
 
+print('trained')
 print(m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS)

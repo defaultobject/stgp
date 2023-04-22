@@ -40,9 +40,9 @@ XS, X, _ = single_output_spatial_data(10, 10, NS, NS, seed=0)
 N = X.shape[0]
 
 # Construct data
-f = lambda x1, x2: 10*np.sin(10*x1*x2)
-df_x1 = lambda x1, x2: 100*np.cos(10*x1 * x2)* 10 * x2
-df_x2 = lambda x1, x2: 80*np.cos(10*x1 * x2)* 10 * x1
+f = lambda x1, x2: np.sin(10*x1*x2)
+df_x1 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x2
+df_x2 = lambda x1, x2: np.cos(10*x1 * x2)* 10 * x1
 
 np.random.seed(0)
 y = f(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
@@ -68,7 +68,6 @@ if False:
     , 1.0) * RBF(
         lengthscales=[0.1], active_dims=[1], input_dim=1
     )
-
 
 
     lik_arr = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)]
@@ -195,10 +194,10 @@ else:
 
 m.print()
 
-print(m.get_objective())
-breakpoint()
 
 NatGradTrainer(m).train(1.0, 1)
+
+print('trained')
 
 print(m.get_objective())
 
