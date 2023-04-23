@@ -9,7 +9,7 @@ from ...utils.utils import get_batch_type
 from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian
 from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
-from ...dispatch import dispatch, evoke
+from ...dispatch import dispatch, evoke, _ensure_str
 
 from ...utils.nan_utils import get_same_shape_mask
 
@@ -26,6 +26,8 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
+    if _ensure_str(likelihood) != 'BlockDiagonalGaussian': 
+        print('ELL: SUM: ', np.sum(np.square(data.Y - np.squeeze(q_f_mu)), axis=0))
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference

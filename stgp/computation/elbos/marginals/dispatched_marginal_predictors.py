@@ -268,7 +268,6 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
-
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity
     )

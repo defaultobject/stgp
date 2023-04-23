@@ -131,6 +131,7 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
                 [res10[i, j, self.input_index],    res11[i, j, self.input_index, self.input_index]], # df/dt
             ])
 
+        # forces B - D format
         # stack all derivate kernels over each BxB element 
         K = np.block([
             [
@@ -153,6 +154,7 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
         K = jax.vmap(k2, (0, None))(X1, X2)
 
         # K is in data-diff format -- convert to diff-data format
+        # forces B - D - data format
         K_reshaped = np.block([
             [
                 K[:, :, d1, d2]

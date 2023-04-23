@@ -9,7 +9,7 @@ from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
-from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
+from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat, right_permute_mat
 from ....core import Block, get_block_dim
 
 # Import Types
@@ -369,22 +369,27 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
         #   but we only care about the diagonal of the result so we just compute
         #   the diagonal variance here
 
-        #Kxx = np.diag(np.squeeze(prior.var(XS))) # ND x ND
-        Kxx = prior.covar(XS, XS) # ND x ND
+        # [Dt x Ds x N] x [Dt x Ds x N]
+        Kxx = prior.covar(XS, XS) 
         mean_xx = prior.mean(XS)
 
+        # Dt
         base_prior_output = prior.base_prior.output_dim
+        # Ds
         prior_added_output = prior.derivative_kernel.d_computed
 
-        # covar is ordered by K ⊗ D
+        # [Dt x M] x [Dt x M]
         Kzz = prior.base_prior.covar(Z, Z)
         mean_zz = prior.base_prior.mean(Z)
 
+        # [Dt x Dt x N] x [Dt x Ds x M]
         Kxz = prior.covar(XS, Z)
+        M = Z.shape[0]
 
         # remove added outputs to Kxz Z dimension as Kzz is only defined on the base prior
-        idx = np.hstack([np.arange((M*prior_added_output)*d, (M*prior_added_output)*d + M) for d in range(base_prior_output)])
-        Kxz = Kxz[:, idx]
+
+        # [Dt - Ds - N] x [Dt] x [Ds] x [M] -> [Ds - Dt - N] x [ Dt - M]
+        Kxz = np.reshape(Kxz, [Kxz.shape[0], base_prior_output, prior_added_output, M])[:, :, 0, :].reshape([Kxz.shape[0], q_m.shape[0]])
 
         # compute standard marginals
         if whiten:
@@ -411,24 +416,25 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
             # TODO: why not just vmap over x? this will automatically get the correct format, and may even make the graph smaller?
             P = data_order_to_output_order(NS, prior.output_dim)
 
+            # [N] x [Dt x Dt] x [Dt x Ds]
             Kxx_diag = jax.vmap(lambda x: prior.covar(x, x))(XS[:, None, ...])
 
+            # N x [ Dt x Dt] 
             mu, var = gaussian_conditional_blocks(
                 1.0,
                 prior.output_dim,
                 XS, 
                 Z, 
-                Kzz, 
-                P.T @ Kxz, 
-                Kxx_diag, 
-                q_m[..., 0],
-                q_S_chol[0, 0, ...], 
+                Kzz, # [Dt x M] x [Dt x M]
+                P.T @ Kxz, # [N x  Dt x Ds] x [Dt x M]
+                Kxx_diag, # N x [Dt x Ds] x [Ds x Dt]
+                q_m[..., 0], # [Dt x M] x 1
+                q_S_chol[0, 0, ...], # [Dt x M] x [Dt x M]
                 mean_zz, 
                 mean_xx
             )
 
-            #breakpoint()
-           
+
             post_mu = mu[..., None]
             post_var = var[:, None, ...]
             return post_mu, post_var

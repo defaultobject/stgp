@@ -35,6 +35,7 @@ class LTI_SDE(SDE):
         # TODO: this is a bit hacky atm
 
         # if the spatial kernel is a derivate kernel this will get ignored by the filter and computed explicitely after smoothing.
+        # i.e when in a hierachical model the filter does not compute sptial derivates and so the spatial dim here will be 1
         try:
             return self.gp.base_prior.parent[0].kernel.k2.output_dim
         except Exception as e:
@@ -84,53 +85,13 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.whiten_space = whiten_space
 
+        # select all dims
+        self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
+
     @property
     def temporal_output_dim(self):
         """ Returns the full state.  """
         return self._state_space_dim
-
-    @property
-    def _output_dim(self):
-        return self.temporal_output_dim * self.spatial_output_dim
-
-    def H(self, x, X_s, t):
-        # Observe both f and df
-        H_t = np.eye(self._state_space_dim)
-
-        #When there are no spatial points there is no need to permute
-        #as it will automatically be in time-latent format
-        if X_s is None:
-            return H_t
-
-        # need to permute from latent-space-state to latent-state-space
-        # need to permute from latent-ds-space-df to latent-df-ds-space
-        Ns = X_s.shape[0]
-        Q = len(self.gp.state_space_dim())
-        dt = self.gp.state_space_dim()[0]
-        ds = self.spatial_output_dim
-
-        # convert from [Q, ds, ns, dt] -> [Q, dt, ds, ns]
-        H = to_block_diag([
-            data_order_to_output_order(dt, ds * Ns).T 
-            for q in range(Q)
-        ])
-
-        return H
-
-class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
-    """
-    Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
-    """
-    def __init__(self, gp: 'Model', keep_dims, whiten_space=False):
-        self.gp = gp
-        self._state_space_dim = sum(self.gp.state_space_dim())
-        self.keep_dims = np.array(keep_dims)
-        self.whiten_space = whiten_space
-
-    @property
-    def temporal_output_dim(self):
-        """ Returns the full state.  """
-        return self.keep_dims.shape[0]
 
     @property
     def _output_dim(self):
@@ -148,19 +109,44 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE):
         if X_s is None:
             return H_t
 
-        # need to permute from latent-space-state to latent-state-space
-        # TODO: assuming that latent = 1 and we are treating state as latent
-        Ns = self.spatial_output_dim * X_s.shape[0]
-        P = self.temporal_output_dim
-        P = self._state_space_dim
+        # need to permute from latent-ds-space-df to latent-df-ds-space
+        Ns = X_s.shape[0]
+        Q = len(self.gp.state_space_dim())
+        dt = self.gp.state_space_dim()[0]
+        ds = self.spatial_output_dim
+        dt_keep = len(self.keep_dims)
 
-        # the result will now be (diff_t x diff_s x space)
-        H = data_order_to_output_order(P, Ns).T
+        full_dim = dt * ds * Ns
+        mask_dim = dt_keep * ds * Ns
+        I = np.eye(full_dim)
+        I = np.reshape(I, [ds * Ns, dt, full_dim])[:, self.keep_dims, :]
+        I_mask = np.reshape(I, [mask_dim, full_dim])
 
-        H = np.reshape(H, [P, Ns, -1])[self.keep_dims, ...]
-        H = np.reshape(H, [self.temporal_output_dim * Ns, -1])
+        # convert from [ds, ns, dt] -> [dt_keep, ds, ns]
+        H_q = data_order_to_output_order(dt_keep, ds * Ns).T @ I_mask
+
+        # convert from [Q, ds, ns, dt] -> [Q, dt_keep, ds, ns]
+        H = to_block_diag([
+            H_q
+            for q in range(Q)
+        ])
 
         return H
+
+class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
+    """
+    Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
+    """
+    def __init__(self, gp: 'Model', keep_dims, whiten_space=False):
+        self.gp = gp
+        self._state_space_dim = sum(self.gp.state_space_dim())
+        self.keep_dims = np.array(keep_dims)
+        self.whiten_space = whiten_space
+
+    @property
+    def temporal_output_dim(self):
+        """ Returns the full state.  """
+        return self.keep_dims.shape[0]
 
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):
