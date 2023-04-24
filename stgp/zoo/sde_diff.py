@@ -272,19 +272,33 @@ def diff_cvi_sde_vgp(
 
     # surrogate model prior
     if meanfield:
-        raise NotImplementedError()
-        latent_sde_gp = Independent([
-            LTI_SDE_Full_State_Obs_With_Mask(
-                Independent([
-                    GP(
-                        sparsity=sparsity, 
-                        kernel = base_st_kerns[i]
-                    )
-                ]),
-                keep_dims=[0, 1]
-            )
-            for i in range(2)
-        ])
+        raise NotImplementedError('Need to test')
+        if keep_dims is None:
+            latent_sde_gp = Independent([
+                LTI_SDE_Full_State_Obs(
+                    Independent([
+                        GP(
+                            sparsity=sparsity, 
+                            kernel = base_st_kerns[i]
+                        )
+                    ])
+                )
+                for i in range(Q)
+            ])
+        else:
+            latent_sde_gp = Independent([
+                LTI_SDE_Full_State_Obs_With_Mask(
+                    Independent([
+                        GP(
+                            sparsity=sparsity, 
+                            kernel = base_st_kerns[i]
+                        )
+                    ]),
+                    keep_dims=keep_dims
+                )
+                for i in range(Q)
+            ])
+
     else:
         if keep_dims is None:
             latent_sde_gp = LTI_SDE_Full_State_Obs(
@@ -297,7 +311,16 @@ def diff_cvi_sde_vgp(
                 ])
             )
         else:
-            raise NotImplementedError()
+            latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(
+                Independent([
+                    GP(
+                        sparsity=sparsity, 
+                        kernel = base_st_kerns[q]
+                    )
+                    for q in range(num_latents)
+                ]),
+                keep_dims=keep_dims
+            )
 
 
     # Setup likelihood
@@ -310,7 +333,12 @@ def diff_cvi_sde_vgp(
         raise NotImplementedError()
     else:
 
-        state_dim = time_kernel[0].state_space_dim()
+        # When using keep_dims  only a subset of the full kalman state will be observed
+        #    and the shape of Y and the likelihood only needs to be defined across the observed ones
+        if keep_dims:
+            state_dim = len(keep_dims)
+        else:
+            state_dim = time_kernel[0].state_space_dim()
         if not hierarchical:
             # when not hierarchical 
             state_dim =  state_dim * space_diff_kern[0].output_dim

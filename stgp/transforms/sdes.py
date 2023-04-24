@@ -15,6 +15,7 @@ class SDE(Transform):
         return len(self.latents)
 
 class LTI_SDE(SDE):
+    """ @TODO: Only for single latent functions"""
     def __init__(self, gp: 'Model'):
         self.gp = gp
         self.whiten_space = False # required for api consistentcy
@@ -80,10 +81,12 @@ class LTI_SDE(SDE):
         return self.gp.expm(t, X_s)
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
+    """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """
     def __init__(self, gp: 'Model', whiten_space=False):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.whiten_space = whiten_space
+        self._num_latents = len(self.gp.state_space_dim())
 
         # select all dims
         self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
@@ -95,7 +98,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
     @property
     def _output_dim(self):
-        return self.temporal_output_dim * self.spatial_output_dim
+        return  self.temporal_output_dim * self.spatial_output_dim
 
     def H(self, x, X_s, t):
 
@@ -146,7 +149,7 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
     @property
     def temporal_output_dim(self):
         """ Returns the full state.  """
-        return self.keep_dims.shape[0]
+        return self.keep_dims.shape[0]*self.num_latents
 
 class EulerMaruyama(SDE):
     def __init__(self, base_sde):
