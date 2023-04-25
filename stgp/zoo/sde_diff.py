@@ -105,7 +105,7 @@ def get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None):
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, verbose=False
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, verbose=False
 ):
     """
     Args:
@@ -114,6 +114,7 @@ def diff_cvi_sde_vgp(
         space_diff: [int] - number of spatial diffs to compute - will be the same across all latents
         time_kernel: [list[kernel]|kernel]
         space_kernel: [list[kernel]|kernel]
+        space_diff_kernel: Optional[]  - optional pre-computed space diff kernel. Useful for passing a closed form. Only works for hierarchial
         lik_var: [float|list[float]] - Gaussian likelihood noise. If a list if not passed the same value is initialised acrossed all outputs
         Z_s: [None|np.ndarray|list[np.ndarray]] - Optional spatial inducing points. If passed then run in a sparse setting. 
         ell_samples: [None|int] - Optional number of monte-carlo samples to appoximate the ELL with
@@ -124,6 +125,10 @@ def diff_cvi_sde_vgp(
         multioutput_prior[bool] - when multioutput the likelihood must be constructed as a list of productlikelihoods
         parallel: [bool] - default false. Whether or not use a parallel kalman filter and smoother.
     """
+
+    if space_diff_kernel is not None:
+        if not hierarchical:
+            raise RuntimeError('Can only pass space_diff_kernel in a hierarchical model')
 
     # Figure out what setting we are constructing a model in
     dim = X.shape[1]
@@ -190,7 +195,11 @@ def diff_cvi_sde_vgp(
     if include_space:
         # construct space kernel
         # we do not pass time as we are using a kalman filter which computes the spatial and temporal kernels separetely
-        space_diff_kern, space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff)
+        if space_diff_kernel is None:
+            space_diff_kern, space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff)
+        else:
+            space_diff_kern = space_diff_kernel
+            space_diff_mean = [None for i in range(space_diff)] # not used atm so just create nans
 
         # in the composite case we  pass through the time_diff_kernel as want to compute something like
         #    kernel = FirstOrderDerivativeKernel(

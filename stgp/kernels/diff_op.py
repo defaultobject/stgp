@@ -3,6 +3,7 @@ import jax
 import jax.numpy as np
 from jax import jacfwd, jacrev, grad
 from ..computation.matrix_ops import hessian
+from .white_noise import WhiteNoise
 
 import chex
 
@@ -1137,6 +1138,98 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
             [K[:, :, 0, 0], K[:, :, 0, 1], K[:, :, 0, 2]],
             [K[:, :, 1, 0], K[:, :, 1, 1], K[:, :, 1, 2]],
             [K[:, :, 2, 0], K[:, :, 2, 1], K[:, :, 2, 2]],
+        ])
+
+        return K_reshaped
+
+
+# =================== CLOSED FORMS ==========================
+
+class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
+    """
+    parent kernel must be RBF
+
+    NOTE: this should only be used for hierachical models!!
+    NOTE: this makes use of a white noise kernel, which assuems that if X1 and X2 are the same shape
+        then they are the same. Be careful when using inducing points!
+    """
+
+    def __init__(
+            self, 
+            parent_kernel = None,
+            input_index: int = 0,
+            parent_output_dim: int = 1
+        ):
+
+        super(ClosedFormRBFFirstOrderDerivativeKernel, self).__init__(parent_kernel, input_index, parent_output_dim)
+
+        self.white_noise = WhiteNoise()
+
+    def _compute_derivatives(self, x1, x2, delta, parent_kernel):
+        #B x B
+        k = lambda x1, x2: parent_kernel.K(x1[None, ...], x2[None, ...])
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+
+        ls = parent_kernel.lengthscales
+
+        # Computes
+        # [K]
+        res00 = np.squeeze(k(x1, x2))
+
+        _x1, _x2 = x1[self.input_index], x2[self.input_index]
+
+        # -1 because RBF is only defined on the spatial part, or if not this will be negative one so it will select the correct ls
+        _ls = np.squeeze(ls)
+
+        # Computes
+        # [(T)K]
+        res10 = (1/(_ls**2)) * (_x1-_x2) * res00
+
+        # Computes
+        # K(T)
+        # B x B x D
+        res01 = (1/(_ls**2)) * (_x2-_x1) * res00
+
+
+        # Computes
+        # (T)K(T)
+        tau = (_x1-_x2)*(_x2-_x1)
+        gamma = (1/(_ls**2))
+        res11 = gamma * (1 + gamma*tau) * res00
+        #res11 = (1/(_ls**2)) * res00
+
+        # Construct full matrix
+        # K,       K(T)
+        # (T)K,    (T)K(T)
+
+        K =  np.array([
+            [res00, res10],
+            [res01, res11]
+        ])
+
+        return K
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        white_K = self.white_noise.K(X1, X2)
+
+        # by construction var_fn is just the kernel function self.parent_kernel
+
+        def k2(x1, X2, _wK, K_fn):
+            return jax.vmap(self._compute_derivatives, (None, 0, 0, None))(x1, X2, _wK, K_fn)
+
+        K = jax.vmap(k2, (0, None, 0, None))(X1, X2, white_K, self.parent_kernel)
+
+
+        # K is in data-diff format -- convert to diff-data format
+        # forces B - D - data format
+        K_reshaped = np.block([
+            [
+                K[:, :, d1, d2]
+                for d2 in range(self.output_dim)
+            ]
+            for d1 in range(self.output_dim)
         ])
 
         return K_reshaped
