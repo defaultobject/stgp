@@ -1150,8 +1150,6 @@ class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
     parent kernel must be RBF
 
     NOTE: this should only be used for hierachical models!!
-    NOTE: this makes use of a white noise kernel, which assuems that if X1 and X2 are the same shape
-        then they are the same. Be careful when using inducing points!
     """
 
     def __init__(
@@ -1163,9 +1161,8 @@ class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
 
         super(ClosedFormRBFFirstOrderDerivativeKernel, self).__init__(parent_kernel, input_index, parent_output_dim)
 
-        self.white_noise = WhiteNoise()
 
-    def _compute_derivatives(self, x1, x2, delta, parent_kernel):
+    def _compute_derivatives(self, x1, x2, parent_kernel):
         #B x B
         k = lambda x1, x2: parent_kernel.K(x1[None, ...], x2[None, ...])
 
@@ -1212,14 +1209,12 @@ class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
         return K
 
     def _K_from_fn(self, X1, X2, var_fn):
-        white_K = self.white_noise.K(X1, X2)
-
         # by construction var_fn is just the kernel function self.parent_kernel
 
-        def k2(x1, X2, _wK, K_fn):
-            return jax.vmap(self._compute_derivatives, (None, 0, 0, None))(x1, X2, _wK, K_fn)
+        def k2(x1, X2, K_fn):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, K_fn)
 
-        K = jax.vmap(k2, (0, None, 0, None))(X1, X2, white_K, self.parent_kernel)
+        K = jax.vmap(k2, (0, None, None))(X1, X2, self.parent_kernel)
 
 
         # K is in data-diff format -- convert to diff-data format

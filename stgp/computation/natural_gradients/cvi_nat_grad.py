@@ -82,7 +82,7 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
 
     return lambda_1_new, lambda_2_new
 
-@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, NoSparsity)
+#@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     raw_Y_arr, lambda_1_arr, lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
 
@@ -134,8 +134,8 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
 @dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
-    breakpoint()
     raw_Y_arr, Y_tilde_arr, V_tilde_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
+    breakpoint()
 
     # Different models store Y with different dimensions so we store it here so can 
     #   match the shape in the output
@@ -402,6 +402,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 # =================== Meanfield Approximate Posterior ====================
 
 @dispatch('VGP', MeanFieldConjugateGaussian, FullConjugateGaussian, NoSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, FullConjugateGaussian, SpatialSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     """ Meanfield approximate posterior with FullConjugateGaussian compoenents """
     raw_Y_arr, _lambda_1_arr, _lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
@@ -409,7 +410,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     if len(raw_Y_arr.shape) == 4:
         Q, N, L, B = raw_Y_arr.shape
 
-        q_mu_z = np.reshape(q_mu_z, [N, Q*L, B])
+        q_mu_z = np.reshape(q_mu_z, [N, Q*L*B, 1])
 
         _lambda_1_arr = np.transpose(_lambda_1_arr, [1, 0, 2])
         # TODO: this wont work with an actual batch size
@@ -436,7 +437,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
         lambda_2_arr = jax.vmap(to_block_diag)(lambda_2_arr)
         lambda_2_arr = lambda_2_arr[:, None, ...]
 
-    
     # still in time-latent-space
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z

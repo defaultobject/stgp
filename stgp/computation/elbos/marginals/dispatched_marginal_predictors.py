@@ -612,18 +612,39 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         get_block_type(1), 
         out_block
     )
+    
+    if type(mu) == list:
 
-    mu = approximate_expectation(
-        lambda f: f, 
-        mu, 
-        var, 
-        prior = prior,
-        fn_args = [],
-        generator = inference.generator, 
-        num_samples = num_samples,
-        block_type = block_type,
-        average = False
-    )
+        # if mu is a list then prior must be a MultiOutput
+        mu_res = []
+        for i in range(len(mu)):
+            mu_i = approximate_expectation(
+                lambda f: f, 
+                mu[i], 
+                var[i], 
+                prior = prior.parent[i],
+                fn_args = [],
+                generator = inference.generator, 
+                num_samples = num_samples,
+                block_type = block_type,
+                average = False
+            )
+            mu_res.append(mu_i)
+        mu = mu_res
+        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, 0, :]
+    else:
+        mu = approximate_expectation(
+            lambda f: f, 
+            mu, 
+            var, 
+            prior = prior,
+            fn_args = [],
+            generator = inference.generator, 
+            num_samples = num_samples,
+            block_type = block_type,
+            average = False
+        )
+
     # TODO: fix shapes with aggregation blocks?
     #chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 

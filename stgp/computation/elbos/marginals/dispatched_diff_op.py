@@ -35,7 +35,8 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, SpatialSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
-    if out_block == Block.LATENT:
+
+    if out_block == Block.LATENT or out_block == Block.DIAGONAL:
         out_block_dim = 1
         mu, var = evoke('spatial_conditional', data, prior, prior.parent[0], approximate_posterior)(
             data, 
@@ -74,6 +75,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
             ds = space_prior.output_dim
             dt = time_prior.output_dim
 
+
         # posterior is in [time - Q - dt - ds - space ] format
         # we need it in [time - space - Q - dt - ds] format
 
@@ -98,6 +100,9 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     QL = prior.output_dim
     L = base_prior.output_dim
+
+    if out_block == Block.DIAGONAL:
+        out_block = Block.LATENT
 
 
     # TODO: figure out the format of q_m and q_S
@@ -238,6 +243,10 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     # Wrap prior in an Independent transform to bring into the same structure as a multi-output ones
 
     ind_prior = Independent([prior])
+
+    # TODO: why not already a list?
+    if type(sparsity) is not list:
+        sparsity = [sparsity]
 
     # handle the CVI marginal based on sparsity
     mu, var =  evoke('marginal_prediction_blocks', approximate_posterior, likelihood, ind_prior, prior, sparsity[0], whiten=whiten)(

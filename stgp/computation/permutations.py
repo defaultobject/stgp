@@ -93,7 +93,7 @@ def permute_blocks(A_blocks, num_latents):
 @partial(jit, static_argnums=(1))
 def left_permute_mat(A, num_latents):
     chex.assert_rank(A, 2)
-    if False:
+    if True:
         # TODO: write test
         N = int(A.shape[0]/num_latents)
         return np.reshape(

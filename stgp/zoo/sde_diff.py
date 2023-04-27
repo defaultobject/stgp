@@ -20,7 +20,7 @@ from stgp.data import Data
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import  progress_bar_callback
 from stgp.kernels.spectral_mixture import SM_Component
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian
 from stgp.transforms import Independent
 from stgp.trainers.standard import VB_NG_ADAM, LBFGS, LikNoiseSplitTrainer, ADAM
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE, LTI_SDE_Full_State_Obs_With_Mask
@@ -243,45 +243,61 @@ def diff_cvi_sde_vgp(
             diff_op_prior = diff_op_prior_time
 
     else:
-        diff_op_prior = [
-            DifferentialOperatorJoint(
-                GP(
-                    sparsity=sparsity, 
-                    kernel = base_kernel[q]
-                ),
-                kernel = composite_space_diff_kern[q],
-                is_base = True,
-                has_parent = False
-            )
-            for q in range(num_latents)
-        ]
+        if include_space:
+            diff_op_prior = [
+                DifferentialOperatorJoint(
+                    GP(
+                        sparsity=sparsity, 
+                        kernel = base_kernel[q]
+                    ),
+                    kernel = composite_space_diff_kern[q],
+                    is_base = True,
+                    has_parent = False
+                )
+                for q in range(num_latents)
+            ]
+        else:
+            diff_op_prior = [
+                DifferentialOperatorJoint(
+                    GP(
+                        sparsity=sparsity, 
+                        kernel = base_kernel[q]
+                    ),
+                    kernel = composite_time_diff_kern[q],
+                    is_base = True,
+                    has_parent = False
+                )
+                for q in range(num_latents)
+            ]
 
     diff_op_prior = Independent(diff_op_prior)
 
     # setup surrogate SDE prior
 
-    if hierarchical:
-        # when hierachical we do not compute the spatial derivates using the filter
-        base_st_kerns = [
-            SpatioTemporalSeperableKernel(
-                time_diff_kern[q], 
-                space_kernel[q]
-            )
-            for q in range(num_latents)
-        ]
+    if include_space:
+        if hierarchical:
+            # when hierachical we do not compute the spatial derivates using the filter
+            base_st_kerns = [
+                SpatioTemporalSeperableKernel(
+                    time_diff_kern[q], 
+                    space_kernel[q]
+                )
+                for q in range(num_latents)
+            ]
+        else:
+            base_st_kerns = [
+                SpatioTemporalSeperableKernel(
+                    time_diff_kern[q], 
+                    space_diff_kern[q],
+                    spatial_output_dim = space_diff_kern[q].d_computed
+                )
+                for q in range(num_latents)
+            ]
     else:
-        base_st_kerns = [
-            SpatioTemporalSeperableKernel(
-                time_diff_kern[q], 
-                space_diff_kern[q],
-                spatial_output_dim = space_diff_kern[q].d_computed
-            )
-            for q in range(num_latents)
-        ]
+        base_st_kerns = time_diff_kern
 
     # surrogate model prior
     if meanfield:
-        raise NotImplementedError('Need to test')
         if keep_dims is None:
             latent_sde_gp = Independent([
                 LTI_SDE_Full_State_Obs(
@@ -292,7 +308,7 @@ def diff_cvi_sde_vgp(
                         )
                     ])
                 )
-                for i in range(Q)
+                for i in range(num_latents)
             ])
         else:
             latent_sde_gp = Independent([
@@ -305,7 +321,7 @@ def diff_cvi_sde_vgp(
                     ]),
                     keep_dims=keep_dims
                 )
-                for i in range(Q)
+                for i in range(num_latents)
             ])
 
     else:
@@ -338,24 +354,75 @@ def diff_cvi_sde_vgp(
 
     # setup approximate posterior
 
-    if meanfield:
-        raise NotImplementedError()
+    # When using keep_dims  only a subset of the full kalman state will be observed
+    #    and the shape of Y and the likelihood only needs to be defined across the observed ones
+    if keep_dims:
+        state_dim = len(keep_dims)
     else:
+        state_dim = time_kernel[0].state_space_dim()
 
-        # When using keep_dims  only a subset of the full kalman state will be observed
-        #    and the shape of Y and the likelihood only needs to be defined across the observed ones
-        if keep_dims:
-            state_dim = len(keep_dims)
-        else:
-            state_dim = time_kernel[0].state_space_dim()
+    if include_space:
         if not hierarchical:
             # when not hierarchical 
             state_dim =  state_dim * space_diff_kern[0].output_dim
 
+    if include_space:
         if sparse:
             Ms = sparsity.raw_Z.Ns
         else:
             Ms = data._X.Ns
+    else:
+        Ms = 1
+
+    if meanfield:
+        if include_space:
+            if verbose:
+                print(f'Q: {num_latents}, state_dim: {state_dim}, Nt: {data.Nt}, Ns: {data.Ns}, Ms: {Ms}')
+
+            # ====== SPATIO-TEMPORAL MEANFIELD =======
+            q = MeanFieldConjugateGaussian(
+                approximate_posteriors = [
+                    FullConjugateGaussian(
+                        X = sparsity,
+                        num_latents = state_dim,
+                        block_size= Ms * state_dim,
+                        num_blocks = data.Nt,
+                        surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                            # in state-space format
+                            data = stgp.data.SpatioTemporalData(X=sparsity.raw_Z, Y=np.reshape(Y, [data.Nt, state_dim, Ms]), sort=False),
+                            likelihood=likelihood, 
+                            prior=latent_sde_gp.parent[q],
+                            inference='Sequential',
+                            parallel=parallel,
+                            full_state_observed=True
+                        )
+                    )
+                    for q in range(num_latents)
+                ]
+            )
+        else:
+            # ====== TEMPORAL MEANFIELD =======
+            q = MeanFieldConjugateGaussian(
+                approximate_posteriors = [
+                    FullConjugateGaussian(
+                        X = sparsity,
+                        num_latents = state_dim,
+                        block_size= Ms * state_dim,
+                        num_blocks = data.Nt,
+                        surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                            # in state-space format
+                            data = stgp.data.MultiOutputTemporalData(X=sparsity.raw_Z, Y=np.reshape(Y, [data.Nt, state_dim, Ms]), sort=False),
+                            likelihood=likelihood, 
+                            prior=latent_sde_gp.parent[q],
+                            inference='Sequential',
+                            parallel=parallel,
+                            full_state_observed=True
+                        )
+                    )
+                    for q in range(num_latents)
+                ]
+            )
+    else:
 
         if include_space:
             if verbose:
@@ -377,8 +444,21 @@ def diff_cvi_sde_vgp(
                 )
             )
         else:
-            raise NotImplementedError()
-
+            q = FullConjugateGaussian(
+                X = sparsity,
+                num_latents =  num_latents * state_dim,
+                block_size= Ms * state_dim * num_latents,
+                num_blocks = data.Nt,
+                surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
+                    # in state-space format
+                    data = stgp.data.MultiOutputTemporalData(X=sparsity.raw_Z, Y=np.reshape(Y, [data.Nt, state_dim * num_latents, Ms]), sort=False),
+                    likelihood=likelihood, 
+                    prior=latent_sde_gp,
+                    inference='Sequential',
+                    parallel=parallel,
+                    full_state_observed=True
+                )
+            )
 
     # Setup Prior Transform
     if prior_fn is not None:

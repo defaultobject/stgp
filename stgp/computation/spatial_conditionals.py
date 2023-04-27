@@ -18,7 +18,7 @@ from ..transforms.sdes import SDE
 
 import jax
 import jax.numpy as np
-from jax import jit, vmap
+from jax import jit, vmap, lax
 import chex
 import objax
 from batchjax import batch_or_loop, BatchType

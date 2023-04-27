@@ -337,10 +337,8 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, pa
     else:
         filter_fn = evoke('filter', 'sequential')
 
-    jax.vmap(mat_inv)(lik_mat)
-
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)
-    lml_cov, filter_res_cov =  filter_fn(data, prior, jax.vmap(mat_inv)(lik_mat), Y, X_t, X_s, dt, True)
+    #lml_cov, filter_res_cov =  filter_fn(data, prior, jax.vmap(mat_inv)(lik_mat), Y, X_t, X_s, dt, True)
 
     return lml, filter_res
 

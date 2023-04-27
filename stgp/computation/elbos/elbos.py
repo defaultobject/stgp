@@ -27,7 +27,8 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
     )
 
     if _ensure_str(likelihood) != 'BlockDiagonalGaussian': 
-        print('ELL: SUM: ', np.sum(np.square(data.Y - np.squeeze(q_f_mu)), axis=0))
+        #print('ELL: SUM: ', np.sum(np.square(data.Y - np.squeeze(q_f_mu)), axis=0))
+        pass
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
@@ -65,7 +66,7 @@ def elbo(
     # Compute expected log likelihood term
     ELL = compute_expected_log_liklihood(data, likelihood, prior, approximate_posterior, inference)
 
-    print(f'ELL: {ELL}, KL: {KL}')
+    #print(f'ELL: {ELL}, KL: {KL}')
 
     return  ELL - KL
 
@@ -156,7 +157,7 @@ def elbo(
     )
     KL = np.sum(KL_arr)
 
-    print(f'ELL: {ELL}, KL: {KL}')
+    #print(f'ELL: {ELL}, KL: {KL}')
 
     return ELL - KL
 
@@ -180,6 +181,6 @@ def elbo(
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
-    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
+    #print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
 
     return elbo

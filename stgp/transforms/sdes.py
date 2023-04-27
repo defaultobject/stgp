@@ -102,6 +102,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
     def H(self, x, X_s, t):
 
+        Q = len(self.gp.state_space_dim())
+
         # Observe both f and df
         H_t = np.eye(self._state_space_dim)
         # only keep the deriatives that we care about
@@ -109,12 +111,18 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         #When there are no spatial points there is no need to permute
         #as it will automatically be in time-latent format
-        if X_s is None:
-            return H_t
+        if False:
+            if X_s is None:
+                return to_block_diag([
+                    H_t
+                    for q in range(Q)
+                ])
 
         # need to permute from latent-ds-space-df to latent-df-ds-space
-        Ns = X_s.shape[0]
-        Q = len(self.gp.state_space_dim())
+        if X_s is None:
+            Ns = 1
+        else:
+            Ns = X_s.shape[0]
         dt = self.gp.state_space_dim()[0]
         ds = self.spatial_output_dim
         dt_keep = len(self.keep_dims)
@@ -133,6 +141,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             H_q
             for q in range(Q)
         ])
+
 
         return H
 
