@@ -161,15 +161,17 @@ def elbo(
 
     return ELL - KL
 
-@dispatch(Likelihood, Transform, FullConjugateGaussian)
+#@dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(
     data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
 
     # Compute ELL
+    print('ELL')
     ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
 
     # Compute surrogate ELL
+    print('ELL_surrogate')
     ELL_surrogate = compute_expected_log_liklihood(
         q.surrogate.data, 
         q.surrogate.likelihood, 
@@ -177,7 +179,35 @@ def elbo(
         q, 
         inference
     )
+    print('OBJ')
     ML_surrogate = - q.surrogate.get_objective()
+
+    elbo =  ELL - ELL_surrogate + ML_surrogate
+
+    #print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
+
+    return elbo
+
+@dispatch(Likelihood, Transform, FullConjugateGaussian)
+def elbo(
+    data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
+):
+
+    lml, q_m, q_S =  q.surrogate.posterior_blocks(return_lml=True)
+
+    ELL =  compute_expected_log_liklihood_with_variational_params(
+        data, q_m, q_S, likelihood, prior, q, inference
+    )
+
+    ELL_surrogate = compute_expected_log_liklihood_with_variational_params(
+        q.surrogate.data, 
+        q_m, q_S,
+        q.surrogate.likelihood, 
+        prior.base_prior, 
+        q, 
+        inference
+    )
+    ML_surrogate = - lml
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
