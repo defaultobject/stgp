@@ -23,9 +23,11 @@ from ...transforms.sdes import SDE, LTI_SDE
 import objax
 import chex
 
+@jit
 def fix_psd(A):
     return force_symmetric(A)
 
+@jit
 def _first_filtering_element_lik_precision(m, P, F, Q, H, R_inv, y):
     m_ = F @ m
     P_ = F @ P @ F.T + Q
@@ -64,9 +66,11 @@ def _first_filtering_element_lik_precision(m, P, F, Q, H, R_inv, y):
 
     return A, b, C, J, eta
 
+@jit
 def _first_filtering_element(m, P, F, Q, H, R, y):
     m_ = F @ m
     P_ = F @ P @ F.T + Q
+
 
     S1 = H @ P_ @ H.T + R
     S1_chol = cholesky(S1)
@@ -89,6 +93,7 @@ def _first_filtering_element(m, P, F, Q, H, R, y):
 
     return A, b, C, J, eta
 
+@jit
 def _first_filtering_element_nan(m, P, F, Q, H, R, y):
      
     A = np.zeros_like(F)
@@ -103,6 +108,7 @@ def _first_filtering_element_nan(m, P, F, Q, H, R, y):
 _first_filtering_element_nan_lik_precision = _first_filtering_element_nan
 
 
+@jit
 def _generic_filtering_element_lik_precision(F, Q, H, R_inv, y):
     I = np.eye(F.shape[0])
 
@@ -128,6 +134,7 @@ def _generic_filtering_element_lik_precision(F, Q, H, R_inv, y):
 
     return A, b, C, J, eta
 
+@jit
 def _generic_filtering_element(F, Q, H, R, y):
     I = np.eye(F.shape[0])
 
@@ -144,6 +151,7 @@ def _generic_filtering_element(F, Q, H, R, y):
 
     return A, b, C, J, eta
 
+@jit
 def _generic_filtering_element_nan(F, Q, H, R, y):
     A = F
     b = np.zeros([F.shape[1], 1])
@@ -157,8 +165,10 @@ def _generic_filtering_element_nan(F, Q, H, R, y):
 _generic_filtering_element_nan_lik_precision = _generic_filtering_element_nan
 
 
+@jit
 def filtering_operator(x1, x2):
     """ combine individual elements """
+    breakpoint()
     A_i, b_i, C_i, J_i, eta_i = x1
     A_j, b_j, C_j, J_j, eta_j = x2
 
@@ -280,10 +290,10 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
-    res = associative_scan(
-        jax.vmap(filtering_operator), 
-        x_all
-    )
+    # associative scan will partition x_all, then we compute each partition sequentially using vmap
+    #res = associative_scan( jax.vmap(filtering_operator), x_all)
+    res = associative_scan( filtering_operator, x_all)
+                           
 
     filtered_means = np.vstack([m_inf[None, ...], res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...], res[2][:-1]])

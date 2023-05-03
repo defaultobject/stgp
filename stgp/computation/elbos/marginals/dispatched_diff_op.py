@@ -96,10 +96,12 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     """
 
     #dummy base prior
-    base_prior = prior.parent[0]
+    base_prior = prior.parent[0].base_prior
+    hierachial_base_prior = prior.parent[0].hierarchical_base_prior
 
-    QL = prior.output_dim
+    Q = len(prior.parent)
     L = base_prior.output_dim
+    QL = Q*L
 
     if out_block == Block.DIAGONAL:
         out_block = Block.LATENT
@@ -113,7 +115,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         var_p = var_p[:, None, ...]
         return mu_p, var_p
     elif (out_block == Block.LATENT):
-        if not base_prior.hierarchical:
+        if not hierachial_base_prior.hierarchical:
             chex.assert_rank([q_m, q_S], [3, 4])
             chex.assert_equal(q_S.shape[1], 1)
 

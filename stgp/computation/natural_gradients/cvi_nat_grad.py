@@ -381,7 +381,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
 
 
-
     # update for each N
     new_lambda_1, new_lambda_2 = jax.vmap(
         cvi_block_update,

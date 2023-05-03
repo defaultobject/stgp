@@ -268,6 +268,15 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
 
     step_wrap = filter_step_wrapper(data, prior, lik_cov_flag)
 
+    if False:
+        step_wrap = jax.remat(step_wrap)
+
+    if False:
+        unroll = 10
+    else:
+        unroll = 1
+
+
     carry, ys = scan(
         step_wrap,
         {
@@ -279,7 +288,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
             't': X_t,
             'Y': Y,
             'lik_mat': lik_mat
-        }
+        },
+        unroll = unroll
     )
 
     lml = np.sum(ys['lml'])

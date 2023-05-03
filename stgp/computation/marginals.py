@@ -230,7 +230,6 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
     # Ns x Q x [Dt x Ds] x [Dt x Ds]
     spatial_pred_var = np.transpose(res[0], [1, 0, 2, 3])
 
-
     # Ns x [Q x Dt x Ds] x [Q x Dt x Ds]
     spatial_pred_var = jax.vmap(to_block_diag)(spatial_pred_var)
 
@@ -255,10 +254,8 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
 
     pred_mean = pred_mean[..., None]
     pred_var = pred_var[:, None, ...]
-    #breakpoint()
 
     return pred_mean, pred_var
-
 
 @jit
 def gaussian_conditional_diagional(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs_diag, m, S_chol, mean_x, mean_xs) -> np.ndarray:

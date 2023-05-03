@@ -23,7 +23,7 @@ class VB_NG_ADAM(Trainer):
     A variational bayes algorithm that uses Natural gradients to update the approximate posterior and Adam for the rest of the parameters.
     """
     def __init__(self, m, enforce_psd_type = None, ng_schedule=None):
-        self.ng_trainer = NatGradTrainer(m, enforce_psd_type = enforce_psd_type, schedule=ng_schedule)
+        self.ng_trainer = NatGradTrainer(m, enforce_psd_type = enforce_psd_type, schedule=ng_schedule, return_objective=False)
 
         # do not use adam to train the approximate posterior
         m.approximate_posterior.fix()
@@ -65,7 +65,8 @@ class LikNoiseSplitTrainer(Trainer):
         learning_rates: list,
         epochs: list,
         callback = None,
-        verbose = False
+        verbose = False,
+        raise_error=False
     ):
         """
         Args:
@@ -73,7 +74,14 @@ class LikNoiseSplitTrainer(Trainer):
         """
 
         # TODO: ensure valid values here
-        max_iters = epochs[0]
+        if type(epochs) is not list:
+            single_epoch = True
+            max_iters = epochs
+        else:
+            single_epoch = False
+            max_iters = epochs[0]
+    
+
         iters_with_lik_held = int(self.hold_percent * max_iters)
         iters_with_lik_released = max_iters -  iters_with_lik_held
 
@@ -84,13 +92,20 @@ class LikNoiseSplitTrainer(Trainer):
             print(f'training with likelihood held for {iters_with_lik_held}/{max_iters}')
             print('')
 
-        lc_1, _ = self.trainer_with_lik_held.train(learning_rates, [iters_with_lik_held, epochs[1]], callback)
+        if single_epoch:
+            lc_1, _ = self.trainer_with_lik_held.train(learning_rates, iters_with_lik_held, callback, raise_error=raise_error)
+
+        else:
+            lc_1, _ = self.trainer_with_lik_held.train(learning_rates, [iters_with_lik_held, epochs[1]], callback, raise_error=raise_error)
 
         if verbose:
             print('')
             print(f'training with likelihood released for {iters_with_lik_released}/{max_iters}')
             print('')
 
-        lc_2, _ = self.trainer_with_lik_released.train(learning_rates, [iters_with_lik_released, epochs[1]], callback)
+        if single_epoch:
+            lc_2, _ = self.trainer_with_lik_released.train(learning_rates, iters_with_lik_released, callback, raise_error=raise_error)
+        else:
+            lc_2, _ = self.trainer_with_lik_released.train(learning_rates, [iters_with_lik_released, epochs[1]], callback, raise_error=raise_error)
 
         return [lc_1, lc_2], None

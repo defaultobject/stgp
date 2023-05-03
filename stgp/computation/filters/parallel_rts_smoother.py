@@ -16,9 +16,11 @@ from ...transforms.sdes import SDE, LTI_SDE
 import objax
 import chex
 
+@jit
 def _last_smoothing_element(F, Q, m , P):
     return np.zeros_like(P), m, P
 
+@jit
 def _generic_smoothing_element(F, Q, m , P):
     Pp = F @ P @ F.T + Q
     Pp_chol = cholesky(add_jitter(Pp, settings.jitter))
@@ -32,6 +34,7 @@ def _generic_smoothing_element(F, Q, m , P):
     L = 0.5 * (L + L.T)
     return E, g, L
 
+@jit
 def smoothing_operator(x1, x2):
     # opposite way around as we are in reverse
     # keep indexs this was so it matches the paper
@@ -69,7 +72,7 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, H_k, full_state):
     # TODO: check indexes here
     x_all = jax.vmap(
         _generic_smoothing_element
-        )(A_arr[:-1], Q_arr[:-1], m_arr[:-1], P_arr[:-1])
+    )(A_arr[:-1], Q_arr[:-1], m_arr[:-1], P_arr[:-1])
 
     x_last = _last_smoothing_element(None, None, m_arr[-1], P_arr[-1])
 

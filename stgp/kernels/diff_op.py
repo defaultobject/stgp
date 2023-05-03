@@ -49,7 +49,24 @@ class DerivativeKernel(Kernel):
 
 
 
+class DummyDerivativeKernel(DerivativeKernel):
+    """ This is hack so that we can construct a model with no time derivates """
+    def __init__(
+            self, 
+            parent_kernel = None
+        ):
 
+        super(DummyDerivativeKernel, self).__init__(parent_kernel)
+
+        self.parent_output_dim = 1
+        self.d_computed = 1
+        self.output_dim  = 1 
+
+    def K(self, X1, X2):
+        return self.parent_kernel.K(X1, X2)
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        return self.K(X1, X2)
 
 class FirstOrderDerivativeKernel(DerivativeKernel):
     """ Construct FirstOrderDerivative kernel for the input index provided """

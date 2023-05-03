@@ -11,7 +11,7 @@ from stgp import settings
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.means.mean import FirstOrderDerivativeMean, SecondOrderDerivativeMean
-from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel, DummyDerivativeKernel
 from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms import OutputMap
@@ -20,14 +20,12 @@ from stgp.data import Data
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import  progress_bar_callback
 from stgp.kernels.spectral_mixture import SM_Component
-from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian
+from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian, MeanFieldApproximatePosterior
 from stgp.transforms import Independent
 from stgp.trainers.standard import VB_NG_ADAM, LBFGS, LikNoiseSplitTrainer, ADAM
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE, LTI_SDE_Full_State_Obs_With_Mask
 
 import numpy as onp
-
-
 
 def _get_time_diff_kernel_mean(time_kernel, time_diff):
     if time_diff == 1:
@@ -52,7 +50,7 @@ def get_time_diff_kernel_mean(time_kernel, time_diff):
     return [res[q][0] for q in range(Q)], [res[q][1] for q in range(Q)]
 
 
-def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None):
+def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None, dim=1):
     """"
     There are two situations when creating a spatial diff kernel:
         
@@ -63,16 +61,31 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None)
         The time kernel is not passed as the spatial part is computed separtely from the temporal part
     """
     if space_diff == 1:
-        if time_diff_kern is None:
-            # for surrogate SDE
-            space_kern = FirstOrderDerivativeKernel(space_kernel, input_index = 1)
-            space_mean = FirstOrderDerivativeMean(input_index=1)
+        if dim == 2:
+            if time_diff_kern is None:
+                # for surrogate SDE
+                space_kern = FirstOrderDerivativeKernel(space_kernel, input_index = 1)
+                space_mean = FirstOrderDerivativeMean(input_index=1)
+            else:
+                # for vi model
+                space_kern = FirstOrderDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
+                space_mean = FirstOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim)
         else:
-            # for vi model
-            space_kern = FirstOrderDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
-            space_mean = FirstOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim)
+            if dim != 3: raise NotImplementedError()
+
+            if time_diff_kern is None:
+                # for surrogate SDE
+                space_kern = FirstOrderDerivativeKernel_2D(space_kernel)
+                space_mean = FirstOrderDerivativeMean(input_index=1) # not used
+            else:
+                # TODO: check this
+                space_kern = FirstOrderDerivativeKernel_2D(space_kernel)
+                space_mean = FirstOrderDerivativeMean(input_index=1) # not used
+
 
     elif space_diff == 2:
+        if dim != 2: raise NotImplementedError()
+
         if time_diff_kern is None:
             space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
             space_mean = SecondOrderDerivativeMean(input_index=1)
@@ -80,6 +93,8 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None)
             raise NotImplementedError()
 
     elif space_diff == -2:
+        if dim != 2: raise NotImplementedError()
+
         if time_diff_kern is None:
             space_kern = SecondOrderOnlyDerivativeKernel(space_kernel, input_index = 1)
             space_mean = SecondOrderDerivativeMean(input_index=1) # not used
@@ -89,19 +104,182 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None)
 
     return space_kern, space_mean
 
-def get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None):
+def get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None, dim=2):
     Q = len(space_kernel)
 
     if time_diff_kern is None:
         time_diff_kern = [None for q in range(Q)]
 
     res = [
-        _get_space_diff_kernel_mean(space_kernel[q], space_diff, time_diff_kern[q])
+        _get_space_diff_kernel_mean(space_kernel[q], space_diff, time_diff_kern[q], dim=dim)
         for q in range(Q)
     ]
     
     return [res[q][0] for q in range(Q)], [res[q][1] for q in range(Q)]
 
+def diff_gp(
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, prior_fn = None, keep_dims=None , parallel = False, multioutput_prior = False, verbose=False,  meanfield=False, whiten=False, inference=None, hessian=False
+):
+    """
+    Batch GP with derivative observations
+
+    Args:
+        num_latents [None | int] - Number of latent multi-variate GPs
+        time_diff: [int] - number of temporal diffs to compute - will be the same across all latents
+        space_diff: [int] - number of spatial diffs to compute - will be the same across all latents
+        time_kernel: [list[kernel]|kernel]
+        space_kernel: [list[kernel]|kernel]
+        space_diff_kernel: Optional[]  - optional pre-computed space diff kernel. Useful for passing a closed form. Only works for hierarchial
+        lik_var: [float|list[float]] - Gaussian likelihood noise. If a list if not passed the same value is initialised acrossed all outputs
+        prior_fn: [None|callable] - Optional function to transform the prior with
+        keep_dims: [None, list[int]] - Optional dims of the state-space state to observe. Useful when using higher order states corresponding to Matern52/72 etc.
+        multioutput_prior[bool] - when multioutput the likelihood must be constructed as a list of productlikelihoods
+        inference: [None, str] - None = batch
+        hessian[bool] - If true compute df^2/dtds
+    """
+
+    # Figure out what setting we are constructing a model in
+    dim = X.shape[1]
+    P = Y.shape[1]
+
+    if dim > 1:
+        include_space = True
+    else:
+        include_space = False
+
+    if num_latents is None:
+        if type(time_kernel) is list:
+            num_latents = len(time_kernel)
+        else:
+            num_latents = 1
+
+    # Convert to multi-latent form
+    if type(time_kernel) is not list:
+        time_kernel = [time_kernel]
+        space_kernel = [space_kernel]
+    
+    # set up prior
+    sparsity = stgp.sparsity.NoSparsity(Z=X)
+
+    # Setup Prior
+    if include_space:
+        base_kernel = [
+            time_kernel[q] * space_kernel[q]
+            for q in range(num_latents)
+        ]
+    else:
+         base_kernel = time_kernel
+
+
+    #check for spatial cases where we can use more efficient kernel constructions
+    if include_space and (dim == 2) and (time_diff == 1) and (space_diff == 1) and (not hessian):
+        if verbose:
+            print('Constructing 2D first order diff kernel')
+
+        diff_op_prior = Independent([
+            DifferentialOperatorJoint(
+                GP(
+                    sparsity=sparsity, 
+                    kernel = base_kernel[i]
+                ),
+                kernel = FirstOrderDerivativeKernel_2D(base_kernel[i]),
+                is_base = True,
+                has_parent = False
+            )
+            for i in range(num_latents)
+        ])
+    else:
+        print('Constructing composite order diff kernel')
+        #no special cases available use composite construction
+        #TODO: i think this is slower as required taking jacobians/hessians through each other
+
+        # construct time kernel
+        if time_diff is not None:
+            composite_time_diff_kern, composite_time_diff_mean = get_time_diff_kernel_mean(base_kernel, time_diff)
+        else:
+            composite_time_diff_kern = [DummyDerivativeKernel(base_kernel[q]) for q in range(num_latents)]
+            composite_time_diff_mean = [None]
+
+        if include_space:
+            # construct space kernel
+            # we do not pass time as we are using a kalman filter which computes the spatial and temporal kernels separetely
+            # in the composite case we  pass through the time_diff_kernel as want to compute something like
+            #    kernel = FirstOrderDerivativeKernel(
+            #        FirstOrderDerivativeKernel(base_kerns[i], input_index=0), 
+            #        input_index=1, parent_output_dim = 2
+            #    )
+            composite_space_diff_kern, composite_space_diff_mean = get_space_diff_kernel_mean(composite_time_diff_kern, space_diff, composite_time_diff_kern, dim=dim)
+            kern = composite_space_diff_kern
+        else:
+            kern = composite_time_diff_kern
+
+
+
+        diff_op_prior = Independent([
+            DifferentialOperatorJoint(
+                GP(
+                    sparsity=sparsity, 
+                    kernel = base_kernel[q]
+                ),
+                kernel = kern[q],
+                is_base = True,
+                has_parent=False
+            )
+            for q in range(num_latents)
+        ])
+
+   # Setup likelihood
+    if type(lik_var) is not list:
+        lik_var = [lik_var for p in range(P)]
+
+    # Setup Prior Transform
+    if prior_fn is not None:
+        # construct PDE transform
+        diff_op_prior = prior_fn(diff_op_prior)
+
+    if multioutput_prior:
+        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
+    else:
+        lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
+
+    if fix_y:
+        for lik in lik_arr:
+            lik.fix()
+
+    # if a variational model set up the approximate posterior
+
+    if inference == 'Variational':
+        if meanfield:
+            print('Setting a meanfield approximate posterior')
+            q = MeanFieldApproximatePosterior(
+                approximate_posteriors = [
+                    FullGaussianApproximatePosterior(dim = sparsity.Z.shape[0]*diff_op_prior.base_prior.parent[q].output_dim)
+                    for q in range(num_latents)
+                ]
+            )
+        else:
+            print('Setting a full Gaussian approximate posterior')
+            q = FullGaussianApproximatePosterior(dim = sparsity.Z.shape[0]*diff_op_prior.base_prior.output_dim)
+
+        # Create Model
+        m = stgp.models.GP(
+            data = stgp.data.Data(X, Y),
+            prior = diff_op_prior,
+            likelihood = lik_arr,
+            inference = inference,
+            approximate_posterior = q,
+            whiten = whiten
+        )
+    else:
+        # Create Model
+        m = stgp.models.GP(
+            data = stgp.data.Data(X, Y),
+            prior = diff_op_prior,
+            likelihood = lik_arr
+        )
+
+
+    return m
 
 
 def diff_cvi_sde_vgp(
@@ -190,13 +368,18 @@ def diff_cvi_sde_vgp(
         time_diff_kern, time_diff_mean = get_time_diff_kernel_mean(time_kernel, time_diff)
         composite_time_diff_kern, composite_time_diff_mean = get_time_diff_kernel_mean(base_kernel, time_diff)
     else:
-        raise NotImplementedError()
+        # when no time kernel is passed we force keep dims to be [0] as we only observe f
+        keep_dims = [0]
+        time_diff_kern = [DummyDerivativeKernel(time_kernel[q]) for q in range(num_latents)]
+        time_diff_mean = [None]
+        composite_time_diff_kern = [DummyDerivativeKernel(base_kernel[q]) for q in range(num_latents)]
+        composite_time_diff_mean = [None]
 
     if include_space:
         # construct space kernel
         # we do not pass time as we are using a kalman filter which computes the spatial and temporal kernels separetely
         if space_diff_kernel is None:
-            space_diff_kern, space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff)
+            space_diff_kern, space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff, dim=dim)
         else:
             space_diff_kern = space_diff_kernel
             space_diff_mean = [None for i in range(space_diff)] # not used atm so just create nans
@@ -206,7 +389,7 @@ def diff_cvi_sde_vgp(
         #        FirstOrderDerivativeKernel(base_kerns[i], input_index=0), 
         #        input_index=1, parent_output_dim = 2
         #    )
-        composite_space_diff_kern, composite_space_diff_mean = get_space_diff_kernel_mean(composite_time_diff_kern, space_diff, composite_time_diff_kern)
+        composite_space_diff_kern, composite_space_diff_mean = get_space_diff_kernel_mean(composite_time_diff_kern, space_diff, composite_time_diff_kern, dim=dim)
 
 
     # set up base prior
@@ -484,137 +667,5 @@ def diff_cvi_sde_vgp(
         approximate_posterior=q,
         ell_samples=ell_samples
     )
-
-    return m
-
-
-def diff_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None):
-
-    if time_kernel is None:
-        raise RuntimeError('Time Kernel must be passed!')
-
-    if space_kernel is None:
-        raise RuntimeError('Space Kernel must be passed!')
-
-
-    if Z is None:
-        raise RuntimeError('Z must be passed!')
-
-    include_space = not(space_kernel is None)
-
-    N, P = Y.shape
-    Ms = Z.shape[0]
-
-    # Construct Space-time data and kernels
-    data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
-    base_kernel = time_kernel*space_kernel
-
-    if prior_fn is None:
-        lik_arr = [Gaussian(lik_var) for p in range(P)]
-    else:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var)]) for p in range(P)]
-
-    if fix_y:
-        for lik in lik_arr:
-            lik.fix()
-
-    # construct time kernel
-    if time_diff is not None:
-        time_diff_kern, time_diff_mean = get_time_diff_kernel_mean(time_kernel, time_diff)
-        hierarchical_diff_kern, hierarchical_diff_mean = get_time_diff_kernel_mean(base_kernel, time_diff)
-        time_output_dim = time_diff_kern.output_dim
-    else:
-        time_output_dim = 1
-
-    # construct space kernel
-    space_diff_kern, space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff)
-    hierarchical_space_diff_kern, hierachical_space_diff_mean = get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern)
-
-
-    # construct surrogate SDE model
-    # pass through the derivatie kernels as we want the SDE model to compute all the derivates
-    # ie this is not the hierarchical model
-    base_diff_kernel = SpatioTemporalSeperableKernel(
-        time_diff_kern, 
-        space_diff_kern,
-        spatial_output_dim = space_diff_kern.output_dim
-    )
-
-    Z_sparsity = stgp.sparsity.SpatialSparsity(data.X_time, Z, train=train_Z)
-
-    # these kernels will not be used really
-    diff_op_prior_time = DifferentialOperatorJoint(
-        GP(
-            sparsity=Z_sparsity, 
-            kernel = base_kernel
-        ),
-        kernel = hierarchical_diff_kern,
-        is_base = True,
-        has_parent=False,
-        hierarchical=False
-    )
-
-    # construct P(S | T)
-    # even though we are not in a hierarchical model we have to set up the prior properly so that we can predict
-    diff_op_prior = DifferentialOperatorJoint(
-        diff_op_prior_time,
-        kernel = space_diff_kern,
-        mean = space_diff_mean,
-        is_base = True,
-        has_parent=True,
-        hierarchical=False
-    )
-
-
-    # surrogate model prior
-    latent_sde_gp = GP(
-        sparsity=Z_sparsity, 
-        kernel = base_diff_kernel
-    )
-
-    latent_sde_gp = Independent([latent_sde_gp])
-
-    if keep_dims is None:
-        latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
-    else:
-        latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(latent_sde_gp, keep_dims=keep_dims)
-
-
-    Q = diff_op_prior.output_dim
-    Q = 4
-    B = Ms * Q
-    q = FullConjugateGaussian(
-        X = Z_sparsity,
-        num_latents =  Q,
-        block_size= B,
-        num_blocks = data.Nt,
-        surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-            # in state-space format
-            data = stgp.data.SpatioTemporalData(X=X.raw_Z, Y=onp.reshape(Y, [data.Nt,  Q, Ms]), sort=False, train_y=True), # we need gradients Y so set to be trainable
-            likelihood=likelihood, 
-            prior=latent_sde_gp,
-            inference='Sequential',
-            full_state_observed = True
-        )
-    )
-
-
-    if prior_fn is not None:
-        # construct PDE transform
-        diff_op_prior = prior_fn(diff_op_prior)
-
-
-
-
-    # Create Model
-    m = stgp.models.GP(
-        data = data,
-        prior = diff_op_prior,
-        likelihood = lik_arr,
-        inference='Variational',
-        approximate_posterior=q,
-        ell_samples=ell_samples
-    )
-
 
     return m

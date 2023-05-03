@@ -404,14 +404,13 @@ def spatial_conditional(
         mean_x, 
         mean_xs
     )
+
     mu_p_bd = np.reshape(mu_p, [-1, Q* out_dim, 1])
     var_p_bd = np.reshape(var_p_bd, [-1, 1, Q*out_dim, Q*out_dim])
 
     chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
 
-
     return mu_p_bd, var_p_bd
-
 
 
 

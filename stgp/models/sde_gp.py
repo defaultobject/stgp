@@ -205,8 +205,8 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False):
-        _, kf_res  = kalman_filter.filter_loop(
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False):
+        lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
             R = R,
@@ -214,7 +214,8 @@ class BASE_SDE_GP(Posterior):
             parallel = self.parallel
         ) 
 
-        return rts_smoother.smoother_loop(
+        
+        mu, var = rts_smoother.smoother_loop(
             data, 
             prior,
             kf_res,
@@ -222,22 +223,32 @@ class BASE_SDE_GP(Posterior):
             parallel = self.parallel
         )
 
-    def posterior_blocks(self):
+        if return_lml:
+            return lml, mu, var
+        else:
+            return mu, var
+
+    def posterior_blocks(self, return_lml = False):
         """ Compute the posterior p(f_t | Y) for all t in time-latent-space format.  """
         R, R_inv = get_R_R_inv(self.likelihood)
 
-        mu, var = self.filter_and_smooth(
+        lml, mu, var = self.filter_and_smooth(
             self.data,
             self.prior,
             R = R,
-            R_inv = R_inv
+            R_inv = R_inv,
+            return_lml=True
         )
 
         var = var[:, None, ...]
 
         # in time-latent-space format
         chex.assert_rank([mu, var], [3, 4])
-        return mu, var
+
+        if return_lml:
+            return lml, mu, var
+        else:
+            return mu, var
 
     def posterior(self, diagonal=True, full_state=False):
         R, R_inv = get_R_R_inv(self.likelihood)

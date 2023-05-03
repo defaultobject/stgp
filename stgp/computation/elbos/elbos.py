@@ -192,7 +192,6 @@ def elbo(
 def elbo(
     data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
-
     lml, q_m, q_S =  q.surrogate.posterior_blocks(return_lml=True)
 
     ELL =  compute_expected_log_liklihood_with_variational_params(
@@ -207,7 +206,7 @@ def elbo(
         q, 
         inference
     )
-    ML_surrogate = - lml
+    ML_surrogate = lml
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 

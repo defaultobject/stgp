@@ -52,18 +52,33 @@ def to_block_diag(A):
 def get_block_diagonal(A, block_size):
     chex.assert_rank(A, 2)
 
-    N = A.shape[0]
+    if False:
+        N = A.shape[0]
+        num_blocks = int(N / block_size)
+        
+        
+        A_1 = A.reshape(num_blocks, block_size, block_size*num_blocks)
+        A_2 = np.transpose(A_1, [0, 2, 1])
+        A_3 = np.reshape(A_2, [num_blocks, num_blocks, block_size*block_size])
+        
+        A_4 = jax.vmap(lambda a, i: a[i])(A_3, np.arange(num_blocks))
 
-    num_blocks = N / block_size
-    a = np.array(list(range(N)))
+        A_5 = np.reshape(A_4, [num_blocks, block_size, block_size])
+        A_6 = np.transpose(A_5, [0, 2, 1])
+        return A_6
+    else:
+        N = A.shape[0]
 
-    indexes = np.reshape(a, [-1, block_size])
+        num_blocks = N / block_size
+        a = np.array(list(range(N)))
 
-    blocks =  jax.vmap(
-        lambda A, i: A[i,:][:, i],
-        [None, 0],
-        0
-    )(A, indexes)
+        indexes = np.reshape(a, [-1, block_size])
+
+        blocks =  jax.vmap(
+            lambda A, i: A[i,:][:, i],
+            [None, 0],
+            0
+        )(A, indexes)
 
     chex.assert_shape(blocks, [num_blocks, block_size, block_size])
 

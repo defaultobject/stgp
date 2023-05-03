@@ -4,6 +4,7 @@ import jax
 import jax.numpy as np
 
 from . import StationaryKernel, StationaryVarianceKernel, MarkovKernel
+from .ss_utils import matern32_temporal_expm
 
 
 class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
@@ -106,6 +107,10 @@ class Matern32(StationaryKernel, MarkovKernel):
     def expm(self, dt, X_spatial=None):
         """closed form matrix exponential A = expm(F * dt)"""
         chex.assert_equal(self.input_dim, 1)
+
+        if True:
+            return matern32_temporal_expm(dt, self.lengthscales[0])
+
 
         lam = np.sqrt(3.0) / self.lengthscales[0]
         A = np.exp(-dt * lam) * (dt * np.array([[lam, 1.0], [-lam**2.0, -lam]]) + np.eye(2))

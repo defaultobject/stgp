@@ -6,6 +6,7 @@ import jax
 import jax.numpy as np
 import objax
 import chex
+from jax import jit
 
 from ..computation.matrix_ops import cholesky, cholesky_solve, add_jitter, first_axis_dim
 
@@ -29,6 +30,7 @@ def get_mask(Y: np.ndarray) -> np.ndarray:
         # make sure rank one
         return np.reshape(mask, [mask.shape[0]])
 
+@jit
 def mask_vector(Y, mask):
     chex.assert_equal(Y.shape[0], mask.shape[0])
     chex.assert_rank(Y, 2)
@@ -44,6 +46,7 @@ def mask_matrix(Y, mask):
         return np.where(mask, Y, np.zeros_like(Y))
 
 
+@jit
 def mask_to_identity(K: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
     K is (probably) a full p.s.d matrix. We want to decorrelate any ... tbd 
