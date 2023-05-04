@@ -24,7 +24,7 @@ from stgp.means.mean import FirstOrderDerivativeMean
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior, MeanFieldApproximatePosterior, MeanFieldConjugateGaussian, FullConjugateGaussian
 from stgp.trainers import NatGradTrainer
 
-from stgp.zoo.sde_diff import diff_sparse_sde_vgp
+#from stgp.zoo.sde_diff import diff_sparse_sde_vgp
 from stgp.zoo.diff import diff_gp, diff_vgp, diff_hierarchical_sde_vgp, diff_hierarchical_sparse_sde_vgp, diff_sde_vgp, diff_hierarchical_vgp
 
 @pytest.mark.parametrize('seed', [0])

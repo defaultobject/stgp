@@ -75,11 +75,11 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None,
 
             if time_diff_kern is None:
                 # for surrogate SDE
-                space_kern = FirstOrderDerivativeKernel_2D(space_kernel)
+                space_kern = FirstOrderDerivativeKernel_2D(space_kernel, input_index=1)
                 space_mean = FirstOrderDerivativeMean(input_index=1) # not used
             else:
                 # TODO: check this
-                space_kern = FirstOrderDerivativeKernel_2D(space_kernel)
+                space_kern = FirstOrderDerivativeKernel_2D(space_kernel, input_index=1)
                 space_mean = FirstOrderDerivativeMean(input_index=1) # not used
 
 

@@ -78,6 +78,7 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
 
         K_spatial_sz_fn = lambda q: (q.covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
 
+
         K_x_t_fn = lambda q: jax.vmap(
             lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])
@@ -103,6 +104,9 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
             lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
         )(XS_space)
 
+
+
+    #print(base_prior(q_list[0]).derivative_kernel.K(np.array([[0, 26, 26]]).astype(float), np.array([[0, 26, 26]]).astype(float)))
     # N referes to the number of spatial points
 
     # [Q] x [Ds x N] x [Ds x N]
@@ -123,6 +127,7 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
 
     #[Nt] x [Q] x [ Dt] x [ Dt]
     K_x_t_arr = np.transpose(K_x_t_arr, [1, 0, 2, 3])
+
 
     return K_x_t_arr, K_base_spatial_ss_arr, K_spatial_sz_arr, K_base_spatial_zz_arr
 
@@ -365,12 +370,15 @@ def spatial_conditional(
 
     # TODO: assuming that data_xs and data_x are the same
 
+    # TODO: enforce that dummy prior must be a 
+    # DifferentialOperatorJoint[DifferentialOperatorJoint[]]
+
     dummy_prior = prior.parent[0]
     hierarchical = dummy_prior.hierarchical
 
     # compute the outputs of each of the components of prior
     Q = len(prior.parent)
-    base_prior_output = dummy_prior.base_prior.output_dim
+    base_prior_output = dummy_prior.parent.output_dim
     prior_added_output = dummy_prior.derivative_kernel.d_computed
     out_dim = base_prior_output * prior_added_output
 

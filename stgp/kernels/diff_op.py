@@ -1088,6 +1088,7 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
     def __init__(
             self, 
             parent_kernel = None,
+            input_index = 0
         ):
 
         super(FirstOrderDerivativeKernel_2D, self).__init__(parent_kernel)
@@ -1095,6 +1096,7 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
         self.output_dim = 3
         # TODO: this is a bit confusing
         self.d_computed = 3
+        self.input_index = input_index
 
     def _compute_derivatives(self, x1, x2, var_fn):
         """
@@ -1129,16 +1131,15 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
         # (S1)K(T), (S1)K(S1)
         res11 = jacfwd(grad(k, argnums=(0)), argnums=(1))(x1, x2)
 
-
         # Construct full matrix
         # K,       K(T),       K(S1)
         # (T)K,    (T)K(T),    (T)K(S1)
         # (S1)K,   (S1)K(T),   (S1)K(S1)
 
         K = np.array([
-            [res00,       res01[0],        res01[1]], # f
-            [res10[0],    res11[0, 0],     res11[0, 1]], # df/dt
-            [res10[1],    res11[1, 0],     res11[1, 1]], # df / dx1
+            [res00,       res01[0+self.input_index],        res01[1+self.input_index]], # f
+            [res10[0+self.input_index],    res11[0+self.input_index, 0+self.input_index],     res11[0+self.input_index, 1+self.input_index]], # df/dt
+            [res10[1+self.input_index],    res11[1+self.input_index, 0+self.input_index],     res11[1+self.input_index, 1+self.input_index]], # df / dx1
         ])
 
         return K

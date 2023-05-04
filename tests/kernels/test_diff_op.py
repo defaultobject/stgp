@@ -47,6 +47,8 @@ def test__ClosedFormFirstOrderDerivativeKernel(rbf_ls, N, regression_1d_data):
     # ignore the end points as the approximation from numpy is bad there
     # we have to a large a rtol due the approximation error of np.gradient
     np.testing.assert_allclose(approx_dt[2:-2], latent_dt[2:-2], atol=0.1)
+
+
 @pytest.mark.parametrize('N', [500])
 @pytest.mark.parametrize('rbf_ls', [1.0, 0.1])
 @pytest.mark.parametrize('rbf_var', [0.27])
@@ -139,7 +141,6 @@ def test_FirstOrderDerivativeKernel_2D(rbf_ls, rbf_var, N, regression_1d_data):
     )
 
     Kxx = kern.K(X, X)
-
 
     # check out samples
     latent = np.random.multivariate_normal(np.zeros(Kxx.shape[0]), Kxx)
