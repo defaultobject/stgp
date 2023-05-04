@@ -78,7 +78,6 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
 
         K_spatial_sz_fn = lambda q: (q.covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
 
-
         K_x_t_fn = lambda q: jax.vmap(
             lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])

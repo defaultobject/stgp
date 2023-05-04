@@ -37,7 +37,7 @@ def get_R_R_inv(likelihood):
     if str(type(likelihood).__name__) in ['PrecisionBlockDiagonalGaussian']:
         return None, likelihood.precision
 
-    elif str(type(likelihood).__name__) in ['ReshapedBlockDiagonalGaussian', 'BlockDiagonalGaussian']:
+    elif str(type(likelihood).__name__) in ['ReshapedGaussian', 'ReshapedDiagonalGaussian', 'ReshapedBlockDiagonalGaussian', 'BlockDiagonalGaussian']:
         return likelihood.variance, None
 
     raise RuntimeError('Likelihood type not found!')

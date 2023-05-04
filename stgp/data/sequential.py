@@ -96,7 +96,7 @@ def order_sequentially_np(X, Y = None):
     #  spatial points there are
     time_zero = X[0, 0]
 
-    # Get unique rows (time, space, features) to remove duplicates
+    # Get unique rows (time, space, features) to remove duplicates and sorts
     _, unique_idx, reverse_idx = onp.unique(X, axis=0, return_index = True, return_inverse=True)
 
     # Get index to sort by time points and then spatial points
@@ -116,8 +116,13 @@ def order_sequentially_np(X, Y = None):
     grid_size = X_spatial.shape[0]
     time_points = int(X.shape[0]/grid_size)
 
-    # Sort in space and time
-    idx = onp.lexsort(X.T)
+    if False:
+        #TODO: not needed as unique does this for us
+        # Sort in space and time
+        idx = onp.lexsort(X.T)
+    else:
+        idx = np.arange(X.shape[0])
+
 
     X = X[idx]
 

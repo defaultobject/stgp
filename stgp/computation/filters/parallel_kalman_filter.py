@@ -168,7 +168,6 @@ _generic_filtering_element_nan_lik_precision = _generic_filtering_element_nan
 @jit
 def filtering_operator(x1, x2):
     """ combine individual elements """
-    breakpoint()
     A_i, b_i, C_i, J_i, eta_i = x1
     A_j, b_j, C_j, J_j, eta_j = x2
 
@@ -290,10 +289,10 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
-    # associative scan will partition x_all, then we compute each partition sequentially using vmap
-    #res = associative_scan( jax.vmap(filtering_operator), x_all)
-    res = associative_scan( filtering_operator, x_all)
-                           
+    res = associative_scan(
+        jax.vmap(filtering_operator), 
+        x_all
+    )
 
     filtered_means = np.vstack([m_inf[None, ...], res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...], res[2][:-1]])

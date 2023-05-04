@@ -41,7 +41,6 @@ def helmholtz_3D(
             [0, 0, 1, 0, -1, 0],    
         ])
 
-
         out_dim = 2
         in_dim = 6
 
