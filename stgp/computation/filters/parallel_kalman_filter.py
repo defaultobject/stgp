@@ -188,7 +188,16 @@ def filtering_operator(x1, x2):
         #inv_tmp = fix_inv(C_i, J_j)
         #Aj_tmp = A_j @ inv_tmp
         inner_tmp = I+C_i@J_j
-        Aj_tmp = np.linalg.solve(inner_tmp.T, A_j.T).T
+
+        if settings.parallal_kf_cg:
+            Aj_tmp = jax.scipy.sparse.linalg.cg(
+                inner_tmp.T, 
+                A_j.T,
+                maxiter = 20
+            )[0].T
+        else:
+            Aj_tmp = np.linalg.solve(inner_tmp.T, A_j.T).T
+
         #hpsd_solve(add_jitter(inner_tmp.T, settings.jitter), A_j.T).T 
     else:
         tmp = fix_psd(I+C_i @ J_j)
@@ -203,7 +212,11 @@ def filtering_operator(x1, x2):
         #inv_tmp = fix_inv(J_j, C_i)
         #A_i_tmp = A_i.T @ inv_tmp
         inner_tmp = I+J_j@C_i
-        A_i_tmp = np.linalg.solve(inner_tmp.T, A_i).T
+
+        if settings.parallal_kf_cg:
+            A_i_tmp = jax.scipy.sparse.linalg.cg(inner_tmp.T, A_i, maxiter = 20)[0].T
+        else:
+            A_i_tmp = np.linalg.solve(inner_tmp.T, A_i).T
     else:
         tmp = fix_psd(I+J_j @ C_i)
         tmp_chol = cholesky(tmp)

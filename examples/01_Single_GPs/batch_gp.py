@@ -22,6 +22,9 @@ import matplotlib.pyplot as plt
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
+K = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=0.2)
+
+
 # Construct Model
 # Will use default RBF kernel and Gaussian Likelihood
 m = GP(X, Y, kernel=[ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=0.2)])

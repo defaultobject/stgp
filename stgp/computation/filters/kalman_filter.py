@@ -24,6 +24,10 @@ from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_wi
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
+import tensorflow_probability as tfp
+from tensorflow_probability.python.math import linalg as tfp_linalg
+from tensorflow_probability.substrates.jax.math.linalg import pivoted_cholesky
+
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
@@ -114,6 +118,13 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
 
+def icholesky(H):
+    """ https://github.com/google/jax/discussions/5068 """
+    w, v = np.linalg.eigh(H)
+    w = np.where(w < 0, 0.0001, w) # make this pd, psd is insufficient
+    H_pd = v @ np.eye(3)*w @ v.T
+
+    return jax.scipy.linalg.cholesky(H_pd), np.any(w < 0)
 
 @jit
 def kf_update_step(m_, P_, H_k, R_k, carry, x):
@@ -137,6 +148,18 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         carry:
         x:
     """
+
+    if False:
+        m_k = m_ +   m_
+        P_k = P_ -    P_  
+ 
+        log_Z_k = np.sum(m_k)
+
+        return {
+            'm': m_k, 'P': P_k 
+        }, {
+            'm': m_k, 'P': P_k, 'lml': log_Z_k
+        }
 
     # in latent - space format
     Y_k = x['Y']
@@ -165,20 +188,39 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     v = Y_k - mu
     S = var + R_k
 
-    #Kalman Gain
-    S = add_jitter(S, settings.jitter)
-    L = cholesky(S)
-    K = (cholesky_solve(L, M @ H_k @ P_)).T
+    if True:
 
-    # Kalman Update
-    # convert to latent-space-state format before updating
-    m_k = m_ + K @ v
-    P_k = P_ - K @ S @ K.T
+        if True:
+            #S = add_jitter(S, settings.jitter)
+            #L = cholesky(S)
+            L = tfp_linalg.low_rank_cholesky(S, 20)
+            breakpoint()
 
-    #log marginal likelihood (assuming Gaussian likelihood)
-    log_Z_k = np.sum(
-        log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
-    )
+            m_k = m_ +  H_k.T @ cholesky_solve(L, v)
+        else:
+            m_k = m_ +  H_k.T @ jax.scipy.sparse.linalg.cg(S, v, maxiter=20)[0]
+        P_k = P_ -  H_k.T @ S @ H_k
+        log_Z_k = np.sum(m_k)
+
+    else:
+        #Kalman Gain
+        S = add_jitter(S, settings.jitter)
+        L = cholesky(S)
+        K = (cholesky_solve(L, M @ H_k @ P_)).T
+
+        # Kalman Update
+        # convert to latent-space-state format before updating
+        m_k = m_ + K @ v
+        P_k = P_ - K @ S @ K.T
+
+        if False:
+            log_Z_k = np.sum(m_k)
+
+        else:
+            #log marginal likelihood (assuming Gaussian likelihood)
+            log_Z_k = np.sum(
+                log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
+            )
 
     return {
         'm': m_k, 'P': P_k 

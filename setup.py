@@ -19,7 +19,6 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires = [
-        "jax",
         "objax@git+https://github.com/google/objax.git#egg=sacred",
         "batchjax@git+https://github.com/defaultobject/batchjax#egg=sacred",
         "chex",
@@ -29,19 +28,8 @@ setuptools.setup(
         "flake8-docstrings",
         "bibtexparser",
         "pandas",
-        "numpy",
         "scikit-learn",
         "matplotlib",
         "pytest"
-    ],
-    extras_require={
-        'm1': [
-            'tensorflow-macos',
-            'tensorflow_probability',
-        ],
-        'other': [
-            'tensorflow',
-            'tensorflow_probability',
-        ]
-    }
+    ]
 )
