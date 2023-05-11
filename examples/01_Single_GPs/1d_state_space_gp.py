@@ -39,11 +39,11 @@ latent_gp = GP(
 )
 prior = LTI_SDE(Independent([latent_gp])) 
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=True)
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=False)
 
 # Train
 #print(m.get_objective())
-if True:
+if False:
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))

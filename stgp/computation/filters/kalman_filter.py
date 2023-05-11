@@ -18,16 +18,18 @@ import jax
 from jax import jacfwd, jit
 import jax.numpy as np
 from jax.lax import scan
+from functools import partial
 
 from ... import settings 
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
+import numpy as onp
+import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow_probability.python.math import linalg as tfp_linalg
-from tensorflow_probability.substrates.jax.math.linalg import pivoted_cholesky
-
+from tensorflow_probability.python.math.linalg import low_rank_cholesky, pivoted_cholesky
+from jax.experimental.jax2tf import call_tf
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
@@ -126,6 +128,14 @@ def icholesky(H):
 
     return jax.scipy.linalg.cholesky(H_pd), np.any(w < 0)
 
+def _low_rank_cholesky(matrix):
+    """ wrap low_rank_cholesky to make max_rank static """
+    return low_rank_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
+
+def _pivoted_cholesky(matrix):
+    """ wrap pivoted_cholesky to make max_rank static """
+    return pivoted_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
+
 @jit
 def kf_update_step(m_, P_, H_k, R_k, carry, x):
     """
@@ -188,19 +198,48 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     v = Y_k - mu
     S = var + R_k
 
-    if True:
+    if False:
+        S = add_jitter(S, settings.jitter)
+        #S = add_jitter(S, settings.jitter)
+        S_shape = S.shape
+        #L = cholesky(S)
+        if False:
+            L, _, _ = call_tf( 
+                _low_rank_cholesky, 
+                output_shape_dtype = ( 
+                    jax.ShapeDtypeStruct([S.shape[0], settings.cg_precondition_rank], S.dtype), 
+                    jax.ShapeDtypeStruct([], np.int32), 
+                    jax.ShapeDtypeStruct([S.shape[0]], S.dtype)
+                )
+            )(
+                S
+            )
+
+            preconditioner_inv = add_jitter(L@L.T , settings.jitter)
+            sig_inv = (1/settings.jitter) * np.eye(S.shape[0])
+            preconditioner =  sig_inv - sig_inv @ L @ jax.scipy.sparse.linalg.cg(np.eye(settings.cg_precondition_rank) + L.T @ sig_inv @ L, L.T @ sig_inv)[0]
+        
+
+        K = jax.scipy.sparse.linalg.cg(
+            S, 
+            M @ H_k @ P_, 
+            #M = preconditioner, 
+            maxiter=S.shape[0]
+        )[0].T
+
+        m_k = m_ + K @ v
+        # stil cubic... 
+        P_k = P_ - K @ S @ K.T
+        P_k = force_symmetric(P_k)
 
         if True:
-            #S = add_jitter(S, settings.jitter)
-            #L = cholesky(S)
-            L = tfp_linalg.low_rank_cholesky(S, 20)
-            breakpoint()
+            log_Z_k = np.sum(m_k)
 
-            m_k = m_ +  H_k.T @ cholesky_solve(L, v)
         else:
-            m_k = m_ +  H_k.T @ jax.scipy.sparse.linalg.cg(S, v, maxiter=20)[0]
-        P_k = P_ -  H_k.T @ S @ H_k
-        log_Z_k = np.sum(m_k)
+            #log marginal likelihood (assuming Gaussian likelihood)
+            log_Z_k = np.sum(
+                log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
+            )
 
     else:
         #Kalman Gain
@@ -213,7 +252,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         m_k = m_ + K @ v
         P_k = P_ - K @ S @ K.T
 
-        if False:
+        if True:
             log_Z_k = np.sum(m_k)
 
         else:

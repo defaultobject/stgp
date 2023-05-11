@@ -28,9 +28,11 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 settings.jitter = 1e-7
+settings.cg_max_iter = None
+settings.cg_precondition_rank = 20
 
 # Construct Data
-XS, X, Y = single_output_spatial_data(100, 100, 200, 200, seed=0)
+XS, X, Y = single_output_spatial_data(200, 200, 200, 200, seed=0)
 
 Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
@@ -55,18 +57,21 @@ m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', par
 #print(make_jaxpr(m.get_objective)())
 
 # Train
-max_iters = 100
-if False:
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
-else:
-    trainer = ADAM(m)
-    trainer.train(1e-2, max_iters, callback=progress_bar_callback(max_iters))
+if True:
+    max_iters = 100
+    if False:
+        trainer = ScipyTrainer(m, 'L-BFGS-B')
+        trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+    else:
+        trainer = ADAM(m)
+        trainer.train(1e-2, max_iters, callback=progress_bar_callback(max_iters))
 
-print(m.get_objective())
+    print(m.get_objective())
 
 # Predict
 pred_mu, pred_var = m.predict_f(XS)
+
+print(pred_mu)
 
 # Plot
 fig, axes = plt.subplots(1, 2)

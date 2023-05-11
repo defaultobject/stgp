@@ -20,6 +20,9 @@ jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10
 
+cg_precondition_rank = 20
+cg_max_iter = 1000
+
 
 class strict_mode:
     """Enable strict_mode.
