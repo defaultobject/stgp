@@ -4,6 +4,7 @@ import jax.numpy as np
 from jax import jit
 from functools import partial
 import chex
+from scipy.cluster.vq import kmeans2
 
 def pad_with_nan_to_make_grid(X, Y):
     """
@@ -167,3 +168,63 @@ def add_temporal_points(XS: 'Data', X: 'Data'):
 
     return new_st_points
 
+def get_minimal_time_groups(X, Y, verbose=True):
+    """
+    Groups X, Y by time and padds each group so there is the same number of points.
+
+    First column of X must be time
+    """
+    # Get unique rows (time, space, features) to remove duplicates and sorts
+    _, unique_idx, reverse_idx = onp.unique(X, axis=0, return_index = True, return_inverse=True)
+    
+    # Get unique points
+    X = X[unique_idx]
+    Y = Y[unique_idx]
+    
+    Nd = X.shape[1]
+    P = Y.shape[1]
+    
+    # combine so that indexing is consisent
+    
+    D = onp.hstack([X, Y])
+    
+    unique_time_points = onp.unique(X[:, 0])
+    
+    # get all spatial points
+    X_all_st = X[:, 1:]
+    
+    D_groups = onp.split(D, onp.unique(D[:, 0], return_index=True)[1][1:])
+    
+    # run k means
+    max_spatial_points = max([D_t.shape[0] for D_t in D_groups])
+    Z_s = kmeans2(X_all_st, max_spatial_points, minit="points")[0]
+    Ns = max_spatial_points
+    
+    if verbose:
+        print(f'max number of spatial points: {max_spatial_points}')
+    
+    _X = []
+    _Y = []
+    
+    for D_t in D_groups:
+        D_ns = D_t.shape[0]
+        # add dummy values
+        X_to_add = Z_s[:(Ns-D_ns)]
+        Y_to_add = onp.zeros([X_to_add.shape[0], P])*onp.NaN
+
+        # add time 
+        X_to_add = onp.hstack([
+            onp.tile(onp.array([[D_t[0, 0]]]), X_to_add.shape[0]).T,
+            X_to_add
+        ])
+        
+        X_group = D_t[:, :Nd]
+        Y_group = D_t[:, Nd:]
+
+        X_group_padded = onp.vstack([X_group, X_to_add])
+        Y_group_padded = onp.vstack([Y_group, Y_to_add])
+        
+        _X.append(X_group_padded), _Y.append(Y_group_padded)
+        
+    return onp.array(_X), onp.array(_Y)
+        

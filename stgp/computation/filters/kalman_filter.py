@@ -26,10 +26,12 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_a
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 import numpy as onp
-import tensorflow as tf
-import tensorflow_probability as tfp
-from tensorflow_probability.python.math.linalg import low_rank_cholesky, pivoted_cholesky
-from jax.experimental.jax2tf import call_tf
+#import tensorflow as tf
+#import tensorflow_probability as tfp
+#from tensorflow_probability.python.math.linalg import low_rank_cholesky, pivoted_cholesky
+#from jax.experimental.jax2tf import call_tf
+
+from ..linalg import solve, solve_from_cholesky
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
@@ -159,18 +161,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         x:
     """
 
-    if False:
-        m_k = m_ +   m_
-        P_k = P_ -    P_  
- 
-        log_Z_k = np.sum(m_k)
-
-        return {
-            'm': m_k, 'P': P_k 
-        }, {
-            'm': m_k, 'P': P_k, 'lml': log_Z_k
-        }
-
     # in latent - space format
     Y_k = x['Y']
 
@@ -198,68 +188,17 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     v = Y_k - mu
     S = var + R_k
 
-    if False:
-        S = add_jitter(S, settings.jitter)
-        #S = add_jitter(S, settings.jitter)
-        S_shape = S.shape
-        #L = cholesky(S)
-        if False:
-            L, _, _ = call_tf( 
-                _low_rank_cholesky, 
-                output_shape_dtype = ( 
-                    jax.ShapeDtypeStruct([S.shape[0], settings.cg_precondition_rank], S.dtype), 
-                    jax.ShapeDtypeStruct([], np.int32), 
-                    jax.ShapeDtypeStruct([S.shape[0]], S.dtype)
-                )
-            )(
-                S
-            )
+    K = solve(S, M @ H_k @ P_).T
 
-            preconditioner_inv = add_jitter(L@L.T , settings.jitter)
-            sig_inv = (1/settings.jitter) * np.eye(S.shape[0])
-            preconditioner =  sig_inv - sig_inv @ L @ jax.scipy.sparse.linalg.cg(np.eye(settings.cg_precondition_rank) + L.T @ sig_inv @ L, L.T @ sig_inv)[0]
-        
+    m_k = m_ + K @ v
 
-        K = jax.scipy.sparse.linalg.cg(
-            S, 
-            M @ H_k @ P_, 
-            #M = preconditioner, 
-            maxiter=S.shape[0]
-        )[0].T
+    # stil cubic... ?
+    P_k = P_ - K @ S @ K.T
 
-        m_k = m_ + K @ v
-        # stil cubic... 
-        P_k = P_ - K @ S @ K.T
-        P_k = force_symmetric(P_k)
-
-        if True:
-            log_Z_k = np.sum(m_k)
-
-        else:
-            #log marginal likelihood (assuming Gaussian likelihood)
-            log_Z_k = np.sum(
-                log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
-            )
-
-    else:
-        #Kalman Gain
-        S = add_jitter(S, settings.jitter)
-        L = cholesky(S)
-        K = (cholesky_solve(L, M @ H_k @ P_)).T
-
-        # Kalman Update
-        # convert to latent-space-state format before updating
-        m_k = m_ + K @ v
-        P_k = P_ - K @ S @ K.T
-
-        if True:
-            log_Z_k = np.sum(m_k)
-
-        else:
-            #log marginal likelihood (assuming Gaussian likelihood)
-            log_Z_k = np.sum(
-                log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
-            )
+    #log marginal likelihood (assuming Gaussian likelihood)
+    log_Z_k = np.sum(
+        log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
+    )
 
     return {
         'm': m_k, 'P': P_k 

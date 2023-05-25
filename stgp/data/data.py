@@ -5,7 +5,7 @@ import jax.numpy as np
 import numpy as onp
 import objax
 
-from .sequential import order_sequentially_np, pad_with_nan_to_make_grid
+from .sequential import order_sequentially_np, pad_with_nan_to_make_grid, get_minimal_time_groups
 from .. import Parameter
 from batchjax import batch_or_loop, BatchType
 from ..utils.utils import get_batch_type
@@ -673,3 +673,16 @@ def get_sequential_data_obj(X, Y, sort):
 
     raise RuntimeError()
 
+
+class GroupedData(Data):
+    pass
+
+class TemporallyGroupedData(Data):
+    def __init__(self, X, Y, minibatch_size=None, verbose=True):
+
+        chex.assert_rank([X, Y], [2, 2])
+
+        X, Y = get_minimal_time_groups(X, Y, verbose=verbose)
+
+        self._Y = Parameter(np.array(Y), train=False, name='Y')
+        self._X = self.save_X(X, train=False, name='X')

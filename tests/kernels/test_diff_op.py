@@ -28,25 +28,24 @@ def test__ClosedFormFirstOrderDerivativeKernel(rbf_ls, N, regression_1d_data):
     #   that the sampled first and second order matches the explictely
     #   computed gradients
 
+    # get closed form kernel
     base_kernel_1d = RBF(input_dim = 1, lengthscales = [rbf_ls])
+
+    # get true kernel use autograd
+    kern_autograd = FirstOrderDerivativeKernel(base_kernel_1d, input_index=0)
+    Kxx_true = kern_autograd.K(X, X)
 
     kern = ClosedFormRBFFirstOrderDerivativeKernel(base_kernel_1d, input_index=0)
     Kxx = kern.K(X, X)
 
+    breakpoint()
+
     # check out samples
-    latent = np.random.multivariate_normal(np.zeros(Kxx.shape[0]), Kxx)
-
-    # there are three outputs
-    latent_t = latent[:N]
-    latent_dt = latent[N:N*2]
-
-    # compute approximate derivatives
-    approx_dt = np.gradient(latent_t, X[:, 0])
-
+  
     # ==== assert ====
     # ignore the end points as the approximation from numpy is bad there
     # we have to a large a rtol due the approximation error of np.gradient
-    np.testing.assert_allclose(approx_dt[2:-2], latent_dt[2:-2], atol=0.1)
+    np.testing.assert_allclose(Kxx_true, Kxx)
 
 
 @pytest.mark.parametrize('N', [500])

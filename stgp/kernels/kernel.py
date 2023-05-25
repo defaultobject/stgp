@@ -2,6 +2,7 @@ import objax
 import chex
 import jax
 import jax.numpy as np
+from jax import jit
 
 from jax.scipy.linalg import block_diag 
 from abc import ABC
@@ -12,6 +13,9 @@ from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
 from ..utils.utils import ensure_array, ensure_float
 from .. import Parameter
+from functools import partial
+
+from .ss_utils import space_time_state_space_rep
 
 
 class Kernel(objax.Module):
@@ -209,15 +213,9 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
 
         F, L, Qc, H, Pinf = self.k1.to_ss()
 
-        eye = np.eye(K_spatial.shape[0])
-
-        F_st = np.kron(eye, F)
-        L_st = np.kron(eye, L)
-        Qc_st = np.kron(K_spatial, Qc)
-        H_st = np.kron(eye, H)
-        Pinf_st = np.kron(K_spatial, Pinf)
-
-        return F_st, L_st, Qc_st, H_st, Pinf_st
+        return space_time_state_space_rep(
+            K_spatial,  F, L, Qc, H, Pinf
+        )
 
     def state_size(self):
         # only return the temporal state_size 
@@ -347,7 +345,10 @@ class StationaryKernel(Kernel):
     def _K(self, X1, X2):
         D = X1.shape[1]
 
-        def _K_d2(x1, x2):
+        # TODO: do we want to jits here?
+
+        #@partial(jit, static_argnums=(3))
+        def _K_d2(x1, x2, lengthscales, additive):
             #vectorised over 2nd input
             chex.assert_rank(x1, 1)
             chex.assert_rank(x2, 1)
@@ -355,11 +356,11 @@ class StationaryKernel(Kernel):
             chex.assert_equal(x1.shape[0], D)
             chex.assert_equal(x2.shape[0], D)
 
-            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, 0])(x1, x2, self.lengthscales)
+            k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0, 0])(x1, x2, lengthscales)
 
             chex.assert_equal(k_d1_d2.shape[0], D)
 
-            if self.additive:
+            if additive:
                 k_xx =  np.sum(k_d1_d2)
             else:
                 k_xx =  np.product(k_d1_d2)
@@ -368,11 +369,13 @@ class StationaryKernel(Kernel):
 
             return k_xx
 
-        def _K_d1(x1, X2):
-            #vectorised over first input
-            return jax.vmap(_K_d2, in_axes=[None, 0], out_axes=0)(x1, X2)
 
-        K = jax.vmap(_K_d1, in_axes=[0, None], out_axes=0)(X1, X2)
+        #@partial(jit, static_argnums=(3))
+        def _K_d1(x1, X2, lengthscales, additive):
+            #vectorised over first input
+            return jax.vmap(_K_d2, in_axes=[None, 0, None, None], out_axes=0)(x1, X2, lengthscales, additive)
+
+        K = jax.vmap(_K_d1, in_axes=[0, None, None, None], out_axes=0)(X1, X2, self.lengthscales, self.additive)
 
         chex.assert_equal(K.shape[0], X1.shape[0])
         chex.assert_equal(K.shape[1], X2.shape[0])

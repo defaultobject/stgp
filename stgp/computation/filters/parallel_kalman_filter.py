@@ -9,7 +9,7 @@ from jax import jacfwd, jit
 import jax.numpy as np
 from jax.lax import scan, associative_scan
 
-import tensorflow_probability
+#import tensorflow_probability
 
 from ... import settings 
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, force_symmetric, solve_with_additive_inverse
@@ -19,6 +19,10 @@ from ...dispatch import dispatch, evoke
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
+
+from ..linalg import solve, solve_from_cholesky
+
+import jax.scipy as jsp
 
 import objax
 import chex
@@ -73,17 +77,19 @@ def _first_filtering_element(m, P, F, Q, H, R, y):
 
 
     S1 = H @ P_ @ H.T + R
-    S1_chol = cholesky(S1)
-    K = cholesky_solve(S1_chol, H @ P_.T).T
+    #S1_chol = cholesky(S1)
+    #K = cholesky_solve(S1_chol, H @ P_.T).T
+    K = solve(S1, H @ P_.T).T
 
     A = np.zeros_like(F)
     b = m_ + K @ (y - H @ m_)
     C = P_ - K @ S1 @ K.T
 
     S = H @ Q @ H.T + R
-    S_chol = cholesky(S)
 
-    FH_S_inv = cholesky_solve(S_chol, H @ F).T
+    #S_chol = cholesky(S)
+    #FH_S_inv = cholesky_solve(S_chol, H @ F).T
+    FH_S_inv = solve(S, H @ F).T
 
     eta = FH_S_inv @ y
     J = FH_S_inv @ H @ F 
@@ -140,14 +146,18 @@ def _generic_filtering_element(F, Q, H, R, y):
 
 
     S = H @ Q @ H.T + R
-    S_chol = cholesky(S)
-    K = cholesky_solve(S_chol, H @ Q.T).T
+
+    #S_chol = cholesky(S)
+    #K = cholesky_solve(S_chol, H @ Q.T).T
+    K = solve(S, H @ Q.T).T
 
     A = (I - K @ H) @ F
     b = K @ y
     C = (I - K @ H) @ Q
-    eta = F.T @ H.T @ cholesky_solve(S_chol, y)
-    J = F.T @ H.T @  cholesky_solve(S_chol, H @ F) 
+    #eta = F.T @ H.T @ cholesky_solve(S_chol, y)
+    #J = F.T @ H.T @  cholesky_solve(S_chol, H @ F) 
+    eta = F.T @ H.T @ solve(S, y)
+    J = F.T @ H.T @  solve(S, H @ F) 
 
     return A, b, C, J, eta
 
@@ -174,53 +184,31 @@ def filtering_operator(x1, x2):
     N, D = A_i.shape
     I = np.eye(D)
 
-    def fix_inv(A , B):
-        """ compute (I + AB)^{-1} = [A(A^-1 + B)]^{-1} = [(A^-1 + B)]^{-1} A^{-1}"""
-        A_inv = mat_inv(A)
-        tmp = A_inv + B
-        #tmp_chol = cholesky(add_jitter(tmp, settings.jitter))
-        tmp_chol = cholesky(tmp)
-        inv_tmp = cholesky_solve(tmp_chol, A_inv)
-        return inv_tmp
+    if settings.parallel_kf_force_linear_solve:
+        # scarifice some stability to be able to use CG and cholesky solves
+        C_i_inv = solve(C_i, np.eye(C_i.shape[0]))
+        inner_tmp = C_i_inv + J_j
+        Aj_tmp = (solve(inner_tmp, A_j.T).T) @ C_i_inv
 
-    if True:
-        #Aj_tmp = np.linalg.solve(I+C_i@J_j, A_j.T).T
-        #inv_tmp = fix_inv(C_i, J_j)
-        #Aj_tmp = A_j @ inv_tmp
+        A = Aj_tmp @ A_i
+        C = Aj_tmp @ C_i @ A_j.T + C_j
+        b = Aj_tmp @ (b_i + C_i @ eta_j)+b_j
+
+
+        A_i_tmp = solve(inner_tmp.T, C_i_inv @ A_i).T
+
+    else:
         inner_tmp = I+C_i@J_j
+        #Aj_tmp = np.linalg.solve(inner_tmp.T, A_j.T).T
+        Aj_tmp = jsp.linalg.solve(inner_tmp.T, A_j.T, assume_a='gen').T
 
-        if settings.parallal_kf_cg:
-            Aj_tmp = jax.scipy.sparse.linalg.cg(
-                inner_tmp.T, 
-                A_j.T,
-                maxiter = 20
-            )[0].T
-        else:
-            Aj_tmp = np.linalg.solve(inner_tmp.T, A_j.T).T
+        A = Aj_tmp @ A_i
+        C = Aj_tmp @ C_i @ A_j.T + C_j
+        b = Aj_tmp @ (b_i + C_i @ eta_j)+b_j
 
-        #hpsd_solve(add_jitter(inner_tmp.T, settings.jitter), A_j.T).T 
-    else:
-        tmp = fix_psd(I+C_i @ J_j)
-        tmp_chol = cholesky(tmp)
-        Aj_tmp = cholesky_solve(tmp_chol, A_j.T).T
-
-    A = Aj_tmp @ A_i
-    C = Aj_tmp @ C_i @ A_j.T + C_j
-    b = Aj_tmp @ (b_i + C_i @ eta_j)+b_j
-
-    if True:
-        #inv_tmp = fix_inv(J_j, C_i)
-        #A_i_tmp = A_i.T @ inv_tmp
         inner_tmp = I+J_j@C_i
-
-        if settings.parallal_kf_cg:
-            A_i_tmp = jax.scipy.sparse.linalg.cg(inner_tmp.T, A_i, maxiter = 20)[0].T
-        else:
-            A_i_tmp = np.linalg.solve(inner_tmp.T, A_i).T
-    else:
-        tmp = fix_psd(I+J_j @ C_i)
-        tmp_chol = cholesky(tmp)
-        A_i_tmp = cholesky_solve(tmp_chol, A_i).T
+        #A_i_tmp = np.linalg.solve(inner_tmp.T, A_i).T
+        A_i_tmp = jsp.linalg.solve(inner_tmp.T, A_i, assume_a='gen').T
 
     eta = A_i_tmp @ (eta_j - J_j @ b_i) + eta_i
     J = A_i_tmp @ J_j @ A_i + J_i
@@ -236,6 +224,7 @@ def make_filtering_elements():
 
 @dispatch('parallel')
 def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
+    print('START')
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
     m_inf = prior.m_inf(None, X_s, None)
@@ -256,6 +245,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
 
     Y = np.nan_to_num(Y)
 
+    print('contructing first filtering element')
     if lik_cov_flag:
         # lik_mat is a covariance
         x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
@@ -271,6 +261,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
+    print('contructing all filtering element')
     if lik_cov_flag:
         x_all = jax.vmap(
             _generic_filtering_element
@@ -292,6 +283,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     def get_mask(mask, r):
         return np.reshape(mask, [-1] + [1]*(len(r.shape)-1))
 
+    print('masking all filtering element')
     x_all = [
         x_all[i] * get_mask(mask, x_all[i]) + x_all_nan[i] * (1-get_mask(mask, x_all[i]))
         for i in range(5)
@@ -302,6 +294,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
+    print('scanning')
     res = associative_scan(
         jax.vmap(filtering_operator), 
         x_all
@@ -310,6 +303,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     filtered_means = np.vstack([m_inf[None, ...], res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...], res[2][:-1]])
 
+    print('extracting OBS')
     obs_means = jax.vmap(
         lambda H_k, m_k, F_k: H_k @ F_k @ m_k
     ) (
@@ -320,6 +314,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     )(H_arr, filtered_cov, A_arr, Q_arr)
 
 
+    print('LML')
     if lik_cov_flag:
         log_Z_k = jax.vmap(
             lambda Y_k, mu_k, S_k, R_k: np.sum(
@@ -342,8 +337,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         ) (Y, obs_means, obs_pred_cov, jax.vmap(mat_inv)(lik_mat_arr))
         
     log_Z = np.sum(log_Z_k)
+    print('FINI')
 
-    #breakpoint()
 
     return log_Z, {'m': res[1], 'P': res[2]}
 

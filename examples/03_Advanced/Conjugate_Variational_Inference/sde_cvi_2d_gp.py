@@ -18,7 +18,7 @@ from stgp.models import GP
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import SpatioTemporalSeperableKernel, Matern32, RBF 
-from stgp.data import SpatioTemporalData
+from stgp.data import SpatioTemporalData, TemporallyGroupedData
 from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
 from stgp.transforms import Independent

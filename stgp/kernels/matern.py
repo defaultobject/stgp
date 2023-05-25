@@ -4,7 +4,7 @@ import jax
 import jax.numpy as np
 
 from . import StationaryKernel, StationaryVarianceKernel, MarkovKernel
-from .ss_utils import matern32_temporal_expm
+from .ss_utils import matern32_temporal_expm, matern32_temporal_state_space_rep
 
 
 class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
@@ -17,30 +17,11 @@ class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
 
         lengthscale = self.lengthscales[0]
 
-        # temporal so input dim in 1
-        v = 3.0 / 2.0
-        D = int(v + 0.5)
-
-        lam = (3.0 ** 0.5) / self.lengthscales[0]
-        F = np.array([[0.0, 1.0], [-(lam ** 2), -2 * lam]])
-
-        L = np.array([[0.0], [1.0]])
-
-        # measurement model matrix
-        H = np.array([[1.0, 0.0]])
-
-        Qc = np.array([
-            [12.0 * 3.0 ** 0.5 / lengthscale ** 3.0 * self.variance]
-        ])
-
-        Pinf = np.array(
-            [
-                [self.variance, 0.0],
-                [0.0, 3.0 * self.variance / lengthscale ** 2.0],
-            ]
+        return matern32_temporal_state_space_rep(
+            self.lengthscales[0],
+            self.variance
         )
 
-        return F, L, Qc, H, Pinf
 
     def state_size(self):
         return 2
@@ -49,9 +30,11 @@ class ScaledMatern32(StationaryVarianceKernel, MarkovKernel):
         """closed form matrix exponential A = expm(F * dt)"""
         chex.assert_equal(self.input_dim, 1)
 
-        lam = np.sqrt(3.0) / self.lengthscales[0]
-        A = np.exp(-dt * lam) * (dt * np.array([[lam, 1.0], [-lam**2.0, -lam]]) + np.eye(2))
-        return A
+        return matern32_temporal_expm(
+            dt,
+            self.lengthscales[0]
+        )
+
 
     def _K_scaler_with_var(self, x1, x2, lengthscale, variance):
         """
@@ -76,30 +59,10 @@ class Matern32(StationaryKernel, MarkovKernel):
 
         lengthscale = self.lengthscales[0]
 
-        # temporal so input dim in 1
-        v = 3.0 / 2.0
-        D = int(v + 0.5)
-
-        lam = (3.0 ** 0.5) / self.lengthscales[0]
-        F = np.array([[0.0, 1.0], [-(lam ** 2), -2 * lam]])
-
-        L = np.array([[0.0], [1.0]])
-
-        # measurement model matrix
-        H = np.array([[1.0, 0.0]])
-
-        Qc = np.array([
-            [12.0 * 3.0 ** 0.5 / lengthscale ** 3.0]
-        ])
-
-        Pinf = np.array(
-            [
-                [1.0, 0.0],
-                [0.0, 3.0 * 1.0 / lengthscale ** 2.0],
-            ]
+        # no variance so just pass 1.0
+        return matern32_temporal_state_space_rep(
+            lengthscale, 1.0
         )
-
-        return F, L, Qc, H, Pinf
 
     def state_size(self):
         return 2
@@ -108,13 +71,10 @@ class Matern32(StationaryKernel, MarkovKernel):
         """closed form matrix exponential A = expm(F * dt)"""
         chex.assert_equal(self.input_dim, 1)
 
-        if True:
-            return matern32_temporal_expm(dt, self.lengthscales[0])
-
-
-        lam = np.sqrt(3.0) / self.lengthscales[0]
-        A = np.exp(-dt * lam) * (dt * np.array([[lam, 1.0], [-lam**2.0, -lam]]) + np.eye(2))
-        return A
+        return matern32_temporal_expm(
+            dt, 
+            self.lengthscales[0]
+        )
 
     def _K_scaler(self, x1, x2, lengthscale):
         """
@@ -142,7 +102,6 @@ class Matern12(StationaryKernel, MarkovKernel):
         """
 
         return np.exp(- np.abs(x1-x2) / lengthscale)
-
 
 class Matern52(StationaryKernel, MarkovKernel):
     def __init__(self, *args, **kwargs):

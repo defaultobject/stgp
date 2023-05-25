@@ -11,7 +11,7 @@ from stgp import settings
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.means.mean import FirstOrderDerivativeMean, SecondOrderDerivativeMean
-from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel, DummyDerivativeKernel
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel, DummyDerivativeKernel, SecondOrderOnlyDerivativeKernel_2D, SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D
 from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms import OutputMap
@@ -84,23 +84,33 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None,
 
 
     elif space_diff == 2:
-        if dim != 2: raise NotImplementedError()
-
-        if time_diff_kern is None:
-            space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
-            space_mean = SecondOrderDerivativeMean(input_index=1)
+        if dim == 2:
+            if time_diff_kern is None:
+                space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
+                space_mean = SecondOrderDerivativeMean(input_index=1)
+            else:
+                raise NotImplementedError()
         else:
             raise NotImplementedError()
 
     elif space_diff == -2:
-        if dim != 2: raise NotImplementedError()
 
-        if time_diff_kern is None:
-            space_kern = SecondOrderOnlyDerivativeKernel(space_kernel, input_index = 1)
-            space_mean = SecondOrderDerivativeMean(input_index=1) # not used
+        if dim == 2:
+            if time_diff_kern is None:
+                space_kern = SecondOrderOnlyDerivativeKernel(space_kernel, input_index = 1)
+                space_mean = SecondOrderDerivativeMean(input_index=1) # not used
+            else:
+                space_kern = SecondOrderOnlyDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
+                space_mean = SecondOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim) # not used
         else:
-            space_kern = SecondOrderOnlyDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
-            space_mean = SecondOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim) # not used
+            if dim != 3: raise NotImplementedError()
+
+            if time_diff_kern is None:
+                space_kern = SecondOrderOnlyDerivativeKernel_2D(space_kernel, input_index = 1)
+                space_mean = SecondOrderDerivativeMean(input_index=1)
+            else:
+                space_kern = SecondOrderOnlyDerivativeKernel_2D(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
+                space_mean = SecondOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim) # not used?
 
     return space_kern, space_mean
 
@@ -183,6 +193,22 @@ def diff_gp(
                     kernel = base_kernel[i]
                 ),
                 kernel = FirstOrderDerivativeKernel_2D(base_kernel[i]),
+                is_base = True,
+                has_parent = False
+            )
+            for i in range(num_latents)
+        ])
+    elif include_space and (dim == 3) and (time_diff == 1) and (space_diff == -2) and (not hessian):
+        if verbose:
+            print('Constructing 3D first order time and second order space kernel')
+
+        diff_op_prior = Independent([
+            DifferentialOperatorJoint(
+                GP(
+                    sparsity=sparsity, 
+                    kernel = base_kernel[i]
+                ),
+                kernel = SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D(base_kernel[i]),
                 is_base = True,
                 has_parent = False
             )

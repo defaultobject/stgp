@@ -2,27 +2,45 @@
 
 import bibtexparser
 import pathlib
+from enum import Enum
 
 in_strict_mode = False
 
+# controls whether batchjax can convert loops into vmaps
 use_loop_mode = False
 
+# controls whether closed from ELL computations can be used
 force_black_box = False
 
 safe_mode = False
 
+# controls whether any integral approximation should use monte-carlo or quadrature
 use_quadrature = False
 
-parallal_kf_cg = False
+# ===== Solver Specific settings ====
+class SolveType(Enum):
+    CHOLESKY = 1 # jax.scipy.linalg.cholesky_solve
+    CG = 2 # jax.scipy.linalg.cg
+    EXACT = 3 #  jax.scipy.linalg.solve
 
+# controls what type of solve is preferred
+# note this does not ensure that ALL solves will use this
+# as some models/computations are coded only for a specific way (ie cholesky solves)
+linear_solver: SolveType = SolveType.CHOLESKY
+
+# parallel kalman filter
+# when true will use the linear_solver for ALL solves
+#   this is required as in the filtering operator we have found
+#   that using linalg.solve is more stable
+parallel_kf_force_linear_solve = False
+
+# conjugate gradient settings
+cg_precondition_rank = 20
+cg_max_iter = 1000
 
 jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10
-
-cg_precondition_rank = 20
-cg_max_iter = 1000
-
 
 class strict_mode:
     """Enable strict_mode.

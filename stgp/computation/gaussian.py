@@ -9,6 +9,8 @@ from .. import settings
 from .matrix_ops import cholesky, cholesky_solve, log_chol_matrix_det, add_jitter, solve_with_additive_inverse, force_symmetric
 from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
+from .linalg import solve, solve_from_cholesky, log_determinant, log_determinant_from_cholesky
+
 @jit
 def log_gaussian_scalar(Y, mu, variance):
     # ensure scalar
@@ -96,16 +98,25 @@ def log_gaussian_with_mask(Y, mu, sigma, mask):
     sigma = mask_to_identity(sigma, mask)
     mu = mask_vector(mu, mask)
 
-    sigma_chol = cholesky(sigma + settings.jitter * np.eye(sigma.shape[0]))
-
     N = Y.shape[0]
-
     c1 = -0.5 * N * np.log(2 * np.pi) 
-    c2 = - 0.5 * log_chol_matrix_det(sigma_chol)
-    c = c1+c2
 
-    err = Y - mu
-    mahal = err.T @ cholesky_solve(sigma_chol, err)
+    if settings.linear_solver == settings.SolveType.CHOLESKY:
+        # check if we are using cholesky as then we can reuse sigma_chol instead
+        # compute the cholesky multiple times
+
+        sigma_chol = cholesky(sigma + settings.jitter * np.eye(sigma.shape[0]))
+
+        c2 = - 0.5 * log_chol_matrix_det(sigma_chol)
+        err = Y - mu
+        mahal = err.T @ cholesky_solve(sigma_chol, err)
+    else:
+        c2 = - 0.5 * log_determinant(sigma)
+        err = Y - mu
+        mahal = err.T @ solve(sigma, err)
+
+
+    c = c1+c2
 
     ml = c - 0.5 * mahal
     # MASK is one if non nan, zero is nan

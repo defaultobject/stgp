@@ -14,7 +14,7 @@ from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import SpatioTemporalSeperableKernel, Matern32, RBF 
 from stgp.likelihood import Gaussian, ProductLikelihood
-from stgp.data import Data, SpatioTemporalData
+from stgp.data import Data, SpatioTemporalData, TemporallyGroupedData
 from stgp.transforms import Independent
 from stgp.transforms.sdes import LTI_SDE
 from stgp.approximate_posteriors import FullGaussianApproximatePosterior, FullConjugateGaussian
@@ -59,6 +59,8 @@ print(f'XS: {XS.shape}, X: {X.shape}, Y: {Y.shape}')
 
 st_data = SpatioTemporalData(X=X, Y=Y)
 st_data_xs = SpatioTemporalData(X=XS, Y=None)
+
+grouped_data = TemporallyGroupedData(X, Y)
 
 print('spatial sparsity')
 Z = [SpatialSparsity(st_data.X_time, Zs, train=False) for q in range(Q)]

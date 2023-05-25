@@ -16,6 +16,74 @@ from typing import List, Union
 
 from ..utils.utils import vc_remove_vars, vc_keep_vars
 
+import inspect
+from typing import List, Optional, Callable, Tuple, Dict, Union
+
+import jax
+
+from objax.module import Function, Module
+from objax.typing import JaxArray
+from objax.util import repr_function, class_name
+from objax.variable import BaseState, TrainVar, VarCollection
+from objax.gradient import _DerivativeBase
+
+class ReverseModeGrad(_DerivativeBase):
+    """The Grad module is used to compute the gradients of a function."""
+
+    def __init__(self, f: Callable,
+                 variables: Optional[VarCollection],
+                 input_argnums: Optional[Tuple[int, ...]] = None):
+        """Constructs an instance to compute the gradient of f w.r.t. variables.
+
+        Args:
+            f: the function for which to compute gradients.
+            variables: the variables for which to compute gradients.
+            input_argnums: input indexes, if any, on which to compute gradients.
+        """
+        super().__init__(lambda f_func: jax.jacrev(f_func, has_aux=True),
+                         f=f,
+                         variables=variables,
+                         input_argnums=input_argnums)
+        signature = inspect.signature(f)
+        self.__wrapped__ = f
+        self.__signature__ = signature.replace(return_annotation=List[JaxArray])
+
+    def __call__(self, *args, **kwargs):
+        """Returns the computed gradients for the first value returned by `f`.
+
+        Returns:
+            A list of input gradients, if any, followed by the variable gradients."""
+        return super().__call__(*args, **kwargs)
+
+class ForwardModeGrad(_DerivativeBase):
+    """The Grad module is used to compute the gradients of a function."""
+
+    def __init__(self, f: Callable,
+                 variables: Optional[VarCollection],
+                 input_argnums: Optional[Tuple[int, ...]] = None):
+        """Constructs an instance to compute the gradient of f w.r.t. variables.
+
+        Args:
+            f: the function for which to compute gradients.
+            variables: the variables for which to compute gradients.
+            input_argnums: input indexes, if any, on which to compute gradients.
+        """
+        super().__init__(lambda f_func: jax.jacfwd(f_func, has_aux=True),
+                         f=f,
+                         variables=variables,
+                         input_argnums=input_argnums)
+        signature = inspect.signature(f)
+        self.__wrapped__ = f
+        self.__signature__ = signature.replace(return_annotation=List[JaxArray])
+
+    def __call__(self, *args, **kwargs):
+        """Returns the computed gradients for the first value returned by `f`.
+
+        Returns:
+            A list of input gradients, if any, followed by the variable gradients."""
+        return super().__call__(*args, **kwargs)
+
+
 class Trainer:
     """
     All trainers are initalised with:
@@ -40,7 +108,7 @@ class Trainer:
 
         return hold_vars
 
-    def __init__(self, m, optimizer, opt_args = None, hold_vars = None):
+    def __init__(self, m, optimizer, opt_args = None, hold_vars = None, forward_mode = False):
         if opt_args == None:
             opt_args = {}
 
@@ -59,10 +127,14 @@ class Trainer:
         # Jit required functions
         objective_fn = objax.Jit(self.m.get_objective, all_vars)
 
-        self.grad_fn = objax.Jit(
-            objax.GradValues(objective_fn, vars_to_train), 
-            all_vars
-        )
+        if forward_mode:
+            self.grad_fn = objax.Jit(
+                ForwardModeGrad(objective_fn, vars_to_train), 
+                all_vars
+            )
+        else:
+            self.grad_fn = objax.Jit(ReverseModeGrad(objective_fn, vars_to_train), all_vars)
+
 
         self.objective_fn = objective_fn
 
@@ -111,6 +183,7 @@ class ScipyTrainer(Trainer):
 
         self.trainable_vc = trainable_vc
 
+
         # Jit required functions
         objective_fn = objax.Jit(self.m.get_objective, all_vars)
 
@@ -118,6 +191,7 @@ class ScipyTrainer(Trainer):
             objax.Grad(objective_fn, self.trainable_vc), 
             all_vars
         )
+
 
         self.objective_fn = objective_fn
 
@@ -188,7 +262,8 @@ class GradDescentTrainer(Trainer):
         epoch_arr = []
 
         def train_op():
-            grad, val = self.grad_fn()
+            grad = self.grad_fn()
+            val = self.objective_fn()
             self.opt(learning_rate, grad)
             return grad, val
 

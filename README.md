@@ -14,11 +14,11 @@ it seems that it is easier to install tensorflow properly first and then figure 
  # set up tf for m1
  conda install -c apple tensorflow-deps
  pip install tensorflow-metal
-  pip install tensorflow-macos
+ pip install tensorflow-macos
 
  # pip will complain but requried for tensorflow
  pip install numpy --upgrade
- 
+
  pip install tensorflow_probability
 
  # for m1 jax -- for some reason need to specify most recent release?
@@ -27,9 +27,22 @@ it seems that it is easier to install tensorflow properly first and then figure 
 
  # now that tensorflow and jax is installed properly we can install stgp
  pip install -e . 
+```
 
- 
- 
+## Docker
+
+### Build the dockerfile
+
+
+
+construct a builder
+
+```
+docker buildx create --platform linux/arm64,linux/amd64 --driver=docker-container --name stgp_builder --use 
+
+
+docker buildx build --load -t defaultobject/stgp:latest -f dockerfile/stgp.Dockerfile --cache-to type=local,dest=/Users/ohamelijnck/Documents/docker_cache --cache-from type=local,src=/Users/ohamelijnck/Documents/docker_cache .
+
 ```
 
 ## Table of contents

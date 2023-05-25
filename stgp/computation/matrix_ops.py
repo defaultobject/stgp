@@ -10,7 +10,6 @@ from jax import jacfwd, jacrev, grad
 import objax
 from .. import settings
 
-
 def first_axis_dim(X):
     if type(X) is list:
         return len(X)

@@ -26,13 +26,15 @@ from stgp.transforms.sdes import LTI_SDE
 from stgp.transforms import Independent
 
 import matplotlib.pyplot as plt
+from timeit import default_timer as timer
 
 settings.jitter = 1e-7
-settings.cg_max_iter = None
-settings.cg_precondition_rank = 20
+#stgp.settings.linear_solver = stgp.settings.SolveType.CG
+#stgp.settings.linear_solver = stgp.settings.SolveType.EXACT
+stgp.settings.linear_solver = stgp.settings.SolveType.CHOLESKY
 
 # Construct Data
-XS, X, Y = single_output_spatial_data(200, 200, 200, 200, seed=0)
+XS, X, Y = single_output_spatial_data(100, 100, 200, 200, seed=0)
 
 Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
@@ -52,7 +54,21 @@ latent_gp = GP(
 
 prior = LTI_SDE(Independent([latent_gp])) 
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=False)
+parallel = False
+
+print(f'parallel: {parallel}')
+
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=parallel)
+
+print('starting timer')
+start = timer()
+fn = objax.Jit(m.get_objective, m.vars())
+print(fn())
+end = timer()
+print('end')
+print(end - start)
+
+breakpoint()
 
 #print(make_jaxpr(m.get_objective)())
 

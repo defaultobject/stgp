@@ -1160,6 +1160,152 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
 
         return K_reshaped
 
+class SecondOrderOnlyDerivativeKernel_2D(DerivativeKernel):
+    """
+    Compute second order derivates 
+    """
+    def __init__(
+            self, 
+            parent_kernel = None,
+            input_index = 0,
+            parent_output_dim = 1
+        ):
+
+        super(SecondOrderOnlyDerivativeKernel_2D, self).__init__(parent_kernel)
+        # f, df2/dx12, d2f/dx22
+        self.d_computed = 3
+        self.input_index = input_index
+        self.parent_output_dim = parent_output_dim
+        self.output_dim = self.d_computed * self.parent_output_dim
+
+    def _compute_derivatives(self, x1, x2, var_fn):
+        """
+        Let x1 have columns denotes by [t, s1] then we use 
+            T, S1 to denote the differential operators d/dt, d/ds1
+
+        The full joint kernel is given by (ignoring transposes):
+
+            K,       K(T)^2,      K(S1)^2,       
+            (T)^2K,    (T)^2K(T)^2,   (T)^2K(S1)^2,      
+            (S1)^2K,   (S1)^2K(T)^2,  (S1)^2K(S1)^2,   
+
+        """
+        # fix shapes
+        k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])
+
+        # compute blocks
+
+        # variable name notation
+        # res<x1 diff_order><x2 diff order>
+        #scalar
+        res00 = k(x1, x2)
+        B = res00.shape[0]
+
+        # Computes
+        # (T^2)K
+        #  B x B x D x D
+        res20 = hessian(k, argnums=(0))(x1, x2)
+
+        # Computes
+        # K(T^2)
+        #  B x B x D x D
+        res02 = hessian(k, argnums=(1))(x1, x2)
+
+        # arg 0 are the first dim, arg1 are the final
+        # (T^2)K(T^2)
+        #  B x B x D x D x D x D
+        res22 = hessian(hessian(k, argnums=(0)), argnums=(1))(x1, x2)
+
+        # Construct full matrix
+        # K,       K(T)^2,       K(S1)^2
+        # (T)^2 K,    (T)^2 K (T)^2,    (T)^2K(S1)^2
+        # (S1) ^2K,   (S1)^2 K (T)^2,   (S1)^2K(S1)^2
+
+        id0 = self.input_index
+        id1 = self.input_index+1
+
+
+        # for a given B_i, B_j compute the derivate kernels
+        def get_K(i, j):
+            return np.array([
+                [res00[i, j],       res02[i, j][id0][id0],        res02[i, j][id1][id1]], # f
+                [res20[i, j][id0][id0],    res22[i, j][id0, id0][id0, id0],     res22[i, j][id0, id0][id1, id1]], # df/dt
+                [res20[i, j][id1][id1],    res22[i, j][id1, id1][id0, id0],     res22[i, j][id1, id1][id1, id1]], # df / dx1
+            ])
+
+        # stack all derivate kernels over each BxB element 
+        K = np.block([
+            [
+                get_K(b1, b2) 
+                for b2 in range(B) 
+            ]
+            for b1 in range(B) 
+        ])
+
+        chex.assert_rank(K, 2)
+        chex.assert_shape(K, [B*self.d_computed, B*self.d_computed])
+        chex.assert_shape(K, [self.output_dim, self.output_dim])
+
+        return K
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
+
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        # K is in data-diff format -- convert to diff-data format
+        K_reshaped = np.block([
+            [
+                K[:, :, d1, d2]
+                for d2 in range(self.output_dim)
+            ]
+            for d1 in range(self.output_dim)
+        ])
+
+        return K_reshaped
+
+class SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D(SecondOrderDerivativeKernel_3D):
+    """
+    Let x1 have columns denotes by [t, s1, s2] then we use 
+        T, S1 to denote the differential operators d/dt, d/ds1
+
+    The full joint kernel is given by (ignoring transposes):
+
+        K,         K(T),        K(S1)^2,         K(S2)^2
+        (T)K,      (T)K(T),     (T)K(S1)^2,      (T)K(S2)^2 
+        (S1)^2K,   (S1)^2K(T),  (S1)^2K(S1)^2,   (S1)^2K(S2)^2
+        (S2)^2K,   (S2)^2K(T),  (S2)^2K(S1)^2,   (S2)^2K(S2)^2
+
+    """
+    def __init__(
+        self, 
+        parent_kernel = None
+    ):
+
+        super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D, self).__init__(parent_kernel)
+        self.output_dim = 4
+
+    def _K_from_fn(self, X1, X2, var_fn):
+        Kxx = var_fn(X1, X2)
+
+        def k2(x1, X2):
+            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
+
+        # [K,       K(T),       K(T^2),       K(S1),       K(S1^2),       K(S2),       K(S2^2)]
+        K = jax.vmap(k2, (0, None))(X1, X2)
+
+        #return K[:, :, 0, 0]
+        #reshape to NxN
+        K_reshaped =  np.block([
+            [K[:, :, 0, 0],  K[:, :, 0, 1], K[:, :, 0, 4], K[:, :, 0, 6]],
+            [K[:, :, 1, 0],  K[:, :, 1, 1], K[:, :, 1, 4], K[:, :, 1, 6]],
+            [K[:, :, 4, 0],  K[:, :, 4, 1], K[:, :, 4, 4], K[:, :, 4, 6]],
+            [K[:, :, 6, 0],  K[:, :, 6, 1], K[:, :, 6, 4], K[:, :, 6, 6]]
+        ])
+
+        return K_reshaped
+
 
 # =================== CLOSED FORMS ==========================
 
@@ -1206,7 +1352,6 @@ class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
         # K(T)
         # B x B x D
         res01 = (1/(_ls**2)) * (_x2-_x1) * res00
-
 
         # Computes
         # (T)K(T)

@@ -1,4 +1,4 @@
-from .data import Input, SpatialTemporalInput, Data, AggregatedData, SpatialAggregatedData, TemporalAggregatedData, SequentialData, SpatioTemporalData, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, DataReshape, TransformedData, DataList
+from .data import Input, SpatialTemporalInput, Data, AggregatedData, SpatialAggregatedData, TemporalAggregatedData, SequentialData, SpatioTemporalData, TemporalData, MultiOutputTemporalData, get_sequential_data_obj, DataReshape, TransformedData, DataList, TemporallyGroupedData
 
 __all__ = [
     "Input",
@@ -14,5 +14,6 @@ __all__ = [
     'get_sequential_data_obj',
     "DataReshape",
     "TransformedData",
-    "DataList"
+    "DataList",
+    "TemporallyGroupedData",
 ]
