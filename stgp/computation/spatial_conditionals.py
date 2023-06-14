@@ -8,7 +8,7 @@ from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
 
 # Import Types
-from ..data import Data, Input
+from ..data import Data, Input, TemporallyGroupedData
 from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior,FullConjugateGaussian
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
@@ -24,7 +24,7 @@ import objax
 from batchjax import batch_or_loop, BatchType
 
 
-def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
+def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical, batch_space=False):
     """ 
     Helper function to compute diff-op time-space kernels separately 
 
@@ -45,6 +45,11 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
     """
     q_list = prior.parent
 
+    if batch_space:
+        space_batch_arr = [0]
+    else:
+        space_batch_arr = [None]
+
     # Helper function to batch across prior
     batch = lambda fn: batch_or_loop(
         fn,
@@ -55,14 +60,38 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
         batch_type = get_batch_type(q_list)
     )
 
+    if batch_space:
+        batch_with_xs = lambda fn: batch_or_loop(
+            lambda q: jax.vmap(lambda xs: fn(q, xs), [0])(XS_space),
+            [q_list],
+            [0],
+            dim = len(q_list),
+            out_dim = 1,
+            batch_type = get_batch_type(q_list)
+        )
+    else:
+        batch_with_xs = lambda fn: batch_or_loop(
+            lambda q: fn(q, XS_space),
+            [q_list],
+            [0],
+            dim = len(q_list),
+            out_dim = 1,
+            batch_type = get_batch_type(q_list)
+        )
+
     # returns p(S | T)
     base_prior = lambda q: q.base_prior
 
     # return K_time
     base_time_kernel = lambda q: base_kern(q).k1
 
-    # return K_space
-    base_space_kernel = lambda q: base_kern(q).k2
+    if batch_space:
+        # return K_space
+        base_space_kernel = lambda q: base_kern(q).k2
+    else:
+        # return K_space
+        base_space_kernel = lambda q: base_kern(q).k2
+
 
     Ms = X_space.shape[0]
 
@@ -76,15 +105,15 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
         # Ns x Ns
         K_base_spatial_zz_fn = lambda q: base_space_kernel(q).K(X_space, X_space)
 
-        K_spatial_sz_fn = lambda q: (q.covar_from_fn(XS_space, X_space, base_space_kernel(q).K))[:, :Ms]
+        K_spatial_sz_fn = lambda q, xs: (q.covar_from_fn(xs, X_space, base_space_kernel(q).K))[:, :Ms]
 
         K_x_t_fn = lambda q: jax.vmap(
             lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])
 
-        K_spatial_ss_fn = lambda q: jax.vmap(
+        K_spatial_ss_fn = lambda q, xs: jax.vmap(
             lambda x: q.covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
-        )(XS_space)
+        )(xs)
 
     else:
         # return K_time * K_space
@@ -93,15 +122,15 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
         # Compute \nabla K_space 
         K_base_spatial_zz_fn = lambda q: base_prior(q).covar_from_fn(X_space, X_space, base_space_kernel(q).K)
 
-        K_spatial_sz_fn = lambda q: base_prior(q).covar_from_fn(XS_space, X_space, base_space_kernel(q).K) 
+        K_spatial_sz_fn = lambda q, xs: base_prior(q).covar_from_fn(xs, X_space, base_space_kernel(q).K) 
 
         K_x_t_fn = lambda q: jax.vmap(
             lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K)
         )(X_time[:, None, :])
 
-        K_spatial_ss_fn = lambda q: jax.vmap(
+        K_spatial_ss_fn = lambda q, xs: jax.vmap(
             lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
-        )(XS_space)
+        )(xs)
 
 
 
@@ -112,21 +141,32 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical):
     K_base_spatial_zz_arr = batch(K_base_spatial_zz_fn)
 
     # [Q] x [Ds x Ns] x [Ds x N]
-    K_spatial_sz_arr = batch(K_spatial_sz_fn)
+    K_spatial_sz_arr = batch_with_xs(K_spatial_sz_fn)
 
     # [Q] x [Ns] x [Ds] x [Ds]
-    K_base_spatial_ss_arr = batch(K_spatial_ss_fn)
+    K_base_spatial_ss_arr = batch_with_xs(K_spatial_ss_fn)
 
     #[Q] x [Nt] x [Dt] x [Dt]
     K_x_t_arr= batch(K_x_t_fn)
 
-    # Fix shapes
-    # [Ns] x [Q] x [Ds] x [Ds]
-    K_base_spatial_ss_arr = np.transpose(K_base_spatial_ss_arr, [1, 0, 2, 3])
+    if batch_space:
+
+        # K_base_spatial_ss_arr has shape [Q] x [Nt] x [Ns] x [Ds] x [Ds]
+        # K_spatial_sz_arr has shape [Q] x [Nt] x [DsxNs]x[N]
+
+        # Fix shapes
+        # K_base_spatial_ss_arr -> [Nt] x [Ns] x [Q] x [Ds] x [Ds]
+        K_base_spatial_ss_arr = np.transpose(K_base_spatial_ss_arr, [1, 2, 0, 3, 4])
+
+        # K_spatial_sz_arr -> [Nt]xQx[DsxNs]x[DsxN] or [Nt]xQx[DsxNs]x[N]
+        K_spatial_sz_arr = np.transpose(K_spatial_sz_arr, [1, 0, 2, 3])
+    else:
+        # Fix shapes
+        # [Ns] x [Q] x [Ds] x [Ds]
+        K_base_spatial_ss_arr = np.transpose(K_base_spatial_ss_arr, [1, 0, 2, 3])
 
     #[Nt] x [Q] x [ Dt] x [ Dt]
     K_x_t_arr = np.transpose(K_x_t_arr, [1, 0, 2, 3])
-
 
     return K_x_t_arr, K_base_spatial_ss_arr, K_spatial_sz_arr, K_base_spatial_zz_arr
 
@@ -165,7 +205,7 @@ def _batched_st_kernel(X1, X2, prior, kernel_type='spatial', full=True):
     return K_arr
 
 
-def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
+def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch_space = False):
     """
     Let P be the number of outputs then:
 
@@ -189,22 +229,43 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
     X_space = data_x.X_space
-    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
-    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
+
+    if batch_space:
+        # Nt x Ns x D
+        XS_space = np.concatenate([np.zeros_like(XS_space[..., [0]]), XS_space], axis=2)
+        # Ns x D
+        X_space = np.hstack([ np.zeros_like(X_space[..., [0]]), X_space ])
+    else:
+        # Ns x D
+        XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
+        # Ns x D
+        X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
 
     Ns = X_space.shape[0]
-    Nss = XS_space.shape[0]
+
+    if batch_space:
+        Nss = XS_space.shape[1]
+    else:
+        Nss = XS_space.shape[0]
 
     # Precompute all kernels
 
     # TODO: how to compute the diagonal diff op kernels effeciently
 
+    if batch_space:
+        Kss = jax.vmap(lambda xs: _batched_st_kernel(xs, xs, prior, 'spatial', full=True))(XS_space)
+        Kss = np.transpose(Kss, [1, 0, 2, 3])
+        # latent - space format
+        Ksz = jax.vmap(lambda xs: _batched_st_kernel(xs, X_space, prior, 'spatial', full=True))(XS_space)
+        Ksz = np.transpose(Ksz, [1, 0, 2, 3])
+    else:
+        # latent - space format
+        Kss = _batched_st_kernel(XS_space, XS_space, prior, 'spatial', full=True)
+        # latent - space format
+        Ksz = _batched_st_kernel(XS_space, X_space, prior, 'spatial', full=True)
+
     # latent - time format
     Ktt = _batched_st_kernel(XS_time, XS_time, prior, 'temporal', full=False)
-    # latent - space format
-    Kss = _batched_st_kernel(XS_space, XS_space, prior, 'spatial', full=True)
-    # latent - space format
-    Ksz = _batched_st_kernel(XS_space, X_space, prior, 'spatial', full=True)
     # latent - space format
     Kzz = _batched_st_kernel(X_space, X_space, prior, 'spatial', full=True)
 
@@ -269,9 +330,14 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         Kzz_chol = np.kron(np.eye(2), Kzz_chol)
         pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
+    if batch_space:
+        batch_arr = [None, None, None, 0, 0, 0, 0, 0, None, None]
+    else:
+        batch_arr = [None, None, None, None, None, 0, 0, 0, None, None]
+
     mu, var = jax.vmap(
         spatial_fn,
-        [None, None, None, None, None, 0, 0, 0, None, None],
+        batch_arr,
     )( 
         XS_space, 
         X_space, 
@@ -284,6 +350,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior):
         mean_x, 
         mean_xs
     )
+
 
     # in time-latent-space format
     var = var[:, None, ...]
@@ -333,18 +400,45 @@ def spatial_conditional(
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
-@dispatch(Data, Independent, DifferentialOperatorJoint, FullConjugateGaussian)
+@dispatch(TemporallyGroupedData, Independent, Independent, FullGaussianApproximatePosterior)
 def spatial_conditional(
     data_xs, 
     data_x, 
     pred_mean, 
     pred_var, 
-    aapproximate_posterior, 
+    approximate_posterior, 
     likelihood, 
     prior, 
     sparsity,
     out_block_dim, 
     whiten
+):
+    """
+    Let P be the number of outputs then:
+
+    In:
+        pred_mean: Nt x Ns*P x 1
+        pred_var: Nt x Ns*P x Ns*P
+
+    where pred_mean, pred_var are in latent-data format.    
+    """
+
+    mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch_space=True)
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
+def differential_spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    approximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten,
+    batch_space = False
 ):
     """
     Posterior is in [time - Q - df - ds - space ] format
@@ -362,8 +456,21 @@ def spatial_conditional(
     space_dim = X_space.shape[1]
     Ns = data_x.Ns
 
-    XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
-    X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
+    if batch_space:
+        Nss = XS_space.shape[1]
+    else:
+        Nss = XS_space.shape[0]
+
+    if batch_space:
+        # Nt x Ns x D
+        XS_space = np.concatenate([np.zeros_like(XS_space[..., [0]]), XS_space], axis=2)
+        # Ns x D
+        X_space = np.hstack([ np.zeros_like(X_space[..., [0]]), X_space ])
+    else:
+        # Ns x D
+        XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
+        # Ns x D
+        X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
 
     X_time = np.hstack([X_time[:, None], np.zeros([X_time.shape[0], 1])])
 
@@ -381,7 +488,7 @@ def spatial_conditional(
     prior_added_output = dummy_prior.derivative_kernel.d_computed
     out_dim = base_prior_output * prior_added_output
 
-    K_x_t, K_spatial_ss, K_spatial_sz, K_base_spatial_zz = _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical)
+    K_x_t, K_spatial_ss, K_spatial_sz, K_base_spatial_zz = _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical, batch_space=batch_space)
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -389,15 +496,19 @@ def spatial_conditional(
         0,
     )(pred_var)
 
-
     # TODO: check this
     mean_x = np.zeros([pred_mean.shape[1], 1])
-    mean_xs = np.zeros([data_xs.Ns * out_dim*Q, 1])
+    mean_xs = np.zeros([Nss * out_dim*Q, 1])
+
+    if batch_space:
+        batch_arr = [None, None, None, None, 0, 0, 0, 0, 0, None, None]
+    else:
+        batch_arr = [None, None, None, None, None, None, 0, 0, 0, None, None]
 
     # batch over time
     mu_p, var_p_bd = jax.vmap(
         gaussian_linear_operator_spatial_conditional_blocks,
-        [None, None, None, None, None, None, 0, 0, 0, None, None],
+        batch_arr,
     )( 
         Q*out_dim,
         XS_space, 
@@ -420,6 +531,63 @@ def spatial_conditional(
     return mu_p_bd, var_p_bd
 
 
+@dispatch(Data, Independent, DifferentialOperatorJoint, FullConjugateGaussian)
+def spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    approximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
+):
+
+    return differential_spatial_conditional(
+        data_xs, 
+        data_x, 
+        pred_mean, 
+        pred_var, 
+        approximate_posterior, 
+        likelihood, 
+        prior, 
+        sparsity,
+        out_block_dim, 
+        whiten
+    )
+
+@dispatch(TemporallyGroupedData, Independent, DifferentialOperatorJoint, FullConjugateGaussian)
+def spatial_conditional(
+    data_xs, 
+    data_x, 
+    pred_mean, 
+    pred_var, 
+    approximate_posterior, 
+    likelihood, 
+    prior, 
+    sparsity,
+    out_block_dim, 
+    whiten
+):
+    mu, var =  differential_spatial_conditional(
+        data_xs, 
+        data_x, 
+        pred_mean, 
+        pred_var, 
+        approximate_posterior, 
+        likelihood, 
+        prior, 
+        sparsity,
+        out_block_dim, 
+        whiten,
+        batch_space=True
+    )
+    return mu, var
+
+
+
 
 @dispatch(Data, DifferentialOperatorJoint, DifferentialOperatorJoint, FullConjugateGaussian)
 def spatial_conditional(
@@ -437,11 +605,11 @@ def spatial_conditional(
     """
     Single Latent Function case
     """
-    breakpoint()
     # Wrap prior in an Independent transform so that it is in the same format as the multi latent case
     ind_prior = Independent([prior])
+
     
-    return evoke('spatial_conditional', data, ind_prior, prior, approximate_posterior)(
+    return evoke('spatial_conditional', data_xs, ind_prior, prior, approximate_posterior)(
            data_xs, data_x, pred_mean, pred_var, aapproximate_posterior, likelihood, ind_prior, sparsity, out_block_dim, whiten 
     )
 

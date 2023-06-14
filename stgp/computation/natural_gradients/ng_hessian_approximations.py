@@ -171,8 +171,13 @@ def laplace_gauss_newton_natural_gradient_for_meanfield_approx_posterior(model, 
 
     XS = model.data.X
     def likelihood_conditional_mean(X):
+        # NxQxB
         f = model.predict_f(X, squeeze=False, diagonal=True, num_samples=prediction_samples, posterior=True)[0]
+
+        # Q x N x 1 x B
         cond_f =  model.likelihood.conditional_mean(f)
+        # TODO: fix for product likelihood...
+        cond_f = cond_f[:, :, 0, :]
 
         nan_mask = (get_same_shape_mask(model.data.Y).T)[..., None]
 

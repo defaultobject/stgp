@@ -195,9 +195,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
         xs_spatial_data, all_temporal_data, XS_data, pred_mu, pred_var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False, sort_output=False)
         chex.assert_rank([pred_mu, pred_var], [3, 4])
 
-
         out_block_dim = 1
-        mu, var = evoke('spatial_conditional', data, prior, dummy_prior, approximate_posterior)(
+        mu, var = evoke('spatial_conditional', xs_spatial_data, prior, dummy_prior, approximate_posterior)(
             xs_spatial_data, 
             sparsity[0].raw_Z, 
             pred_mu, 

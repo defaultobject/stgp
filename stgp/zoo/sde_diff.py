@@ -16,7 +16,7 @@ from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms import OutputMap
 from stgp.transforms.pdes import DifferentialOperatorJoint
-from stgp.data import Data
+from stgp.data import Data, SpatioTemporalData, TemporallyGroupedData
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import  progress_bar_callback
 from stgp.kernels.spectral_mixture import SM_Component
@@ -146,6 +146,7 @@ def diff_gp(
         multioutput_prior[bool] - when multioutput the likelihood must be constructed as a list of productlikelihoods
         inference: [None, str] - None = batch
         hessian[bool] - If true compute df^2/dtds
+        temporally_grouped[bool] - If true will use a TemporallyGrouped Data otherwise will construct SpatioTemporal
     """
 
     # Figure out what setting we are constructing a model in
@@ -309,7 +310,7 @@ def diff_gp(
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, verbose=False
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, verbose=False 
 ):
     """
     Args:
@@ -328,6 +329,7 @@ def diff_cvi_sde_vgp(
         meanfield: [bool] - default false. Construct a meanfield approximate posterior across the latents. Default is a full Gaussian.
         multioutput_prior[bool] - when multioutput the likelihood must be constructed as a list of productlikelihoods
         parallel: [bool] - default false. Whether or not use a parallel kalman filter and smoother.
+        temporally_grouped: [bool] - Whether or not to use temporoally grouped or kronecker structure (only applied to ST problems)
     """
 
     if space_diff_kernel is not None:
@@ -356,9 +358,13 @@ def diff_cvi_sde_vgp(
     # Setup sequential data
     N, P = Y.shape
     if include_space:
-        data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
+        if temporally_grouped:
+            data = TemporallyGroupedData(X=X, Y=Y, minibatch_size=100)
+        else:
+            data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
     else:
         data = stgp.data.MultiOutputTemporalData(X=X, Y=Y, sort=True)
+
     Ms = data.Ns
 
     # We only support the same inducing locations across all latent functions

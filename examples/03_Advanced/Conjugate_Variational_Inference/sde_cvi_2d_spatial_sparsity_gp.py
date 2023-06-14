@@ -103,7 +103,8 @@ q = FullConjugateGaussian(
 )
 
 m = stgp.models.GP(
-    data=st_data, 
+    data=grouped_data, 
+    #data=st_data, 
     likelihood=[Gaussian(0.1) for p in range(P)],
     inference='Variational',
     prior=prior,
@@ -114,16 +115,16 @@ m = stgp.models.GP(
 
 m.print()
 
-if False:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m)
+if True:
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     m.print()
     print(m.get_objective())
     ng_trainer.train(1.0, 1)
     print(m.get_objective())
 
-if True:
+if False:
     max_iters = 500
 
     ng_trainer = NatGradTrainer(m)
@@ -151,7 +152,13 @@ m.print()
 
 pred_mu, pred_var = m.predict_f(XS, squeeze=False)
 
-pred_train_mu = m.predict_f(X, squeeze=False)
+pred_train_mu, pred_train_var = m.predict_f(X, squeeze=False)
+
+pred_train_mu = pred_train_mu[..., 0]
+pred_train_var = pred_train_var[..., 0, 0]
+
+pred_mu = pred_mu[..., 0]
+pred_var = pred_var[..., 0, 0]
 
 print(np.nanmean(np.square(np.squeeze(pred_train_mu)-np.squeeze(Y))))
 
@@ -167,6 +174,4 @@ if True:
         axes[0][i].scatter(X[:, 1], X[:, 0], c=Y[:, 0], edgecolor='white')
         axes[1][i].imshow(Y[:, i].reshape(N, N))
     plt.show()
-
-breakpoint()
 

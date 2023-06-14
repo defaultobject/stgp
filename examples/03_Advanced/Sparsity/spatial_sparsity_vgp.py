@@ -63,7 +63,7 @@ m = GP(
 # Train
 if True:
     print(m.get_objective())
-    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+    trainer = VB_NG_ADAM(m)
     trainer.ng_trainer.train(1.0, 1)
     print(m.get_objective())
     m.print()
@@ -71,7 +71,7 @@ if True:
     max_iters = 100
     lc, _ = trainer.train([0.01, 1.0], [max_iters, [1, 1]], callback=progress_bar_callback(max_iters))
 
-    plt.plot(lc)
+    plt.plot(lc[::2])
     plt.show()
     print(m.get_objective())
 

@@ -32,8 +32,8 @@ from .linear_marginals import linear_marginal_blocks
 
 @dispatch(ConjugatePrecisionGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
 @dispatch(ConjugateGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
-@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
-@dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, DataLatentPermutation, Sparsity, whiten=False)
+@dispatch(FullConjugateGaussian, Likelihood, DataLatentPermutation, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     N = XS.shape[0]
 
@@ -267,6 +267,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 @dispatch(FullConjugateGaussian, Likelihood, LinearTransform, Sparsity, whiten=False)
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    #breakpoint()
 
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity

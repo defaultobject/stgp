@@ -39,7 +39,10 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         Y_mask = get_same_shape_mask(data.Y)
         N_no_nan = np.sum(Y_mask, axis=0)
 
-        return np.sum((N/N_no_nan) * ELL)
+        return data.minibatch_scaling * np.sum(ELL)
+        #return np.sum((N/N_no_nan) * ELL)
+
+        #return np.sum((N/N_no_nan) * ELL)
     else:
         return np.sum(ELL)
 

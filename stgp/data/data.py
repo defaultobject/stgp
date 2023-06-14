@@ -92,7 +92,7 @@ class SpatialTemporalInput(Input):
 
 
 class Data(objax.Module):
-    def __init__(self, X, Y, minibatch_size=None):
+    def __init__(self, X, Y, minibatch_size=None, seed=0):
 
         self._Y = Parameter(np.array(Y), train=False, name='Y')
         self.save_X(X, train=False, name='X')
@@ -100,12 +100,15 @@ class Data(objax.Module):
         self.N = Y.shape[0]
         self.P = Y.shape[1]
 
-        self.generator = objax.random.Generator(seed=0)
+        self.generator = objax.random.Generator(seed=seed)
 
         if minibatch_size is not None:
             self.minibatch_size = minibatch_size
             self.minibatch = True
             self.idx = None
+
+            #prime the batching
+            self.batch()
         else:
             self.minibatch_size = self.N
             self.minibatch = False
@@ -685,4 +688,71 @@ class TemporallyGroupedData(Data):
         X, Y = get_minimal_time_groups(X, Y, verbose=verbose)
 
         self._Y = Parameter(np.array(Y), train=False, name='Y')
-        self._X = self.save_X(X, train=False, name='X')
+        self.save_X(X, train=False, name='X')
+
+        self.D = X.shape[-1]
+        self.P = Y.shape[-1]
+        self.N = X.shape[0]
+
+        self.Nt = X.shape[0]
+        self.Ns = X.shape[1]
+
+        self.generator = objax.random.Generator(seed=0)
+
+        if minibatch_size is not None:
+            self.minibatch_size = minibatch_size
+            self.minibatch = True
+            self.idx = None
+            self.minibatch_scaling = (self.Nt*self.Ns)/(self.Nt*self.minibatch_size)
+
+            #prime the batching
+            self.batch()
+        else:
+            self.minibatch_scaling = 1.0
+            self.minibatch_size = self.Ns
+            self.minibatch = False
+            self.idx = None
+
+    def batch(self):
+        # only batch in space
+        self.idx = objax.random.randint(
+            (self.minibatch_size,), 
+            low=0, 
+            high=self.Ns-1, 
+            generator=self.generator
+        )
+
+    @property
+    def X_time(self):
+        return self.X_st[:, 0, 0]
+
+    @property
+    def X_space(self):
+        if self.minibatch:
+            return self.X_st[:,self.idx, 1:]
+        else:
+            return self.X_st[:, :, 1:]
+
+    @property
+    def X_st(self):
+        if self.minibatch:
+            return self._X.X[:,self.idx, :]
+        else:
+            return self._X.X
+
+    @property
+    def Y_st(self):
+        if self.minibatch:
+            return self._Y.value[:, self.idx, :]
+        else:
+            return self._Y.value
+
+    @property
+    def X(self):
+        # X_st is in T x S x D format
+        return np.reshape(self.X_st, [-1, self.D])
+
+    @property
+    def Y(self):
+        # remove the Nt dimension
+        return np.reshape(self.Y_st, [-1, self.P])

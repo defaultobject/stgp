@@ -102,7 +102,8 @@ m.print()
 # Train
 if True:
     print(m.get_objective())
-    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+    #trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+    trainer = VB_NG_ADAM(m)
     trainer.ng_trainer.train(1.0, 1)
     print(m.get_objective())
     m.print()

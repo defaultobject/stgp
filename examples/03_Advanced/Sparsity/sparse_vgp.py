@@ -33,7 +33,7 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 # setup 10 inducing points
 Z = np.linspace(np.min(X), np.max(X), 10)[:, None]
 
-data = Data(X, Y)
+data = Data(X, Y, minibatch_size=10)
 m = GP(
     data = data,
     prior = Independent([
@@ -47,11 +47,15 @@ m = GP(
     inference='Variational'
 )
 
+import objax
+elbo_fn = objax.Jit(m.get_objective, m.vars())
+breakpoint()
+
 
 # Train
 if True:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m)
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 
     ng_trainer.train(1.0, 1)

@@ -23,7 +23,7 @@ from stgp.likelihood import Gaussian
 from stgp.models import GP
 from stgp.transforms import Independent
 from stgp.transforms.pdes import DifferentialOperatorJoint
-from stgp.data import Data
+from stgp.data import Data, TemporallyGroupedData
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE
 
 import matplotlib.pyplot as plt
@@ -75,8 +75,6 @@ if False:
     lik_arr = [Gaussian(0.1), Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)]
 
     # construct P(T)
-
-
 
     diff_op_prior_time = DifferentialOperatorJoint(
         GP(
@@ -153,7 +151,6 @@ else:
 
 
     # construct P(T)
-
     diff_op_prior_time = DifferentialOperatorJoint(
         GP(
             sparsity=Z_sparsity, 
@@ -198,9 +195,13 @@ else:
             likelihood=likelihood, 
             prior=latent_sde_gp,
             inference='Sequential',
-            full_state_observed = True
+            full_state_observed = True,
+            parallel=True
         )
     )
+
+    data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
+    #data = TemporallyGroupedData(X, Y)
 
     # Create Model
     m = stgp.models.GP(

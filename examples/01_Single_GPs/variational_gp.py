@@ -30,6 +30,7 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 # Construct Model
 data = Data(X, Y)
+
 m = GP(
     data = data,
     prior = Independent([
@@ -43,10 +44,9 @@ m = GP(
     inference='Variational'
 )
 
-
 # Train
 if True:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    ng_trainer = NatGradTrainer(m)
     #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
 

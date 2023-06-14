@@ -19,6 +19,7 @@ def helmholtz_3D(
     keep_dims=None,
     model = None,
     parallel=False,
+    temporally_grouped=False,
     whiten=False
 ):
     """
@@ -75,7 +76,8 @@ def helmholtz_3D(
             prior_fn = prior_fn,
             verbose=verbose,
             keep_dims=keep_dims,
-            parallel=parallel
+            parallel=parallel,
+            temporally_grouped=temporally_grouped
         ) 
     elif model == 'vgp':
         return diff_gp(

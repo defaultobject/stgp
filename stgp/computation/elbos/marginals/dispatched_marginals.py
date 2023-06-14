@@ -141,6 +141,9 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """ Catch all for single latent functions with no sparsity but with whitening"""
     chex.assert_rank([q_m, q_S_chol], [3, 4])
+    assert len(sparsity) == 1
+    sparsity = sparsity[0]
+
     N = q_m.shape[0]
 
     q_m = q_m[:, 0, ...]
@@ -293,6 +296,8 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     # TODO: block dim
 
+    sparsity = sparsity[0]
+
     # Call the predictive distribution to compute q(f)
     mu, var =  evoke(
         'marginal_prediction_blocks', approximate_posterior, likelihood, 'GPPrior', sparsity, whiten=False 
@@ -341,12 +346,11 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
     When predicting we can simply use the predictive distribution of the conjugate posterior.
     """
-    breakpoint()
     # TODO: assuming that data_xs and data_x are of the same type
     chex.assert_rank([q_m, q_S], [3, 4])
 
     #parent is wrapped by a permutator, we don't need this so we pass the parent
-    mu, var = evoke('spatial_conditional', data, prior.parent, approximate_posterior)(
+    mu, var = evoke('spatial_conditional', data, prior.parent, prior.parent, approximate_posterior)(
         data, 
         sparsity[0].raw_Z, 
         q_m, 
@@ -427,11 +431,22 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return mu, var
 
-@dispatch(GaussianApproximatePosterior, Likelihood, Independent, whiten=True)
-@dispatch(GaussianApproximatePosterior, Likelihood, Independent, whiten=False)
+@dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=True)
+@dispatch(GaussianApproximatePosterior, Likelihood, 'GPPrior', whiten=False)
 def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
-    breakpoint()
+    sparsity_arr = prior.base_prior.get_sparsity_list()
+
+    fn = evoke('marginal_blocks', approximate_posterior, likelihood, prior, sparsity_arr[0], whiten=whiten)
+
+    # we dont need to pass through the permutated prior as this will be handled down stream
+    mu, var = fn(
+        data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity_arr, out_block, whiten
+    ) 
+    chex.assert_rank([mu, var], [3, 4])
+
+    return mu, var
+
 
 # Mean-field entry point
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)
@@ -465,13 +480,6 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=None
     )
 
-    
-# ===============================================================================================
-# ===============================================================================================
-# ========================================  ENTRY POINTs ========================================
-# ===============================================================================================
-# ===============================================================================================
-
 
 # list of linear priors
 @dispatch(ApproximatePosterior, Likelihood, list, whiten=True)
@@ -498,6 +506,14 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
         var_list.append(var_p)
 
     return mu_list, var_list
+
+# ===============================================================================================
+# ===============================================================================================
+# ========================================  ENTRY POINTs ========================================
+# ===============================================================================================
+# ===============================================================================================
+
+
 
 # ============================ SINGLE OUTPUT APPROXIMATE POSTERIOR ENTRY POINT ============================
 

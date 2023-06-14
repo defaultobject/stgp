@@ -7,6 +7,8 @@ from ....utils.batch_utils import batch_over_module_types
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional, to_block_diag
 from ....core import Block, get_block_dim
 
+from ....transforms import Independent
+
 def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten: bool, XS=None, sparsity=None, prediction=True):
     """ 
     Helper function to collect marginals across a mean-field approximate posterior
@@ -18,6 +20,8 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
         decompose across these latents and so for simplicty we just assume that it wont
     """
     chex.assert_rank([q_m, q_S_chol], [3, 4])
+
+    assert type(prior) == Independent 
 
     latents_arr = prior.parent
     approx_posteriors_arr = approximate_posterior.approx_posteriors
@@ -39,6 +43,8 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
     L = int(QL/Q)
 
     q_m = np.reshape(q_m, [N, Q, L, B])
+    sparsity_arr = sparsity
+
     
     if not prediction:
         # Compute q(f) for each output
@@ -47,14 +53,13 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
             evoke_name = 'marginal_blocks',
             evoke_params = [],
             module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr],
-            fn_params = [data, q_m, q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr,  out_block_arr, whiten_arr],
+            fn_params = [data, q_m, q_S_chol[:, :, None, ...], approx_posteriors_arr, likelihood_arr, latents_arr, out_block_arr, whiten_arr],
             fn_axes = [None, 1, 1, 0, 0, 0, 0, 0],
             dim = len(latents_arr),
             out_dim  = 2,
             evoke_kwargs = {'whiten': whiten}
         )
     else:
-        sparsity_arr = sparsity
 
         marginal_mu, marginal_var = batch_over_module_types(
             evoke_name = 'marginal_prediction_blocks',

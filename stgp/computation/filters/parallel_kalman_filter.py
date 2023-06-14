@@ -224,7 +224,6 @@ def make_filtering_elements():
 
 @dispatch('parallel')
 def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
-    print('START')
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
     m_inf = prior.m_inf(None, X_s, None)
@@ -245,7 +244,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
 
     Y = np.nan_to_num(Y)
 
-    print('contructing first filtering element')
     if lik_cov_flag:
         # lik_mat is a covariance
         x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
@@ -261,7 +259,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
-    print('contructing all filtering element')
     if lik_cov_flag:
         x_all = jax.vmap(
             _generic_filtering_element
@@ -283,7 +280,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     def get_mask(mask, r):
         return np.reshape(mask, [-1] + [1]*(len(r.shape)-1))
 
-    print('masking all filtering element')
     x_all = [
         x_all[i] * get_mask(mask, x_all[i]) + x_all_nan[i] * (1-get_mask(mask, x_all[i]))
         for i in range(5)
@@ -294,7 +290,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         for i in range(5)
     ]
 
-    print('scanning')
     res = associative_scan(
         jax.vmap(filtering_operator), 
         x_all
@@ -303,7 +298,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     filtered_means = np.vstack([m_inf[None, ...], res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...], res[2][:-1]])
 
-    print('extracting OBS')
     obs_means = jax.vmap(
         lambda H_k, m_k, F_k: H_k @ F_k @ m_k
     ) (
@@ -314,7 +308,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     )(H_arr, filtered_cov, A_arr, Q_arr)
 
 
-    print('LML')
     if lik_cov_flag:
         log_Z_k = jax.vmap(
             lambda Y_k, mu_k, S_k, R_k: np.sum(
@@ -337,8 +330,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
         ) (Y, obs_means, obs_pred_cov, jax.vmap(mat_inv)(lik_mat_arr))
         
     log_Z = np.sum(log_Z_k)
-    print('FINI')
-
 
     return log_Z, {'m': res[1], 'P': res[2]}
 
