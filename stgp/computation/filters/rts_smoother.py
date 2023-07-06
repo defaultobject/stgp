@@ -157,7 +157,7 @@ def smoother(data, model, filter_res, dt, X_t, X_s, H_k, full_state):
 
     return np.flip(m, axis=0), np.flip(P, axis=0)
 
-def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False, parallel=False):
+def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False, filter_type=False):
     """
     Args:
         full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
@@ -183,10 +183,7 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     else:
         H_k = model.H(None, X_s, None)
 
-    if parallel:
-        smoother_fn = evoke('smoother', 'parallel')
-        #smoother_fn = evoke('smoother', 'sequential')
-    else:
+        #smoother_fn = evoke('smoother', filter_type)
         smoother_fn = evoke('smoother', 'sequential')
 
     lml, filter_res =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)

@@ -1,0 +1,6 @@
+c1
+Array(-0.91893853, dtype=float64, weak_type=True)
+(Pdb) c2
+Array(-0.09347023, dtype=float64)
+(Pdb) mahal
+Array([[0.02581284]], dtype=float64)

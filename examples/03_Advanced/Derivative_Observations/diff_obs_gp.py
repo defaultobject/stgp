@@ -93,6 +93,9 @@ else:
 # predict
 pred_mu, pred_var = m.predict_f(XS)
 
+pred_mu = np.squeeze(pred_mu)
+pred_var = np.squeeze(pred_var)
+
 # plot
 D = 2
 

@@ -116,7 +116,8 @@ def expectation_to_xi(mu1, mu2):
     M = mu1.shape[0]
     jit = settings.ng_jitter * np.eye(M) 
 
-    xi2 = cholesky(mu2 - mu1 @ mu1.T + jit)
+    #xi2 = cholesky(mu2 - mu1 @ mu1.T + jit)
+    xi2 = cholesky(mu2 - mu1 @ mu1.T)
 
     return mu1, xi2
 

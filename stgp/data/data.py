@@ -106,6 +106,7 @@ class Data(objax.Module):
             self.minibatch_size = minibatch_size
             self.minibatch = True
             self.idx = None
+            self.minibatch_scaling = self.N / minibatch_size
 
             #prime the batching
             self.batch()

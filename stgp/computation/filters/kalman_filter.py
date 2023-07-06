@@ -200,6 +200,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
 
+
     return {
         'm': m_k, 'P': P_k 
     }, {
@@ -314,11 +315,12 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
 
     lml = np.sum(ys['lml'])
 
+
     filter_res = {'m': ys['m'], 'P': ys['P']}
 
     return lml, filter_res
 
-def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, parallel=False):
+def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False):
     """
     Args:
         R: in time - latent - space format
@@ -362,13 +364,10 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, pa
         lik_cov_flag = True
         lik_mat = R
 
-    if parallel:
-        filter_fn = evoke('filter', 'parallel')
-    else:
-        filter_fn = evoke('filter', 'sequential')
+    # sequential, parallel, square_root_svm
+    filter_fn = evoke('filter', filter_type)
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)
-    #lml_cov, filter_res_cov =  filter_fn(data, prior, jax.vmap(mat_inv)(lik_mat), Y, X_t, X_s, dt, True)
 
     return lml, filter_res
 

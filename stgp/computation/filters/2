@@ -1,0 +1,168 @@
+import jax
+from jax import jacfwd, jit
+import jax.numpy as np
+from jax.lax import scan, associative_scan
+
+from ... import settings 
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, force_symmetric, solve_with_additive_inverse, vec_add_jitter, triangular_solve
+from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
+from ...utils.nan_utils import get_same_shape_mask
+from ...dispatch import dispatch, evoke
+
+from jax.numpy.linalg import svd
+
+# Import types
+from ...transforms.sdes import SDE, LTI_SDE
+
+from ..linalg import solve, solve_from_cholesky
+
+import jax.scipy as jsp
+
+import objax
+import chex
+
+def get_data_mask(Y_k):
+    Y_k = np.nan_to_num(Y_k)
+
+    # Construct spatial mask
+    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
+
+    M = np.multiply(
+        m_vec,
+        np.eye(Y_k.shape[0])
+    )
+
+    return M
+
+@jit
+def sr_svm_kf_step(carry, x):
+
+    m_k = carry['m']
+    P_sqrt_k = carry['P_sqrt']
+
+    dt_k = x['dt']
+    Y = x['Y'] 
+    lik_mat = x['lik_mat'] 
+    t = x['t'] 
+    A = x['A'] 
+    Q_chol = x['Q_chol'] 
+    H = x['H'] 
+
+    R_chol = x['R_chol'] 
+    R_chol_inv_y = x['R_chol_inv_y'] 
+    R_chol_inv_H = x['R_chol_inv_H'] 
+    R_chol_inv_MH = x['R_chol_inv_MH'] 
+
+    # set up
+
+    mask_k = get_same_shape_mask(Y_k)
+
+    Y_k = np.nan_to_num(Y_k)
+
+    # Construct spatial mask
+    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
+
+    M = np.multiply(
+        m_vec,
+        np.eye(Y_k.shape[0])
+    )
+
+    # only observe on nan
+    H_k = M @ H
+
+    # predict step
+
+    P_sqrt_ = np.block([
+        [A @ P_sqrt_k],
+        [Q_chol]
+    ])
+
+    P_sqrt_U, P_sqrt_D, P_sqrt_VT  = svd(P_sqrt_)
+    P_sqrt_D = np.diag(P_sqrt_D)
+
+    m_ = A_k @ m_k
+    P_sqrt_ = P_sqrt_U @ P_sqrt_D
+
+    # update step
+    mu = M @ H_k @ m_
+
+    #inovation mean and variance
+    # all in latent-space format
+    v = Y_k - mu
+    S = var + R_k
+
+    U, D, VT = svd(
+        R_chol_inv_MH @  P_sqrt_
+    )
+
+    I = np.eye(D.shape[0])
+
+    U_tilde, D_tilde, VT_tilde = svd(
+        V @ D @ (1/np.sqrt(D**2 + I))
+    )
+
+    # compute ell
+
+    # keep track of terms required for smoothing
+
+    breakpoint()
+    pass
+
+@dispatch('square_root_svm')
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
+    # TODO: ASSUMING LTI_SDE
+
+    # compute steady states
+    P_inf = prior.P_inf(None, X_s, None)
+    m_inf = prior.m_inf(None, X_s, None)
+    H = prior.H(None, X_s, None)
+
+    P_inf_sqrt = cholesky(P_inf)
+
+    lik_mat_arr = lik_mat
+    A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
+    Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+    H_arr = np.tile(H[None, ...], [lik_mat_arr.shape[0], 1, 1])
+
+    # TODO - this could get quite big!
+    Q_chol_arr = jax.vmap(cholesky)(Q_arr)
+
+    # precompute all cholesky based operations so they are
+    # not inside of the scan
+
+    lik_mat_jitted = vec_add_jitter(lik_mat, settings.jitter)
+
+
+    # precompute data masks as the observation matrix will actuall be
+    # M @ H
+    M_arr = jax.vmap(get_data_mask)(Y)
+
+    MH_arr = jax.vmap(lambda M, H: M @ H)(M_arr, H_arr)
+
+    R_chol = jax.vmap(cholesky)(lik_mat_jitted)
+    R_chol_inv_y = jax.vmap(triangular_solve)(R_chol, Y)
+    R_chol_inv_H = jax.vmap(triangular_solve)(R_chol, H_arr)
+    R_chol_inv_MH = jax.vmap(triangular_solve)(R_chol, MH_arr)
+
+    carry, ys = scan(
+        sr_svm_kf_step,
+        {
+            'm': m_inf,
+            'P_sqrt': P_inf_sqrt
+        },
+        {
+            'dt': dt,
+            't': X_t,
+            'Y': Y,
+            'lik_mat': lik_mat,
+            'A': A_arr,
+            'Q_chol': Q_chol_arr,
+            'H': H_arr,
+            'R_chol': R_chol,
+            'R_chol_inv_y': R_chol_inv_y,
+            'R_chol_inv_H': R_chol_inv_H,
+            'R_chol_inv_MH': R_chol_inv_MH,
+        }
+    )
+
+    breakpoint()

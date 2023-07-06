@@ -10,7 +10,7 @@ from ..dispatch import dispatch
 from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
-from ..computation.filters import kalman_filter, rts_smoother, parallel_kalman_filter, parallel_rts_smoother
+from ..computation.filters import kalman_filter, rts_smoother, parallel_kalman_filter, parallel_rts_smoother, square_root_kalman_filter
 from ..computation.matrix_ops import batched_block_diagional
 from ..computation.permutations import permute_mat, permute_vec
 
@@ -62,7 +62,7 @@ class BASE_SDE_GP(Posterior):
         whiten=False, 
         fix_input=True,
         full_state_observed = False,
-        parallel = False,
+        filter_type = 'sequential',
         **kwargs
     ):
         # Use the sorted X and Y to construct the model on
@@ -76,7 +76,7 @@ class BASE_SDE_GP(Posterior):
 
         self.set_defaults()
 
-        self.parallel  = parallel
+        self.filter_type  = filter_type
 
         
 
@@ -156,7 +156,7 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             R = R,
             R_inv = R_inv,
-            parallel = self.parallel
+            filter_type = self.filter_type
         )
 
         return lml
@@ -211,7 +211,7 @@ class BASE_SDE_GP(Posterior):
             prior,
             R = R,
             R_inv = R_inv,
-            parallel = self.parallel
+            filter_type = self.filter_type
         ) 
 
         
@@ -220,7 +220,7 @@ class BASE_SDE_GP(Posterior):
             prior,
             kf_res,
             full_state=full_state,
-            parallel = self.parallel
+            filter_type = self.filter_type
         )
 
         if return_lml:

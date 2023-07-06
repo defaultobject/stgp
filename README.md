@@ -33,8 +33,6 @@ it seems that it is easier to install tensorflow properly first and then figure 
 
 ### Build the dockerfile
 
-
-
 construct a builder
 
 ```
@@ -42,7 +40,6 @@ docker buildx create --platform linux/arm64,linux/amd64 --driver=docker-containe
 
 
 docker buildx build --load -t defaultobject/stgp:latest -f dockerfile/stgp.Dockerfile --cache-to type=local,dest=/Users/ohamelijnck/Documents/docker_cache --cache-from type=local,src=/Users/ohamelijnck/Documents/docker_cache .
-
 ```
 
 ## Table of contents

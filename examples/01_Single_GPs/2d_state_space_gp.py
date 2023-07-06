@@ -6,6 +6,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 from jax import make_jaxpr
@@ -34,7 +35,7 @@ settings.jitter = 1e-7
 stgp.settings.linear_solver = stgp.settings.SolveType.CHOLESKY
 
 # Construct Data
-XS, X, Y = single_output_spatial_data(100, 100, 200, 200, seed=0)
+XS, X, Y = single_output_spatial_data(100, 200, 200, 200, seed=0)
 
 Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
@@ -58,15 +59,23 @@ parallel = False
 
 print(f'parallel: {parallel}')
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', parallel=parallel)
+#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
-print('starting timer')
-start = timer()
-fn = objax.Jit(m.get_objective, m.vars())
-print(fn())
-end = timer()
-print('end')
-print(end - start)
+#print(m.get_objective())
+#breakpoint()
+
+#m.predict_f(X)
+#breakpoint()
+
+with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+    print('starting timer')
+    start = timer()
+    fn = objax.Jit(m.get_objective, m.vars())
+    print(fn())
+    end = timer()
+    print('end')
+    print(end - start)
 
 breakpoint()
 
