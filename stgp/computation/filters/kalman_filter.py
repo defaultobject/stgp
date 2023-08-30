@@ -200,7 +200,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
 
-
     return {
         'm': m_k, 'P': P_k 
     }, {

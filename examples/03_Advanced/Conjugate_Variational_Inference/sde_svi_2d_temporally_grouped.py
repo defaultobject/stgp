@@ -23,6 +23,7 @@ from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
 from stgp.transforms import Independent
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
+from stgp.zoo.gps import stvgp
 
 from tqdm import trange
 import matplotlib.pyplot as plt
@@ -41,44 +42,13 @@ kern= SpatioTemporalSeperableKernel(
     RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
 )
 
-latent_gp = GP(
-    sparsity = sparsity, 
-    kernel = kern,
-    prior = True
-)
-prior = Independent([latent_gp])
-
-# Setup Surrogate Model
-approximate_posterior = MeanFieldConjugateGaussian([
-    ConjugateGaussian(
-        X=st_data._X,
-        block_size = st_data.Ns,
-        num_blocks = st_data.Nt,
-        num_latents = 1,
-        surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
-            data=SpatioTemporalData(X=X, Y=np.reshape(Y, [st_data.Nt, 1, st_data.Ns]), sort=False), # Data should already be in the correct format
-            prior=LTI_SDE(Independent([latent_gp])), 
-            likelihood=likelihood,
-            inference='Sequential'
-        )  
+if False:
+    m = GP(data = st_data, kernel=kern, likelihood = Gaussian(0.1), inference='Variational')
+else:
+    m = stvgp(
+        X, Y, Zs = st_data.X_space, kernel=kern, likelihood=Gaussian(0.1)
     )
-    for q in range(Q)
-])
 
-m = GP(
-    data = st_data,
-    prior = prior,
-    likelihood = Gaussian(0.1), 
-    inference='Variational',
-    approximate_posterior = approximate_posterior
-)
-
-print(m.data.X.shape)
-print(m.data.Y.shape)
-print(m.approximate_posterior.approx_posteriors[0].surrogate.data.X.shape)
-print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y.shape)
-print(m.approximate_posterior.approx_posteriors[0].surrogate.data.Y_st.shape)
-print(m.approximate_posterior.approx_posteriors[0].surrogate.likelihood.variance.shape)
 
 print(m.get_objective())
 #print(m.predict_f(X))
@@ -107,6 +77,7 @@ else:
     ng_trainer.train(1.0, 1)
 
 print(m.get_objective())
+#breakpoint()
 # Predict
 pred_mu, pred_var = m.predict_f(XS)
 
@@ -122,4 +93,5 @@ axes[1].set_title('Variance')
 axes[1].imshow(pred_var.reshape(200, 200))
 
 plt.show()
+
 

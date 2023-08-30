@@ -682,17 +682,37 @@ class GroupedData(Data):
     pass
 
 class TemporallyGroupedData(Data):
-    def __init__(self, X, Y, minibatch_size=None, verbose=True):
+    def __init__(self, X, Y=None, minibatch_size=None, verbose=True, sort=True):
 
-        chex.assert_rank([X, Y], [2, 2])
+        self.num_original_points = X.shape[0]
+        if Y is None:
+            self.no_Y = True
+        else:
+            self.no_Y = False
 
-        X, Y = get_minimal_time_groups(X, Y, verbose=verbose)
+        if sort:
+            chex.assert_rank(X, 2)
+            unique_idx, reverse_idx, actual_data_idx, X, Y = get_minimal_time_groups(X, Y, verbose=verbose)
+        else:
+            chex.assert_rank(X, 3)
+            unique_idx = None
+            reverse_idx = None
+            actual_data_idx = None
 
-        self._Y = Parameter(np.array(Y), train=False, name='Y')
+        self.unique_idx = unique_idx
+        self.reverse_idx = reverse_idx
+        self.actual_data_idx = actual_data_idx
+
+        if self.no_Y:
+            self._Y = None
+            self.P = None
+        else:
+            self._Y = Parameter(np.array(Y), train=False, name='Y')
+            self.P = Y.shape[-1]
+
         self.save_X(X, train=False, name='X')
 
         self.D = X.shape[-1]
-        self.P = Y.shape[-1]
         self.N = X.shape[0]
 
         self.Nt = X.shape[0]
@@ -713,6 +733,9 @@ class TemporallyGroupedData(Data):
             self.minibatch_size = self.Ns
             self.minibatch = False
             self.idx = None
+
+    def unsort(self, A):
+        return A[self.actual_data_idx][self.reverse_idx][:self.num_original_points]
 
     def batch(self):
         # only batch in space

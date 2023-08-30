@@ -60,17 +60,23 @@ m = GP(
 # Train
 max_iters = 100
 
-#ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-m.approximate_posterior.fix()
+if False:
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+    m.approximate_posterior.fix()
 
-trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
 
-ng_trainer.train(0.01, 10)
+    ng_trainer.train(0.01, 10)
 
-for i in trange(max_iters):
-    trainer.train(0.01, 1)
-    ng_trainer.train(0.1, 1)
+    for i in trange(max_iters):
+        trainer.train(0.01, 1)
+        ng_trainer.train(0.1, 1)
+else:
+    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+    for i in trange(max_iters):
+        trainer.train(0.01, 1)
+
 
 # Predict
 pred_mu, pred_var = m.predict_f(X)

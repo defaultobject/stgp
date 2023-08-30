@@ -18,9 +18,10 @@ from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likelihood, prior, approximate_posterior, inference):
     N = data.N
 
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
+    if True:
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
 
     q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
@@ -160,7 +161,6 @@ def elbo(
     )
     KL = np.sum(KL_arr)
 
-    #print(f'ELL: {ELL}, KL: {KL}')
 
     return ELL - KL
 

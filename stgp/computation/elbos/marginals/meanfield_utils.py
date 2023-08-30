@@ -36,7 +36,8 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
     whiten_arr = [whiten for q in range(num_latents)]
 
     # TODO: fix block sizes here
-    out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
+    #out_block_arr = [likelihood_arr[0].block_type for q in range(num_latents)]
+    out_block_arr = [out_block for q in range(num_latents)]
 
     N, Q, LB, _ = q_S_chol.shape
     N, QL, B = q_m.shape
@@ -96,8 +97,6 @@ def meanfield_marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likeli
     # add back missing dim  ->  [N,1, QPB, QPB]
     marginal_var = marginal_var[:, None, ...]
     
-    out_block_dim = get_block_dim(out_block_arr[0])
-
     chex.assert_shape(marginal_mu, [N, Q*LB,  1])
     chex.assert_shape(marginal_var, [N, 1, Q*LB,  Q*LB])
 

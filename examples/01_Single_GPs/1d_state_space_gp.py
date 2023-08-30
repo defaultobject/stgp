@@ -18,7 +18,7 @@ from stgp.models import GP
 from stgp.trainers import ScipyTrainer, GradDescentTrainer
 from stgp.trainers.standard import ADAM
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import Matern32, ScaledMatern32
+from stgp.kernels import Matern32, ScaledMatern32, ScaledMatern52
 from stgp.data import TemporalData
 from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
@@ -34,7 +34,8 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 # Construct Model
 data = TemporalData(X, Y)
 lik = ReshapedGaussian(Gaussian(variance=1.0), num_blocks=data.Nt, block_size=1)
-kern = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
+#kern = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
+kern = ScaledMatern52(input_dim=1, lengthscales=[1.0], variance=1.0)
 
 latent_gp = GP(
     sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 
@@ -43,9 +44,9 @@ latent_gp = GP(
 )
 prior = LTI_SDE(Independent([latent_gp])) 
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
+#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
 #m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='parallel')
-#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
 # Train
 print(m.get_objective())
@@ -65,10 +66,22 @@ m.print()
 #breakpoint()
 
 # Predict
-#XS = X
-pred_mu, pred_var = m.predict_f(XS)
-pred_mu = np.squeeze(pred_mu)
-pred_var = np.squeeze(pred_var)
+XS = X
+
+if False:
+    pred_mu, pred_var = m.predict_f(XS, filter_only=True, diagonal=False)
+    pred_mu = np.squeeze(pred_mu)
+    pred_var = np.squeeze(pred_var)
+    pred_var = np.diagonal(pred_var, axis1=1, axis2=2)
+
+    pred_mu = pred_mu[:, 0]
+    pred_var = pred_var[:, 0]
+else:
+    pred_mu, pred_var = m.predict_f(XS, filter_only=False, diagonal=True)
+    pred_mu = np.squeeze(pred_mu)
+    pred_var = np.squeeze(pred_var)
+
+
 
 plt.fill_between(
     np.squeeze(XS), 

@@ -74,11 +74,18 @@ m = stgp.models.GP(
     prediction_samples = 1000
 )
 
+#print(m.get_objective())
+
 #print(m.confidence_intervals(X))
 #print(m.get_objective())
 #print(m.predict_f(X))
 #print('NLPD: ', m.nlpd(X, Y))
 
+pred_mu, pred_var = m.predict_latents(XS)
+pred_mu, pred_var = m.predict_f(XS)
+pred_mu, pred_var = m.predict_y(XS)
+
+breakpoint()
 if True:
     max_iters = 100
 
@@ -93,7 +100,7 @@ if True:
         trainer.train(0.01, 1)
         ng_trainer.train(0.1, 1)
 
-print('NLPD: ', m.nlpd(X, Y))
+#print('NLPD: ', m.nlpd(X, Y))
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
 

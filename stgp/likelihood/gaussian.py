@@ -114,6 +114,9 @@ class ReshapedBlockDiagonalGaussian(BlockDiagonalGaussian):
         self._block_size = block_size
         self.num_blocks = num_blocks
 
+    def fix(self):
+        self.bd_lik.fix()
+
     @property
     def base(self):
         return self.bd_lik.base
@@ -273,6 +276,12 @@ class ReshapedGaussian(Gaussian):
         self._block_size = block_size
 
         self.new_mat = np.tile(np.eye(self.block_size), [self.num_blocks, 1, 1])
+
+    def fix(self):
+        self._base.fix()
+
+    def release(self):
+        self._base.release()
 
     @property
     def block_size(self):

@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 # Generate data
 Q = 3
 P = 3
-N = 10
+N = 50
 
 XS, X, Y = multi_output_timeseries(P, N, 500, seed=0)
 
@@ -67,13 +67,15 @@ prior = stgp.transforms.multi_output.GPRN(latent_W_gps, latent_f_gps, output_dim
 print(X.shape, Y.shape)
 m = stgp.models.GP(
     data=Data(X, Y), 
-    likelihood=[Gaussian(0.1), Gaussian(), Gaussian()],
+    likelihood=[Gaussian(0.1), Gaussian(0.1), Gaussian(0.1)],
     inference='Variational',
     prior=prior,
-    ell_samples = 10,
+    ell_samples = 100,
     prediction_samples = 1000,
     approximate_posterior = FullGaussianApproximatePosterior(dim = X.shape[0] * prior.base_prior.output_dim)
 )
+
+m.likelihood.fix()
 m.print()
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
 #print(m.confidence_intervals(X))
@@ -82,10 +84,11 @@ print(m.predict_f(X))
 print('NLPD: ', m.nlpd(X, Y))
 
 if True:
-    max_iters = 100
+    max_iters = 200
 
     #ng_trainer = NatGradTrainer(m)
     ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction', prediction_samples=10)
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton', prediction_samples=10)
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
@@ -95,7 +98,7 @@ if True:
     ng_trainer.train(0.01, 10)
     for i in trange(max_iters):
         trainer.train(0.01, 1)
-        lc_i, _ = ng_trainer.train(0.1, 1)
+        lc_i, _ = ng_trainer.train(0.01, 1)
         lc_arr.append(float(lc_i))
         
 

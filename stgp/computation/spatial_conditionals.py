@@ -2,14 +2,14 @@
 from ..dispatch import dispatch, evoke
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
-from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks
-from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block
+from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks, gaussian_spatial_conditional_cholesky, gaussian_spatial_conditional_inv
+from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block, mat_inv
 from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
 
 # Import Types
 from ..data import Data, Input, TemporallyGroupedData
-from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior,FullConjugateGaussian
+from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior,FullConjugateGaussian, ConjugateGaussian
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent, Joint
@@ -306,7 +306,10 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     mean_x = np.zeros([pred_mean.shape[1], 1])
 
     # prior.temporal_output_dim actually returns the state dim across all latents
-    mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[0], 1])
+    if batch_space:
+        mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[1], 1])
+    else:
+        mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[0], 1])
 
     # compute cholesky at each time stamp
     pred_var_chol = jax.vmap(
@@ -317,9 +320,16 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     # batch over time
 
     if f_only_flag:
-        spatial_fn = gaussian_spatial_conditional
+        #spatial_fn = gaussian_spatial_conditional
+        if True:
+            spatial_fn = gaussian_spatial_conditional_cholesky
+            Kzz_mat = cholesky(add_jitter(Kzz_full, settings.jitter))
+        else:
+            spatial_fn = gaussian_spatial_conditional_inv
+            Kzz_mat = mat_inv(Kzz_full)
     else:
         spatial_fn = gaussian_linear_operator_spatial_conditional
+        Kzz_mat = Kzz_full
 
     # TODO: derive proper mean 
 
@@ -331,7 +341,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
     if batch_space:
-        batch_arr = [None, None, None, 0, 0, 0, 0, 0, None, None]
+        batch_arr = [0, None, None, 0, 0, 0, 0, 0, None, None]
     else:
         batch_arr = [None, None, None, None, None, 0, 0, 0, None, None]
 
@@ -341,7 +351,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     )( 
         XS_space, 
         X_space, 
-        Kzz_full, 
+        Kzz_mat, 
         Ksz_full, 
         Kss_full, 
         Ktt_full, #batching 
@@ -350,6 +360,9 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         mean_x, 
         mean_xs
     )
+
+    #breakpoint()
+
 
 
     # in time-latent-space format
@@ -400,6 +413,7 @@ def spatial_conditional(
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+@dispatch(TemporallyGroupedData, Independent, Independent, MeanFieldApproximatePosterior)
 @dispatch(TemporallyGroupedData, Independent, Independent, FullGaussianApproximatePosterior)
 def spatial_conditional(
     data_xs, 

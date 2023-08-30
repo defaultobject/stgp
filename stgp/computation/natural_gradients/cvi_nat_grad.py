@@ -68,21 +68,19 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
     elif enforce_psd_type == 'retraction':
         lambda_2_new = psd_retraction_map(-2*(1-beta)*lambda_2, -2*beta*grad_2)/(-2)
-        #lambda_2_new = m_grad @ m_grad.T
-        #lambda_2_new = (1-beta)*lambda_2 -  beta * np.sqrt((grad_1 @ grad_1.T))
     elif enforce_psd_type == 'riemannian':
         #breakpoint()
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
         #lambda_2_new = -np.abs(lambda_2_new)
         lambda_2_new = np.clip(lambda_2_new, a_max = -1e-5)
         #TODO
-        #raise NotImplementedError()
+        raise NotImplementedError()
     else:
         raise NotImplementedError()
 
     return lambda_1_new, lambda_2_new
 
-#@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, NoSparsity)
+@dispatch('VGP', MeanFieldConjugateGaussian, ConjugateGaussian, NoSparsity)
 def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) -> np.ndarray:
     raw_Y_arr, lambda_1_arr, lambda_2_arr, q_mu_z, q_var_z = _get_mf_params(model, parameterisation, diagonal=False)
 

@@ -19,7 +19,6 @@ from ...utils.nan_utils import get_mask, mask_to_identity, mask_vector
 
 @jit
 def scalar_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.ndarray, q_mu:np.ndarray, q_covar_diag:np.ndarray) ->  np.ndarray:
-
     chex.assert_equal(X.shape[0], 1)
     chex.assert_shape(Y, [1, 1])
     chex.assert_equal(Y.shape, q_mu.shape)

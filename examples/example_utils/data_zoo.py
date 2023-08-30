@@ -18,7 +18,6 @@ def create_grid(x1, x2, y1, y2, n1=10, n2=10):
 
 
 # Zoo
-
 def single_output_timeseries(N, NS, seed=0):
     np.random.seed(seed)
 

@@ -168,12 +168,20 @@ def add_temporal_points(XS: 'Data', X: 'Data'):
 
     return new_st_points
 
-def get_minimal_time_groups(X, Y, verbose=True):
+def get_minimal_time_groups(X, Y=None, verbose=True):
     """
     Groups X, Y by time and padds each group so there is the same number of points.
 
     First column of X must be time
     """
+
+    # TODO: this is just a hack to support not passing Y
+    if Y is None:
+        no_Y = True
+        Y = np.ones([X.shape[0], 1])
+    else:
+        no_Y = False
+
     # Get unique rows (time, space, features) to remove duplicates and sorts
     _, unique_idx, reverse_idx = onp.unique(X, axis=0, return_index = True, return_inverse=True)
     
@@ -188,14 +196,14 @@ def get_minimal_time_groups(X, Y, verbose=True):
     
     D = onp.hstack([X, Y])
     
-    unique_time_points = onp.unique(X[:, 0])
-    
     # get all spatial points
     X_all_st = X[:, 1:]
     
+    # group by time
+    # as D is already sorted in time, this will not change the order
     D_groups = onp.split(D, onp.unique(D[:, 0], return_index=True)[1][1:])
     
-    # run k means
+    # run k means -- these will be used as filler points
     max_spatial_points = max([D_t.shape[0] for D_t in D_groups])
     Z_s = kmeans2(X_all_st, max_spatial_points, minit="points")[0]
     Ns = max_spatial_points
@@ -205,8 +213,10 @@ def get_minimal_time_groups(X, Y, verbose=True):
     
     _X = []
     _Y = []
+
+    actual_data_idx = []
     
-    for D_t in D_groups:
+    for i, D_t in enumerate(D_groups):
         D_ns = D_t.shape[0]
         # add dummy values
         X_to_add = Z_s[:(Ns-D_ns)]
@@ -223,8 +233,18 @@ def get_minimal_time_groups(X, Y, verbose=True):
 
         X_group_padded = onp.vstack([X_group, X_to_add])
         Y_group_padded = onp.vstack([Y_group, Y_to_add])
-        
-        _X.append(X_group_padded), _Y.append(Y_group_padded)
-        
-    return onp.array(_X), onp.array(_Y)
+
+        _X.append(X_group_padded)
+        _Y.append(Y_group_padded)
+
+        N_total = X_group_padded.shape[0]
+
+        actual_data_idx.append(np.arange(N_total - X_to_add.shape[0]) + N_total * i)
+
+    actual_data_idx = np.hstack(actual_data_idx)
+
+    if no_Y:
+        return unique_idx, reverse_idx, actual_data_idx, onp.array(_X), None
+    else:
+        return unique_idx, reverse_idx, actual_data_idx, onp.array(_X), onp.array(_Y)
         

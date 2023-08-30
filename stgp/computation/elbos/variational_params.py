@@ -185,6 +185,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     whiten_arr = [whiten for q in range(num_latents)]
 
+
     q_m, q_S = batch_over_module_types(
         evoke_name = 'variational_params',
         evoke_params = [],

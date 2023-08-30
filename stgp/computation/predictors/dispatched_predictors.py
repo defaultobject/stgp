@@ -119,6 +119,36 @@ def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, bloc
 
 @dispatch('BatchGP', DiagonalGaussian)
 @dispatch('BatchGP', Gaussian)
+def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
+    NS = XS.shape[0]
+    N = X.shape[0]
+    chex.assert_equal(K_xx.shape, (N, N))
+    chex.assert_equal(K_xs_x.shape, (NS, N))
+    chex.assert_equal(K_xs.shape, (NS, NS))
+    chex.assert_rank(Y, 2)
+
+    if _ensure_str(likelihood) == 'DiagonalGaussian':
+        # Convert Gaussian likelihood noise to diagonal matrix
+        lik_var = likelihood.variance
+    elif _ensure_str(likelihood) == 'Gaussian':
+        # Convert Gaussian likelihood noise to diagonal matrix
+        lik_var = np.eye(N) * likelihood.variance
+    else:
+        raise RuntimeError()
+
+    mu, var = gaussian_prediction(Y, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+
+    # this function only supports one output, but for compatability add the extra dimensions
+    mu = (mu.T)[None, ...]
+    #mu = mu[None, ...]
+    var = var[None, None, ...]
+
+    chex.assert_rank([mu, var], [3, 4])
+    return mu, var
+
+
+@dispatch('BatchGP', DiagonalGaussian)
+@dispatch('BatchGP', Gaussian)
 def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size):
     NS = XS.shape[0]
     N = X.shape[0]

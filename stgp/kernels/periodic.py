@@ -42,12 +42,11 @@ class _PeriodicBase(MarkovKernel):
         inv_ls = 1/(lengthscale**2)
 
 
-        qj = 2 * (tfp.math.bessel_ive(j, inv_ls) / np.exp(-np.abs(inv_ls))) / np.exp(inv_ls)
+        # bessel_ive is an exponentially scaled version of the modified Bessel function of the first kind
+        Ij = (tfp.math.bessel_ive(j, inv_ls) / np.exp(-np.abs(inv_ls)))
+        qj = 2 *  Ij / np.exp(inv_ls)
         
         Qc = np.eye(2) * qj
-        #Qc = np.array([
-        #    [qj]
-        #])
 
         H = np.array([
             [1.0, 0.0],
@@ -91,9 +90,9 @@ class Periodic(Kernel):
 
 class ApproxSDEPeriodic(MarkovKernel, Periodic):
     """ See TBD. """
-    def __init__(self, period, lengthscale, variance, n_terms=10, active_dims = None):
+    def __init__(self, frequency, lengthscale, variance, n_terms=10, active_dims = None):
 
-        super(ApproxSDEPeriodic, self).__init__(period, lengthscale, variance, active_dims=active_dims)
+        super(ApproxSDEPeriodic, self).__init__(frequency, lengthscale, variance, active_dims=active_dims)
 
         self.n_terms = n_terms
 
@@ -103,7 +102,7 @@ class ApproxSDEPeriodic(MarkovKernel, Periodic):
     def _setup_base_kernel(self):
         for n in range(self.n_terms):
             new_term = _PeriodicBase(
-                self.period_param,
+                self.frequency_param,
                 self.lengthscale_param,
                 self.variance_param,
                 n+1

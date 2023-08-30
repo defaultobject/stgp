@@ -3,12 +3,13 @@ import jax
 import jax.numpy as np
 import objax
 
-from ....dispatch import dispatch, evoke
+from ....dispatch import dispatch, evoke, _ensure_str
 from .... import settings
 from ....utils.utils import fix_block_shapes
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, gaussian_spatial_conditional
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, batched_block_diagional
+from ....data import TemporallyGroupedData
 
 from .meanfield_utils import meanfield_marginal_blocks
 
@@ -28,6 +29,8 @@ from ...permutations import data_order_to_output_order, permute_mat, permute_vec
 
 from .linear_marginals import linear_marginal_blocks
 
+from ....data.sequential import add_temporal_points
+
 # ========================= Conjugate Gaussian Approximate Posterior Marginal Blocks =========================
 
 @dispatch(ConjugatePrecisionGaussian, Likelihood, 'GPPrior', Sparsity, whiten=False)
@@ -39,11 +42,84 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
     Q = prior.base_prior.output_dim
 
-    mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
-    chex.assert_rank([mu, var], [3, 4])
+    #breakpoint()
 
-    # fix block sizes
-    pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
+    if False:
+        mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
+        # fix block sizes
+        pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
+
+    else:
+        # this just predict at the inducing points in time
+        XS_temporal_data, sorted_data, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
+        chex.assert_rank([mu, var], [3, 4])
+
+        # construct data with same temporal points as sort_data but with all the required spatial points
+
+        # construct temporally grouped data so we know what spatial points we need
+        xs_data_temp = TemporallyGroupedData(XS, None)
+
+        # we need a dummy spatial point to padd out the temporal predictions as we have to predict across all of time
+        dummy_space = xs_data_temp.X_space[0]
+
+        # time x space format
+        mu = sorted_data.unsort(mu)[data.Nt:]
+        var = sorted_data.unsort(var)[data.Nt:]
+
+        # time-space 
+        all_dummy_XS = xs_data_temp.X_st
+
+        # time-space 
+        xs_data = TemporallyGroupedData(all_dummy_XS, None, sort=False)
+
+        if _ensure_str(prior) == 'GPPrior':
+            prior_parent = Independent([prior])
+            sparsity = [sparsity]
+            data_x = approximate_posterior.surrogate.data._X 
+            approximate_posterior = MeanFieldConjugateGaussian(approximate_posteriors=[approximate_posterior])
+        else:
+            prior_parent = prior.parent
+            data_x =approximate_posterior.surrogate.data._X 
+
+        mu, var = evoke('spatial_conditional', xs_data, prior_parent, prior_parent, approximate_posterior)(
+            xs_data, 
+            data_x, 
+            mu, 
+            var[:, 0, ...], 
+            approximate_posterior,
+            likelihood,
+            prior_parent,
+            sparsity,
+            out_block,
+            whiten
+        )
+
+        chex.assert_rank([mu, var], [3, 4])
+        var = np.diagonal(var, axis1=2, axis2=3)
+
+        # time x space format
+        #mu = sorted_data.unsort(mu)[data.Nt:]
+        #var = sorted_data.unsort(var)[data.Nt:]
+
+        # [time - space] format
+        mu_p = np.reshape(mu, [-1, 1, 1])
+        var_p = np.reshape(
+            var,
+            [-1, 1, 1, 1]
+        )
+
+
+        if True:
+            pred_mu = XS_temporal_data.unsort(mu_p)
+            pred_var = XS_temporal_data.unsort(var_p)
+            #breakpoint()
+        else:
+            pred_mu = mu_p
+            pred_var = var_p
+            
+        chex.assert_equal([pred_mu.shape[0]], [pred_var.shape[0]])
+        chex.assert_equal([XS.shape[0]], [pred_mu.shape[0]])
+
     chex.assert_rank([pred_mu, pred_var], [3, 4])
 
     return pred_mu, pred_var
@@ -61,21 +137,40 @@ def marginal_prediction_blocks(XS, data, m, S_chol, approximate_posterior, likel
 
     chex.assert_shape([S_chol], [m.shape[0], m.shape[0]])
 
-    mu, var = gaussian_conditional_diagional(
-        XS, 
-        data.X, 
-        prior.covar(sparsity.Z, sparsity.Z), 
-        prior.covar(XS, sparsity.Z), 
-        prior.var(XS), 
-        m,
-        S_chol,
-        prior.mean(sparsity.Z),
-        prior.mean(XS),
-    )
+    if out_block == Block.FULL:
+        mu, var = gaussian_conditional(
+            XS, 
+            data.X, 
+            prior.covar(sparsity.Z, sparsity.Z), 
+            prior.covar(XS, sparsity.Z), 
+            prior.covar(XS, XS), 
+            m,
+            S_chol,
+            prior.mean(sparsity.Z),
+            prior.mean(XS),
+        )
 
-    # fix shapes
-    mu = mu[..., None]
-    var = var[..., None, None]
+        # fix shapes
+        mu = mu[None, ...]
+        var = var[None, None, ...]
+    else:
+
+
+        mu, var = gaussian_conditional_diagional(
+            XS, 
+            data.X, 
+            prior.covar(sparsity.Z, sparsity.Z), 
+            prior.covar(XS, sparsity.Z), 
+            prior.var(XS), 
+            m,
+            S_chol,
+            prior.mean(sparsity.Z),
+            prior.mean(XS),
+        )
+
+        # fix shapes
+        mu = mu[..., None]
+        var = var[..., None, None]
 
     return mu, var
 
@@ -255,8 +350,6 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
     return marginal_mu, marginal_var
 
 
-
-
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=False)
 @dispatch(FullGaussianApproximatePosterior, Likelihood, LinearTransform, Sparsity, whiten=True)
@@ -268,11 +361,44 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
-    #breakpoint()
-
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=XS, sparsity=sparsity
     )
+
+
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Aggregate, Sparsity, whiten=True)
+@dispatch(MeanFieldApproximatePosterior, Likelihood, Aggregate, Sparsity, whiten=False)
+def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity,  out_block: int, whiten: bool):
+
+    def site_fn(XS_group):
+        
+        prior_parent = prior.parent
+
+        out_block_type = Block.FULL
+
+        mu_p, var_p  = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, prior_parent, sparsity[0], whiten=whiten)(
+            XS_group, data, q_m, q_S_chol, approximate_posterior, likelihood, prior_parent, sparsity, out_block_type, whiten
+        ) 
+
+
+        return mu_p, var_p
+
+    marginal_mu, marginal_var = jax.vmap(site_fn, [0])(XS)
+
+    # fix shapes
+    marginal_mu = marginal_mu[..., 0]
+    marginal_var = marginal_var[:, 0, ...]
+
+    group_size = marginal_mu.shape[2]
+
+    marginal_mu = np.sum(marginal_mu, axis=2)/group_size
+    marginal_var = np.sum(np.sum(marginal_var, axis=2), axis=2)/(group_size*group_size)
+
+    marginal_mu = marginal_mu[..., None]
+    marginal_var = marginal_var[..., None, None]
+
+    return marginal_mu, marginal_var
+
 
 @dispatch(ApproximatePosterior, Likelihood, list, Sparsity, whiten=True)
 @dispatch(ApproximatePosterior, Likelihood, list, Sparsity, whiten=False)

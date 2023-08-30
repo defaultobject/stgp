@@ -28,7 +28,7 @@ from stgp.models import GP
 import matplotlib.pyplot as plt
 
 # Construct Data
-XS, X, Y = single_output_timeseries(100, 1000, seed=0)
+XS, X, Y = single_output_timeseries(100000, 1000, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
@@ -53,7 +53,7 @@ m = GP(
             surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
                 data=TemporalData(X=X.X, Y=Y, sort=False), # Data should already be in the correct format
                 prior=LTI_SDE(Independent([latent_gps[q]])), 
-                likelihood=[likelihood[q]],
+                likelihood=likelihood,
                 inference='Sequential'
             )  
         )
@@ -63,6 +63,7 @@ m = GP(
 )
 
 m.print()
+print(m.get_objective())
 
 # Train
 if True:

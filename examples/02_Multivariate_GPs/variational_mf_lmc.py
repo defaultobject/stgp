@@ -57,7 +57,6 @@ latent_gps = [
 
 prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
 
-
 m = stgp.models.GP(
     data=Data(X, Y), 
     likelihood=[Gaussian(0.1), Gaussian(1.0), Gaussian(2.0)],
@@ -70,9 +69,9 @@ m = stgp.models.GP(
 if True:
     max_iters = 200
 
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m)
 
     m.approximate_posterior.fix()
 

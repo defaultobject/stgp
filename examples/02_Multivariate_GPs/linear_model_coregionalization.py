@@ -70,7 +70,7 @@ m = stgp.models.GP(
 print(m.get_objective())
 
 # Train
-if True:
+if False:
     max_iters = 200
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
@@ -84,6 +84,11 @@ print(m.get_objective())
 #print('NLPD: ', nlpd(X, Y, m))
 
 pred_mu, pred_var = m.predict_y(XS)
+
+pred_mu = np.squeeze(pred_mu)
+pred_var = np.squeeze(pred_var)
+
+
 pred_mu = pred_mu.T
 pred_var = pred_var.T
 
@@ -98,9 +103,9 @@ for p in range(P):
         facecolor=colors.LINE_COL, 
         alpha=0.3
     )
-    axes[p].plot(XS, pred_mu[p], color=colors.LINE_COL, label='GP Fit')
-    axes[p].scatter(X_test, Y_test[:, p], color='black', label='Testing Data')
-    axes[p].scatter(X, Y[:, p], color='grey', label='Training Data')
+    axes[p].plot(np.squeeze(XS), pred_mu[p], color=colors.LINE_COL, label='GP Fit')
+    axes[p].scatter(np.squeeze(X_test), Y_test[:, p], color='black', label='Testing Data')
+    axes[p].scatter(np.squeeze(X), Y[:, p], color='grey', label='Training Data')
 
     axes[p].legend()
 plt.show()

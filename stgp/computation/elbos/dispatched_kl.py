@@ -49,6 +49,7 @@ def latent_kullback_leibler(approximate_posterior, prior, whiten):
 @dispatch(GaussianApproximatePosterior, GPPrior, whiten=False)
 def latent_kullback_leibler(approximate_posterior, prior, whiten):
     """ Compute KL between Gaussian approximate posterior and Gaussian prior"""
+    prior = prior.base_prior
 
     Z = prior.get_Z()
     chex.assert_rank(Z, 2)

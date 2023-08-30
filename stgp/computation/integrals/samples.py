@@ -36,7 +36,16 @@ def _process_samples(f, fn, prior, *args):
 
 def approximate_diagonal_expectation(fn, mu, var, prior, fn_args, num_samples, block_type: Block, generator, average):
     chex.assert_rank([mu, var], [3, 4])
-    var = var[..., 0]
+    if var.shape[-1] == 1:
+        # var is N x Q x 1 x 1
+        # convert to N x Q x 1
+        var = var[..., 0]
+    else:
+        # var is N x 1 x Q x Q
+        # convert to N x Q x 1
+        var = np.diagonal(var, axis1=2, axis2=3)
+        var = np.transpose(var, [0, 2, 1])
+
     wrapped_fn = lambda f, *f_args: _process_samples(f, fn, prior, *f_args)
 
     if not settings.use_quadrature:

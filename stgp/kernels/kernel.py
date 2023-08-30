@@ -150,6 +150,11 @@ class SumKernel(CombinationKernel):
     def K_diag(self, X1: np.array):
         return self.k1.K_diag(X1) + self.k2.K_diag(X1)
 
+    def expm(self, dt, X_spatial=None):
+        A1 = self.k1.expm(dt, X_spatial)
+        A2 = self.k2.expm(dt, X_spatial)
+        return block_diag(A1, A2)
+
 
 class ProductKernel(CombinationKernel):
     def to_ss(self, X_spatial=None):
@@ -172,6 +177,11 @@ class ProductKernel(CombinationKernel):
 
     def K_diag(self, X1: np.array):
         return self.k1.K_diag(X1) * self.k2.K_diag(X1)
+
+    def expm(self, dt, X_spatial=None):
+        A1 = self.k1.expm(dt, X_spatial)
+        A2 = self.k2.expm(dt, X_spatial)
+        return np.kron(A1, A2)
 
 class ConcatationKernel(CombinationKernel):
     def K(self, X1: np.array, X2: np.array):

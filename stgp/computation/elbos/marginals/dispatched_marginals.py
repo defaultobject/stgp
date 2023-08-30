@@ -44,6 +44,7 @@ from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, Bl
 from ....sparsity import FreeSparsity, Sparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_permutated_prior
+from ....data import Data
 
 from .linear_marginals import linear_marginal_blocks
 
@@ -58,7 +59,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     
     q_m is in time-(space x)latent format. 
     """
-    breakpoint()
     chex.assert_rank([q_m, q_S], [3, 4])
 
     N = q_m.shape[0]
@@ -479,6 +479,40 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
     return linear_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, XS=None
     )
+
+@dispatch(ApproximatePosterior, Likelihood, Aggregate, whiten=True)
+@dispatch(ApproximatePosterior, Likelihood, Aggregate, whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: int, whiten: bool):
+
+    def site_fn(X_group, Y_group):
+        data_group = Data(X_group, Y_group[None, ...])
+        
+        prior_parent = prior.parent
+
+        out_block_type = Block.FULL
+
+        mu_p, var_p  = evoke('marginal_blocks', approximate_posterior, likelihood, prior_parent, whiten=whiten)(
+            data_group, q_m, q_S_chol, approximate_posterior, likelihood, prior_parent, out_block_type, whiten
+        ) 
+
+
+        return mu_p, var_p
+
+    marginal_mu, marginal_var = jax.vmap(site_fn, [0, 0])(data.X, data.Y)
+
+    # fix shapes
+    marginal_mu = marginal_mu[..., 0]
+    marginal_var = marginal_var[:, 0, ...]
+
+    group_size = marginal_mu.shape[2]
+
+    marginal_mu = np.sum(marginal_mu, axis=2)/group_size
+    marginal_var = np.sum(np.sum(marginal_var, axis=2), axis=2)/(group_size*group_size)
+
+    marginal_mu = marginal_mu[..., None]
+    marginal_var = marginal_var[..., None, None]
+
+    return marginal_mu, marginal_var
 
 
 # list of linear priors

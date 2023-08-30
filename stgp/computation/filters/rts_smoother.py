@@ -183,8 +183,9 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     else:
         H_k = model.H(None, X_s, None)
 
-        #smoother_fn = evoke('smoother', filter_type)
-        smoother_fn = evoke('smoother', 'sequential')
+        # sequential, parallel, square_root_svm
+        smoother_fn = evoke('smoother', filter_type)
+        #smoother_fn = evoke('smoother', 'sequential')
 
     lml, filter_res =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
 
