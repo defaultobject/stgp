@@ -7,6 +7,8 @@ import jax
 import objax
 import chex
 
+import jax.numpy as np
+
 from ..approximate_posteriors import MeanFieldApproximatePosterior
 
 class LatentPredictor(Model):
@@ -19,19 +21,24 @@ class LatentPredictor(Model):
     @property
     def input_dim(self): return self.base_model.input_dim
 
-    def mean(self, XS):
+    def mean_blocks(self, XS):
         mu, _ = self.base_model.predict_latents(XS, diagonal=True, squeeze=False)
+
+        mu = np.transpose(mu, [1, 0, 2])
 
         chex.assert_shape(mu, [self.output_dim, XS.shape[0], 1])
         return mu
 
-    def var(self, XS):
+
+    def var_blocks(self, XS):
         _, var = self.base_model.predict_latents(XS, diagonal=True, squeeze=False)
+        var = var[..., 0]
+        var = np.transpose(var, [1, 0, 2])
 
         chex.assert_shape(var, [self.output_dim, XS.shape[0], 1])
         return var
 
-    def covar(self, XS_1, XS_2, X=None, Y=None):
+    def covar_blocks(self, XS_1, XS_2, X=None, Y=None):
         var_arr =  self.base_model.inference.predictive_latent_covar(
             XS_1, 
             XS_2, 
@@ -40,6 +47,8 @@ class LatentPredictor(Model):
             self.base_model.prior,
             self.base_model.approximate_posterior
         )
+
+        var_arr = var_arr[:, 0, ...]
 
         chex.assert_shape(var_arr, [self.output_dim, XS_1.shape[0], XS_2.shape[0]])
         return var_arr

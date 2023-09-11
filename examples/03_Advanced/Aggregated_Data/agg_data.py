@@ -10,7 +10,9 @@ from stgp.transforms import Aggregate, Independent
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 
-from stgp.trainers.standard import VB_NG_ADAM
+from stgp.kernels.aggregated import AggregatedKernel
+
+from stgp.trainers.standard import VB_NG_ADAM, ADAM
 import objax
 from tqdm import trange
 
@@ -70,7 +72,7 @@ fs = np.sin(xs*10)
 XS = np.linspace(-1, 2, 1000)[:, None]
 
 x_aggr, f_aggr = aggregate_in_time(x, f, 5)
-xs_aggr, _ = aggregate_in_time(xs, fs, 10)
+xs_aggr, _ = aggregate_in_time(xs, fs, 5)
 
 
 y_aggr = f_aggr + 0.01*np.random.randn(f_aggr.shape[0])
@@ -84,34 +86,82 @@ if False:
 
 D = 1
 
-data = AggregatedData(X_aggr, Y_aggr)
-lik = stgp.likelihood.Gaussian(0.01)
-Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])
+if True:
+    data = AggregatedData(X_aggr, Y_aggr)
+    lik = stgp.likelihood.Gaussian(0.01)
+    Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])
 
-latent_gp = GP(
-    sparsity = Z, 
-    kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)]))
-)
+    latent_gp = GP(
+        sparsity = Z, 
+        kernel = AggregatedKernel(ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)])))
+    )
 
-prior = Aggregate(Independent([latent_gp]))
+    prior = Independent([latent_gp])
 
-m = GP(
-    data = data,
-    likelihood = [lik],
-    prior = prior,
-    inference='Variational'
-)
+    m = GP(
+        data = data,
+        likelihood = [lik],
+        prior = prior
+    )
+    if True:
+        epochs = 1000
+
+        trainer = ADAM(m)
+        lc_arr, _ = trainer.train(0.01, epochs, callback=progress_bar_callback(epochs))
+
+        plt.plot(lc_arr)
+        plt.show()
+
+    print(m.get_objective())
+
+    pred_aggr_mu, pred_aggr_var = m.predict_f(X_aggr)
+    plot_timeseries_aggregated_pred(X_aggr, pred_aggr_mu, pred_aggr_var)
+
+    pred_aggr_mu, pred_aggr_var = m.predict_f(xs_aggr[..., None])
+    plot_timeseries_aggregated_pred(xs_aggr, pred_aggr_mu, pred_aggr_var)
+    plot_timeseries_aggregated_xy(x_aggr, y_aggr)
+    plt.show()
+    breakpoint()
+else:
+    data = AggregatedData(X_aggr, Y_aggr)
+    lik = stgp.likelihood.Gaussian(0.01)
+    Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])
+
+    latent_gp = GP(
+        sparsity = Z, 
+        kernel = ScaleKernel(RBF(input_dim=D, lengthscales=[0.1 for d in range(D)]))
+    )
+
+    prior = Aggregate(Independent([latent_gp]))
+
+    m = GP(
+        data = data,
+        likelihood = [lik],
+        prior = prior,
+        inference='Variational'
+    )
+
 
 if True:
     # Train
-    epochs = 100
+    epochs = 500
 
-    trainer = VB_NG_ADAM(m)
-    trainer.ng_trainer.train(1.0, 1)
-    lc_arr, _ = trainer.train([0.01, 0.1], [epochs, [1, 1]], callback=progress_bar_callback(epochs))
+    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+    #trainer = VB_NG_ADAM(m)
 
-    plt.plot(lc_arr[::2])
-    plt.show()
+    if False:
+        trainer.ng_trainer.train(1.0, 1)
+        print(m.get_objective())
+    else:
+        #trainer.ng_trainer.train(1.0, 1)
+        lc_arr, _ = trainer.train([0.01, 0.9], [epochs, [1, 1]], callback=progress_bar_callback(epochs))
+
+        plt.plot(lc_arr[::2])
+        plt.show()
+
+        m.checkpoint('agg')
+else:
+    m.load_from_checkpoint('agg')
 
 m.print()
 
@@ -126,7 +176,7 @@ pred_var = np.squeeze(pred_var)
 fig = plt.figure(figsize=(10, 5))
 ax = plt.gca()
 
-ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 2*np.sqrt(pred_var)), np.squeeze(pred_mu + 2*np.sqrt(pred_var)), alpha=0.4)
+ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), alpha=0.4)
 ax.plot(XS, pred_mu)
 
 plot_timeseries_aggregated_pred(xs_aggr, pred_aggr_mu, pred_aggr_var)

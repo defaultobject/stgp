@@ -116,7 +116,6 @@ def log_marginal_likelihood(
         log N(Y | 0, K(X, X) + lik.variance*I)
 
     """
-    chex.assert_rank(X, 2)
     chex.assert_rank(Y, 2)
 
     N = X.shape[0]
