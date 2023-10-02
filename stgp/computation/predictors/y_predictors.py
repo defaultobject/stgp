@@ -1,3 +1,4 @@
+""" Closed form y predictions of mean and variance of p(y | XS) """
 import jax
 from jax import jit
 import jax.numpy as np
@@ -35,17 +36,22 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, 'Gaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
-    chex.assert_rank([post_mu, post_var], [2, 3])
+    chex.assert_rank([post_mu, post_var], [3, 4])
     chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
 
     return post_mu, post_var + likelihood.variance
 
 @dispatch(Posterior, 'ReshapedGaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
-    chex.assert_rank([post_mu, post_var], [2, 3])
-    chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
+    chex.assert_rank([post_mu, post_var], [3, 4])
+    chex.assert_equal([post_var.shape[2], post_var.shape[3]], [1, 1])
 
-    return post_mu, post_var + likelihood.base.variance
+    # make the likelihood variance the same shape as the (predictive) posterior variance
+    lik_var = np.tile(likelihood.base.variance, [post_var.shape[0], 1])[..., None, None]
+
+    chex.assert_equal([lik_var.shape], [post_var.shape])
+
+    return post_mu, post_var + lik_var
 
 # ======= Dispatchers ========
 
@@ -109,6 +115,8 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
 @dispatch('BatchGP', 'ReshapedGaussian', LinearTransform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+    chex.assert_rank([post_mu, post_var], [3, 4])
+
     if diagonal:
         lik_var = get_vec_gaussian_likelihood_variances(
             np.transpose(post_var, [1, 0]),
@@ -122,6 +130,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
 @dispatch('BatchGP', 'GaussianProductLikelihood', LinearTransform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+    chex.assert_rank([post_mu, post_var], [3, 4])
 
     if diagonal:
         chex.assert_rank([post_mu, post_var], [2, 2])

@@ -255,7 +255,9 @@ class BASE_SDE_GP(Posterior):
             R_inv = R_inv,
             return_lml=True
         )
+        chex.assert_rank([mu, var], [3, 3])
 
+        # make var standard size of rank 4
         var = var[:, None, ...]
 
         # in time-latent-space format
@@ -331,12 +333,13 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def predict_y(self, XS, squeeze=True):
-        pred_mu, pred_var = self.predict_f(XS, squeeze=squeeze)
+    def predict_y(self, XS, diagonal=True, squeeze=True):
+        if not diagonal :
+            # TODO: only supports diagonal
+            raise RuntimeError('Only diagonal predict_y is support')
 
-        if len(pred_var.shape) == 2:
-            # unsqueeze variance to add on likelihood
-            pred_var = pred_var[..., None]
+        pred_mu, pred_var = self.predict_f(XS, squeeze=False, diagonal=True)
+        chex.assert_rank([pred_mu, pred_var], [3, 4])
 
         pred_y_mu, pred_y_var = evoke('predict_y_diagonal', self, self.likelihood)(
             XS,  self.likelihood, pred_mu, pred_var
@@ -369,7 +372,15 @@ class T_SDE_GP(BASE_SDE_GP):
 
         return R
 
-    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, filter_only=False):
+    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, filter_only: bool =False, force_full_state: bool = False):
+        """
+        Args:
+            filter_only (bool): if True only run the Kalman filter, not smoother
+            force_full_state (bool): If True we return the full state (ie without H)
+        """
+
+        if (filter_only == True) and (force_full_state == True):
+            raise RuntimeWarning('filter_only alrady returns the full state')
 
         NS = XS.shape[0]
         chex.assert_equal(XS.shape[1], self.data.D)
@@ -395,43 +406,59 @@ class T_SDE_GP(BASE_SDE_GP):
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data)
             )
+            chex.assert_rank([mu, var], [3, 3])
 
-            # mu, var are in time - latent- space format but space is 1
-            # Therefore we just need to stack them
-            mu = mu[..., 0]
+
         else:
             mu, var = self.filter_and_smooth(
                 test_data,
                 self.prior,
-                R = self.get_likelihood_for_prediction(test_data)
+                R = self.get_likelihood_for_prediction(test_data),
+                full_state = force_full_state
             )
 
-            # mu, var are in time - latent- space format but space is 1
-            # Therefore we just need to stack them
-            mu = np.reshape(mu, [-1, self.output_dim])
+            chex.assert_rank([mu, var], [3, 3])
 
-        # only keep diagonals
-        if diagonal:
-            var_diag = np.diagonal(var, axis1=1, axis2=2)
-            var_diag = np.reshape(var_diag, [-1, self.output_dim])
-            var = test_data.unsort(var_diag)[self.data.N:]
+        # fix mu and var shapes
+
+        state_dim = mu.shape[1]
+
+        # TODO: rename out_dim or self.output_dim
+        if force_full_state or filter_only:
+            out_dim = state_dim
         else:
-            var = test_data.unsort(var)[self.data.N:]
+            out_dim = self.output_dim
+
+        # mu, var are in time - latent- space format but space is 1
+        # Therefore we just need to stack them as no permutations are required
+        mu = np.reshape(mu, [-1, out_dim])
 
         # Unsort data and remove the training data
         mu = test_data.unsort(mu)[self.data.N:]
+
+        # fix var shape
+        if diagonal:
+            # var has rank 3
+            var_diag = np.diagonal(var, axis1=1, axis2=2)
+            var = np.reshape(var_diag, [-1, out_dim])
+
+        var = test_data.unsort(var)[self.data.N:]
 
         if squeeze:
             mu = np.squeeze(mu)
             var = np.squeeze(var)
         else:
             # ensure rank 3 and 4
+            # mu will be of rank 2
+            # var will either be rank 2 or 3 depending on if diagonals are kept
+
             mu = mu[..., None]
-            var = var[:, None, ...]
 
             if diagonal:
                 # add missing diagonal axid which is removed when extracting the diagonal
-                var = var[..., None]
+                var = var[..., None, None]
+            else:
+                var = var[:, None, ...]
 
             chex.assert_rank([mu, var], [3, 4])
 
@@ -565,7 +592,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         return XS_temporal_data, all_temporal_data, mu_t, var_t[:, None, ...]
 
-    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False):
+    def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False, force_full_state: bool = False):
         """
         We use the Kalman filter and smoother to predict and the temporal slices of XS,
         and then use the results to extrapolate to the new spatial locations.
@@ -584,6 +611,10 @@ class ST_SDE_GP(BASE_SDE_GP):
         When diagonal is False we return the block diagonal across latents
 
         When filter_only is true we only return f from the filtering distributions
+
+        Args:
+            filter_only (bool): if True only run the Kalman filter, not smoother
+            force_full_state (bool): If True we return the full state (ie without H)
         """
         chex.assert_equal(XS.shape[1], self.data.D)
 

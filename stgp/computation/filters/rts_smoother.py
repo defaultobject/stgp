@@ -178,14 +178,13 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
 
 
     if full_state:
-        # force full state
-        H_k = np.eye(m_init.shape[0])
+        # force full state by setting H to the identity
+        H_k = np.eye(filter_res['m'][0].shape[0])
     else:
         H_k = model.H(None, X_s, None)
 
-        # sequential, parallel, square_root_svm
-        smoother_fn = evoke('smoother', filter_type)
-        #smoother_fn = evoke('smoother', 'sequential')
+    # sequential, parallel, square_root_svm
+    smoother_fn = evoke('smoother', filter_type)
 
     lml, filter_res =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
 

@@ -34,7 +34,6 @@ XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 # Construct Model
 data = TemporalData(X, Y)
 lik = ReshapedGaussian(Gaussian(variance=1.0), num_blocks=data.Nt, block_size=1)
-#kern = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
 kern = ScaledMatern52(input_dim=1, lengthscales=[1.0], variance=1.0)
 
 latent_gp = GP(
@@ -44,8 +43,10 @@ latent_gp = GP(
 )
 prior = LTI_SDE(Independent([latent_gp])) 
 
-#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
-#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='parallel')
+# try different Kalman filter and smoothers
+#   (default) filter_type='sequential'
+#   filter_type='parallel'
+#   filter_type='square_root_svm' 
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
 # Train
@@ -61,28 +62,9 @@ if True:
 print(m.get_objective())
 
 m.print()
+pred_mu, pred_var = m.predict_y(XS,  diagonal=True, squeeze=True)
 
-#print(m.get_objective())
-#breakpoint()
-
-# Predict
-XS = X
-
-if False:
-    pred_mu, pred_var = m.predict_f(XS, filter_only=True, diagonal=False)
-    pred_mu = np.squeeze(pred_mu)
-    pred_var = np.squeeze(pred_var)
-    pred_var = np.diagonal(pred_var, axis1=1, axis2=2)
-
-    pred_mu = pred_mu[:, 0]
-    pred_var = pred_var[:, 0]
-else:
-    pred_mu, pred_var = m.predict_f(XS, filter_only=False, diagonal=True)
-    pred_mu = np.squeeze(pred_mu)
-    pred_var = np.squeeze(pred_var)
-
-
-
+# Plot
 plt.fill_between(
     np.squeeze(XS), 
     np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), 

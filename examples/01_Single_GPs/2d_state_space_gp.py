@@ -64,42 +64,16 @@ print(f'parallel: {parallel}')
 #m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
-#print(m.get_objective())
-#breakpoint()
-
-#m.predict_f(X)
-#breakpoint()
-
-if False:
-    with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
-        print('starting timer')
-        start = timer()
-        fn = objax.Jit(m.get_objective, m.vars())
-        print(fn())
-        end = timer()
-        print('end')
-        print(end - start)
-else:
-    fn = objax.Jit(m.get_objective, m.vars())
-
-#print(make_jaxpr(m.get_objective)())
-
 # Train
 if True:
     max_iters = 100
-    if True:
-        trainer = ScipyTrainer(m, 'L-BFGS-B')
-        trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
-    else:
-        trainer = ADAM(m)
-        trainer.train(1e-2, max_iters, callback=progress_bar_callback(max_iters))
+    trainer = ScipyTrainer(m, 'L-BFGS-B')
+    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
-    print(m.get_objective())
+print(m.get_objective())
 
 # Predict
-pred_mu, pred_var = m.predict_f(XS)
-
-print(pred_mu)
+pred_mu, pred_var = m.predict_f(XS, filter_only=True)
 
 # Plot
 fig, axes = plt.subplots(1, 2)
