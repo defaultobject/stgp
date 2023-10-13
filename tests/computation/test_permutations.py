@@ -5,7 +5,7 @@ import numpy as np
 import scipy
 
 import stgp
-from stgp.computation.permutations import data_order_to_output_order, permute_vec_blocks, permute_vec, unpermute_vec, permute_mat, unpermute_mat
+from stgp.computation.permutations import data_order_to_output_order, permute_vec_blocks, permute_vec, unpermute_vec, permute_mat, unpermute_mat, ld_to_dl, dl_to_ld, permute_mat_ld_to_dl, permute_mat_dl_to_ld
 
 from ..common_fixtures import permutation_vectors, permutation_matrices
 
@@ -88,4 +88,57 @@ def test__unpermute_mat(N, num_outputs, permutation_matrices):
 
     # ==== Assert ====
     np.testing.assert_allclose(mat_latent_data, mat_test)
+
+
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__ld_to_dl_mat(N, num_outputs, permutation_matrices):
+    # ==== Arrange ====
+    mat_data_latent, mat_latent_data = permutation_matrices
+
+    # ==== Act ====
+    P = ld_to_dl(num_outputs, N)
+    mat_test = P @ mat_latent_data @ P.T
+
+    # ==== Assert ====
+    np.testing.assert_allclose(mat_data_latent, mat_test)
+
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__dl_to_ld_mat(N, num_outputs, permutation_matrices):
+    # ==== Arrange ====
+    mat_data_latent, mat_latent_data = permutation_matrices
+
+    # ==== Act ====
+    P = dl_to_ld(num_outputs, N)
+    mat_test = P @ mat_data_latent @ P.T
+
+    # ==== Assert ====
+    np.testing.assert_allclose(mat_latent_data, mat_test)
+
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__permute_mat_ld_to_dl(N, num_outputs, permutation_matrices):
+    # ==== Arrange ====
+    mat_data_latent, mat_latent_data = permutation_matrices
+
+    # ==== Act ====
+    mat_test= permute_mat_ld_to_dl(mat_latent_data, num_outputs, N)
+
+    # ==== Assert ====
+    np.testing.assert_allclose(mat_data_latent, mat_test)
+
+@pytest.mark.parametrize('N', [10, 1])
+@pytest.mark.parametrize('num_outputs', [10, 1, 24])
+def test__dl_to_ld_mat(N, num_outputs, permutation_matrices):
+    # ==== Arrange ====
+    mat_data_latent, mat_latent_data = permutation_matrices
+
+    # ==== Act ====
+    mat_test = permute_mat_dl_to_ld(mat_data_latent, num_outputs, N)
+
+    # ==== Assert ====
+    np.testing.assert_allclose(mat_latent_data, mat_test)
+
+
 

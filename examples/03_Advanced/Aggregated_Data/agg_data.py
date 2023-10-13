@@ -86,7 +86,7 @@ if False:
 
 D = 1
 
-if True:
+if False:
     data = AggregatedData(X_aggr, Y_aggr)
     lik = stgp.likelihood.Gaussian(0.01)
     Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])
@@ -142,43 +142,43 @@ else:
     )
 
 
-if True:
-    # Train
-    epochs = 500
+    if True:
+        # Train
+        epochs = 500
 
-    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
-    #trainer = VB_NG_ADAM(m)
+        trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
+        #trainer = VB_NG_ADAM(m)
 
-    if False:
-        trainer.ng_trainer.train(1.0, 1)
-        print(m.get_objective())
+        if False:
+            trainer.ng_trainer.train(1.0, 1)
+            print(m.get_objective())
+        else:
+            #trainer.ng_trainer.train(1.0, 1)
+            lc_arr, _ = trainer.train([0.01, 0.9], [epochs, [1, 1]], callback=progress_bar_callback(epochs))
+
+            plt.plot(lc_arr[::2])
+            plt.show()
+
+            m.checkpoint('agg')
     else:
-        #trainer.ng_trainer.train(1.0, 1)
-        lc_arr, _ = trainer.train([0.01, 0.9], [epochs, [1, 1]], callback=progress_bar_callback(epochs))
+        m.load_from_checkpoint('agg')
 
-        plt.plot(lc_arr[::2])
-        plt.show()
+    m.print()
 
-        m.checkpoint('agg')
-else:
-    m.load_from_checkpoint('agg')
+    # Predict
+    pred_aggr_mu, pred_aggr_var = m.predict_f(xs_aggr[..., None], squeeze=True)
+    pred_mu, pred_var = m.predict_latents(XS, squeeze=True, diagonal=True)
 
-m.print()
+    pred_mu = np.squeeze(pred_mu)
+    pred_var = np.squeeze(pred_var)
 
-# Predict
-pred_aggr_mu, pred_aggr_var = m.predict_f(xs_aggr[..., None], squeeze=True)
-pred_mu, pred_var = m.predict_latents(XS, squeeze=True, diagonal=True)
+    # Plot results
+    fig = plt.figure(figsize=(10, 5))
+    ax = plt.gca()
 
-pred_mu = np.squeeze(pred_mu)
-pred_var = np.squeeze(pred_var)
+    ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), alpha=0.4)
+    ax.plot(XS, pred_mu)
 
-# Plot results
-fig = plt.figure(figsize=(10, 5))
-ax = plt.gca()
-
-ax.fill_between(np.squeeze(XS), np.squeeze(pred_mu - 1.96*np.sqrt(pred_var)), np.squeeze(pred_mu + 1.96*np.sqrt(pred_var)), alpha=0.4)
-ax.plot(XS, pred_mu)
-
-plot_timeseries_aggregated_pred(xs_aggr, pred_aggr_mu, pred_aggr_var)
-plot_timeseries_aggregated_xy(x_aggr, y_aggr)
-plt.show()
+    plot_timeseries_aggregated_pred(xs_aggr, pred_aggr_mu, pred_aggr_var)
+    plot_timeseries_aggregated_xy(x_aggr, y_aggr)
+    plt.show()

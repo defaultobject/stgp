@@ -1,7 +1,7 @@
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 import jax.numpy as jnp
 
 import objax
@@ -147,7 +147,7 @@ m = stgp.models.GP(
 )
 print(m.get_objective())
 
-NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u_delta_f').train(1.0, 1)
+NatGradTrainer(m).train(1.0, 1)
 
 print(m.get_objective())
 

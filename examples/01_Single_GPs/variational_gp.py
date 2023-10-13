@@ -52,7 +52,8 @@ if True:
 
     ng_trainer.train(1.0, 1)
 
-pred_mu, pred_var = m.predict_y(XS)
+pred_mu, pred_var = m.predict_f(XS)
+breakpoint()
 
 plt.fill_between(
     np.squeeze(XS), 

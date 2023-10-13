@@ -65,7 +65,7 @@ print(f'parallel: {parallel}')
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
 # Train
-if True:
+if False:
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
@@ -73,7 +73,7 @@ if True:
 print(m.get_objective())
 
 # Predict
-pred_mu, pred_var = m.predict_f(XS, filter_only=True)
+pred_mu, pred_var = m.predict_y(XS)
 
 # Plot
 fig, axes = plt.subplots(1, 2)

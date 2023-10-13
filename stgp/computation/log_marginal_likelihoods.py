@@ -7,12 +7,12 @@ from ..utils.batch_utils import batch_over_module_types
 from .gaussian import log_gaussian, log_gaussian_with_nans, log_gaussian_with_additive_precision_noise_with_nans
 from ..transforms import Independent, LinearTransform, Transform, Joint
 from .model_ops import get_diagonal_gaussian_likelihood_variances
-from .matrix_ops import vec_columns, stack_rows
+from .matrix_ops import vec_columns, stack_rows, to_block_diag
 from ..models import BatchGP
 from ..utils import utils
 from ..utils.utils import get_batch_type
 from ..utils.nan_utils import get_same_shape_mask
-from .permutations import data_order_to_output_order
+from .permutations import data_order_to_output_order, permute_mat_ld_to_dl, permute_mat_dl_to_ld, permute_vec_dl_to_ld, permute_mat_tps_to_tsp
 from ..core.models import Model
 from ..core.model_types import get_model_type, LinearModel, NonLinearModel
 
@@ -148,12 +148,13 @@ def log_marginal_likelihood(
     Y = data.Y
 
     chex.assert_rank(Y, 2)
-    N, P = Y.shape
+    _, P = Y.shape
+    N = X.shape[0]
 
     chex.assert_equal(P, likelihood.block_size)
 
     # Convert Y to latent-data format
-    Y_vec = vec_columns(Y)
+    Y_vec = permute_vec_dl_to_ld(np.reshape(Y, [-1, 1]), likelihood.num_latents, N) 
 
     # precompute prior covariance
     # in latent-data format
@@ -162,19 +163,18 @@ def log_marginal_likelihood(
 
     # in data-latent format
     if _ensure_str(likelihood) == 'BlockDiagonalGaussian':
-        likelihood_mat = likelihood.full_variance
+        likelihood_mat = likelihood.variance
     elif _ensure_str(likelihood) == 'PrecisionBlockDiagonalGaussian':
-        likelihood_mat = likelihood.full_precision
+        likelihood_mat = likelihood.precision
 
     # Permute so that the ordering between likelihood_mat and Y is the same
     N = X.shape[0]
     NS = likelihood_mat.shape[0]
 
-    # convert likelihood_mat to latent-data format
-    # TODO: FIGURE OUT WHY THIS IS THE CASE
-    # TODO: GENERALISE THIS TO MAKE IT EASIER TO REMEMBER ld_dl() dl_to_ld() etc etc
-    P = data_order_to_output_order(P, N).T
-    ordered_likelihood_mat = P @ likelihood_mat @ P.T
+    lik_mat_bd_tsp = permute_mat_tps_to_tsp(likelihood_mat, likelihood.num_latents)
+    lik_mat_tsp = to_block_diag(lik_mat_bd_tsp)
+    # convert to latent-data
+    ordered_likelihood_mat = permute_mat_dl_to_ld(lik_mat_tsp, likelihood.num_latents, N)
 
     chex.assert_shape(Y_vec, mean_arr.shape)
     chex.assert_shape(k_xx_arr, ordered_likelihood_mat.shape)

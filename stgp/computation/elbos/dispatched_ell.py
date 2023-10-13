@@ -313,6 +313,7 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
         out_dim=1,
         batch_type = get_batch_type(likelihood_arr)
     )
+    ll_arr = np.array(ll_arr)
 
     #chex.assert_equal(shape_rank(ll_arr), 2)
     #ll_arr = ll_arr[..., None]

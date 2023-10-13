@@ -322,6 +322,8 @@ def stack_rows(A):
     chex.assert_rank(A, 2)
     return np.vstack(A[..., None])
 
+vec_rows = stack_rows
+
 @partial(jit, static_argnums=(1, 2))
 def p_get_block_diagonal(A, b_size, A_dim):
     chex.assert_rank(A, 2)

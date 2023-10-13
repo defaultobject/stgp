@@ -20,7 +20,7 @@ from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApp
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
 from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform, Aggregate
-from ..permutations import data_order_to_output_order
+from ..permutations import data_order_to_output_order, permute_mat_ld_to_dl, permute_mat_dl_to_ld, permute_mat_tps_to_tsp, permute_vec_tps_to_tsp, permute_vec_dl_to_ld, permute_mat_tsp_to_tps
 
 from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
@@ -29,7 +29,7 @@ from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
 
 from ...dispatch import _ensure_str
 
-from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal, stack_rows
+from ..matrix_ops import cholesky, log_chol_matrix_det, add_jitter, cholesky_solve, vec_columns, get_block_diagonal, stack_rows, to_block_diag, vec_rows
 from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
 from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks, gaussian_prediction_diagonal_with_additive_noise_precision, gaussian_prediction_with_additive_noise_precision
@@ -61,12 +61,12 @@ def predict_diagonal(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, 
     Y_vec = vec_columns(Y)
 
     if _ensure_str(likelihood) == 'BlockDiagonalGaussian':
-        # Convert Gaussian likelihood noise to diagonal matrix
+        # Convert Gaussian likelihood noise to full matrix
         lik_var = likelihood.full_variance
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
     elif _ensure_str(likelihood) == 'PrecisionBlockDiagonalGaussian':
-        # Convert Gaussian likelihood noise to diagonal matrix
+        # Convert Gaussian likelihood noise to full matrix
         lik_inv_var = likelihood.full_precision
         mu, var = gaussian_prediction_diagonal_with_additive_noise_precision(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_inv_var)
     else:
@@ -95,11 +95,9 @@ def predict_full(XS, X, Y, likelihood, K_xs, K_xs_x, K_xx, mean_x, mean_xs, bloc
     Y_vec = vec_columns(Y)
 
     if _ensure_str(likelihood) == 'BlockDiagonalGaussian':
-        # Convert Gaussian likelihood noise to diagonal matrix
         lik_var = likelihood.full_variance
         mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
     elif _ensure_str(likelihood) == 'PrecisionBlockDiagonalGaussian':
-        # Convert Gaussian likelihood noise to diagonal matrix
         lik_var_inv = likelihood.full_precision
         mu, var = gaussian_prediction_with_additive_noise_precision(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var_inv)
     else:
@@ -359,58 +357,78 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, Independent)
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+    """
+    Compute the posterior with the same block structure as the likelihood
+
+    p(vec(F)) ~ GP() in latent-data format 
+    X in (time-space) 
+    Y in data-latent
+    vec(Y) in latent-data
+
+    """
     X = data.X
     Y = data.Y
 
-    Ns = XS.shape[0]
+    NS = XS.shape[0]
     N = X.shape[0]
     P = Y.shape[1]
+    Q = prior.output_dim
+    num_latents = likelihood.num_latents
+
+    #chex.assert_equal([NS], [N])
+    #chex.assert_equal([block_size], [likelihood.block_size])
 
     # hack for now
     block_size = likelihood.block_size
     chex.assert_equal(block_size, P)
 
     # compute prior covariances in latent-data format
-    K_xs = prior.covar(XS, XS)
-    K_xx = prior.covar(X, X)
-    K_xs_x = prior.covar(XS, X)
+    K_xs = prior.covar(XS, XS) 
+    K_xx = prior.covar(X, X) 
+    K_xs_x = prior.covar(XS, X) 
 
     # Get liklihood in data-latent format
     likelihood_var = likelihood.full_variance
 
     # Permute so that the ordering between likelihood_var and Y is the same
-    N = X.shape[0]
-    NS = likelihood_var.shape[0]
 
     # convert likelihodo to latent-data format
-    permutation = data_order_to_output_order(P, likelihood.num_blocks).T
-    lik_var = permutation @ likelihood_var @ permutation.T
+    #likelihood is time - latent - space format
+    # convert to data - latent format
+
+    lik_var_bd_tsp = permute_mat_tps_to_tsp(likelihood.variance, likelihood.num_latents)
+    lik_var_tsp = to_block_diag(lik_var_bd_tsp)
+
+    # convert to latent-data
+    lik_var = permute_mat_dl_to_ld(lik_var_tsp, likelihood.num_latents, N)
 
     mean_x = prior.mean(X)
     mean_xs = prior.mean(XS)
 
-    # Y is in data-latent, convert to latent-data by stacking the columns 
-    Y_vec = vec_columns(Y)
+    # Y is in time-(space)-latent, convert to latent-data
+    Y_vec = permute_vec_dl_to_ld(np.reshape(Y, [-1, 1]), likelihood.num_latents, N) 
 
     # TODO: this is v. inefficient
     # Compute full matrix in latent-data format
     mu, var = gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
-    NS = var.shape[0]
-    N = XS.shape[0]
-
     # convert K from latent-data to data-latent format
-    permutation = data_order_to_output_order(N, P).T
-    K = permutation @ var @ permutation.T
-
+    K = permute_mat_ld_to_dl(var, likelihood.num_latents, NS) 
     var = get_block_diagonal(K, likelihood.block_size)
 
-    mu = mu.reshape([P, Ns]).T
+    # we need ot return in time-latent-space format (to mimic the kalman filter)
+    var = permute_mat_tsp_to_tps(var, likelihood.num_latents)
+
+    mu = np.reshape(mu, [likelihood.num_latents, likelihood.num_blocks, -1])
+    mu = np.reshape(np.transpose(mu, [1, 0, 2]), [likelihood.num_blocks, likelihood.block_size])
+
     mu = mu[..., None]
 
     var = var[:, None, ...]
 
     chex.assert_rank([mu, var], [3, 4])
+
+
     return mu, var
 
 

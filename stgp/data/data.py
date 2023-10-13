@@ -5,6 +5,7 @@ import jax.numpy as np
 import numpy as onp
 import objax
 
+from ..computation.permutations import permute_vec_tps_to_tsp
 from .sequential import order_sequentially_np, pad_with_nan_to_make_grid, get_minimal_time_groups
 from .. import Parameter
 from batchjax import batch_or_loop, BatchType
@@ -92,6 +93,7 @@ class SpatialTemporalInput(Input):
 
 
 class Data(objax.Module):
+    """ Data object for storing data in data-latent format.  """
     def __init__(self, X, Y, minibatch_size=None, seed=0):
 
         self._Y = Parameter(np.array(Y), train=False, name='Y')
@@ -155,6 +157,28 @@ class Data(objax.Module):
             self._X = _X # Store as reference
         else:
             self._X = Input(np.array(_X), name=name, train=train)
+
+
+class DataTPS(Data):
+    """ Data object stored in time-latent-space format """
+
+
+    def __init__(self, X, Y, num_latents, minibatch_size=None, seed=0):
+        if minibatch_size is not None:
+            raise NotImplementedError()
+
+        self.num_latents = num_latents
+
+        super(DataTPS, self).__init__(X, Y, minibatch_size=minibatch_size, seed=seed)
+
+
+    @property
+    def Y(self):
+        """ Return data in time-space-latent format"""
+
+        Y_tps = self._Y.value
+
+        return permute_vec_tps_to_tsp(Y_tps, self.num_latents)
 
 class DataList(Data):
     # Y is a list, assumed that X is the same across all the lists

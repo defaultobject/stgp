@@ -70,7 +70,7 @@ m = stgp.models.GP(
 print(m.get_objective())
 
 # Train
-if False:
+if True:
     max_iters = 200
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
@@ -83,7 +83,7 @@ else:
 print(m.get_objective())
 #print('NLPD: ', nlpd(X, Y, m))
 
-pred_mu, pred_var = m.predict_y(XS)
+pred_mu, pred_var = m.predict_f(XS)
 
 pred_mu = np.squeeze(pred_mu)
 pred_var = np.squeeze(pred_var)

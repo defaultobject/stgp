@@ -27,9 +27,14 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
 
-    if _ensure_str(likelihood) != 'BlockDiagonalGaussian': 
+
+    if _ensure_str(likelihood) == 'BlockDiagonalGaussian': 
+        print(f'q_f_mu: {np.sum(q_f_mu)}, q_f_var: {np.sum(q_f_var)}, Y: {np.sum(data.Y)}, likelihood: {np.sum(likelihood.variance)}')
+        pass
+    else:
         #print('ELL: SUM: ', np.sum(np.square(data.Y - np.squeeze(q_f_mu)), axis=0))
         pass
+
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
@@ -164,39 +169,18 @@ def elbo(
 
     return ELL - KL
 
-#@dispatch(Likelihood, Transform, FullConjugateGaussian)
-def elbo(
-    data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
-):
-
-    # Compute ELL
-    print('ELL')
-    ELL = compute_expected_log_liklihood(data, likelihood, prior, q, inference)
-
-    # Compute surrogate ELL
-    print('ELL_surrogate')
-    ELL_surrogate = compute_expected_log_liklihood(
-        q.surrogate.data, 
-        q.surrogate.likelihood, 
-        prior.base_prior, 
-        q, 
-        inference
-    )
-    print('OBJ')
-    ML_surrogate = - q.surrogate.get_objective()
-
-    elbo =  ELL - ELL_surrogate + ML_surrogate
-
-    #print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
-
-    return elbo
 
 @dispatch(Likelihood, Transform, FullConjugateGaussian)
 def elbo(
     data, likelihood: Likelihood, prior: Transform, q: ConjugateApproximatePosterior, inference: 'Variational'
 ):
+    # these will be in time-latent-space format
+    # when calling compute_expected_log_liklihood_with_variational_params this will call a marginal that will convert it to time-space-latent format
     lml, q_m, q_S =  q.surrogate.posterior_blocks(return_lml=True)
 
+    print(f'lml: {np.sum(lml)}, q_m: {np.sum(q_m)}, q_S: {np.sum(q_S)}')
+
+    # data is stored in time-space-latent format
     ELL =  compute_expected_log_liklihood_with_variational_params(
         data, q_m, q_S, likelihood, prior, q, inference
     )
@@ -213,6 +197,6 @@ def elbo(
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
-    #print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
+    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
 
     return elbo

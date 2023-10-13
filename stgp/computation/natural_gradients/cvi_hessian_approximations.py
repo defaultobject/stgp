@@ -1,5 +1,5 @@
 """
-When computing natural gradients we need to compute dE[log P(Y|F)]/dS, which is not gurarenteed to ensure P.S.D updates.
+When computing natural gradients we need to compute dE[log P(Y|T(F))]/dS, which is not gurarenteed to ensure P.S.D updates.
 
 Here we compute Gaus-Newton style approximations of this hessian.
 """
@@ -120,7 +120,8 @@ def compute_u_to_tf(model, q_mu_z, q_var_z):
 
 def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
     """
-
+    Args:
+        u: Nt x Ms x D
     """
     chex.assert_rank([u, S], [3, 4])
 
@@ -128,71 +129,60 @@ def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
     prior = model.prior
     Y = model.data.Y
 
-    q_f_mu, q_f_var = compute_u_to_f(model, u, S)
+    q_tf_mu = compute_u_to_f(model, u, S)
 
-    def J_f(f):
+    # jacobian of u -> T(f(u))
+    J_true = jax.jacfwd(lambda m: compute_u_to_tf(model, m, S))(u)
+
+
+    def J_u(m):
         # N x P x 1
-        T_f = compute_f_to_tf(model, f, None)
+        T_f = compute_u_to_tf(model, m, S)
 
-        f2tf = lambda *f: compute_f_to_tf(model, [fi[None, ...] for fi in f], None)[0]
-        # N x P x 1
-        T_f = jax.vmap(f2tf)(*f)
-        Q = len(f)
+        # jacobian of u -> T(f(u))
+        # [N x P x B x M x Q x B]
+        J_u_tf = jax.jacfwd(lambda m: compute_u_to_tf(model, m, S))(m)
 
-        # [N x P x B x Q x B]
-        J = jax.vmap(jax.jacfwd(f2tf, argnums=range(Q)))(*f)
+        # TODO: only works for exponential family likelihoods atm
 
-        # TODO: only works for Gaussian atm
-        # Assuming that the likelihood components are (conditionally) indpedent
-        # N x P 
-        # Approximating d^2 log P(Y | T) / dT^2 ~ - COV(Y | T)^{-1}
-        neg_Lambda = jax.vmap(
-            lambda f: np.diag(
-                1/np.squeeze(
-                    model.likelihood.conditional_var(f[None, :])
-                )
-            )
+        # [N x P x B]
+        Lambda = jax.vmap(
+            lambda f: model.likelihood.conditional_var(f[None, :]) # []
         )(
-            T_f[..., 0]
+            T_f[..., 0] # [N x P]
         )
+
+        Lambda = Lambda[:, :, 0, 0]
+        neg_Lambda = 1/Lambda
 
         # Mask out entries corresponding to missing observations
         # These should just be ignored from the sums
         # N x P
         Y_mask = get_same_shape_mask(Y)
-        Y_mask = np.tile(Y_mask[..., None], [1, 1, Y.shape[1]])
+        chex.assert_equal(neg_Lambda.shape, Y_mask.shape)
+        # N x P 
         neg_Lambda = neg_Lambda * Y_mask
 
-        # Generalised Gauss-Newton
-        #J_sum = J @ neg_Lambda @ J.T
+        neg_Lambda = neg_Lambda[..., None]
 
-        J_list = []
-        for i in range(Q):
+        J_u_tf_vec = np.reshape(J_u_tf, [J_u_tf.shape[0], J_u_tf.shape[1], -1])[..., None]
 
-            J_i  = np.transpose(J[i][:, :, 0, :, 0], [0, 2, 1])
-            J_vec = jax.vmap(lambda a, b, c: a @ b @ c.T)(J_i, neg_Lambda, J_i)
-            J_list.append(J_vec[:, None, ...])
+        G_vec = jax.vmap(
+            lambda Ju: jax.vmap(
+                    jax.vmap(
+                        lambda a, b: a @ b @ a.T
+                    )
+                )(
+                    Ju[:, :, None, ...], 
+                    neg_Lambda[..., None]
+                ),
+            3
+        )(J_u_tf)
 
-        #breakpoint()
+        G = np.sum(G_vec, [1, 2, 3, 6])[:, None, ...]
+        return G
 
-        return J_list
-
-    if delta_f:
-        J_list = J_f(q_f_mu)
-    else:
-        J_list = mv_block_monte_carlo_list(
-            J_f, 
-            q_f_mu, 
-            q_f_var, 
-            generator = model.inference.generator, 
-            num_samples = prediction_samples
-        )
-  
-    J_true = jax.jacfwd(lambda S: compute_u_to_f(model, u, S, return_var_only=True))(S)
-
-    S_f, vjp_fn = jax.vjp(lambda S: compute_u_to_f(model, u, S, return_var_only=True), S)
-    var_grads = vjp_fn(J_list)[0]
-    approx_hessian = - 0.5 * var_grads
+    approx_hessian = - 0.5 *  J_u(u)
     chex.assert_rank(approx_hessian, 4)
 
     return approx_hessian
@@ -353,7 +343,7 @@ def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_poste
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
     if enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = False, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = False)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u_delta_f':
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = True)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_f':

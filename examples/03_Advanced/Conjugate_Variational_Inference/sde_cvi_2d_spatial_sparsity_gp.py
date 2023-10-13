@@ -41,12 +41,13 @@ Ns = 100
 XS, X, Y = multi_output_spatial_data(P, N, N, Nt, Ns, seed=0)
 
 # just care about the first task
-P = 1
-Q = 1 
 Zs = np.linspace(np.min(X[:, 1]), np.max(X[:, 1]), 5)[:, None]
-Y = Y[:, 0][:, None]
+if False:
+    P = 1
+    Q = 1 
+    Y = Y[:, 0][:, None]
 
-Y[0] = np.NaN
+    Y[0] = np.NaN
 
 if False:
     fig, axes = plt.subplots(1, P)
@@ -95,7 +96,8 @@ q = FullConjugateGaussian(
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
         data = SpatioTemporalData(X=X.raw_Z, Y=np.reshape(Y, [Mt, Q, Ms]), sort=False), # we need gradients Y so set to be trainable, in time-latent-space format
         likelihood=likelihood, 
-        prior=LTI_SDE_Full_State_Obs_With_Mask(Independent(latent_gps), keep_dims=[0]),
+        #prior=LTI_SDE_Full_State_Obs_With_Mask(Independent(latent_gps), keep_dims=[0]),
+        prior=LTI_SDE(Independent(latent_gps)),
         inference='Sequential',
         full_state_observed = False,
         parallel=False
@@ -111,20 +113,23 @@ m = stgp.models.GP(
     approximate_posterior = q,
     whiten=False
 )
+print(m.get_objective())
+
+breakpoint()
 
 
 m.print()
 
 if True:
-    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     m.print()
     print(m.get_objective())
     ng_trainer.train(1.0, 1)
     print(m.get_objective())
 
-if False:
+if True:
     max_iters = 500
 
     ng_trainer = NatGradTrainer(m)
@@ -161,7 +166,6 @@ pred_mu = pred_mu[..., 0]
 pred_var = pred_var[..., 0, 0]
 
 print(np.nanmean(np.square(np.squeeze(pred_train_mu)-np.squeeze(Y))))
-
 
 if True:
     fig, axes = plt.subplots(2, P, squeeze=False)

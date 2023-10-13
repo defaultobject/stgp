@@ -56,7 +56,7 @@ def linear_marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, pr
         breakpoint()
 
     # Check if we can use a diagonal transform or not
-    if var_parent.shape[-1] == 1 and out_block == Block.DIAGONAL:
+    if (var_parent.shape[-1] == 1) or (var_parent.shape[-1] == 1 and out_block == Block.DIAGONAL):
         chex.assert_rank([mu_parent, var_parent], [3, 4])
 
         # mu_parent, var_parent are the mean and variance of the base GP.

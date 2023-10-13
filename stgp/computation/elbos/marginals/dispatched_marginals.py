@@ -57,7 +57,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     """ 
     With conjugate gaussian there is no need to convert from cholesky parameterizations.  
     
-    q_m is in time-(space x)latent format. 
+    q_m is in time-latent-(space) format. 
     """
     chex.assert_rank([q_m, q_S], [3, 4])
 
@@ -83,7 +83,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         # to convert to data-latent format we first need convert each time point
         # to space-latent format, and then we can just reshape
 
-        if False:
+        if True:
             # convert to time-space-latent
             mu_p = jax.vmap(lambda a: permute_vec(a, Q))(q_m)
             var_p = jax.vmap(lambda A: permute_mat(A[0], Q))(q_S)

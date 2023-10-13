@@ -26,7 +26,6 @@ def log_bernoulli(y, p):
     return y * np.log(p + jitter) + (1-y) * np.log(1 - p + jitter)
 
 
-
 @jit
 def log_inv_probit(f):
     return logcdf(f)

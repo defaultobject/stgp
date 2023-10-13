@@ -8,7 +8,7 @@ jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
-from example_utils.data_zoo import multi_output_spatial_data
+from example_utils.data_zoo import multi_output_spatial_data, single_output_spatial_data
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
@@ -28,16 +28,18 @@ from tqdm import trange
 
 import matplotlib.pyplot as plt
 
-stgp.settings.jitter = 1e-5
+stgp.settings.jitter = 1e-7
 
 # Generate data
 Q = 2
 P = 2
-N = 10
-Nt = 100
-Ns = 100
+N = 20
+Nt = 200
+Ns = 200
 
 XS, X, Y = multi_output_spatial_data(P, N, N, Nt, Ns, seed=0)
+
+XS, X, Y = single_output_spatial_data(N, N, Nt, Ns, seed=0)
 
 Y = np.hstack([Y[:, 0][:, None] for p in range(P)])
 
@@ -58,7 +60,7 @@ if bool(int(sys.argv[1])):
     Z = [NoSparsity(Z_ref = st_data._X) for q in range(Q)]
 else:
     print('spatial sparsity')
-    Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:3], train=True) for q in range(Q)]
+    Z = [SpatialSparsity(st_data.X_time, st_data.X_space[:10], train=True) for q in range(Q)]
 
 Z_all = StackedSparsity(Z)
 
@@ -108,12 +110,19 @@ m = stgp.models.GP(
 )
 
 
+pred_mu, pred_var = m.predict_f(XS)
+print(m.get_objective())
+
 m.print()
 
-if False:
-    ng_trainer = NatGradTrainer(m, return_objective=False)
+if True:
+    ng_trainer = NatGradTrainer(m, return_objective=False, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m, return_objective=False)
     m.approximate_posterior.fix()
+    print(m.get_objective())
     ng_trainer.train(1.0, 1)
+    print(m.get_objective())
+    breakpoint()
 
 if True:
     max_iters = 500

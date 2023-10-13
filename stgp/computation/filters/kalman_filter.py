@@ -178,8 +178,6 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
 
     # -- KALMAN UPDATE --
     # m_, P_ is in latent - space -state format
-    # convert to latent-space format
-
     mu = M @ H_k @ m_
     var = M @ H_k @ P_ @ H_k.T @ M.T
 
@@ -355,7 +353,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     # Ensure rank 2 at each time step
     Y = Y[..., None]
 
-    
     if R_inv is not None:
         lik_cov_flag = False
         lik_mat = R_inv

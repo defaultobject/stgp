@@ -618,6 +618,17 @@ class ST_SDE_GP(BASE_SDE_GP):
         """
         chex.assert_equal(XS.shape[1], self.data.D)
 
+        if not diagonal :
+            if not force_full_state:
+                if not self.full_state_observed:
+                    raise RuntimeWarning('Currently we do not return the full predictive posterior covariance using an SDE GP')
+
+        if force_full_state:
+            # NOTE: we cannot support it as we need to predict in space, which would require a little more machinery implemented
+            # NOTE: this is actually all implemented in the PIGP models, but there state-space predictions code is all separate, 
+            #   perhaps we can combine at some point?
+            raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
+
         # Convert XS to a spatio-temporal object
         NS = XS.shape[0]
         # in data-latent format
@@ -673,7 +684,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         # this should not sort space!!
         # we should not be sorting space for test_data as this is also used for induicng points
         # . where ordering in space is not guarenteed
-        # so we first order to get the unique points
+        # so we first order in time to get the unique points
         temporal_test_data = get_sequential_data_obj(
             X_stacked,
             Y_stacked,

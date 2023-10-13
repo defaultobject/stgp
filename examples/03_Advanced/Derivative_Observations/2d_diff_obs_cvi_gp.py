@@ -97,7 +97,7 @@ q = FullConjugateGaussian(
     num_blocks = data.Nt,
     surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
         # in state-space format
-        data = stgp.data.Data(X, Y=np.reshape(Y, [-1, data.Ns * Q])),
+        data = stgp.data.DataTPS(X, Y=np.reshape(Y, [-1, Q*data.Ns ]), num_latents=Q),
         likelihood=likelihood, 
         prior=latent_gp
     )

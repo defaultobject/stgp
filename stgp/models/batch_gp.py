@@ -216,13 +216,20 @@ class BatchGP(Posterior):
 
         return mu_arr, var_arr
 
-    def posterior_blocks(self):
-        return self.predict_blocks(
+    def posterior_blocks(self, return_lml=False):
+        mu, var =  self.predict_blocks(
             self.data.X, 
             group_size=1, 
             block_size=self.likelihood.block_size,
             diagonal=False
         )
+
+
+        if return_lml:
+            lml = -self.get_objective()
+            return lml, mu, var
+
+        return mu, var
 
     def posterior(self, diagonal=True):
         return self.predict_f(self.data.X, diagonal=diagonal)

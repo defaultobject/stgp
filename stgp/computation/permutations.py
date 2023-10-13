@@ -1,10 +1,14 @@
 """ utils for converting from latent-data to data-latent format """
+import jax
 import jax.numpy as np
 from jax import jit
 from functools import partial
 import chex
 
 from .matrix_ops import to_block_diag
+
+
+
 
 #@partial(jit, static_argnums=(0, 1))
 def data_order_to_output_order(num_outputs: int, N: int):
@@ -147,3 +151,46 @@ def unpermute_mat(A, num_latents):
     )
 
     return left_P.T @ A @ right_P
+
+def ld_to_dl(num_latents: int, num_data: int):
+    """ Create permutation matrix to convert from latent-data to data-latent """
+    return data_order_to_output_order(num_latents, num_data)
+
+def dl_to_ld(num_latents: int, num_data: int):
+    """ Create permutation matrix to convert from data-latent to latent-data """
+
+    return data_order_to_output_order(num_latents, num_data).T
+
+def permute_mat_ld_to_dl(mat, num_latents: int, num_data: int):
+    P = ld_to_dl(num_latents, num_data)
+    return P @ mat @ P.T
+
+def permute_vec_ld_to_dl(vec, num_latents: int, num_data: int):
+    P = ld_to_dl(num_latents, num_data)
+    return P @ vec 
+
+def permute_mat_dl_to_ld(mat, num_latents: int, num_data: int):
+    P = dl_to_ld(num_latents, num_data)
+    return P @ mat @ P.T
+
+def permute_vec_dl_to_ld(vec, num_latents: int, num_data: int):
+    P = dl_to_ld(num_latents, num_data)
+    return P @ vec 
+
+def permute_vec_tps_to_tsp(vec, num_latents:int):
+    Nt = vec.shape[0]
+    Ns = int(vec.shape[1]/num_latents)
+    return jax.vmap(lambda A: permute_vec_ld_to_dl(A, num_latents, Ns))(vec)
+
+def permute_mat_tps_to_tsp(vec, num_latents:int):
+    chex.assert_rank(vec, 3)
+    Nt = vec.shape[0]
+    Ns = int(vec.shape[1]/num_latents)
+    return jax.vmap(lambda A: permute_mat_ld_to_dl(A, num_latents, Ns))(vec)
+
+def permute_mat_tsp_to_tps(vec, num_latents:int):
+    chex.assert_rank(vec, 3)
+    Nt = vec.shape[0]
+    Ns = int(vec.shape[1]/num_latents)
+    return jax.vmap(lambda A: permute_mat_dl_to_ld(A, num_latents, Ns))(vec)
+

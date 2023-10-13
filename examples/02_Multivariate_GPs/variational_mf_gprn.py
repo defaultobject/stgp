@@ -81,11 +81,10 @@ m = stgp.models.GP(
 #print(m.predict_f(X))
 #print('NLPD: ', m.nlpd(X, Y))
 
-pred_mu, pred_var = m.predict_latents(XS)
-pred_mu, pred_var = m.predict_f(XS)
-pred_mu, pred_var = m.predict_y(XS)
+#pred_mu, pred_var = m.predict_latents(XS)
+#pred_mu, pred_var = m.predict_f(XS)
+#pred_mu, pred_var = m.predict_y(XS)
 
-breakpoint()
 if True:
     max_iters = 100
 
@@ -104,7 +103,6 @@ if True:
 
 pred_mu, pred_var = m.predict_y(XS, diagonal=True, output_first=True, squeeze=True)
 
-breakpoint()
 
 fig, axes = plt.subplots(P, 1, sharex=True)
 

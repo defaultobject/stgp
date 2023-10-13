@@ -292,7 +292,9 @@ class VGP(Posterior):
             posterior=posterior
         )
 
-        breakpoint()
+        # [samples, N, P, B]
+        chex.assert_rank(samples_arr, 4)
+
         return samples_arr
 
     def natural_gradient(self, learning_rate):

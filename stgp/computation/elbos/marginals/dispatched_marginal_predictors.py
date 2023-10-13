@@ -81,6 +81,8 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
             prior_parent = prior.parent
             data_x =approximate_posterior.surrogate.data._X 
 
+
+        # TODO... what is the ordering here?
         mu, var = evoke('spatial_conditional', xs_data, prior_parent, prior_parent, approximate_posterior)(
             xs_data, 
             data_x, 
@@ -95,28 +97,31 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
         )
 
         chex.assert_rank([mu, var], [3, 4])
-        var = np.diagonal(var, axis1=2, axis2=3)
+
+
+        if False:
+            # [time - space] format
+            mu_p = np.reshape(mu, [-1, 1, 1])
+            var = np.diagonal(var, axis1=2, axis2=3)
+            var_p = np.reshape(
+                var,
+                [-1, 1, 1, 1]
+            )
+        else:
+            out_dim = prior.output_dim
+
+            mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var)
+
+            mu_p = np.reshape(mu_p, [-1, out_dim, 1])
+            var_p = batched_block_diagional(var_p, out_dim)
+            var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
+
 
         # time x space format
-        #mu = sorted_data.unsort(mu)[data.Nt:]
-        #var = sorted_data.unsort(var)[data.Nt:]
+        pred_mu = XS_temporal_data.unsort(mu_p)
+        pred_var = XS_temporal_data.unsort(var_p)
 
-        # [time - space] format
-        mu_p = np.reshape(mu, [-1, 1, 1])
-        var_p = np.reshape(
-            var,
-            [-1, 1, 1, 1]
-        )
-
-
-        if True:
-            pred_mu = XS_temporal_data.unsort(mu_p)
-            pred_var = XS_temporal_data.unsort(var_p)
-            #breakpoint()
-        else:
-            pred_mu = mu_p
-            pred_var = var_p
-            
         chex.assert_equal([pred_mu.shape[0]], [pred_var.shape[0]])
         chex.assert_equal([XS.shape[0]], [pred_mu.shape[0]])
 

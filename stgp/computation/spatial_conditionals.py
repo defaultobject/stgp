@@ -269,10 +269,17 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     # latent - space format
     Kzz = _batched_st_kernel(X_space, X_space, prior, 'spatial', full=True)
 
+
     # in latent-space format
-    Kss_full = to_block_diag(Kss)
-    Ksz_full = to_block_diag(Ksz)
+    if batch_space:
+        Kss_full = jax.vmap(to_block_diag)(np.transpose(Kss, [1, 0, 2, 3]))
+        Ksz_full = jax.vmap(to_block_diag)(np.transpose(Ksz, [1, 0, 2, 3]))
+    else:
+        Kss_full = to_block_diag(Kss)
+        Ksz_full = to_block_diag(Ksz)
+
     Kzz_full = to_block_diag(Kzz)
+
 
     Q = Kzz.shape[0]
 
@@ -341,8 +348,10 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
     if batch_space:
+        #batch over XS_space, Ksz_full, Kss_full, Ktt_full, pred_mean, pred_var_chol
         batch_arr = [0, None, None, 0, 0, 0, 0, 0, None, None]
     else:
+        #batch over Ktt_full, pred_mean, pred_var_chol
         batch_arr = [None, None, None, None, None, 0, 0, 0, None, None]
 
     mu, var = jax.vmap(
@@ -360,10 +369,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         mean_x, 
         mean_xs
     )
-
-    #breakpoint()
-
-
 
     # in time-latent-space format
     var = var[:, None, ...]

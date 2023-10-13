@@ -37,7 +37,7 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 
-settings.ng_jitter = 1e-4
+settings.ng_jitter = 1e-5
 f = lambda x: 20*np.sin(100*x)+100*x
 
 N = 20
@@ -125,7 +125,7 @@ print(m.get_objective())
 if True:
     print(m.get_objective())
     max_iters = 2000
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u')
     #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)

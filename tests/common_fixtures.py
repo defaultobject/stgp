@@ -255,7 +255,7 @@ def full_posterior_joint_model_no_sparsity(N, gp_prior_2d, gaussian_likelihood):
         kernel = SecondOrderDerivativeKernel_2D(gp_prior_2d.kernel)
     )
 
-    diff_op_prior = HeatEquation2D(diff_op_prior)
+    #diff_op_prior = HeatEquation2D(diff_op_prior)
     diff_op_prior = DataLatentPermutation(diff_op_prior)
 
     dim = N * diff_op_prior.output_dim

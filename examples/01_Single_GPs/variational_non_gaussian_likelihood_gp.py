@@ -13,6 +13,7 @@ from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
+from stgp.trainers.standard import ADAM, VB_NG_ADAM
 from stgp.kernels import RBF 
 from stgp.likelihood import Bernoulli, ProductLikelihood
 from stgp.data import Data
@@ -34,6 +35,11 @@ X_df, Y_df = load_breast_cancer(return_X_y=True, as_frame=True)
 X = np.array(X_df)
 Y = np.array(Y_df)[:, None]
 
+x = np.linspace(0, 10)
+y = np.heaviside(np.sin(x), 0).astype(np.float32)
+X = x[:, None]
+Y = y[:, None]
+
 print(f'X: {X.shape}, Y: {Y.shape}')
 
 # Construct Model
@@ -44,7 +50,7 @@ m = GP(
         Independent([
             GP(
                 sparsity = stgp.sparsity.NoSparsity(Z = data.X), 
-                kernel = RBF(input_dim=30),
+                kernel = RBF(input_dim=X.shape[1]),
                 prior = True
             )
         ]),
@@ -58,25 +64,35 @@ m = GP(
 )
 
 # Train
-max_iters = 100
+max_iters = 200
 
-if False:
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
-    #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')
-    m.approximate_posterior.fix()
+if True:
+    trainer = VB_NG_ADAM(m, enforce_psd_type='laplace_gauss_newton')
 
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+    lc_arr,  _ = trainer.train([0.01, 0.1], [max_iters, [1, 1]], callback= progress_bar_callback(max_iters))
 
-    ng_trainer.train(0.01, 10)
+    breakpoint()
+    plt.plot(lc_arr[::2])
+    plt.show()
 
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
-        ng_trainer.train(0.1, 1)
 else:
-    trainer = GradDescentTrainer(m, objax.optimizer.Adam)
-    for i in trange(max_iters):
-        trainer.train(0.01, 1)
+    trainer = ADAM(m)
+    lc_arr, _ = trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
+    plt.plot(lc_arr)
+    plt.show()
 
+samples = m.samples(X, num_samples=10)
+samples = np.squeeze(samples)
+
+for s in range(10):
+    plt.plot(samples[s])
+
+plt.show()
+
+post = m.confidence_intervals(X)
+
+print(np.squeeze(Y)-np.squeeze(post[1]))
+breakpoint()
 
 # Predict
 pred_mu, pred_var = m.predict_f(X)

@@ -76,7 +76,7 @@ def vgp(X, Y,  kernel, likelihood, minibatch_size=None, seed=0):
 
 def svgp(X, Y, Z, kernel, likelihood, minibatch_size=None, seed=0):
     if minibatch_size is not None:
-        data = Data(X, Y, minibatch_size = minibatch_size, seed=0)
+        data = Data(X, Y, minibatch_size = minibatch_size, seed=seed)
     else:
         data = Data(X, Y)
 
@@ -97,11 +97,21 @@ def svgp(X, Y, Z, kernel, likelihood, minibatch_size=None, seed=0):
 
 
 def stvgp(X, Y, Zs, kernel, likelihood, minibatch_size=None, seed=0, parallel=False):
+    """
+    A Spatio-temporal variational Gaussian Process 
+
+    This is a spatially sparse variational Gaussian processes that exploits natural gradients to represent the approximate posterior
+        as a conjugate spatio-temporal state-space model
+    """
+    if minibatch_size:
+        # TODO: add this
+        raise NotImplementedError('spatial minibatching is not currently supported using this zoo methods')
+
     Q = 1
     P = 1
     st_data = TemporallyGroupedData(X=X, Y=Y)
 
-    Z = [SpatialSparsity(st_data.X_time, Zs, train=False) for q in range(Q)]
+    Z = [SpatialSparsity(st_data.X_time, Zs, train=True) for q in range(Q)]
 
     Z_all = StackedSparsity(Z)
 
