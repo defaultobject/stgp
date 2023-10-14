@@ -118,7 +118,7 @@ def compute_u_to_tf(model, q_mu_z, q_var_z):
 
     return T_f
 
-def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
+def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
     """
     Args:
         u: Nt x Ms x D
@@ -146,14 +146,30 @@ def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
         # TODO: only works for exponential family likelihoods atm
 
         # [N x P x B]
-        Lambda = jax.vmap(
-            lambda f: model.likelihood.conditional_var(f[None, :]) # []
-        )(
-            T_f[..., 0] # [N x P]
-        )
+        if not laplace_log_lik:
+            hess = batch_or_loop(
+                lambda y, t, lik: jax.vmap(lik.log_hessian_scalar)(y, t),
+                [Y.T, T_f[..., 0].T, model.likelihood.likelihood_arr],
+                [0, 0, 0],
+                dim = len(model.likelihood.likelihood_arr),
+                out_dim=1,
+                batch_type = get_batch_type(model.likelihood.likelihood_arr)
+            )
+            neg_Lambda = np.array(hess)
+            neg_Lambda = (neg_Lambda.T)[..., None]
+        else:
 
-        Lambda = Lambda[:, :, 0, 0]
-        neg_Lambda = 1/Lambda
+            Lambda = jax.vmap(
+                lambda f: model.likelihood.conditional_var(f[None, :]) # []
+            )(
+                T_f[..., 0] # [N x P]
+            )
+
+            Lambda = Lambda[:, :, 0, 0]
+            # laplace approximation of the hessian
+            neg_Lambda = -(1/Lambda)
+            
+        neg_Lambda = np.reshape(neg_Lambda, Y.shape)
 
         # Mask out entries corresponding to missing observations
         # These should just be ignored from the sums
@@ -182,7 +198,7 @@ def gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
         G = np.sum(G_vec, [1, 2, 3, 6])[:, None, ...]
         return G
 
-    approx_hessian = - 0.5 *  J_u(u)
+    approx_hessian = 0.5 *  J_u(u)
     chex.assert_rank(approx_hessian, 4)
 
     return approx_hessian
@@ -270,7 +286,7 @@ def _gauss_newton(u, S, model, delta_f = True, prediction_samples=None):
     return approx_hessian
 
 
-def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = True):
+def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True):
     q = model.approximate_posterior
 
 
@@ -303,7 +319,7 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
 
     # delta u
     if delta_u:
-        approx_hessian = gauss_newton(q_mu_z, q_var_z , model, delta_f=delta_f, prediction_samples=prediction_samples)
+        approx_hessian = gauss_newton(q_mu_z, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples)
     else:
         raise NotImplementedError()
 
@@ -342,14 +358,16 @@ def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_poste
 
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
-    if enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = False)
-    elif enforce_psd_type == 'laplace_gauss_newton_delta_u_delta_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = True)
-    elif enforce_psd_type == 'laplace_gauss_newton_delta_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = False, delta_f = True)
+    if enforce_psd_type == 'gauss_newton':
+        raise NotImplementedError()
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False)
+    elif enforce_psd_type == 'gauss_newton_delta_u':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True)
+    elif enforce_psd_type == 'laplace_gauss_newton':
+        raise NotImplementedError()
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, delta_u = True, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True)
     else:
         raise RuntimeError()
 

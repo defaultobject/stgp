@@ -34,9 +34,9 @@ from .cvi_nat_grad_utils import reparametise_vec_grad, _get_fp_params, _get_mf_p
 
 
 GAUSS_NEWTON_ENFORCE_TYPES = [
+    'gauss_newton',
+    'gauss_newton_delta_u',
     'laplace_gauss_newton',
-    'laplace_gauss_newton_delta_u_delta_f',
-    'laplace_gauss_newton_delta_f',
     'laplace_gauss_newton_delta_u',
 ]
 
@@ -76,6 +76,7 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
         #TODO
         raise NotImplementedError()
     else:
+        breakpoint()
         raise NotImplementedError()
 
     return lambda_1_new, lambda_2_new
@@ -116,6 +117,14 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     mu_grads = np.reshape(mu_grads, [Q, N, B, 1])
     var_grads = np.reshape(var_grads, [Q, N, B, B])
+
+    if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
+        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
+        var_grads = np.transpose(var_grads, [1, 0, 2, 3])
+        enforce_psd_type = None
+    else:
+        # in time-latent-space 
+        pass
 
     # vmap over Q and N
     new_lambda_1, new_lambda_2 = jax.vmap(

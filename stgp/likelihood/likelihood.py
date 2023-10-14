@@ -6,6 +6,7 @@ import jax.numpy as np
 import chex
 
 from ..core import Block
+from ..computation.matrix_ops import hessian
 
 
 class Likelihood(objax.Module):
@@ -32,6 +33,9 @@ class Likelihood(objax.Module):
 
     def conditional_mean(self, f):
         raise NotImplementedError()
+
+    def log_hessian_scalar(self, y, f):
+        return hessian(lambda t: self.log_likelihood_scalar(y, t), 0)(f)
 
 class FullLikelihood(Likelihood):
     """Likelihood that does not decompose """
