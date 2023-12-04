@@ -77,8 +77,18 @@ def natural_gradients(model, parameterisation, beta: float, enforce_psd_type, pr
         lambda_2
     )
 
+    if False:
+        l1, l2 = jax.vmap(theta_to_lambda)(theta_1, theta_2)
+        theta_1, theta_2 = jax.vmap(lambda_to_theta)(l1, l2)
+        l1, l2 = jax.vmap(theta_to_lambda)(theta_1, theta_2)
+        theta_1, theta_2 = jax.vmap(lambda_to_theta)(l1, l2)
+
     Y_shape = q.surrogate.data._Y.value.shape
     theta_1 = np.reshape(theta_1, Y_shape)
+
+    print('OUT: ', 'theta_1: ', np.sum(theta_1), 'theta_1: ', np.sum(theta_2))
+
+    #breakpoint()
 
     return theta_1, theta_2
 

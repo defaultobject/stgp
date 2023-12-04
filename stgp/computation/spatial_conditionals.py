@@ -1,5 +1,5 @@
 """ Kronecker structured conditionals """
-from ..dispatch import dispatch, evoke
+from ..dispatch import dispatch, evoke, _ensure_str
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
 from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks, gaussian_spatial_conditional_cholesky, gaussian_spatial_conditional_inv
@@ -168,6 +168,7 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical, batch_s
     #[Nt] x [Q] x [ Dt] x [ Dt]
     K_x_t_arr = np.transpose(K_x_t_arr, [1, 0, 2, 3])
 
+
     return K_x_t_arr, K_base_spatial_ss_arr, K_spatial_sz_arr, K_base_spatial_zz_arr
 
 def _batched_st_kernel(X1, X2, prior, kernel_type='spatial', full=True):
@@ -224,7 +225,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     # TODO: assuming that prior is independent
 
     XS_time = data_xs.X_time
-    X_time = data_x.X_time
 
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
@@ -340,7 +340,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
     # TODO: derive proper mean 
 
-    if prior.whiten_space:
+    if np.any(np.array(prior.whiten_space)):
         # whiten transform in space
         Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
         # TODO: fix the hardcoded time dim
@@ -376,6 +376,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+
 @dispatch(Data, Input, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, SDE)
@@ -387,7 +388,13 @@ def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp
         mu = [ I ⊗ Ksz Kzz⁻¹ ] m
         var = diag[ Ktt ] ⊗ diag[ Kss - Ksz Kzz⁻¹ Kss] - diag[ Ksz Kzz⁻¹ Stt Kzz⁻¹ Kzs ]^T_t
     """
-    mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, gp.prior)
+
+    if _ensure_str(data_xs) == 'TemporallyGroupedData':
+        batch_space=True
+    else:
+        batch_space = False
+
+    mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, gp.prior, batch_space=batch_space)
     return mu, var
 
 @dispatch(Input, Independent, Independent, FullGaussianApproximatePosterior)
@@ -462,6 +469,8 @@ def differential_spatial_conditional(
     """
     Posterior is in [time - Q - df - ds - space ] format
         we need it in [time - space - Q - df - ds] format
+
+    NOTE: assuming that data_xs and data_x lie at the same temporal locations
     """
     XS_time = data_xs.X_time
 

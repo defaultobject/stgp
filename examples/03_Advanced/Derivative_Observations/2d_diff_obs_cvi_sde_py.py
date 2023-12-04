@@ -147,18 +147,18 @@ m = stgp.models.GP(
 )
 print(m.get_objective())
 
-NatGradTrainer(m).train(1.0, 1)
+NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u').train(1.0, 1)
 
 print(m.get_objective())
 
 pred_mu, pred_var = m.predict_f(XS)
+pred_mu = np.array(pred_mu)
+pred_var = np.array(pred_var)
 
 print(pred_mu.shape, np.sum(pred_mu), np.sum(pred_var))
-print(pred_mu.shape, pred_var.shape, np.sum(pred_mu[:, 0]), np.sum(pred_var[:, 0]))
+print(pred_mu.shape, pred_var.shape, np.sum(pred_mu[0]), np.sum(pred_var[0]))
 
-breakpoint()
-
-plt.imshow(pred_mu[:, 0].reshape(NS, NS)); 
+plt.imshow(pred_mu[0].reshape(NS, NS)); 
 plt.show()
 
 

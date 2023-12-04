@@ -144,6 +144,9 @@ class SumKernel(CombinationKernel):
 
         return F, L, Qc, H, Pinf
 
+    def state_space_dim(self):
+        return self.k1.state_space_dim()+self.k2.state_space_dim()
+
     def K(self, X1: np.array, X2: np.array):
         return self.k1.K(X1, X2) + self.k2.K(X1, X2)
 

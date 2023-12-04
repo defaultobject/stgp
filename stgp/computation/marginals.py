@@ -16,7 +16,7 @@ from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
 from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky, get_block_diagonal, block_from_vec, to_block_diag
 
-from .permutations import left_permute_mat, permute_vec
+from .permutations import left_permute_mat, permute_vec,permute_vec_ld_to_dl
 
 from .predictors.base_predictors import gaussian_prediction_blocks
 
@@ -303,7 +303,7 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
     pred_mean = A1_t.T @ m 
 
     # -> [Ns x Q x Dt - Ds] 
-    pred_mean = permute_vec(pred_mean, block_size)
+    pred_mean = permute_vec_ld_to_dl(pred_mean, num_latents=block_size, num_data=N)
     pred_mean = np.reshape(pred_mean, [N, block_size])
 
     chex.assert_shape(pred_mean, [N, block_size])

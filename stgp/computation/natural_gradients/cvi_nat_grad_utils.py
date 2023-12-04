@@ -45,18 +45,26 @@ def reparametise_vec_grad(m, m_grad, prior):
 def _get_fp_params(q_mu_z, model, parameterisation):
     q = model.approximate_posterior
 
-    raw_Y_arr, Y_tilde_arr = q.surrogate.data._Y.value, q.surrogate.Y
+    # raw_Y_arr = [time -latent -space]
+    raw_Y_arr = q.surrogate.data._Y.value
 
-    # Fix shapes
+
     #raw_Y_arr is in time-latent-space format, this reshape will preserve that
     Y_tilde_arr = np.reshape(raw_Y_arr, q_mu_z.shape)
 
+    theta_1 = Y_tilde_arr
+    theta_2 = q.surrogate.likelihood.variance
+
+    print('theta_1: ', np.sum(theta_1), 'theta_2: ', np.sum(theta_2))
+
     if _ensure_str(parameterisation) == 'NG_Moment':
-        lambda_1_arr, lambda_2_arr = jax.vmap(theta_to_lambda)(Y_tilde_arr, q.surrogate.likelihood.variance)
+        lambda_1_arr, lambda_2_arr = jax.vmap(theta_to_lambda)(theta_1, theta_2)
     elif _ensure_str(parameterisation) == 'NG_Precision':
         lambda_1_arr, lambda_2_arr = jax.vmap(theta_precision_to_lambda)(Y_tilde_arr, q.surrogate.likelihood.precision)
     else:
         raise RuntimeError()
+
+    #breakpoint()
 
     return raw_Y_arr, lambda_1_arr, lambda_2_arr
 
@@ -148,6 +156,7 @@ def _get_marginals(model):
 def partial_ell(m, q_m, q_S):
     """ Helper function to compute the expected log likelihood using the variational paramters q_m, q_S"""
 
+    # q_m, q_S should be in time-latent-space
     return compute_expected_log_liklihood_with_variational_params(
         m.data,
         q_m,

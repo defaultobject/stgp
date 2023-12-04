@@ -103,8 +103,7 @@ q = FullConjugateGaussian(
     )
 )
 
-gauss_lik = Gaussian(0.01)
-gauss_lik.fix()
+gauss_lik = Gaussian(0.1)
 
 # Create Model
 m = stgp.models.GP(
@@ -124,8 +123,8 @@ print(m.get_objective())
 # Train
 if True:
     print(m.get_objective())
-    max_iters = 2000
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u')
+    max_iters = 200
+    ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton_delta_u')
     #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
@@ -135,8 +134,8 @@ if True:
 
     if True:
         for i in trange(max_iters):
-            trainer.train(0.001, 1)
-            lc_arr_i, _  = ng_trainer.train(0.01, 1)
+            trainer.train(0.01, 1)
+            lc_arr_i, _  = ng_trainer.train(0.1, 1)
             lc_arr.append(float(lc_arr_i[0]))
 
     print(m.get_objective())

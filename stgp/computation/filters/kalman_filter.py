@@ -73,6 +73,7 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
     # Construct spatial mask
     m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
 
+    # only allow non-zero values through from non-nan values of Y
     M = np.multiply(
         m_vec,
         np.eye(Y_k.shape[0])
@@ -189,14 +190,15 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     K = solve(S, M @ H_k @ P_).T
 
     m_k = m_ + K @ v
-
-    # stil cubic... ?
     P_k = P_ - K @ S @ K.T
 
     #log marginal likelihood (assuming Gaussian likelihood)
     log_Z_k = np.sum(
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
+
+    if settings.kalman_filter_force_symmetric:
+        P_k = force_symmetric(P_k)
 
     return {
         'm': m_k, 'P': P_k 
@@ -285,15 +287,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     P_inf = prior.P_inf(None, X_s, None)
 
     step_wrap = filter_step_wrapper(data, prior, lik_cov_flag)
-
-    if False:
-        step_wrap = jax.remat(step_wrap)
-
-    if False:
-        unroll = 10
-    else:
-        unroll = 1
-
+    unroll = 1
 
     carry, ys = scan(
         step_wrap,
@@ -311,7 +305,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     )
 
     lml = np.sum(ys['lml'])
-
 
     filter_res = {'m': ys['m'], 'P': ys['P']}
 
@@ -361,6 +354,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
         lik_mat = R
 
     # sequential, parallel, square_root_svm
+    print(f'running {filter_type} kalman filter')
     filter_fn = evoke('filter', filter_type)
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)

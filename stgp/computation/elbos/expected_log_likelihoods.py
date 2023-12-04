@@ -11,10 +11,11 @@ from ...core import GPPrior
 from ...likelihood import Gaussian
 from ...approximate_posteriors import GaussianApproximatePosterior, MM_GaussianInnerLayerApproximatePosterior
 from ...dispatch import dispatch
-from ..gaussian import log_gaussian, log_gaussian_with_nans, log_gaussian_with_precision_noise_with_nans
+from ..gaussian import log_gaussian, log_gaussian_with_nans, log_gaussian_with_precision_noise_with_nans, log_gaussian_scalar
 from ..matrix_ops import add_jitter, cholesky, cholesky_solve
 from ... import utils
 from ...utils.nan_utils import get_mask, mask_to_identity, mask_vector
+
 
 
 @jit
@@ -31,6 +32,7 @@ def scalar_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np
     err = np.sum(np.matmul(err.T, err))
 
     ell =  N*c1  -0.5*(err + np.sum(q_covar_diag))/noise
+
 
     chex.assert_rank(ell, 0)
     return ell
@@ -95,18 +97,19 @@ def full_gaussian_expected_log_likelihood(X:np.ndarray, Y:np.ndarray, noise:np.n
     chex.assert_shape(q_covar, [Y.shape[0], Y.shape[0]])
     chex.assert_shape(noise, q_covar.shape)
 
-    noise_chol = cholesky(add_jitter(noise, settings.jitter))
 
     ml =  log_gaussian_with_nans(Y, q_mu, noise) 
 
     mask = get_mask(Y)
+    N_mask = np.sum(1-mask)
+
+    masked_noise = mask_to_identity(noise, mask)
+    masked_noise_chol = cholesky(masked_noise)
     masked_q_covar = mask_to_identity(q_covar, mask)
-    masked_noise_chol = mask_to_identity(noise_chol, mask)
 
-    traced_term = cholesky_solve(noise_chol, q_covar)
-    masked_trace_term = mask_vector(traced_term, mask)
+    traced_term = cholesky_solve(masked_noise_chol, masked_q_covar)
 
-    trace_term = -0.5*np.trace(masked_trace_term)
+    trace_term = -0.5*np.trace(traced_term)+0.5*N_mask
 
     ell =  ml + trace_term
 

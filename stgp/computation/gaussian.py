@@ -53,7 +53,8 @@ def log_gaussian(Y, mu, sigma):
     # ensure square matrix
     chex.assert_equal(sigma.shape[0], sigma.shape[1])
 
-    sigma_chol = cholesky(add_jitter(sigma,  settings.jitter))
+    #sigma_chol = cholesky(add_jitter(sigma,  settings.jitter))
+    sigma_chol = cholesky(sigma)
 
     N = Y.shape[0]
 
@@ -98,34 +99,13 @@ def log_gaussian_with_mask(Y, mu, sigma, mask):
     sigma = mask_to_identity(sigma, mask)
     mu = mask_vector(mu, mask)
 
+    log_gauss_joint = log_gaussian(Y, mu, sigma)
+
     N = Y.shape[0]
-    c1 = -0.5 * N * np.log(2 * np.pi) 
-
-    if settings.linear_solver == settings.SolveType.CHOLESKY:
-        # check if we are using cholesky as then we can reuse sigma_chol instead
-        # compute the cholesky multiple times
-
-        sigma_chol = cholesky(sigma + settings.jitter * np.eye(sigma.shape[0]))
-
-        c2 = - 0.5 * log_chol_matrix_det(sigma_chol)
-        err = Y - mu
-        mahal = err.T @ cholesky_solve(sigma_chol, err)
-    else:
-        c2 = - 0.5 * log_determinant(sigma)
-        err = Y - mu
-        mahal = err.T @ solve(sigma, err)
-
-
-    c = c1+c2
-
-    ml = c - 0.5 * mahal
-    # MASK is one if non nan, zero is nan
 
     N_mask = np.sum(1-mask)
 
-    log_n = np.log(np.clip(N_mask, 1.0, None))
-
-    return np.sum(np.squeeze(ml)) + 0.5 * (N_mask * np.log(2* np.pi))
+    return log_gauss_joint + 0.5 * (N_mask * np.log(2* np.pi))
 
 @jit
 def log_gaussian_with_precision_noise_with_mask(Y, mu, sigma_inv, mask):

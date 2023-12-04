@@ -36,7 +36,16 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 @dispatch(GaussianProductLikelihood, Block.BLOCK)
 def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     lik_var = np.diag(likelihood.variance)
-    return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
+    if False:
+        #-3.98213104e+03
+        new =  full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
+        true = scalar_gaussian_expected_log_likelihood(X, Y[0][:, None], lik_var[0][0], q_f_mu[0][:, None], np.reshape(q_f_var[0][0], [1, 1]))
+        #print(new, true, new-true)
+        #breakpoint()
+        return new
+    else:
+        return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
+
 
 # ====================== GAUSSIAN ELLs ===================
 
@@ -109,7 +118,6 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
         # likelihood is time - latent - space format
         lik_var = likelihood.variance
         chex.assert_shape(lik_var, q_f_var.shape)
-
 
         # convert to time - space - latent format
         lik_var = jax.vmap(lambda A: permute_mat(A, likelihood.num_latents))(lik_var)
@@ -200,6 +208,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     # Only sums the ELL terms without missing data
     ell = np.sum(ell_arr)
+
 
     return ell
 
@@ -294,14 +303,15 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     #Y = Y[..., None]
     #chex.assert_shape(transformed_f, Y.shape)
 
+    # TODO: fix this -- we are currently assuming that likelihood is a product likelihood 
     # when Y is a single output we can simply mask by ignoring the corresponding ELL for each datapoint
     # otherwise we have to let the likelihood handle it
-    if not multivariate_flag:
-        # Get nan mask for output
-        mask = get_same_shape_mask(Y)
 
-        # Convert nans to zeros
-        Y = mask_matrix(Y, mask)
+    # Get nan mask for output
+    mask = get_same_shape_mask(Y)
+
+    # Convert nans to zeros
+    Y = mask_matrix(Y, mask)
 
     # batch over outputs
     # log likelihood for each outout
@@ -313,22 +323,14 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
         out_dim=1,
         batch_type = get_batch_type(likelihood_arr)
     )
+    # P x N x B
     ll_arr = np.array(ll_arr)
-
-    #chex.assert_equal(shape_rank(ll_arr), 2)
-    #ll_arr = ll_arr[..., None]
-    #ll_arr = np.transpose(ll_arr, [1, 0, 2])
-
-    if not multivariate_flag:
-        # Fix shapes so that ll_arr matches Y
-        ll_arr = ll_arr[..., None]
-        chex.assert_equal(ll_arr.shape, Y.shape)
-
-        # Mask out log-liklihoods that correspond to missing data
-        ll_arr = mask_matrix(ll_arr, mask)
-
-        ll_arr = np.transpose(ll_arr, [1, 0, 2])
-
+    # Fix shapes so that ll_arr matches Y
+    ll_arr = ll_arr[..., None]
+    chex.assert_equal(ll_arr.shape, Y.shape)
+    # Mask out log-liklihoods that correspond to missing data
+    ll_arr = mask_matrix(ll_arr, mask)
+    ll_arr = np.transpose(ll_arr, [1, 0, 2])
 
     return ll_arr
 
@@ -359,6 +361,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     chex.assert_equal([q_f_mu.shape[0], q_f_mu.shape[1]] , [N, P])
     chex.assert_equal([q_f_var.shape[0], q_f_var.shape[1]] , [N, P])
+
 
     model_type = get_model_type(prior)
 
@@ -552,9 +555,23 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     X = data.X
     Y = data.Y
 
-    return evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior, block_type_p)(
+
+    
+    if False:
+        try:
+            ell_true = jax.vmap( full_gaussian_expected_log_likelihood, [None, 0, None, 0, 0])(X, Y[:, [0]][..., None], np.reshape(likelihood.likelihood_arr[0].likelihood_arr[0].variance, [1, 1]), q_f_mu_arr[:, 0, ...][..., None], q_f_var_arr[:, :, 0, 0][..., None])
+
+            return np.sum(ell_true)
+        except Exception as e:
+            pass
+
+    ell =  evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior, block_type_p)(
         X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference, block_type_p
     )
+
+    #breakpoint()
+
+    return ell
 
 @dispatch(Data, ProductLikelihood, MultiOutput, MeanFieldApproximatePosterior)
 @dispatch(Data, ProductLikelihood, MultiOutput, FullGaussianApproximatePosterior)
@@ -584,6 +601,10 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
             lik_block_type, 
             get_block_type(q_block_size)
         )
+
+        #idx = np.squeeze(~np.isnan(Y_p))
+
+        #return gaussian_expected_log_likelihood(X_p[idx, :], Y_p[idx, :], likelihood_p.likelihood_arr[0].variance, q_f_mu_p[..., 0][idx, :], q_f_var_p[:, :, 0, 0][idx, :])
 
         ell_p =  evoke('expected_log_likelihood', data, likelihood_p, prior_p, approximate_posterior, block_type_p)(
             X_p, Y_p, q_f_mu_p, q_f_var_p, likelihood_p, prior_p, approximate_posterior, inference, block_type_p

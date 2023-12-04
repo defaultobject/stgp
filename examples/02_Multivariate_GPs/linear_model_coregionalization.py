@@ -39,7 +39,7 @@ X_test = np.copy(X)
 Y_test = np.copy(Y)
 
 # Remove section of Y for testing
-Y[20:35, 1] = np.NaN
+Y[25:35, 1] = np.NaN
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 

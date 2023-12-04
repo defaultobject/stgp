@@ -50,6 +50,15 @@ class ReverseFlow(ElementWiseTransform):
         return self.base_flow.forward(f)
 
 
+class Square(ElementWiseTransform):
+    """Expontial Function."""
+
+    def forward(self, x):
+        """Compute f=T(x)."""
+        return x**2
+
+    def inverse(self, f):
+        raise RuntimeError()
 
 class Exp(ElementWiseTransform):
     """Expontial Function."""

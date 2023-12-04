@@ -20,10 +20,8 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
     """
     Computes the RTS smoother step:
 
-    TODO
          
     """
-    #kalman gain
     P_predicted_chol = cholesky(
         add_jitter(P_predicted, settings.jitter)
     )
@@ -65,6 +63,8 @@ def rts_step(prior, carry, x, X_s, full_state):
         Q_k
 
     )
+
+
     m_res =  {
         'm': m, 'P': P 
     }
@@ -72,6 +72,7 @@ def rts_step(prior, carry, x, X_s, full_state):
     p_res = {
         'm': H_k @ m, 'P': H_k @ P @ H_k.T
     }
+
 
     return m_res, p_res
 
@@ -183,12 +184,13 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     else:
         H_k = model.H(None, X_s, None)
 
+
     # sequential, parallel, square_root_svm
     smoother_fn = evoke('smoother', filter_type)
 
-    lml, filter_res =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
+    mu, var  =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
 
-    return lml, filter_res
+    return mu, var
 
 
 

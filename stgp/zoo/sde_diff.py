@@ -11,7 +11,7 @@ from stgp import settings
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, SpatioTemporalSeperableKernel
 from stgp.means.mean import FirstOrderDerivativeMean, SecondOrderDerivativeMean
-from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel, DummyDerivativeKernel, SecondOrderOnlyDerivativeKernel_2D, SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D
+from stgp.kernels.diff_op import FirstOrderDerivativeKernel, FirstOrderDerivativeKernel_2D, SecondOrderDerivativeKernel, SecondOrderOnlyDerivativeKernel, DummyDerivativeKernel, SecondOrderOnlyDerivativeKernel_2D, SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D, FirstOrderDerivativeKernel_3D
 from stgp.likelihood import Gaussian, BlockDiagonalGaussian, ProductLikelihood
 from stgp.models import GP
 from stgp.transforms import OutputMap
@@ -60,7 +60,10 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None,
     Heirarchical:
         The time kernel is not passed as the spatial part is computed separtely from the temporal part
     """
-    if space_diff == 1:
+    if space_diff == None:
+        space_mean = None
+        space_kern = None
+    elif space_diff == 1:
         if dim == 2:
             if time_diff_kern is None:
                 # for surrogate SDE
@@ -89,7 +92,8 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None,
                 space_kern = SecondOrderDerivativeKernel(space_kernel, input_index = 1)
                 space_mean = SecondOrderDerivativeMean(input_index=1)
             else:
-                raise NotImplementedError()
+                space_kern = SecondOrderDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
+                space_mean = SecondOrderDerivativeMean(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
         else:
             raise NotImplementedError()
 
@@ -101,7 +105,7 @@ def _get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None,
                 space_mean = SecondOrderDerivativeMean(input_index=1) # not used
             else:
                 space_kern = SecondOrderOnlyDerivativeKernel(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim)
-                space_mean = SecondOrderDerivativeMean(input_index=1, parent_output_dim=time_diff_kern.output_dim) # not used
+                space_mean = SecondOrderDerivativeMean(time_diff_kern, input_index = 1, parent_output_dim=time_diff_kern.output_dim) # not used
         else:
             if dim != 3: raise NotImplementedError()
 
@@ -194,6 +198,22 @@ def diff_gp(
                     kernel = base_kernel[i]
                 ),
                 kernel = FirstOrderDerivativeKernel_2D(base_kernel[i]),
+                is_base = True,
+                has_parent = False
+            )
+            for i in range(num_latents)
+        ])
+    elif include_space and (dim == 3) and (time_diff == 1) and (space_diff == 1) and (not hessian):
+        if verbose:
+            print('Constructing 3D first order diff kernel')
+
+        diff_op_prior = Independent([
+            DifferentialOperatorJoint(
+                GP(
+                    sparsity=sparsity, 
+                    kernel = base_kernel[i]
+                ),
+                kernel = FirstOrderDerivativeKernel_3D(base_kernel[i]),
                 is_base = True,
                 has_parent = False
             )
@@ -310,7 +330,7 @@ def diff_gp(
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, verbose=False 
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, minibatch_size = None
 ):
     """
     Args:
@@ -344,6 +364,11 @@ def diff_cvi_sde_vgp(
     else:
         include_space = False
 
+    if parallel:
+        filter_type = 'parallel'
+    else:
+        filter_type = 'sequential'
+
     if num_latents is None:
         if type(time_kernel) is list:
             num_latents = len(time_kernel)
@@ -359,7 +384,7 @@ def diff_cvi_sde_vgp(
     N, P = Y.shape
     if include_space:
         if temporally_grouped:
-            data = TemporallyGroupedData(X=X, Y=Y, minibatch_size=100)
+            data = TemporallyGroupedData(X=X, Y=Y, minibatch_size=minibatch_size)
         else:
             data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
     else:
@@ -441,7 +466,7 @@ def diff_cvi_sde_vgp(
             for q in range(num_latents)
         ]
 
-        if include_space:
+        if include_space and space_diff is not None:
             # construct P(S | T)
             diff_op_prior = [
                 DifferentialOperatorJoint(
@@ -521,7 +546,8 @@ def diff_cvi_sde_vgp(
                             sparsity=sparsity, 
                             kernel = base_st_kerns[i]
                         )
-                    ])
+                    ]),
+                    overwrite_H=overwrite_H
                 )
                 for i in range(num_latents)
             ])
@@ -534,7 +560,8 @@ def diff_cvi_sde_vgp(
                             kernel = base_st_kerns[i]
                         )
                     ]),
-                    keep_dims=keep_dims
+                    keep_dims=keep_dims,
+                    overwrite_H=overwrite_H
                 )
                 for i in range(num_latents)
             ])
@@ -548,7 +575,8 @@ def diff_cvi_sde_vgp(
                         kernel = base_st_kerns[q]
                     )
                     for q in range(num_latents)
-                ])
+                ]),
+                overwrite_H=overwrite_H
             )
         else:
             latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(
@@ -559,7 +587,8 @@ def diff_cvi_sde_vgp(
                     )
                     for q in range(num_latents)
                 ]),
-                keep_dims=keep_dims
+                keep_dims=keep_dims,
+                overwrite_H=overwrite_H
             )
 
 
@@ -608,7 +637,7 @@ def diff_cvi_sde_vgp(
                             likelihood=likelihood, 
                             prior=latent_sde_gp.parent[q],
                             inference='Sequential',
-                            parallel=parallel,
+                            filter_type=filter_type,
                             full_state_observed=True
                         )
                     )
@@ -630,7 +659,7 @@ def diff_cvi_sde_vgp(
                             likelihood=likelihood, 
                             prior=latent_sde_gp.parent[q],
                             inference='Sequential',
-                            parallel=parallel,
+                            filter_type=filter_type,
                             full_state_observed=True
                         )
                     )
@@ -654,7 +683,7 @@ def diff_cvi_sde_vgp(
                     likelihood=likelihood, 
                     prior=latent_sde_gp,
                     inference='Sequential',
-                    parallel=parallel,
+                    filter_type=filter_type,
                     full_state_observed=True
                 )
             )
@@ -670,7 +699,7 @@ def diff_cvi_sde_vgp(
                     likelihood=likelihood, 
                     prior=latent_sde_gp,
                     inference='Sequential',
-                    parallel=parallel,
+                    filter_type=filter_type,
                     full_state_observed=True
                 )
             )
@@ -680,10 +709,11 @@ def diff_cvi_sde_vgp(
         # construct PDE transform
         diff_op_prior = prior_fn(diff_op_prior)
 
-    if multioutput_prior:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
-    else:
+    if lik_arr is None:
         lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
+
+    if multioutput_prior:
+        lik_arr = [ProductLikelihood([lik_arr[p]]) for p in range(P)]
 
     if fix_y:
         for lik in lik_arr:

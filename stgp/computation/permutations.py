@@ -174,21 +174,25 @@ def permute_mat_dl_to_ld(mat, num_latents: int, num_data: int):
     return P @ mat @ P.T
 
 def permute_vec_dl_to_ld(vec, num_latents: int, num_data: int):
+    # data latent to latent data
     P = dl_to_ld(num_latents, num_data)
     return P @ vec 
 
 def permute_vec_tps_to_tsp(vec, num_latents:int):
+    # time-latent-space to time-space-latent
     Nt = vec.shape[0]
     Ns = int(vec.shape[1]/num_latents)
     return jax.vmap(lambda A: permute_vec_ld_to_dl(A, num_latents, Ns))(vec)
 
 def permute_mat_tps_to_tsp(vec, num_latents:int):
+    # time-latent-space to time-space-latent
     chex.assert_rank(vec, 3)
     Nt = vec.shape[0]
     Ns = int(vec.shape[1]/num_latents)
     return jax.vmap(lambda A: permute_mat_ld_to_dl(A, num_latents, Ns))(vec)
 
 def permute_mat_tsp_to_tps(vec, num_latents:int):
+    # time-space-latent to time-latent-space
     chex.assert_rank(vec, 3)
     Nt = vec.shape[0]
     Ns = int(vec.shape[1]/num_latents)

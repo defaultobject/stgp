@@ -4,6 +4,145 @@ import jax.numpy as np
 from ..transforms.multi_output import LMC
 from .sde_diff import diff_cvi_sde_vgp, diff_gp
 
+def magnetic_field_strength_H(
+    X, 
+    Y,
+    time_kernel = None,
+    space_kernel = None,
+    space_diff_kernel = None,
+    hierarchical = False,
+    Zs = None,
+    lik_var = 1.0,
+    fix_y = False,
+    meanfield = False,
+    verbose=True,
+    keep_dims=None,
+    model = None,
+    parallel=False,
+    temporally_grouped=False,
+    include_potential_function=False,
+    whiten=False
+):
+    assert X.shape[1] == 3
+
+    if include_potential_function:
+        assert Y.shape[1] == 4
+    else:
+        assert Y.shape[1] == 3
+
+
+    def prior_fn(latents):
+        if model == 'sde_cvi':
+            # [f dx dy dt dtdx dtdy]
+            if include_potential_function:
+                W_curl_free = np.array([
+                    [1, 0, 0, 0, 0, 0],
+                    [0, 0, 0, -1, 0, 0],
+                    [0, -1, 0, 0, 0, 0],
+                    [0, 0, -1, 0, 0, 0],
+                ])
+
+                out_dim = 4
+                in_dim = 6
+            else:
+                W_curl_free = np.array([
+                    [0, 0, 0, -1, 0, 0],
+                    [0, -1, 0, 0, 0, 0],
+                    [0, 0, -1, 0, 0, 0],
+                ])
+
+                out_dim = 3
+                in_dim = 6
+        else:
+            # [f dx dy dz]
+            if include_potential_function:
+                W_curl_free = np.array([
+                    [1, 0, 0, 0],
+                    [0, -1, 0, 0],
+                    [0, 0, -1, 0],
+                    [0, 0, 0, -1],
+                ])
+
+                out_dim = 4
+                in_dim = 4
+            else:
+                W_curl_free =  np.array([
+                    [0, -1, 0, 0],
+                    [0, 0, -1, 0],
+                    [0, 0, 0, -1],
+                ])
+
+                out_dim = 3
+                in_dim = 4
+
+        W = W_curl_free
+
+        lmc_prior =  LMC(
+            latents=latents,
+            input_dim=in_dim,
+            output_dim=out_dim,
+            W = W
+        )
+
+        lmc_prior._W.fix()
+
+        return lmc_prior
+
+    if model == 'sde_cvi':
+        return diff_cvi_sde_vgp(
+            X, 
+            Y,
+            num_latents=1,
+            time_diff = 1,
+            space_diff = 1,
+            time_kernel = time_kernel,
+            space_kernel = space_kernel,
+            space_diff_kernel = space_diff_kernel,
+            hierarchical = hierarchical,
+            Zs = Zs,
+            lik_var = lik_var,
+            fix_y = fix_y,
+            meanfield = meanfield,
+            prior_fn = prior_fn,
+            verbose=verbose,
+            keep_dims=keep_dims,
+            parallel=parallel,
+            temporally_grouped=temporally_grouped
+        ) 
+    elif model == 'vgp':
+        return diff_gp(
+            X, 
+            Y,
+            num_latents=1,
+            time_diff = 1,
+            space_diff = 1,
+            time_kernel = time_kernel,
+            space_kernel = space_kernel,
+            lik_var = lik_var,
+            fix_y = fix_y,
+            meanfield = meanfield,
+            prior_fn = prior_fn,
+            verbose = verbose,
+            inference='Variational',
+            whiten=whiten
+        )
+    elif model == 'batch_gp':
+        return diff_gp(
+            X, 
+            Y,
+            num_latents=1,
+            time_diff = 1,
+            space_diff = 1,
+            time_kernel = time_kernel,
+            space_kernel = space_kernel,
+            lik_var = lik_var,
+            fix_y = fix_y,
+            prior_fn = prior_fn,
+            verbose = verbose
+        )
+    else:
+        raise NotImplementedError()
+
 def helmholtz_3D(
     X, 
     Y,
@@ -20,7 +159,8 @@ def helmholtz_3D(
     model = None,
     parallel=False,
     temporally_grouped=False,
-    whiten=False
+    whiten=False,
+    minibatch_size=None
 ):
     """
         Args:
@@ -77,9 +217,14 @@ def helmholtz_3D(
             verbose=verbose,
             keep_dims=keep_dims,
             parallel=parallel,
-            temporally_grouped=temporally_grouped
+            temporally_grouped=temporally_grouped,
+            minibatch_size=minibatch_size
         ) 
     elif model == 'vgp':
+
+        if minibatch_size is not None:
+            raise NotImplementedError()
+
         return diff_gp(
             X, 
             Y,
@@ -97,6 +242,9 @@ def helmholtz_3D(
             whiten=whiten
         )
     elif model == 'batch_gp':
+        if minibatch_size is not None:
+            raise NotImplementedError()
+
         return diff_gp(
             X, 
             Y,
@@ -210,7 +358,7 @@ def helmholtz(
             prior_fn = prior_fn,
             verbose=verbose,
             keep_dims=keep_dims,
-            parallel=parallel
+            parallel=parallel   
         ) 
     elif model == 'vgp':
         return diff_gp(

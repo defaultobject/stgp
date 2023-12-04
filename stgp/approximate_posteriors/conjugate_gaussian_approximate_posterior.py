@@ -175,7 +175,7 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
         For computational reasons it is generally more efficient to store V_tilde (data-latent or time-latent-space) format.  For consistency we also store Y_tilde in the same way. Leading to Y_tilde and V_tilde havning shapes:
             
             Y_tilde: [N x num_latents] or [Nt x (num_latents * Ns)]
-            V_tilde: [N x block_size x block_size] or [Ns x (block_size * Ns) x (block_size * Ns)]
+            V_tilde: [N x block_size x block_size] or [Nt x (block_size * Ns) x (block_size * Ns)]
 
         There are three main use cases:
             1) No Sparsity 

@@ -28,7 +28,7 @@ from stgp.models import GP
 import matplotlib.pyplot as plt
 
 # Construct Data
-XS, X, Y = single_output_timeseries(100000, 1000, seed=0)
+XS, X, Y = single_output_timeseries(1000, 1000, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
@@ -62,8 +62,16 @@ m = GP(
     inference='Variational'
 )
 
+
 m.print()
 print(m.get_objective())
+
+ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+ng_trainer.train(1.0, 1)
+print(m.get_objective())
+print(GP( data = data, prior = Independent(latent_gps), likelihood = GaussianProductLikelihood([Gaussian()])).get_objective())
+breakpoint()
+
 
 # Train
 if True:

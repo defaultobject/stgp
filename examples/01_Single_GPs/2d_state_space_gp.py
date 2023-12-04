@@ -6,7 +6,7 @@ sys.path.append('../')
 import jax
 from jax.config import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 import objax
 import numpy as np
 from jax import make_jaxpr
@@ -74,6 +74,9 @@ print(m.get_objective())
 
 # Predict
 pred_mu, pred_var = m.predict_y(XS)
+
+print(pred_mu.shape, np.sum(pred_mu))
+print(pred_var.shape, np.sum(pred_var))
 
 # Plot
 fig, axes = plt.subplots(1, 2)

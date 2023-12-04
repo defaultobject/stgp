@@ -13,16 +13,76 @@ from .. import Parameter
 from tensorflow_probability.substrates import jax as tfp
 from jax.scipy.linalg import expm
 
-
-class _PeriodicBase(MarkovKernel):
+class __PeriodicBase(MarkovKernel):
     """ Two dimensional oscillatory SDE model """
 
-    def __init__(self, frequency_param, lengthscale_param, variance_param, j):
+    def __init__(self, frequency_param, lengthscale_param, variance_param, j, include_dt= False):
         self.j = j
 
         self.frequency_param = frequency_param
         self.lengthscale_param = lengthscale_param
         self.variance_param = variance_param
+
+        self.include_dt = include_dt
+
+
+    def to_ss(self, X_spatial=None):
+        freq = self.frequency_param.value
+        lengthscale = self.lengthscale_param.value
+        variance= self.variance_param.value
+
+        j = self.j
+
+        F = np.array([
+            [0, 1.0],
+            [-freq * j, 0],
+        ])
+
+        L = np.eye(2)
+
+        L = np.array([
+            [1, 0],
+            [0, 1]
+        ])
+        inv_ls = 1/(lengthscale**2)
+
+
+        qj = freq*j*variance * tfp.math.bessel_ive(j, lengthscale) 
+
+        if j != 0:
+            qj = 2 * qj
+        
+        Qc = np.eye(2) * qj
+
+        if not self.include_dt:
+            H = np.array([
+                [1.0, 0.0],
+            ])
+
+        else:
+            H = np.array([
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ])
+
+
+        Pinf = qj * np.eye(2)
+
+        return F, L, Qc, H, Pinf
+
+
+
+class _PeriodicBase(MarkovKernel):
+    """ Two dimensional oscillatory SDE model """
+
+    def __init__(self, frequency_param, lengthscale_param, variance_param, j, include_dt=False, include_dt2=False):
+        self.j = j
+
+        self.frequency_param = frequency_param
+        self.lengthscale_param = lengthscale_param
+        self.variance_param = variance_param
+        self.include_dt = include_dt
+        self.include_dt2 = include_dt2
 
 
     def to_ss(self, X_spatial=None):
@@ -39,18 +99,43 @@ class _PeriodicBase(MarkovKernel):
 
         L = np.eye(2)
 
+        # no noise in the derivative
+
         inv_ls = 1/(lengthscale**2)
+
+        L = np.array([
+            [0, 0],
+            [0, 1]
+        ])
 
 
         # bessel_ive is an exponentially scaled version of the modified Bessel function of the first kind
-        Ij = (tfp.math.bessel_ive(j, inv_ls) / np.exp(-np.abs(inv_ls)))
-        qj = 2 *  Ij / np.exp(inv_ls)
+        qj = variance * tfp.math.bessel_ive(j, lengthscale) 
+
+        if j != 0:
+            qj = 2 * qj
         
         Qc = np.eye(2) * qj
 
-        H = np.array([
-            [1.0, 0.0],
-        ])
+
+        if not self.include_dt or not self.include_dt2:
+            H = np.array([
+                [1.0, 0.0],
+            ])
+
+        else:
+            if self.include_dt:
+                H = np.array([
+                    [1.0, 0.0],
+                    [0.0, -j * freq],
+                ])
+            elif self.include_dt2:
+                H = np.array([
+                    [1.0, 0.0],
+                    [0.0, -j * freq],
+                    [-j * freq, 0.0],
+                ])
+
 
 
         Pinf = qj * np.eye(2)
@@ -90,28 +175,38 @@ class Periodic(Kernel):
 
 class ApproxSDEPeriodic(MarkovKernel, Periodic):
     """ See TBD. """
-    def __init__(self, frequency, lengthscale, variance, n_terms=10, active_dims = None):
+    def __init__(self, frequency, lengthscale, variance, n_terms=10, active_dims = None, include_dt=False, include_dt2=False):
 
         super(ApproxSDEPeriodic, self).__init__(frequency, lengthscale, variance, active_dims=active_dims)
 
         self.n_terms = n_terms
+        self.include_dt = include_dt
+        self.include_dt2 = include_dt2
 
         self.base_kernel = None
         self._setup_base_kernel()
+        self._state_space_dim = self.state_size()
+
 
     def _setup_base_kernel(self):
-        for n in range(self.n_terms):
+        # order = n_terms + 1
+        for n in range(self.n_terms+1):
             new_term = _PeriodicBase(
                 self.frequency_param,
                 self.lengthscale_param,
                 self.variance_param,
-                n+1
+                n,
+                include_dt = self.include_dt,
+                include_dt2 = self.include_dt2
             )
 
             if self.base_kernel == None:
                 self.base_kernel = new_term
             else:
                 self.base_kernel = self.base_kernel + new_term
+
+    def state_size(self):
+        return int(2 * (self.n_terms+1))
 
     def to_ss(self, X_spatial=None):
         return self.base_kernel.to_ss(X_spatial)

@@ -1,5 +1,5 @@
 from . import Transform, Independent
-from ..computation.permutations import data_order_to_output_order
+from ..computation.permutations import data_order_to_output_order, ld_to_dl, dl_to_ld
 from ..computation.matrix_ops import to_block_diag
 
 import jax.numpy as np
@@ -82,7 +82,7 @@ class LTI_SDE(SDE):
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """
-    def __init__(self, gp: 'Model', whiten_space=False):
+    def __init__(self, gp: 'Model', whiten_space=False, overwrite_H=True):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.whiten_space = whiten_space
@@ -90,6 +90,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         # select all dims
         self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
+
+        self.overwrite_H = overwrite_H
 
     @property
     def temporal_output_dim(self):
@@ -104,14 +106,26 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         Q = len(self.gp.state_space_dim())
 
-        # Observe both f and df
-        H_t = np.eye(self._state_space_dim)
+        if self.overwrite_H:
+            # for most kernels we can just set H to eye to observe f and its (time) derivatives
+            # Observe both f and df
+            H_t = np.eye(self._state_space_dim)
+        else:
+            # for some kernels, like the periodic kernel) the state does not correspond exactly
+            #   to f and its time derivatives, so this needs to be handled by the kernel itself
+            _, _, _, H_t, _ = self.gp.state_space_representation(X_s)
+            if False:
+                if X_s is None:
+                    return H_t
+                else:
+                    raise NotImplementedError('Not Implemented for spatial models')
+
         # only keep the deriatives that we care about
         H_t = H_t[self.keep_dims]
 
-        #When there are no spatial points there is no need to permute
-        #as it will automatically be in time-latent format
         if False:
+            #When there are no spatial points there is no need to permute
+            #as it will automatically be in time-latent format
             if X_s is None:
                 return to_block_diag([
                     H_t
@@ -134,7 +148,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         I_mask = np.reshape(I, [mask_dim, full_dim])
 
         # convert from [ds, ns, dt] -> [dt_keep, ds, ns]
-        H_q = data_order_to_output_order(dt_keep, ds * Ns).T @ I_mask
+        H_q = ld_to_dl(num_latents = ds * Ns, num_data = dt_keep) @ I_mask
 
         # convert from [Q, ds, ns, dt] -> [Q, dt_keep, ds, ns]
         H = to_block_diag([
@@ -142,18 +156,18 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             for q in range(Q)
         ])
 
-
         return H
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
     """
     Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
     """
-    def __init__(self, gp: 'Model', keep_dims, whiten_space=False):
+    def __init__(self, gp: 'Model', keep_dims, whiten_space=False, overwrite_H=True):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.keep_dims = np.array(keep_dims)
-        self.whiten_space = whiten_space
+        self.whiten_space = whiten_space,
+        self.overwrite_H = overwrite_H
 
     @property
     def temporal_output_dim(self):

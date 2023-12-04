@@ -261,7 +261,6 @@ class Pendulum1D(PDE):
         res = dt2 + ls * np.sin(t)
 
         return np.array([res])
-
 class DampedPendulum1D(PDE):
     def __init__(self, latent, b, g, l, train=True):
         """
@@ -327,6 +326,62 @@ class DampedPendulum1D(PDE):
         b = self.b_param.value
 
         res = dt2 + ls * np.sin(t) + b * dt
+
+        return np.array([res])
+
+class SpatialDampedPendulum(PDE):
+    def __init__(self, latent, b, g, l, train=True):
+        """
+        Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
+
+        Let x be the angle
+
+        The  transform is:
+            d^2 x/ds^2 + sin(x) + d x/ds = 0
+        """
+        self._parent = latent
+        self._output_dim = 1
+
+        if self.parent is None:
+            self._input_dim = None
+        else:
+            self._input_dim = self.parent.output_dim
+
+        self.W = np.eye(1)
+
+        self.b_param = Parameter(
+            np.array(b), 
+            constraint='positive', 
+            name ='Pendulum1D/b', 
+            train=train
+        )
+
+        self.g_param = Parameter(
+            np.array(g), 
+            constraint='positive', 
+            name ='Pendulum1D/g', 
+            train=train
+        )
+
+        self.l_param = Parameter(
+            np.array(l), 
+            constraint='positive', 
+            name ='Pendulum1D/l', 
+            train=train
+        )
+
+    def forward(self, f):
+        """ 
+        f is of shape 6 corresponding to f, fs, fs2, dt, ...
+        """
+        t = f[0]
+        ds = f[1]
+        ds2 = f[2]
+
+        ls = self.g_param.value / self.l_param.value
+        b = self.b_param.value
+
+        res = ds2 + ls * np.sin(t) + b * ds
 
         return np.array([res])
 
@@ -404,14 +459,6 @@ class HeatEquation2D(PDE, LinearTransform):
 
 class AllenCahn(PDE):
     def __init__(self, latent, train=True):
-        """
-        Latent must be a DifferentialOperatorJoint with a 1D differential kernel.
-
-        Let x be the angle
-
-        The  transform is:
-            d^2 x/dt^2 + sin(x) + d x/dt = 0
-        """
         self._parent = latent
         self._output_dim = 1
 

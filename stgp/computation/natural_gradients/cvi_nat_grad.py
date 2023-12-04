@@ -360,7 +360,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     # Collect CVI parameters
     # time-latent-space format
-    # but lambda_1_arr is in (time-space)-latent format
+    # ???? what i am chatting here? --- but lambda_1_arr is in (time-space)-latent format
     raw_Y_arr, lambda_1_arr, lambda_2_arr = _get_fp_params(q_mu_z, model, parameterisation)
 
     #Nt, Nl, Ns = raw_Y_arr.shape

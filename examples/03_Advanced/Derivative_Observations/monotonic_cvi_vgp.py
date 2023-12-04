@@ -37,6 +37,7 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 
 
+settings.ng_jitter = 1e-5
 f = lambda x: 20*np.sin(100*x)+100*x
 
 N = 20
@@ -100,8 +101,8 @@ q = FullConjugateGaussian(
 m = stgp.models.GP(
     data = stgp.data.Data(X, Y),
     prior = prior,
-    #likelihood = [Gaussian(0.1), Probit(nu=1.0)],
-    likelihood = [ProductLikelihood([Gaussian(0.1)]), ProductLikelihood([Probit(nu=1.0)])],
+    likelihood = [Gaussian(0.1), Probit(nu=1.0)],
+    #likelihood = [ProductLikelihood([Gaussian(0.1)]), ProductLikelihood([Probit(nu=1.0)])],
     approximate_posterior = q,
     ell_samples = 100,
     prediction_samples = 1000,
@@ -110,10 +111,12 @@ m = stgp.models.GP(
 )
 
 
+print(m.get_objective())
+breakpoint()
 
 
 # Train
-if False:
+if True:
     print(m.get_objective())
     max_iters = 100
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='retraction')

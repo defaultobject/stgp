@@ -603,6 +603,8 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
             XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples = num_samples, posterior=posterior
         )
 
+        mu_samples = np.copy(mu)
+
         # TODO: fix shapes with aggregation blocks?
         #chex.assert_shape(mu, (num_samples, XS.shape[0], prior.output_dim, 1))
 

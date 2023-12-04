@@ -208,6 +208,7 @@ class TransformedData(Data):
         self.base_data = base_data
 
         self.minibatch = self.base_data.minibatch
+        self.minibatch_scaling = self.base_data.minibatch_scaling
 
         self.N = self.base_data.N
 
@@ -772,6 +773,7 @@ class TemporallyGroupedData(Data):
 
     @property
     def X_time(self):
+        # only mini batch in space
         return self.X_st[:, 0, 0]
 
     @property

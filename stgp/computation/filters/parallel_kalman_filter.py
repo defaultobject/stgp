@@ -224,6 +224,7 @@ def make_filtering_elements():
 
 @dispatch('parallel')
 def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
+
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
     m_inf = prior.m_inf(None, X_s, None)

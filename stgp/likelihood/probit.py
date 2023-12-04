@@ -7,7 +7,7 @@ from ..computation.general import log_inv_probit
 
 
 class Probit(DiagonalLikelihood):
-    """Bernoulli likelihood."""
+    """Probit likelihood."""
 
     def __init__(self,  nu = 1e-6):
         self.nu = nu

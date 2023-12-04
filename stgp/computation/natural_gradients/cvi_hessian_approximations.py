@@ -20,6 +20,7 @@ from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo, mv_block_monte_carlo_list
+from ...data import Data, TemporallyGroupedData
 
 from ...dispatch import _ensure_str
 
@@ -31,25 +32,108 @@ from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_e
 
 from ...transforms import MultiOutput
 
-def compute_u_to_f(m, q_m, q_S, return_var_only = False):
+def data_decomposes_across_time(data) -> bool:
+    time_data_types = ['TemporallyGroupedData', 'SpatioTemporalData', 'TemporalData', 'MultiOutputTemporalData']
+
+    data_type = _ensure_str(data)
+
+    return data_type in time_data_types
+
+def create_new_data_of_same_type(data, X, Y):
+    data_type = _ensure_str(data)
+    """ Constructs new data of the same type with new data points X, Y. Does not sort. """
+    if data_type == 'Data':
+        return Data(X, Y)
+    elif data_type == 'TemporallyGroupedData':
+        return TemporallyGroupedData(X=X, Y=Y, sort=False)
+
+    raise RuntimeError(f'Data type {data_type} not supported')
+
+def get_likelihood_hessian(model, m, S, laplace_log_lik=False):
+
+    data = model.data
+    if data_decomposes_across_time(data):
+        X_st, Y_st = data.X_st, data.Y_st
+        # Nt x Ns x P x 1
+        T_f = jax.vmap(
+            lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+        )(m, S, X_st, Y_st)
+
+        if not laplace_log_lik:
+            raise NotImplementedError()
+        else:
+            # batch over Nt and Ns, only evaluate the conditional var on the indiviual P x 1 outputs
+            Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f[None, :]) ))(T_f)
+
+            # laplace approximation of the hessian
+            neg_Lambda = -(1/Lambda)
+            neg_Lambda = neg_Lambda[..., 0, 0] # will be [Nt x Ns x P x 1]
+
+    else:
+        q = model.approximate_posterior
+        prior = model.prior
+        Y = model.data.Y
+
+        # N x P x 1
+        T_f = compute_u_to_tf(model, m, S)
+
+        # TODO: only works for exponential family likelihoods atm
+        # [N x P x B]
+        if not laplace_log_lik:
+            hess = batch_or_loop(
+                lambda y, t, lik: jax.vmap(lik.log_hessian_scalar)(y, t),
+                [Y.T, T_f[..., 0].T, model.likelihood.likelihood_arr],
+                [0, 0, 0],
+                dim = len(model.likelihood.likelihood_arr),
+                out_dim=1,
+                batch_type = get_batch_type(model.likelihood.likelihood_arr)
+            )
+            neg_Lambda = np.array(hess)
+            neg_Lambda = (neg_Lambda.T)[..., None]
+        else:
+
+            Lambda = jax.vmap(
+                lambda f: model.likelihood.conditional_var(f[None, :]) # []
+            )(
+                T_f[..., 0] # [N x P]
+            )
+
+            Lambda = Lambda[:, :, 0, 0]
+            # laplace approximation of the hessian
+            neg_Lambda = -(1/Lambda)
+            
+        neg_Lambda = np.reshape(neg_Lambda, Y.shape)
+
+        # Mask out entries corresponding to missing observations
+        # These should just be ignored from the sums
+        # N x P
+        Y_mask = get_same_shape_mask(Y)
+        chex.assert_equal(neg_Lambda.shape, Y_mask.shape)
+        # N x P 
+        neg_Lambda = neg_Lambda * Y_mask
+
+        # N x P x 1
+        neg_Lambda = neg_Lambda[..., None]
+
+    return neg_Lambda
+
+def compute_u_to_f(m, q_m, q_S, return_var_only = False, data = None):
     """
     Compute q(f) = E_p(f | u) [q(u | q_m, q_S)]
 
     Args:
         m: model
     """
-    data = m.data
     likelihood = m.likelihood
     prior = m.prior
     approximate_posterior = m.approximate_posterior
     inference = m.inference
 
-
-    N = data.N
-
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
+    if data is None:
+        data = m.data
+        if data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            data.batch()
 
     # compute the marginal q(f)
     q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=False)(
@@ -107,10 +191,10 @@ def compute_f_to_tf(m, q_f_mu, q_f_var):
 
     return q_f_res
 
-def compute_u_to_tf(model, q_mu_z, q_var_z):
+def compute_u_to_tf(model, q_mu_z, q_var_z, data=None):
     """ Helper function to compute the transformations of u to T(F) """
     # compute u -> f
-    q_f_mu, q_f_var = compute_u_to_f(model, q_mu_z, q_var_z)
+    q_f_mu, q_f_var = compute_u_to_f(model, q_mu_z, q_var_z, data=data)
 
     # compute f -> T(f)
     T_f = compute_f_to_tf(model, q_f_mu, q_f_var)
@@ -129,73 +213,91 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
     prior = model.prior
     Y = model.data.Y
 
-    q_tf_mu = compute_u_to_f(model, u, S)
-
-    # jacobian of u -> T(f(u))
-    J_true = jax.jacfwd(lambda m: compute_u_to_tf(model, m, S))(u)
-
-
     def J_u(m):
-        # N x P x 1
-        T_f = compute_u_to_tf(model, m, S)
 
         # jacobian of u -> T(f(u))
         # [N x P x B x M x Q x B]
-        J_u_tf = jax.jacfwd(lambda m: compute_u_to_tf(model, m, S))(m)
+        # TODO: this is very memory intensive :( 
+        # Would rewriting it as jacobian vector product help?
 
-        # TODO: only works for exponential family likelihoods atm
+        if data_decomposes_across_time(model.data):
+            data = model.data
+            data.batch()
 
-        # [N x P x B]
-        if not laplace_log_lik:
-            hess = batch_or_loop(
-                lambda y, t, lik: jax.vmap(lik.log_hessian_scalar)(y, t),
-                [Y.T, T_f[..., 0].T, model.likelihood.likelihood_arr],
-                [0, 0, 0],
-                dim = len(model.likelihood.likelihood_arr),
-                out_dim=1,
-                batch_type = get_batch_type(model.likelihood.likelihood_arr)
-            )
-            neg_Lambda = np.array(hess)
-            neg_Lambda = (neg_Lambda.T)[..., None]
-        else:
+            # Nt x Ns x P x 1
+            neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
 
-            Lambda = jax.vmap(
-                lambda f: model.likelihood.conditional_var(f[None, :]) # []
-            )(
-                T_f[..., 0] # [N x P]
-            )
+            X_st, Y_st = data.X_st, data.Y_st
 
-            Lambda = Lambda[:, :, 0, 0]
-            # laplace approximation of the hessian
-            neg_Lambda = -(1/Lambda)
-            
-        neg_Lambda = np.reshape(neg_Lambda, Y.shape)
+            # Nt x Ns x P x 1 x Ms x 1
+            J_u_tf = jax.vmap(
+                lambda m_t, S_t, x_t, y_t: jax.jacfwd(
+                    lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                )(m_t)
+            )(m, S, X_st, Y_st)
 
-        # Mask out entries corresponding to missing observations
-        # These should just be ignored from the sums
-        # N x P
-        Y_mask = get_same_shape_mask(Y)
-        chex.assert_equal(neg_Lambda.shape, Y_mask.shape)
-        # N x P 
-        neg_Lambda = neg_Lambda * Y_mask
+            # clean up shapes
+            J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
+            neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
 
-        neg_Lambda = neg_Lambda[..., None]
+            # Gauss Newton approximation
+            # TODO: should probably write as a jax.vjp
 
-        J_u_tf_vec = np.reshape(J_u_tf, [J_u_tf.shape[0], J_u_tf.shape[1], -1])[..., None]
-
-        G_vec = jax.vmap(
-            lambda Ju: jax.vmap(
-                    jax.vmap(
+            # Nt x Ns x P x Ms x Ms
+            G_vec = jax.vmap( # batch over time
+                jax.vmap( #batch over space
+                    jax.vmap( #batch over outputs
                         lambda a, b: a @ b @ a.T
-                    )
-                )(
-                    Ju[:, :, None, ...], 
-                    neg_Lambda[..., None]
-                ),
-            3
-        )(J_u_tf)
+                    ) 
+                )
+            )(
+                J_u_tf, neg_Lambda
+            )
 
-        G = np.sum(G_vec, [1, 2, 3, 6])[:, None, ...]
+            # mask data
+            Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P
+            Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+            G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+
+            # remove missing data from the natural gradient sum
+            G_vec_masked = G_mask * G_vec
+
+            G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+            G = G[:, None, ...] # Nt x 1 x Ms x Ms
+
+        else:
+            neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
+            u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
+            J_u_tf = jax.jacfwd(u_tf_fn)(m)
+
+            # sum over B?
+            G_vec = jax.vmap(
+                # sum over N
+                lambda Ju: jax.vmap(
+                        # sum over P/Q
+                        jax.vmap(
+                            lambda a, b: a @ b @ a.T
+                        )
+                    )(
+                        Ju[:, :, None, ...], 
+                        neg_Lambda[..., None]
+                    ),
+                3
+            )(J_u_tf)
+
+            Y_mask = get_same_shape_mask(Y)
+            Y_reshaped_for_G_mask = Y_mask[None, ...][..., None, None, None, None] 
+
+            G_mask = np.tile( Y_reshaped_for_G_mask, [G_vec.shape[0], 1, 1, 1, G_vec.shape[4], G_vec.shape[5], G_vec.shape[6]])
+
+            # remove missing data from the natural gradient sum
+            G_vec_masked = G_mask * G_vec
+
+            G = np.sum(G_vec_masked, [1, 2, 3, 6])[:, None, ...]
+
+        if settings.debug_mode:
+            breakpoint()
+
         return G
 
     approx_hessian = 0.5 *  J_u(u)
@@ -238,7 +340,17 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     if delta_u:
         approx_hessian = gauss_newton(q_mu_z, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples)
     else:
-        raise NotImplementedError()
+        def wrapped_fn(s):
+            return  gauss_newton(s, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples)
+
+        # sample u here
+        approx_hessian = mv_block_monte_carlo(
+            wrapped_fn, 
+            q_mu_z, 
+            q_var_z, 
+            generator = model.inference.generator, 
+            num_samples = prediction_samples
+        )
 
     if _ensure_str(q) == 'MeanFieldConjugateGaussian':
         # fix shapes
@@ -247,41 +359,13 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian
 
-def laplace_gauss_newton_delta_f_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples):
-    raise NotImplementedError()
-    q = model.approximate_posterior
-    prior = model.prior
-    Y = model.data.Y
-
-    # get parameters of q(u) in time-latent-space order
-    q_mu_z, q_var_z = q.surrogate.posterior_blocks()
-    chex.assert_rank([q_mu_z, q_var_z], [3, 4])
-
-
-    # sample u here
-    def wrapped_fn(s):
-        return  gauss_newtonf(s, q_var_z , model, delta_f = True)
-
-    approx_hessian = mv_block_monte_carlo(
-        wrapped_fn, 
-        q_mu_z, 
-        q_var_z, 
-        generator = model.inference.generator, 
-        num_samples = prediction_samples
-    )
-
-    chex.assert_rank(approx_hessian, 4)
-    return approx_hessian
-
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
     if enforce_psd_type == 'gauss_newton':
-        raise NotImplementedError()
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False)
     elif enforce_psd_type == 'gauss_newton_delta_u':
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True)
     elif enforce_psd_type == 'laplace_gauss_newton':
-        raise NotImplementedError()
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u':
         approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True)

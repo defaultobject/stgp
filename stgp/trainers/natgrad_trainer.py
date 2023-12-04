@@ -131,7 +131,8 @@ class NatGradTrainer(Trainer):
         total_epochs = None,
         enforce_psd_type=None,
         prediction_samples=None,
-        return_objective = True
+        return_objective = True,
+        nan_max_attempt = None
     ):
         """
         Args
@@ -170,6 +171,11 @@ class NatGradTrainer(Trainer):
         self.enforce_psd_type = enforce_psd_type
 
         self.prediction_samples = prediction_samples
+
+        if nan_max_attempt is None:
+            nan_max_attempt = 1
+
+        self.nan_max_attempt = nan_max_attempt
 
     def train(
         self, 
@@ -212,8 +218,9 @@ class NatGradTrainer(Trainer):
 
         epoch_arr = []
         for i in range(epochs):
-            max_attempt = 10
+            max_attempt = self.nan_max_attempt
             while not gradient_step(i, i+epoch_ofset):
+                # we have run out of attempts
                 if max_attempt == 0:
                     if raise_error:
                         raise RuntimeError('NaN encountered whilst natgrad training!')

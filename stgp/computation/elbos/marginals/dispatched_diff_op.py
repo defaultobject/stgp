@@ -9,7 +9,7 @@ from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
-from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat, right_permute_mat
+from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat, right_permute_mat, permute_mat_ld_to_dl, permute_vec_ld_to_dl
 from ....core import Block, get_block_dim
 
 # Import Types
@@ -55,6 +55,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
 
         return mu, var
     else:
+        # This path is used when, for example, computing the ELL of the surrogate likelihood
         P = q_m.shape[1]
 
 
@@ -79,20 +80,19 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         # posterior is in [time - Q - dt - ds - space ] format
         # we need it in [time - space - Q - dt - ds] format
 
-        H = data_order_to_output_order(Ns, Q * dt * ds).T
-
-        mu_p = jax.vmap(lambda a: H @ a)(q_m)
-        var_p = jax.vmap(lambda A: H @ A[0] @ H.T)(q_S)
+        mu_p = jax.vmap(lambda a: permute_vec_ld_to_dl(a, num_latents=Q * dt * ds, num_data=Ns))(q_m)
+        var_p = jax.vmap(lambda A: permute_mat_ld_to_dl(A[0], num_latents=Q * dt * ds, num_data=Ns))(q_S)
 
         var_p = var_p[:, None, ...]
+
         return mu_p, var_p
 
 @dispatch(FullConjugateGaussian, Likelihood, Independent, DifferentialOperatorJoint, NoSparsity, whiten=False)
 def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten):
     """
     Args:
-        q_m: [Nt, Q - L - Ns, 1]
-        q_S: [Nt, 1, Q - L - Ns, Q - L - Ns]
+        q_m: [Nt, Q - Dt - Ns - Ds, 1]
+        q_S: [Nt, 1, Q - Dt - Ns - Ds, Q - Dt - Ns - Ds]
     """
 
     #dummy base prior
@@ -136,6 +136,7 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
             mu_p_bd = np.reshape(mu_p, [-1, Q, 1])
             var_p_bd = batched_block_diagional(var_p, Q)
             var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
+
 
             chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
             return mu_p_bd, var_p_bd
@@ -188,12 +189,22 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
     dummy_prior = prior.parent[0]
 
     if dummy_prior.hierarchical:
+    #if True:
         # when hierarchical we need to compute the conditional with the spatial derivate kernels
         # to do this we first predict in time and then compute the required conditional
 
         # predict in time first
-        xs_spatial_data, all_temporal_data, XS_data, pred_mu, pred_var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False, sort_output=False)
-        chex.assert_rank([pred_mu, pred_var], [3, 4])
+        xs_spatial_data, all_temporal_data, _, pred_mu_train_test, pred_var_train_test = approximate_posterior.surrogate.predict_temporal(XS)
+        chex.assert_rank([pred_mu_train_test, pred_var_train_test], [3, 4])
+
+
+        # from now on we treat and space and time independently
+        # so first unpack the temporal predictions and unsort back onto the testing locations
+        # then compute the spatial conditions
+
+        # remove the training data
+        pred_mu = all_temporal_data.unsort(pred_mu_train_test)[data.Nt:]
+        pred_var = all_temporal_data.unsort(pred_var_train_test)[data.Nt:]
 
         out_block_dim = 1
         mu, var = evoke('spatial_conditional', xs_spatial_data, prior, dummy_prior, approximate_posterior)(
@@ -209,21 +220,11 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
             whiten
         )
 
-        mu = np.reshape(mu, [xs_spatial_data.Nt, -1, mu.shape[1], mu.shape[2]])
-        var = np.reshape(var, [xs_spatial_data.Nt, -1, var.shape[1], var.shape[2], var.shape[3]])
-
-        # remove training data
-        mu = all_temporal_data.unsort(mu)[data.Nt:]
-        var = all_temporal_data.unsort(var)[data.Nt:]
-
-        # convert to data-latent format
-
-        mu = np.reshape(mu, [-1, mu.shape[2], mu.shape[3]])
-        var = np.reshape(var, [-1, var.shape[2], var.shape[3], var.shape[4]])
-
+        #mu, var are in [time-space-Q-latent] format
         # unsort to original permutation in XS
-        mu_p_unsorted = XS_data.unsort(mu)
-        var_p_unsorted = XS_data.unsort(var)
+        # mu_p_unsorted, mu_p_unsorted are in [data-Q-latent] format
+        mu_p_unsorted = xs_spatial_data.unsort(mu)
+        var_p_unsorted = xs_spatial_data.unsort(var)
 
         return mu_p_unsorted, var_p_unsorted
 
@@ -233,6 +234,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
 
         pred_mu, pred_var = fix_block_shapes(pred_mu, pred_var, data, likelihood, approximate_posterior, out_block)
         chex.assert_rank([pred_mu, pred_var], [3, 4])
+
 
         return pred_mu, pred_var
 
@@ -317,6 +319,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S, approximate_posterior, likeli
             out_block_dim,
             whiten
         )
+
+        breakpoint()
 
         chex.assert_rank([mu, var], [3, 4])
         return mu, var

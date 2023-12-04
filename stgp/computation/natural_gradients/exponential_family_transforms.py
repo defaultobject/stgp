@@ -1,5 +1,5 @@
 from ... import settings
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, triangular_solve
 
 import jax
 import jax.numpy as np
@@ -70,17 +70,15 @@ def lambda_to_theta_diagonal(lambda_1, lambda_2):
 @jit
 def lambda_to_theta(lambda_1, lambda_2):
     M = lambda_1.shape[0]
-    jit = settings.ng_jitter * np.eye(M) 
 
-    lambda_2_chol = cholesky(-2*lambda_2+jit)
-
-    #inv_chol = triangular_solve(lambda_2_chol, np.eye(M), lower=True)
-    #theta_2 = inv_chol.T @ inv_chol
+    lambda_2_chol = cholesky(add_jitter(-2*lambda_2, settings.ng_jitter))
 
     theta_2 =  cholesky_solve(lambda_2_chol, np.eye(M))
-    #theta_1 =  theta_2 @ lambda_1
+    #theta_2_sqrt =  triangular_solve(lambda_2_chol, np.eye(M))
+    #theta_2 = theta_2_sqrt.T @ theta_2_sqrt
+    theta_1 =  theta_2 @ lambda_1
 
-    theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
+    #theta_1 =  cholesky_solve(lambda_2_chol, lambda_1)
 
     return theta_1, theta_2
 
@@ -113,12 +111,7 @@ def xi_to_expectation(xi1, xi2):
 
 @jit
 def expectation_to_xi(mu1, mu2):
-    M = mu1.shape[0]
-    jit = settings.ng_jitter * np.eye(M) 
-
-    #xi2 = cholesky(mu2 - mu1 @ mu1.T + jit)
     xi2 = cholesky(mu2 - mu1 @ mu1.T)
-
     return mu1, xi2
 
 

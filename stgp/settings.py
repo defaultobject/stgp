@@ -4,7 +4,11 @@ import bibtexparser
 import pathlib
 from enum import Enum
 
+# useful flag for debugging
+debug_mode = False
+
 in_strict_mode = False
+
 
 # controls whether batchjax can convert loops into vmaps
 use_loop_mode = False
@@ -16,6 +20,9 @@ safe_mode = False
 
 # controls whether any integral approximation should use monte-carlo or quadrature
 use_quadrature = False
+
+# when true will wrap filter P_k with force_symmetric
+kalman_filter_force_symmetric = False
 
 # ===== Solver Specific settings ====
 class SolveType(Enum):
