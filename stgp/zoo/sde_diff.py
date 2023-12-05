@@ -348,7 +348,7 @@ def diff_cvi_sde_vgp(
         hierarchical: [Optional[bool]] - Optional flag. If true then construct prior over temporal derivates and push spatial ones into the marginal/likelihood.
         meanfield: [bool] - default false. Construct a meanfield approximate posterior across the latents. Default is a full Gaussian.
         multioutput_prior[bool] - when multioutput the likelihood must be constructed as a list of productlikelihoods
-        parallel: [bool] - default false. Whether or not use a parallel kalman filter and smoother.
+        parallel: [bool, 'auto'] - default false. Whether or not use a parallel kalman filter and smoother.
         temporally_grouped: [bool] - Whether or not to use temporoally grouped or kronecker structure (only applied to ST problems)
     """
 
@@ -363,6 +363,16 @@ def diff_cvi_sde_vgp(
         include_space = True
     else:
         include_space = False
+
+    if parallel == 'auto':
+        if jax.devices()[0].device_kind == 'cpu':
+            if verbose:
+                print('running locally -- sequential filter used')
+            parallel = False
+        else:
+            if verbose:
+                print('running externally -- parallel filter used')
+            parallel = True
 
     if parallel:
         filter_type = 'parallel'

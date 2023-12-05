@@ -11,6 +11,24 @@ from .. import Parameter
 from batchjax import batch_or_loop, BatchType
 from ..utils.utils import get_batch_type
 from ..utils.nan_utils import get_same_shape_mask
+from ..dispatch import _ensure_str
+
+# ====== HELPER FUNCTIONS =====
+def is_timeseries_data(data):
+    timeseries_types = ['TemporalData', 'MultiOutputTemporalData']
+    return  _ensure_str(data) in timeseries_types
+
+def get_sequential_data_obj(X, Y, sort):
+    if (X.shape[1] == 1) and (Y.shape[1] == 1):
+        return TemporalData(X, Y, sort=sort)
+    elif (X.shape[1] == 1) and (Y.shape[1] > 1):
+        return MultiOutputTemporalData(X, Y, sort=sort) 
+    elif X.shape[1] > 1:
+        return SpatioTemporalData(X=X, Y=Y, sort=sort) 
+
+    raise RuntimeError()
+
+# ====== DATA =====
 
 class Input(objax.Module):
     """ Base class for storing Input X.  """
@@ -609,6 +627,10 @@ class TemporalData(SequentialData):
         return None
 
     @property
+    def X_st(self):
+        return self.X_time[..., None, None]
+
+    @property
     def X(self):
         return self._X.X
 
@@ -639,10 +661,8 @@ class MultiOutputTemporalData(SequentialData):
 
         super(MultiOutputTemporalData, self).__init__()
 
-        # Only supports single output 
-        chex.assert_rank(X, 2)
-
         if sort:
+            chex.assert_rank(X, 2)
             chex.assert_rank(Y, 2)
 
             X_sorted, Y_sorted = self.sort(
@@ -680,6 +700,10 @@ class MultiOutputTemporalData(SequentialData):
         return self._X.X[:, 0]
 
     @property
+    def X_st(self):
+        return self.X_time[..., None, None]
+
+    @property
     def Y_st(self):
         return self._Y.value
 
@@ -692,15 +716,7 @@ class MultiOutputTemporalData(SequentialData):
     def Y_flat(self):
         return self.Y
 
-def get_sequential_data_obj(X, Y, sort):
-    if (X.shape[1] == 1) and (Y.shape[1] == 1):
-        return TemporalData(X, Y, sort=sort)
-    elif (X.shape[1] == 1) and (Y.shape[1] > 1):
-        return MultiOutputTemporalData(X, Y, sort=sort) 
-    elif X.shape[1] > 1:
-        return SpatioTemporalData(X=X, Y=Y, sort=sort) 
 
-    raise RuntimeError()
 
 
 class GroupedData(Data):

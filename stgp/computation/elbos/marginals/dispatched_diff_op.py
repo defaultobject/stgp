@@ -106,7 +106,6 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     if out_block == Block.DIAGONAL:
         out_block = Block.LATENT
 
-
     # TODO: figure out the format of q_m and q_S
     if (out_block == Block.FULL or out_block == Block.BLOCK):
         mu_p = jax.vmap(lambda a: permute_vec(a, QL))(q_m)

@@ -6,6 +6,7 @@ from enum import Enum
 
 # useful flag for debugging
 debug_mode = False
+verbose = False
 
 in_strict_mode = False
 
@@ -23,6 +24,9 @@ use_quadrature = False
 
 # when true will wrap filter P_k with force_symmetric
 kalman_filter_force_symmetric = False
+
+# useful for debugging
+cvi_ng_exploit_space_time = True
 
 # ===== Solver Specific settings ====
 class SolveType(Enum):

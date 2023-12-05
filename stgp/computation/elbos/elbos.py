@@ -6,6 +6,7 @@ import chex
 
 from batchjax import batch_or_loop
 from ...utils.utils import get_batch_type
+from ... import settings
 from ...approximate_posteriors import ApproximatePosterior, ConjugateApproximatePosterior, FullConjugateGaussian, MeanFieldConjugateGaussian
 from ...transforms import Independent, Transform
 from ...likelihood import Likelihood
@@ -28,13 +29,6 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
     )
 
 
-    if _ensure_str(likelihood) == 'BlockDiagonalGaussian': 
-        print(f'q_f_mu: {np.sum(q_f_mu)}, q_f_var: {np.sum(q_f_var)}, Y: {np.sum(data.Y)}, likelihood: {np.sum(likelihood.variance)}')
-        pass
-    else:
-        #print('ELL: SUM: ', np.sum(np.square(data.Y - np.squeeze(q_f_mu)), axis=0))
-        pass
-
     # Compute Expected Log Likelihood   
     ELL = evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior)(
         data, q_f_mu, q_f_var, likelihood, prior, approximate_posterior, inference
@@ -43,12 +37,7 @@ def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likel
     if data.minibatch:
         #chex.assert_shape(ELL, [prior.output_dim])
         Y_mask = get_same_shape_mask(data.Y)
-        N_no_nan = np.sum(Y_mask, axis=0)
-
         return data.minibatch_scaling * np.sum(ELL)
-        #return np.sum((N/N_no_nan) * ELL)
-
-        #return np.sum((N/N_no_nan) * ELL)
     else:
         return np.sum(ELL)
 
@@ -178,7 +167,8 @@ def elbo(
     # when calling compute_expected_log_liklihood_with_variational_params this will call a marginal that will convert it to time-space-latent format
     lml, q_m, q_S =  q.surrogate.posterior_blocks(return_lml=True)
 
-    print(f'lml: {np.sum(lml)}, q_m: {np.sum(q_m)}, q_S: {np.sum(q_S)}')
+    if settings.verbose:
+        print(f'lml: {np.sum(lml)}, q_m: {np.sum(q_m)}, q_S: {np.sum(q_S)}')
 
     # data is stored in time-space-latent format
     ELL =  compute_expected_log_liklihood_with_variational_params(
@@ -197,6 +187,7 @@ def elbo(
 
     elbo =  ELL - ELL_surrogate + ML_surrogate
 
-    print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
+    if settings.verbose:
+        print(f'ELL: {ELL}, ELL_surrogate: {ELL_surrogate}, ML_surrogate: {ML_surrogate}, KL: {-ELL_surrogate + ML_surrogate}')
 
     return elbo

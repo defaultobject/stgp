@@ -354,7 +354,9 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
         lik_mat = R
 
     # sequential, parallel, square_root_svm
-    print(f'running {filter_type} kalman filter')
+    if settings.verbose:
+        print(f'running {filter_type} kalman filter')
+
     filter_fn = evoke('filter', filter_type)
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)

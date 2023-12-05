@@ -292,11 +292,21 @@ def diff_hierarchical_vgp(X, Y, time_diff = 1, space_diff = 1, base_kernel = Non
     return m
 
 
-def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, ell_samples=None, prior_fn = None, keep_dims = None, parallel=False):
+def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, ell_samples=None, prior_fn = None, keep_dims = None, parallel=False, verbose=False):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
     include_space = not(space_kernel is None)
+
+    if parallel == 'auto':
+        if jax.devices()[0].device_kind == 'cpu':
+            if verbose:
+                print('running locally -- sequential filter used')
+            parallel = False
+        else:
+            if verbose:
+                print('running externally -- parallel filter used')
+            parallel = True
 
     if parallel:
         filter_type = 'parallel'
@@ -451,13 +461,24 @@ def diff_hierarchical_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel =
 
     return m
 
-def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False, parallel=False, precision=True):
+def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0, Z= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None, whiten_space = False, parallel=False, precision=True, verbose=False):
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
 
 
     if Z is None:
         raise RuntimeError('Z must be passed!')
+
+    if parallel == 'auto':
+        if jax.devices()[0].device_kind == 'cpu':
+            if verbose:
+                print('running locally -- sequential filter used')
+            parallel = False
+        else:
+            if verbose:
+                print('running externally -- parallel filter used')
+            parallel = True
+
 
     if parallel:
         filter_type = 'parallel'
@@ -607,10 +628,20 @@ def diff_hierarchical_sparse_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_k
 
     return m
 
-def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0,  ell_samples=None, prior_fn = None, keep_dims=None, parallel=False):
+def diff_sde_vgp(X, Y, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, fix_y=False, lik_var = 1.0,  ell_samples=None, prior_fn = None, keep_dims=None, parallel=False, verbose=False):
 
     if time_kernel is None:
         raise RuntimeError('Time Kernel must be passed!')
+
+    if parallel == 'auto':
+        if jax.devices()[0].device_kind == 'cpu':
+            if verbose:
+                print('running locally -- sequential filter used')
+            parallel = False
+        else:
+            if verbose:
+                print('running externally -- parallel filter used')
+            parallel = True
 
     if parallel:
         filter_type = 'parallel'

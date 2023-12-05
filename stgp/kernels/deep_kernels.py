@@ -278,7 +278,7 @@ class DeepStationary(StationaryKernel, DeepKernel):
                 out_axes=0
             )(x1, x2, self.lengthscales, pm_x1, pm_x2, pk_x1, pk_x2, pk_x1x2)
 
-            k_xx = np.product(k_xx)
+            k_xx = np.prod(k_xx)
 
             return k_xx
 

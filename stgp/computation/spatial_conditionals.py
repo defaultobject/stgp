@@ -340,12 +340,13 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
     # TODO: derive proper mean 
 
-    if np.any(np.array(prior.whiten_space)):
-        # whiten transform in space
-        Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
-        # TODO: fix the hardcoded time dim
-        Kzz_chol = np.kron(np.eye(2), Kzz_chol)
-        pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
+    if False:
+        if np.any(np.array(prior.whiten_space)):
+            # whiten transform in space
+            Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
+            # TODO: fix the hardcoded time dim
+            Kzz_chol = np.kron(np.eye(2), Kzz_chol)
+            pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
     if batch_space:
         #batch over XS_space, Ksz_full, Kss_full, Ktt_full, pred_mean, pred_var_chol
@@ -532,6 +533,14 @@ def differential_spatial_conditional(
         batch_arr = [None, None, None, None, 0, 0, 0, 0, 0, None, None]
     else:
         batch_arr = [None, None, None, None, None, None, 0, 0, 0, None, None]
+
+    if False:
+        if np.any(np.array(prior.whiten_space)):
+            # whiten transform in space
+            Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
+            # TODO: fix the hardcoded time dim
+            Kzz_chol = np.kron(np.eye(2), Kzz_chol)
+            pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
 
     # batch over time
     mu_p, var_p_bd = jax.vmap(

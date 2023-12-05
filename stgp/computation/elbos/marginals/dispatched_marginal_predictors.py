@@ -9,7 +9,7 @@ from ....utils.utils import fix_block_shapes
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, gaussian_spatial_conditional
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, batched_block_diagional
-from ....data import TemporallyGroupedData
+from ....data import TemporallyGroupedData, is_timeseries_data
 
 from .meanfield_utils import meanfield_marginal_blocks
 
@@ -42,16 +42,14 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
 
     Q = prior.base_prior.output_dim
 
-    #breakpoint()
-
-    if False:
+    if is_timeseries_data(approximate_posterior.surrogate.data):
         mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
         # fix block sizes
         pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
 
     else:
         # this just predict at the inducing points in time
-        XS_temporal_data, sorted_data, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
+        XS_temporal_data, sorted_data, _, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
         chex.assert_rank([mu, var], [3, 4])
 
         # construct data with same temporal points as sort_data but with all the required spatial points
@@ -81,8 +79,6 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
             prior_parent = prior.parent
             data_x =approximate_posterior.surrogate.data._X 
 
-
-        # TODO... what is the ordering here?
         mu, var = evoke('spatial_conditional', xs_data, prior_parent, prior_parent, approximate_posterior)(
             xs_data, 
             data_x, 
@@ -99,23 +95,15 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
         chex.assert_rank([mu, var], [3, 4])
 
 
-        if False:
-            # [time - space] format
-            mu_p = np.reshape(mu, [-1, 1, 1])
-            var = np.diagonal(var, axis1=2, axis2=3)
-            var_p = np.reshape(
-                var,
-                [-1, 1, 1, 1]
-            )
-        else:
-            out_dim = prior.output_dim
+        out_dim = prior.output_dim
 
-            mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
-            var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var)
+        # fix permutations
+        mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
+        var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var)
 
-            mu_p = np.reshape(mu_p, [-1, out_dim, 1])
-            var_p = batched_block_diagional(var_p, out_dim)
-            var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
+        mu_p = np.reshape(mu_p, [-1, out_dim, 1])
+        var_p = batched_block_diagional(var_p, out_dim)
+        var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
 
 
         # time x space format

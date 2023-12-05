@@ -68,7 +68,7 @@ class Kernel(objax.Module):
             k_d1_d2 = jax.vmap(self._K_scaler, in_axes=[0, 0])(x1, x2)
             chex.assert_shape(k_d1_d2, [D])
 
-            k_xx =  np.product(k_d1_d2)
+            k_xx =  np.prod(k_d1_d2)
             chex.assert_rank(k_xx, 0)
 
             return k_xx
@@ -376,7 +376,7 @@ class StationaryKernel(Kernel):
             if additive:
                 k_xx =  np.sum(k_d1_d2)
             else:
-                k_xx =  np.product(k_d1_d2)
+                k_xx =  np.prod(k_d1_d2)
 
             chex.assert_rank(k_xx, 0)
 

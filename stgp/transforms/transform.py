@@ -146,8 +146,7 @@ class Independent(Transform):
         self, 
         latents: Optional[List['Model']] = None, 
         latent: Optional['Model'] = None,
-        prior=True,
-        whiten_space=False
+        prior=True
     ) -> None:
         """
         Args:
@@ -174,7 +173,9 @@ class Independent(Transform):
 
         self._input_dim = self.output_dim
         self._parent = ensure_module_list(latents)
-        self.whiten_space = whiten_space
+
+        self.whiten_space = False
+
 
     def transform_diagonal(self, mu, var): return mu, var
     def transform(self, mu, var): return mu, var
@@ -206,8 +207,6 @@ class Independent(Transform):
         if type(sparsity_list[0]) is list:
             # assuming only one latent per mean field
             sparsity_list = [s[0] for s in sparsity_list]
-
-
 
         return sparsity_list
 

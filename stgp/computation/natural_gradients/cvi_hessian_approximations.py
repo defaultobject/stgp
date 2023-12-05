@@ -20,7 +20,7 @@ from ...dispatch import dispatch, evoke
 from ..parameter_transforms import psd_retraction_map
 from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo, mv_mean_field_block_monte_carlo, mv_block_monte_carlo_list
-from ...data import Data, TemporallyGroupedData
+from ...data import Data, TemporallyGroupedData, MultiOutputTemporalData, TemporalData, SpatioTemporalData, SpatialTemporalInput
 
 from ...dispatch import _ensure_str
 
@@ -37,15 +37,28 @@ def data_decomposes_across_time(data) -> bool:
 
     data_type = _ensure_str(data)
 
-    return data_type in time_data_types
+    if settings.cvi_ng_exploit_space_time:
+        return data_type in time_data_types
+    else:
+        return False
 
-def create_new_data_of_same_type(data, X, Y):
+def create_new_single_time_data_of_same_type(data, X, Y):
     data_type = _ensure_str(data)
     """ Constructs new data of the same type with new data points X, Y. Does not sort. """
     if data_type == 'Data':
         return Data(X, Y)
     elif data_type == 'TemporallyGroupedData':
         return TemporallyGroupedData(X=X, Y=Y, sort=False)
+    elif data_type == 'SpatioTemporalData':
+        return SpatioTemporalData(
+            X=SpatialTemporalInput(X_time=X[0, 0, :1], X_space = X[0, :, 1:], train=False), 
+            Y=Y, 
+            sort=False
+        )
+    elif data_type == 'MultiOutputTemporalData':
+        return MultiOutputTemporalData(X=X[0], Y=Y, sort=False)
+    elif data_type == 'TemporalData':
+        return TemporalData(X=X[0], Y=Y, sort=False)
 
     raise RuntimeError(f'Data type {data_type} not supported')
 
@@ -56,18 +69,24 @@ def get_likelihood_hessian(model, m, S, laplace_log_lik=False):
         X_st, Y_st = data.X_st, data.Y_st
         # Nt x Ns x P x 1
         T_f = jax.vmap(
-            lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+            lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
         )(m, S, X_st, Y_st)
 
         if not laplace_log_lik:
             raise NotImplementedError()
         else:
             # batch over Nt and Ns, only evaluate the conditional var on the indiviual P x 1 outputs
-            Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f[None, :]) ))(T_f)
+            Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f) ))(T_f)
 
             # laplace approximation of the hessian
             neg_Lambda = -(1/Lambda)
             neg_Lambda = neg_Lambda[..., 0, 0] # will be [Nt x Ns x P x 1]
+
+            # ensure rank 4
+            if len(neg_Lambda.shape) == 3:
+                # this is required due to an inconsistency in return dimensions
+                #  when wrapping a likelihood in a ProductLikelihood
+                neg_Lambda = neg_Lambda[..., None]
 
     else:
         q = model.approximate_posterior
@@ -131,9 +150,7 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False, data = None):
 
     if data is None:
         data = m.data
-        if data.minibatch:
-            # TODO: minibatching only works when sparsity is used. Assert this.
-            data.batch()
+
 
     # compute the marginal q(f)
     q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=False)(
@@ -163,10 +180,6 @@ def compute_f_to_tf(m, q_f_mu, q_f_var):
         q_f_mu: Shape  N x P x B
     """
     data = m.data
-
-    if data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        data.batch()
 
     # transform through non linear part
     if type(m.prior) == MultiOutput:
@@ -213,6 +226,11 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
     prior = model.prior
     Y = model.data.Y
 
+    # only minibatch once so everything is computed with the same batch
+    if model.data.minibatch:
+        # TODO: minibatching only works when sparsity is used. Assert this.
+        model.data.batch()
+
     def J_u(m):
 
         # jacobian of u -> T(f(u))
@@ -222,7 +240,6 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
 
         if data_decomposes_across_time(model.data):
             data = model.data
-            data.batch()
 
             # Nt x Ns x P x 1
             neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
@@ -232,7 +249,7 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
             # Nt x Ns x P x 1 x Ms x 1
             J_u_tf = jax.vmap(
                 lambda m_t, S_t, x_t, y_t: jax.jacfwd(
-                    lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                    lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
                 )(m_t)
             )(m, S, X_st, Y_st)
 
@@ -254,16 +271,28 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
                 J_u_tf, neg_Lambda
             )
 
-            # mask data
-            Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P
-            Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-            G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+            # TODO: there is an inconsistency in how temporally grouped stores Y
+            # it should be Nt x P x Ns to match the Spatio-temporal Case
+            if _ensure_str(data) == 'TemporallyGroupedData':
+                Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
+                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+                chex.assert_equal(G_mask.shape, G_vec.shape)
+            else:
+                Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
+                Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1])
+                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+                chex.assert_equal(G_mask.shape, G_vec.shape)
 
             # remove missing data from the natural gradient sum
             G_vec_masked = G_mask * G_vec
 
             G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
             G = G[:, None, ...] # Nt x 1 x Ms x Ms
+
+            if settings.verbose:
+                print('ST GAUSS NEWTON')
 
         else:
             neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
@@ -289,11 +318,14 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
             Y_reshaped_for_G_mask = Y_mask[None, ...][..., None, None, None, None] 
 
             G_mask = np.tile( Y_reshaped_for_G_mask, [G_vec.shape[0], 1, 1, 1, G_vec.shape[4], G_vec.shape[5], G_vec.shape[6]])
+            chex.assert_equal(G_mask.shape, G_vec.shape)
 
             # remove missing data from the natural gradient sum
             G_vec_masked = G_mask * G_vec
 
             G = np.sum(G_vec_masked, [1, 2, 3, 6])[:, None, ...]
+            if settings.verbose:
+                print('D GAUSS NEWTON')
 
         if settings.debug_mode:
             breakpoint()
