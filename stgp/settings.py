@@ -28,6 +28,8 @@ kalman_filter_force_symmetric = False
 # useful for debugging
 cvi_ng_exploit_space_time = True
 
+cvi_ng_batch = True
+
 # ===== Solver Specific settings ====
 class SolveType(Enum):
     CHOLESKY = 1 # jax.scipy.linalg.cholesky_solve

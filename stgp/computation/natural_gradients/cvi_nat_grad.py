@@ -359,8 +359,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # Collect CVI parameters
-    # time-latent-space format
-    # ???? what i am chatting here? --- but lambda_1_arr is in (time-space)-latent format
     raw_Y_arr, lambda_1_arr, lambda_2_arr = _get_fp_params(q_mu_z, model, parameterisation)
 
     #Nt, Nl, Ns = raw_Y_arr.shape
@@ -384,9 +382,14 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
         # in time-latent-space 
         var_grads = var_test
 
+    if False:
+        print(np.sum(var_grads[0]-var_test[0]))
+        print(np.sum(var_grads-var_test))
+
+        breakpoint()
+
     # grads should be same as q_mu_z, q_var_z
     chex.assert_shape([mu_grads, var_grads], [q_mu_z.shape, q_var_z.shape])
-
 
     # update for each N
     new_lambda_1, new_lambda_2 = jax.vmap(
@@ -397,12 +400,6 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     )
 
     # reshape will preserve the data-latent format
-
-    # convert back  to data-latent format
-    #H = data_order_to_output_order(Nl, Ns).T
-    #new_Y_tilde = jax.vmap(lambda a: H.T @ a)(new_Y_tilde)
-    #new_Y_tilde = np.reshape(new_Y_tilde, Y_shape)
-
     return new_lambda_1, new_lambda_2
 
 # =================== Meanfield Approximate Posterior ====================

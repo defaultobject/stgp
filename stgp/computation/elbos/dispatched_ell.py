@@ -42,7 +42,7 @@ def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
         true = scalar_gaussian_expected_log_likelihood(X, Y[0][:, None], lik_var[0][0], q_f_mu[0][:, None], np.reshape(q_f_var[0][0], [1, 1]))
         #print(new, true, new-true)
         #breakpoint()
-        return new
+        return true
     else:
         return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
 
@@ -555,11 +555,10 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     X = data.X
     Y = data.Y
 
-
     
     if False:
         try:
-            ell_true = jax.vmap( full_gaussian_expected_log_likelihood, [None, 0, None, 0, 0])(X, Y[:, [0]][..., None], np.reshape(likelihood.likelihood_arr[0].likelihood_arr[0].variance, [1, 1]), q_f_mu_arr[:, 0, ...][..., None], q_f_var_arr[:, :, 0, 0][..., None])
+            ell_true = jax.vmap( full_gaussian_expected_log_likelihood, [None, 0, None, 0, 0])(X, Y[:, [0]][..., None], np.reshape(likelihood.likelihood_arr[0].variance, [1, 1]), q_f_mu_arr[:, 0, ...][..., None], q_f_var_arr[:, :, 0, 0][..., None])
 
             return np.sum(ell_true)
         except Exception as e:

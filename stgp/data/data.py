@@ -134,6 +134,7 @@ class Data(objax.Module):
             self.minibatch_size = self.N
             self.minibatch = False
             self.idx = None
+            self.minibatch_scaling = None
 
     def batch(self):
         self.idx = objax.random.randint(
@@ -341,6 +342,7 @@ class SequentialData(Data):
     def __init__(self):
 
         self.minibatch = False
+        self.minibatch_scaling = None
 
 
         self.unique_idx = None
@@ -794,10 +796,7 @@ class TemporallyGroupedData(Data):
 
     @property
     def X_space(self):
-        if self.minibatch:
-            return self.X_st[:,self.idx, 1:]
-        else:
-            return self.X_st[:, :, 1:]
+        return self.X_st[:, :, 1:]
 
     @property
     def X_st(self):

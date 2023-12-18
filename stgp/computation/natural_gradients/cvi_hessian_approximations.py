@@ -213,6 +213,7 @@ def compute_u_to_tf(model, q_mu_z, q_var_z, data=None):
     T_f = compute_f_to_tf(model, q_f_mu, q_f_var)
     chex.assert_rank(T_f, 3)
 
+
     return T_f
 
 def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
@@ -226,10 +227,14 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
     prior = model.prior
     Y = model.data.Y
 
-    # only minibatch once so everything is computed with the same batch
-    if model.data.minibatch:
-        # TODO: minibatching only works when sparsity is used. Assert this.
-        model.data.batch()
+    if settings.cvi_ng_batch:
+        # only minibatch once so everything is computed with the same batch
+        if model.data.minibatch:
+            # TODO: minibatching only works when sparsity is used. Assert this.
+            model.data.batch()
+    else:
+        #do not batch so we use the same batch as used in teh ELBO computation
+        pass
 
     def J_u(m):
 
@@ -257,9 +262,20 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
             J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
             neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
 
+            # TODO: there is an inconsistency in how temporally grouped stores Y
+            # it should be Nt x P x Ns to match the Spatio-temporal Case
+
+            if _ensure_str(data) == 'TemporallyGroupedData':
+                Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
+            else:
+                Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
+                Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
+
+            # create masks for missing lieklihoods
+            neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
+
             # Gauss Newton approximation
             # TODO: should probably write as a jax.vjp
-
             # Nt x Ns x P x Ms x Ms
             G_vec = jax.vmap( # batch over time
                 jax.vmap( #batch over space
@@ -271,19 +287,11 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
                 J_u_tf, neg_Lambda
             )
 
-            # TODO: there is an inconsistency in how temporally grouped stores Y
-            # it should be Nt x P x Ns to match the Spatio-temporal Case
-            if _ensure_str(data) == 'TemporallyGroupedData':
-                Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
-                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-                chex.assert_equal(G_mask.shape, G_vec.shape)
-            else:
-                Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
-                Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1])
-                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-                chex.assert_equal(G_mask.shape, G_vec.shape)
+
+            # create masks for missing data
+            Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+            G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+            chex.assert_equal(G_mask.shape, G_vec.shape)
 
             # remove missing data from the natural gradient sum
             G_vec_masked = G_mask * G_vec
@@ -293,6 +301,9 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
 
             if settings.verbose:
                 print('ST GAUSS NEWTON')
+
+            if data.minibatch:
+                G = G*data.minibatch_scaling
 
         else:
             neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
@@ -324,8 +335,13 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
             G_vec_masked = G_mask * G_vec
 
             G = np.sum(G_vec_masked, [1, 2, 3, 6])[:, None, ...]
+
+            if model.data.minibatch:
+                G = G*model.data.minibatch_scaling
+
             if settings.verbose:
                 print('D GAUSS NEWTON')
+
 
         if settings.debug_mode:
             breakpoint()
