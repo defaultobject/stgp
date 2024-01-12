@@ -278,11 +278,6 @@ def natural_gradient_update_for_gaussian_approx_posterior(model, beta, approx_po
     lambda_2 = lambda_2/2 
     lambda_2 = lambda_2 + lambda_2.T
 
-    if True:
-        # for debugging
-        _lambda_2 = lambda_2
-        _lambda_2_new = lambda_2_init + beta*(-lambda_2)
-
     #gradient update
     #∂L/μ has been calculated with the negative ELBO however the natural gradients are defined on the orginal ELBO
     # hence we use the negative lambda's here

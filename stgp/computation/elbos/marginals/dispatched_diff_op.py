@@ -11,6 +11,7 @@ from ...marginals import gaussian_conditional_diagional, gaussian_conditional, g
 from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat, right_permute_mat, permute_mat_ld_to_dl, permute_vec_ld_to_dl
 from ....core import Block, get_block_dim
+from ...kernel_ops import _batched_st_kernel, _batched_diff_kernel
 
 # Import Types
 from ....transforms import Transform, LinearTransform, Independent, NonLinearTransform, Aggregate
@@ -103,8 +104,13 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
     L = base_prior.output_dim
     QL = Q*L
 
+    if settings.whiten_space:
+        Kzz = hierachial_base_prior.derivative_kernel.K(data.X_space, data.X_space)
+        Kzz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
     if out_block == Block.DIAGONAL:
         out_block = Block.LATENT
+
 
     # TODO: figure out the format of q_m and q_S
     if (out_block == Block.FULL or out_block == Block.BLOCK):

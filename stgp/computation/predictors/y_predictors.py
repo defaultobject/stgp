@@ -3,10 +3,11 @@ import jax
 from jax import jit
 import jax.numpy as np
 import chex
+import warnings
 
-from ...likelihood import ProductLikelihood
+from ...likelihood import ProductLikelihood, Gaussian
 from ...transforms import LinearTransform, Independent, Transform
-from ...dispatch import dispatch, evoke
+from ...dispatch import dispatch, evoke, DispatchNotFound
 from ...utils.batch_utils import batch_over_module_types
 from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter, vec_add_jitter
@@ -24,6 +25,7 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, 'GaussianProductLikelihood')
 def predict_y_full(XS, likelihood, post_mu, post_var):
+    # assert all likelihoods are gaussian
     chex.assert_rank([post_mu, post_var], [2, 3])
     N, P = post_mu.shape
 
@@ -36,10 +38,18 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, 'Gaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
-    chex.assert_rank([post_mu, post_var], [3, 4])
+    chex.assert_rank([post_mu, post_var], [2, 3])
     chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
 
     return post_mu, post_var + likelihood.variance
+
+@dispatch(Posterior, 'ProductLikelihood')
+def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+    assert len(likelihood.likelihood_arr) == 1
+    return  evoke('predict_y_diagonal', Posterior, likelihood.likelihood_arr[0])(
+        XS, likelihood.likelihood_arr[0], post_mu, post_var
+    )
+
 
 @dispatch(Posterior, 'ReshapedGaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
@@ -78,16 +88,36 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         likelihood_arr = likelihood.likelihood_arr
         num_outputs = len(likelihood_arr)
 
-        # Compute prediction for each likelihood-prior pair
-        mu_arr, var_arr =  batch_over_module_types(
-            'predict_y_diagonal',
-            [gp],
-            likelihood_arr,
-            [XS, likelihood_arr, post_mu, post_var],
-            [None, 0, 1, 1],
-            num_outputs,
-            2
-        )
+        lik_types = [type(lik)==Gaussian for lik in likelihood_arr]
+        if all(lik_types):
+
+            # Compute prediction for each likelihood-prior pair
+            mu_arr, var_arr =  batch_over_module_types(
+                'predict_y_diagonal',
+                [gp],
+                likelihood_arr,
+                [XS, likelihood_arr, post_mu, post_var],
+                [None, 0, 1, 1],
+                num_outputs,
+                2
+            )
+        else:
+            # only compute closed form  ones
+            mu_arr, var_arr = [], []
+
+            for p in range(num_outputs):
+                try:
+                    mu_p, var_p = evoke('predict_y_diagonal', gp, likelihood_arr[p])(
+                        XS, likelihood_arr[p], post_mu[:, p], post_var[:, p]
+                    )
+                    mu_arr.append(mu_p)
+                    var_arr.append(var_p)
+                except DispatchNotFound as e:
+                    mu_arr.append(post_mu[:, p]*np.nan)
+                    var_arr.append(post_var[:, p]*np.nan)
+
+            mu_arr = np.array(mu_arr)
+            var_arr = np.array(var_arr)
 
         # fix data-latent ordering due to batching
         mu_arr = np.transpose(mu_arr, [1, 0, 2])

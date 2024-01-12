@@ -28,9 +28,9 @@ from ..marginals import gaussian_conditional_diagional, gaussian_conditional
 from ..matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, to_block_diag
 
 # Import Types
-from ...transforms import Transform, LinearTransform, Independent, NonLinearTransform
+from ...transforms import Transform, LinearTransform, Independent, NonLinearTransform, DataStack
 from ...transforms.latent_variable import LatentVariable
-from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, FullConjugateGaussian
+from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, FullConjugateGaussian, MeanFieldAcrossDataApproximatePosterior
 from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood, Gaussian
 from ...sparsity import FreeSparsity, Sparsity
 
@@ -154,6 +154,34 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
+@dispatch(MeanFieldAcrossDataApproximatePosterior, Likelihood, DataStack, Sparsity, False)
+@dispatch(MeanFieldAcrossDataApproximatePosterior, Likelihood, DataStack, Sparsity, True)
+def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
+    """
+    TODO: this is quite an inefficient way of implementing MeanFieldAcrossDataApproximatePosteriors
+     but it is useful for a first implementation and for debugging
+    """
+    sparsity_arr = prior.get_sparsity_list()[0]
+    approx_posteriors_arr = approximate_posterior.approx_posteriors
+    latents_arr = prior.parent
+    num_latents = len(latents_arr)
+
+    whiten_arr = [whiten for q in range(num_latents)]
+    likelihood_arr = [likelihood for q in range(num_latents)]
+
+    q_m, q_S = batch_over_module_types(
+        evoke_name = 'variational_params',
+        evoke_params = [],
+        module_arr = [approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_params = [data, approx_posteriors_arr, likelihood_arr, latents_arr, sparsity_arr, whiten_arr],
+        fn_axes = [None, 0, None, 0, 0, 0],
+        dim = num_latents,
+        out_dim  = 2
+    )
+    q_S = to_block_diag(q_S[:, 0, :])[None, ...]
+    q_m = np.reshape(q_m, [-1, 1])
+    return q_m, q_S
+
 #================== MEAN FIELD  ENTRY POINT ==========================
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, False)
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, True)
@@ -185,7 +213,6 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     whiten_arr = [whiten for q in range(num_latents)]
 
-
     q_m, q_S = batch_over_module_types(
         evoke_name = 'variational_params',
         evoke_params = [],
@@ -195,6 +222,9 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
         dim = num_latents,
         out_dim  = 2
     )
+
+    # q_m is [Q x M x B]
+    # q_S is [Q x 1 x MB x MB]
 
     # TODO: fix this
     if False:
@@ -267,3 +297,8 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
+
+@dispatch(ApproximatePosterior, Likelihood, Transform, False)
+@dispatch(ApproximatePosterior, Likelihood, Transform, True)
+def variational_params(data, approximate_posterior, likelihood, prior, whiten):
+    breakpoint()

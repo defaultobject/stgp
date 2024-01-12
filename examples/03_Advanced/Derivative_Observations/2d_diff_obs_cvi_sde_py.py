@@ -30,6 +30,8 @@ from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 
 stgp.settings.jitter = 1e-4
+stgp.settings.verbose = True
+stgp.settings.cvi_ng_exploit_space_time = True
 
 # construct 2d grid for X
 NS = 15
@@ -48,8 +50,11 @@ dy_x2 = df_x2(X[:, 0], X[:, 1]) + np.random.randn(N)* 0.01
 
 no_diff_flag = False
 include_ds = True
+whiten_space = False
+stgp.settings.whiten_space = False
 
 Y = np.hstack([y[:, None], dy_x2[:, None], dy_x1[:, None], dy_x1[:, None]*np.NaN])
+
 
 print('X: ', X.shape)
 print('Y: ', Y.shape, np.nanmean(Y, axis=0))
@@ -64,14 +69,16 @@ spatial_kernel = RBF(input_dim=1, lengthscales=[0.1], active_dims=[1])
 # GP prior kernels
 base_kernel = SpatioTemporalSeperableKernel(
     time_kernel, 
-    spatial_kernel
+    spatial_kernel,
+    whiten_space = whiten_space
 )
 
 # surrogare model kernels using same base a gp prior
 base_sde_kernel = SpatioTemporalSeperableKernel(
     FirstOrderDerivativeKernel(time_kernel, input_index=0), 
     FirstOrderDerivativeKernel(spatial_kernel, input_index=1),
-    spatial_output_dim = 2
+    spatial_output_dim = 2,
+    whiten_space = whiten_space
 )
 
 
@@ -82,7 +89,7 @@ latent_sde_gp = GP(
 )
 
 latent_sde_gp = Independent([latent_sde_gp])
-latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp)
+latent_sde_gp = LTI_SDE_Full_State_Obs(latent_sde_gp, whiten_space = whiten_space)
 
 # gp model prior
 latent_diff_op = DifferentialOperatorJoint(
@@ -92,7 +99,8 @@ latent_diff_op = DifferentialOperatorJoint(
     ),
     kernel = FirstOrderDerivativeKernel(FirstOrderDerivativeKernel(base_kernel, input_index=0), input_index=1, parent_output_dim = 2),
     is_base = True,
-    has_parent = False
+    has_parent = False,
+    whiten_space = whiten_space
 )
 
 
@@ -127,8 +135,8 @@ prior = MultiOutput(prior_outputs)
 
 Y = np.hstack([Y[:, [0]], Y[:, [1]], Y[:, [2]]])
 
-print('X: ', X.shape)
-print('Y: ', Y.shape, np.nanmean(Y, axis=0))
+#print('X: ', X.shape)
+#print('Y: ', Y.shape, np.nanmean(Y, axis=0))
 
 # there are 3 outputs f, df/ds, df/dt
 Q = Y.shape[1]
@@ -147,7 +155,7 @@ m = stgp.models.GP(
 )
 print(m.get_objective())
 
-NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u').train(1.0, 1)
+NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u_mc_f').train(1.0, 1)
 
 print(m.get_objective())
 

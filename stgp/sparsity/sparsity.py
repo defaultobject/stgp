@@ -91,7 +91,7 @@ class SpatialSparsity(StructuredSparsity):
         if self.train_flag:
             self.raw_Z.release()
 
-class StackedSparsity(Sparsity):
+class _StackedSparsity(Sparsity):
     def __init__(self, sparsity_arr):
         self.sparsity_arr = objax.ModuleList(sparsity_arr)
 
@@ -105,6 +105,24 @@ class StackedSparsity(Sparsity):
             out_dim=1,
             batch_type = get_batch_type(self.sparsity_arr)
         )
+
+class StackedSparsity(Sparsity):
+    def __init__(self, sparsity_arr):
+        self.sparsity_arr = objax.ModuleList(sparsity_arr)
+
+    @property
+    def Z(self):
+        Z_arr =  batch_or_loop(
+            lambda Z: Z.Z,
+            [self.sparsity_arr],
+            [0],
+            dim=len(self.sparsity_arr),
+            out_dim=1,
+            batch_type = get_batch_type(self.sparsity_arr)
+        )
+        Z_arr = np.array(Z_arr)
+
+        return np.reshape(Z_arr, [-1, Z_arr.shape[-1]])
 
 
 class StackedNoSparsity(StackedSparsity, NoSparsity):

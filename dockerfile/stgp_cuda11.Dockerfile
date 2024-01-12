@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.0-devel-ubuntu20.04
+FROM nvidia/cuda:11.1.1-devel-ubuntu20.04
 
 RUN apt-get update 
 
@@ -27,8 +27,8 @@ RUN mkdir -p /home
 RUN mkdir -p /home/app
 WORKDIR /home/app
 
-# Install ML Packages built with CUDA12 support
-RUN pip3 install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+# Install ML Packages built with CUDA11 support
+RUN pip3 install --upgrade "jax[cuda11_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 #run requirements in order
 #required because scipy needs numpy to already be installed. see https://stackoverflow.com/questions/51399515/docker-cannot-build-scipy.

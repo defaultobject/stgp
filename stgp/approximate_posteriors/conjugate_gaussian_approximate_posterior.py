@@ -64,6 +64,8 @@ class ConjugatePrecisionGaussian(GaussianApproximatePosterior, ConjugateApproxim
             likelihood = surrogate_likelihood
         )
 
+        self.meanfield_over_data = False
+
     def fix(self):
         self.surrogate.likelihood.fix()
         self.surrogate.data.fix()
@@ -116,6 +118,8 @@ class ConjugateGaussian(GaussianApproximatePosterior, ConjugateApproximatePoster
             likelihood = surrogate_likelihood
         )
 
+        self.meanfield_over_data = False
+
     def fix(self):
         self.surrogate.likelihood.fix()
         self.surrogate.data.fix()
@@ -130,6 +134,8 @@ class MeanFieldConjugateGaussian(ConjugateApproximatePosterior, MeanFieldApproxi
             self.approx_posteriors = objax.ModuleList(approximate_posteriors)
         else:
             self.approx_posteriors = approximate_posteriors
+
+        self.meanfield_over_data = False
 
     @property
     def Y(self):
@@ -223,6 +229,8 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
             likelihood = surrogate_likelihood
         )
 
+        self.meanfield_over_data = False
+
     @property
     def likelihood(self):
         return self.surrogate.likelihood
@@ -274,6 +282,8 @@ class FullConjugatePrecisionGaussian(FullConjugateGaussian):
             Y = Y_tilde,
             likelihood = surrogate_likelihood
         )
+
+        self.meanfield_over_data = False
 
     @property
     def likelihood(self):

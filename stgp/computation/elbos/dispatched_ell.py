@@ -554,7 +554,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     X = data.X
     Y = data.Y
-
     
     if False:
         try:

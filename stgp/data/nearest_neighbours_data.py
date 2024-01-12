@@ -21,5 +21,7 @@ class PrecomputedGroupedNearestNeighboursData(NearestNeighboursData):
 
         self.base_data = data
         self.neighbour_arr = neighbour_arr
+        self.N = self.base_data.N
+        self.minibatch = self.base_data.minibatch
 
 

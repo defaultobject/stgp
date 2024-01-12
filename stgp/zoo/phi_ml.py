@@ -163,6 +163,9 @@ def helmholtz_3D(
     minibatch_size=None
 ):
     """
+
+        In 3D we essentially construct 'independent' 2d helmholtz priors at each time step
+        
         Args:
             model: [batch, sde_cvi]
 
@@ -176,9 +179,9 @@ def helmholtz_3D(
 
     def prior_fn(latents):
         
-        # [f dx dy] [f dx dy]
+        # [f dx dy] [f dx dy] (e.g x = lat, y = lon)
         W_curl_free = np.array([
-            [0, 1, 0, 0, 0, 1],    
+            [0, 1, 0, 0, 0, 1],  
             [0, 0, 1, 0, -1, 0],    
         ])
 
@@ -279,6 +282,19 @@ def helmholtz(
     whiten=False
 ):
     """
+        The helmholtz (2d) decomposition is defined as in https://arxiv.org/pdf/2302.10364.pdf
+
+        Indendent GPs are placed on the stream (psi) and potential (phi) functions
+
+        The ocean flow is then
+            flow=  grad(potential) + rot(stream)
+
+        where
+            grad(phi) = [d phi/dt, d phi/ds]
+            rot(psi) = [d psi/ds, - d psi/dt]
+
+        leading to 
+            flow = [d phi/dt + d psi/ds, d phi/ds - d psi/dt]
         Args:
             model: [batch, sde_cvi]
     """
@@ -319,7 +335,6 @@ def helmholtz(
         The Helmholtz prior is defined as 
             [df1/dx df1/dy]^T + [-df2/dy df2/dx]^T
         """
-        #Holmholtz prior
 
         W = np.array([
             # [f, fs, ft, fts]_q

@@ -31,7 +31,8 @@ class VB_NG_ADAM(Trainer):
 
         # construct switch trainer to iteratively update the above
         self.switch_trainer = SwitchTrainer(
-            [self.adam_trainer, self.ng_trainer]
+            [self.adam_trainer, self.ng_trainer],
+            callback_idx=0
         )
 
     def train(

@@ -34,7 +34,7 @@ from ..utils.utils import get_batch_type
 
 # Import Types
 from ..core import Model
-from ..data import Data, TransformedData
+from ..data import Data, TransformedData, TemporallyGroupedData
 from ..likelihood import Likelihood, GaussianProductLikelihood, ProductLikelihood
 from ..transforms import Independent, LinearTransform, Transform, NonLinearTransform, DataLatentPermutation
 from ..inference import Inference, Variational, Batch
@@ -118,6 +118,9 @@ def nlpd(XS, YS, m, prior, num_samples = None):
     return - np.sum(res, axis=0) / np.sum(mask, axis=0), - np.sum(res_global, axis=0) / np.sum(mask_global, axis=0)
 
 @dispatch(Data, Model, GaussianProductLikelihood, LinearModel, Inference)
+@dispatch(TemporallyGroupedData, Model, GaussianProductLikelihood, LinearModel, Inference)
+@dispatch(Data, 'VGP', GaussianProductLikelihood, LinearModel, 'Variational')
+@dispatch(TemporallyGroupedData, 'VGP', GaussianProductLikelihood, LinearModel, 'Variational')
 def nlpd(XS, YS, m, prior, num_samples=None):
     """ Closed form Gaussian NLPD """
 
@@ -128,9 +131,12 @@ def nlpd(XS, YS, m, prior, num_samples=None):
         pred_var_diag = np.diagonal(pred_var, axis1=1, axis2=2)
     else:
         pred_mu, pred_var_diag = m.predict_y(XS, diagonal=True, squeeze=False)
-        pred_var = pred_var_diag[..., 0]
-        pred_var_diag = pred_var_diag[..., 0, 0]
-        pred_mu = pred_mu[..., 0]
+        if len(pred_var_diag.shape) == 2:
+            pred_var = jax.vmap(np.diag)(pred_var_diag)
+        elif len(pred_var_diag.shape) == 4:
+            pred_var = pred_var_diag[..., 0]
+            pred_var_diag = pred_var_diag[..., 0, 0]
+            pred_mu = pred_mu[..., 0]
 
     #compute NLPD independtly for each likelihood
 
@@ -229,6 +235,7 @@ def nlpd(XS, YS, model, num_samples = None):
     """
 
     model_type = get_model_type(model.prior)
+
 
     return evoke('nlpd', model.data, model, model.likelihood, model_type, model.inference)(
         XS,

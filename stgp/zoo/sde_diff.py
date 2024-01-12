@@ -132,7 +132,7 @@ def get_space_diff_kernel_mean(space_kernel, space_diff, time_diff_kern = None, 
     return [res[q][0] for q in range(Q)], [res[q][1] for q in range(Q)]
 
 def diff_gp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, prior_fn = None, keep_dims=None , parallel = False, multioutput_prior = False, verbose=False,  meanfield=False, whiten=False, inference=None, hessian=False
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_arr=None, lik_var = 1.0, prior_fn = None, keep_dims=None , parallel = False, multioutput_prior = False, verbose=False,  meanfield=False, whiten=False, inference=None, hessian=False
 ):
     """
     Batch GP with derivative observations
@@ -284,10 +284,11 @@ def diff_gp(
         # construct PDE transform
         diff_op_prior = prior_fn(diff_op_prior)
 
-    if multioutput_prior:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
-    else:
-        lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
+    if lik_arr is None:
+        if multioutput_prior:
+            lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
+        else:
+            lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
 
     if fix_y:
         for lik in lik_arr:
@@ -330,7 +331,7 @@ def diff_gp(
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False, lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, minibatch_size = None
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False,  lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, minibatch_size = None
 ):
     """
     Args:

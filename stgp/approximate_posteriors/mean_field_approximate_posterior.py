@@ -5,6 +5,7 @@ import chex
 from .. import settings
 from ..utils.utils import ensure_module_list, get_batch_type
 from batchjax import batch_or_loop
+from ..dispatch import _ensure_str
 
 from ..transforms  import LinearTransform, NonLinearTransform
 from . import ApproximatePosterior, GaussianApproximatePosterior
@@ -40,6 +41,14 @@ class MeanFieldApproximatePosterior(ApproximatePosterior):
             self.approx_posteriors = approximate_posteriors
 
         self.num_of_latents = len(self.approx_posteriors)
+
+        if _ensure_str(self.approx_posteriors[0]) == 'MeanFieldAcrossDataApproximatePosterior':
+            self.meanfield_over_data = True
+        else:
+            self.meanfield_over_data = False
+
+
+        
 
     def get_variational_params(self):
         return self.m, self.S_chol

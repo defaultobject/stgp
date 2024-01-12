@@ -20,6 +20,28 @@ def _get_likelihood(lik):
     except Exception as e:
         return lik
 
+# TODO: refactor this as it is repeapted inside the nat_grad files
+def get_mean_field_approx_posterior_name_list(model, param_dict, approx_posterior):
+    q_type = _ensure_str(approx_posterior.approx_posteriors[0])
+    if q_type == 'MeanFieldAcrossDataApproximatePosterior':
+        m_name_list = []
+        S_chol_name_list = []
+        for q in approx_posterior.approx_posteriors:
+            _m_list, _S_list = get_mean_field_approx_posterior_name_list(model, param_dict, q)
+            m_name_list = m_name_list+_m_list
+            S_chol_name_list = S_chol_name_list+_S_list
+    else:
+        m_name_list = []
+        S_chol_name_list = []
+        for q in approx_posterior.approx_posteriors:
+            m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
+            S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
+            m_name_list.append(m_name)
+            S_chol_name_list.append(S_chol_name)
+
+    return m_name_list, S_chol_name_list
+
+
 def get_vars_to_update(model, vc):
     approx_posterior = model.approximate_posterior
 
@@ -28,13 +50,7 @@ def get_vars_to_update(model, vc):
     q_type = _ensure_str(approx_posterior)
 
     if q_type == 'MeanFieldApproximatePosterior':
-        m_name_list = []
-        S_chol_name_list = []
-        for q in approx_posterior.approx_posteriors:
-            m_name = get_var_name_with_id(model, id(q._m.raw_var), param_dict)
-            S_chol_name = get_var_name_with_id(model, id(q._S_chol.raw_var), param_dict)
-            m_name_list.append(m_name)
-            S_chol_name_list.append(S_chol_name)
+        m_name_list, S_chol_name_list = get_mean_field_approx_posterior_name_list(model, param_dict, approx_posterior)
             
     elif q_type == 'FullGaussianApproximatePosterior':
         m_name = get_var_name_with_id(model, id(approx_posterior._m.raw_var), param_dict)
@@ -73,6 +89,7 @@ def get_vars_to_update(model, vc):
         S_chol_name_list = [V_chol_name]
 
     else:
+        breakpoint()
         raise RuntimeError()
 
     return vc_keep_vars(vc, [*m_name_list, *S_chol_name_list])

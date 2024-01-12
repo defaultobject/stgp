@@ -38,6 +38,10 @@ GAUSS_NEWTON_ENFORCE_TYPES = [
     'gauss_newton_delta_u',
     'laplace_gauss_newton',
     'laplace_gauss_newton_delta_u',
+    'gauss_newton_mc_f',
+    'gauss_newton_delta_u_mc_f',
+    'laplace_gauss_newton_mc_f',
+    'laplace_gauss_newton_delta_u_mc_f',
 ]
 
 @partial(jit, static_argnums=(7))

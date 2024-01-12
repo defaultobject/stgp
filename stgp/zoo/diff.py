@@ -90,7 +90,7 @@ def diff_gp(X, Y, time_diff = 1, space_diff = 1, base_kernel = None, fix_y=False
     return m
 
 
-def diff_vgp(X, Y, time_diff = 1, space_diff = 1, diff_kern = None, base_kernel = None, fix_y=False, lik_var = 1.0, Z= None, Zs = None, ell_samples=None, prior_fn = None, whiten=False):
+def diff_vgp(X, Y, time_diff = 1, space_diff = 1, diff_kern = None, base_kernel = None, fix_y=False, lik_arr = None, lik_var = 1.0, Z= None, Zs = None, ell_samples=None, prior_fn = None, whiten=False):
 
     if base_kernel is None:
         raise RuntimeError('Base Kernel must be passed!')
@@ -135,10 +135,11 @@ def diff_vgp(X, Y, time_diff = 1, space_diff = 1, diff_kern = None, base_kernel 
     if type(lik_var) is not list:
         lik_var = [lik_var for p in range(P)]
 
-    if prior_fn is None:
-        lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
-    else:
-        lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
+    if lik_arr is None:
+        if prior_fn is None:
+            lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
+        else:
+            lik_arr = [ProductLikelihood([Gaussian(lik_var[p])]) for p in range(P)]
 
     if fix_y:
         for lik in lik_arr:

@@ -9,45 +9,58 @@ import chex
 import warnings
 
 class GaussianApproximatePosterior(ApproximatePosterior):
-    def __init__(self, dim: int=None, m=None, S=None, S_chol_vec = None, train=True, num_latents = None):
+    def __init__(self, dim: int=None, m=None, S=None, S_chol_vec = None, train=True, num_latents = None, approximate_posteriors = None):
         super(GaussianApproximatePosterior, self).__init__()
 
-        if dim is None and m is None:
-            raise RuntimeError('Either dim or m must be passed')
+        if dim is None and m is None and approximate_posteriors is None:
+            raise RuntimeError('Either dim, m, or approximate_posterior must be passed')
 
-        if m is None:
-            #m = 0.01*np.ones([dim, 1])
-            m = np.array(0.01*onp.random.rand(dim)[:, None])
-            #m = np.ones([dim, 1])
+        # this is a bit of hack to get MeanField and FullGaussian approximate posteriors to handle meanfield data posteriors consistently
+        if approximate_posteriors is not None:
+            self._m = None
+            self._S_chol = None
+            self.dim = None
+            self.num_latents = None
+            self.approximate_posteriors = None
+            self.meanfield_over_data = True
 
-        chex.assert_rank(m, 2)
+        else:
+            self.approximate_posteriors = None
+            self.meanfield_over_data = False
 
-        if S is None and S_chol_vec is None:
-            warnings.warn('Approximate posterior ')
-            S = 0.1*np.eye(dim)
+            if m is None:
+                #m = 0.01*np.ones([dim, 1])
+                m = np.array(0.01*onp.random.rand(dim)[:, None])
+                #m = np.ones([dim, 1])
 
-        if dim is None:
-            dim = m.shape[0]
+            chex.assert_rank(m, 2)
 
-        self._m = Parameter(
-            np.array(m),
-            constraint=None,
-            name='GaussianApproxPosterior/m',
-            train=train
-        )
+            if S is None and S_chol_vec is None:
+                warnings.warn('Approximate posterior ')
+                S = 0.1*np.eye(dim)
 
-        if S_chol_vec is None:
-            S_chol_vec = lower_triangular_cholesky(S)
+            if dim is None:
+                dim = m.shape[0]
 
-        self._S_chol = Parameter(
-            np.array(S_chol_vec),
-            constraint=None,
-            name='GaussianApproxPosterior/S_chol',
-            train=train
-        )
+            self._m = Parameter(
+                np.array(m),
+                constraint=None,
+                name='GaussianApproxPosterior/m',
+                train=train
+            )
 
-        self.dim = dim
-        self.num_latents = num_latents
+            if S_chol_vec is None:
+                S_chol_vec = lower_triangular_cholesky(S)
+
+            self._S_chol = Parameter(
+                np.array(S_chol_vec),
+                constraint=None,
+                name='GaussianApproxPosterior/S_chol',
+                train=train
+            )
+
+            self.dim = dim
+            self.num_latents = num_latents
 
     @property
     def m(self):

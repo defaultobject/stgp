@@ -39,9 +39,9 @@ from ....transforms import Transform, LinearTransform, Independent, NonLinearTra
 from ....transforms.pdes import DifferentialOperatorJoint
 from ....transforms import JointDataLatentPermutation, IndependentDataLatentPermutation, DataLatentPermutation, IndependentJointDataLatentPermutation
 from ....transforms.latent_variable import LatentVariable
-from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior, FullConjugateGaussian
+from ....approximate_posteriors import ApproximatePosterior, MeanFieldApproximatePosterior, GaussianApproximatePosterior, FullGaussianApproximatePosterior, MeanFieldConjugateGaussian, ConjugateApproximatePosterior, FullConjugateGaussian, MeanFieldAcrossDataApproximatePosterior
 from ....likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood
-from ....sparsity import FreeSparsity, Sparsity
+from ....sparsity import FreeSparsity, Sparsity, StackedSparsity
 from ...integrals.approximators import mv_indepentdent_monte_carlo, mv_block_monte_carlo
 from ....core.model_types import get_model_type, LinearModel, NonLinearModel, get_linear_model_part, get_non_linear_model_part, get_permutated_prior
 from ....data import Data
@@ -447,6 +447,24 @@ def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prio
 
     return mu, var
 
+
+@dispatch(MeanFieldAcrossDataApproximatePosterior, Likelihood, Independent, whiten=True)
+@dispatch(MeanFieldAcrossDataApproximatePosterior, Likelihood, Independent, whiten=False)
+def marginal_blocks(data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block: Block, whiten):
+    chex.assert_rank([q_m, q_S_chol], [3, 4])
+    approx_posterior = approximate_posterior.approx_posteriors[0]
+    sparsity = StackedSparsity(prior.base_prior.get_sparsity_list()[0])
+    base_prior = prior.parent[0]
+
+    fn = evoke('marginal_blocks', approx_posterior, likelihood, base_prior, sparsity, whiten=whiten)
+
+    # we dont need to pass through the permutated prior as this will be handled down stream
+    mu, var = fn(
+        data, q_m, q_S_chol, approx_posterior, likelihood, base_prior, [sparsity], out_block, whiten
+    ) 
+    chex.assert_rank([mu, var], [3, 4])
+
+    return mu, var
 
 # Mean-field entry point
 @dispatch(MeanFieldApproximatePosterior, Likelihood, Independent, whiten=True)

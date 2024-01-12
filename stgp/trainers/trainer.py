@@ -316,8 +316,13 @@ class SwitchTrainer(Trainer):
     We pass through the trainers grad_step, and nat_grad_step through the init function to minimize jitting.
 
     """
-    def __init__(self, trainer_list: list):
+    def __init__(self, trainer_list: list, callback_idx = 0):
+        """
+        Args:
+            callback_idx: when using a callback we need to decide which trainer we want to use. This is not always just the last one as sometimes this might not return a value (like when using natural gradients)]
+        """
         self.trainer_list = trainer_list
+        self.callback_idx = callback_idx
 
     def train(
         self,
@@ -354,7 +359,10 @@ class SwitchTrainer(Trainer):
 
                 # After calling all individual trainers we have completed one training epoch
                 if callback is not None:
-                    callback(i, None, None)
+                    total_elbo_idx = -(num_trainers-self.callback_idx)
+                    # we use flatten and [-1] to handle both scalars and arrays
+                    val_to_pass = np.array([total_elbos[total_elbo_idx]]).flatten()[-1]
+                    callback(i, None, val_to_pass)
 
         except RuntimeError as e:
             # it is likely that a nan was encounted

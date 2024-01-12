@@ -5,6 +5,7 @@ from .multi_output import LMC_Base, LMC_LDL, LMC_DRD
 from .data_latent_permutation import DataLatentPermutation, IndependentDataLatentPermutation, JointDataLatentPermutation, IndependentJointDataLatentPermutation
 from .output_map import OutputMap
 from .aggregate import Aggregate
+from .nearest_neighbours import NearestNeighbours, PrecomputedNearestNeighbours, DataStack
 
 __all__ = [
     "Transform", 
@@ -22,5 +23,8 @@ __all__ = [
     "One2One",
     "LatentSpecific",
     "ElementWiseTransform",
-    "CompositeTransform"
+    "CompositeTransform",
+    "NearestNeighbours",
+    "PrecomputedNearestNeighbours",
+    "DataStack"
 ]

@@ -17,6 +17,7 @@ from ...utils.nan_utils import get_same_shape_mask
 from .prior_ops import prior_mean_Z, prior_covar_ZZ, prior_covar_XZ
 
 def compute_expected_log_liklihood_with_variational_params(data, q_m, q_S, likelihood, prior, approximate_posterior, inference):
+
     N = data.N
 
     if True:

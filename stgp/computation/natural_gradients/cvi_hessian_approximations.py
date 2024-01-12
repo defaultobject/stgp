@@ -62,15 +62,11 @@ def create_new_single_time_data_of_same_type(data, X, Y):
 
     raise RuntimeError(f'Data type {data_type} not supported')
 
-def get_likelihood_hessian(model, m, S, laplace_log_lik=False):
+def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
 
     data = model.data
     if data_decomposes_across_time(data):
-        X_st, Y_st = data.X_st, data.Y_st
-        # Nt x Ns x P x 1
-        T_f = jax.vmap(
-            lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-        )(m, S, X_st, Y_st)
+
 
         if not laplace_log_lik:
             raise NotImplementedError()
@@ -151,11 +147,11 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False, data = None):
     if data is None:
         data = m.data
 
-
     # compute the marginal q(f)
     q_f_mu, q_f_var = evoke('marginal', approximate_posterior, likelihood, prior, whiten=inference.whiten, debug=False)(
         data, q_m, q_S, approximate_posterior, likelihood, prior, inference.whiten
     )
+
     # If the model is Multioutput q_f_mu will be a list and each element of the list
     #   will have rank [3] and [4]
 
@@ -206,6 +202,10 @@ def compute_f_to_tf(m, q_f_mu, q_f_var):
 
 def compute_u_to_tf(model, q_mu_z, q_var_z, data=None):
     """ Helper function to compute the transformations of u to T(F) """
+
+    if model.approximate_posterior.meanfield_over_data:
+        breakpoint()
+
     # compute u -> f
     q_f_mu, q_f_var = compute_u_to_f(model, q_mu_z, q_var_z, data=data)
 
@@ -213,10 +213,9 @@ def compute_u_to_tf(model, q_mu_z, q_var_z, data=None):
     T_f = compute_f_to_tf(model, q_f_mu, q_f_var)
     chex.assert_rank(T_f, 3)
 
-
     return T_f
 
-def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
+def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
     """
     Args:
         u: Nt x Ms x D
@@ -247,16 +246,190 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
             data = model.data
 
             # Nt x Ns x P x 1
-            neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
-
             X_st, Y_st = data.X_st, data.Y_st
 
-            # Nt x Ns x P x 1 x Ms x 1
-            J_u_tf = jax.vmap(
-                lambda m_t, S_t, x_t, y_t: jax.jacfwd(
-                    lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-                )(m_t)
-            )(m, S, X_st, Y_st)
+            # passing through S*0 makes means we only return the condition variance p(f|u) not the marginal q(f)
+            # THIS IS JUST TO GET SHAPES -- VERY HACKY
+            conditional_mean, conditional_var = compute_u_to_f(
+                model, 
+                m[0][None, ...], 
+                S[0][None, ...]*0.0, 
+                data=create_new_single_time_data_of_same_type(
+                    data, 
+                    X=X_st[0][None, ...], 
+                    Y=Y_st[0][None, ...]
+                )
+            )
+            conditional_mean = np.array(conditional_mean)
+            conditional_var = np.array(conditional_var)
+
+
+
+            def _f_conditional_samples(m, eps):
+                """
+                Args: 
+                    eps: [P x Nt x Ns x Q x 1] 
+                    m: [Nt x (Ns x Q) x 1] 
+                """
+                if False:
+                    f_conditional_mean, f_conditional_var = jax.vmap(
+                        lambda m_t, S_t, x_t, y_t: compute_u_to_f(model, m_t[None, ...], S_t[None, ...]*0.0, data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                    )(m, S, X_st, Y_st)
+
+                    eps = np.array(eps)
+                    f_conditional_mean = np.array(f_conditional_mean)[:, :, :, 0, :][..., None]
+                    f_conditional_var = np.array(f_conditional_var)[:, :, :, 0, :, :]
+
+                    f_conditional_var_chol = np.linalg.cholesky(f_conditional_var)
+
+                    f_samples = f_conditional_mean + f_conditional_var_chol * eps
+                    f_samples = f_samples[..., 0]
+
+                    print(compute_f_to_tf(model, f_samples, None))
+                    breakpoint()
+
+                def wrap(m_t, eps_t, S_t, x_t, y_t):
+                    pred_mu_t, pred_var_t = compute_u_to_f(
+                        model, 
+                        m_t[None, ...], 
+                        S_t[None, ...]*0.0, 
+                        data=create_new_single_time_data_of_same_type(
+                            data, 
+                            X=x_t[None, ...], 
+                            Y=y_t[None, ...]
+                        )
+                    )
+                    eps_t = eps_t[..., None]
+                    pred_mu_t = np.array(pred_mu_t)[..., None]
+                    pred_var_t = np.array(pred_var_t)
+
+                    pred_var_t_chol = np.linalg.cholesky(pred_var_t)
+
+                    f_samples = pred_mu_t + pred_var_t_chol * eps_t # reparam trick
+                    f_samples = f_samples[..., 0]
+
+                    return compute_f_to_tf(
+                        model, 
+                        f_samples, # reparameterisation trick
+                        None, 
+                    )
+
+                # Nt x Ns x P x 1 x Ms x 1
+                J_u_tf = jax.vmap(
+                    lambda eps_t, m_t, S_t, x_t, y_t: jax.jacfwd(
+                        wrap, 
+                        argnums=[0]
+                    )(
+                        m_t, eps_t, S_t, x_t, y_t
+                    ),
+                    [1, 0, 0, 0, 0]
+                )(
+                    eps, m, S, X_st, Y_st 
+                )
+
+
+                if False:
+                    breakpoint()
+                    # Nt x Ns x P x 1 x Ms x 1
+                    J_u_tf = jax.vmap(
+                        lambda f_mu_t, f_var_t, m_t, S_t, x_t, y_t: jax.jacfwd(
+                            lambda _m_t: compute_f_to_tf(
+                                model, 
+                                f_mu_t + cholesky(f_var_t) @ _m_t[None, ...], # reparameterisation trick
+                                S_t[None, ...], 
+                                data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...])
+                            )
+                        )(m_t)
+                    )(f_conditional_mean, f_conditional_var, m, S, X_st, Y_st)
+
+                u_to_f_mu, u_to_f_var = jax.vmap(
+                    lambda m_t, S_t, x_t, y_t: compute_u_to_f(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                )(m, S, X_st, Y_st)
+
+                u_to_f_mu = np.array(u_to_f_mu)[..., None]
+                u_to_f_var = np.array(u_to_f_var)
+                u_to_f_var_chol = np.linalg.cholesky(u_to_f_var)
+                T_f_samples = u_to_f_mu + u_to_f_var_chol * eps[..., None]
+
+                neg_Lambda = get_likelihood_hessian(
+                    model, 
+                    T_f_samples[..., 0], 
+                    laplace_log_lik=laplace_log_lik
+                )
+
+                # clean up shapes
+                J_u_tf = J_u_tf[0]
+                J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
+                neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
+
+                if _ensure_str(data) == 'TemporallyGroupedData':
+                    Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
+                else:
+                    Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
+                    Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
+
+                # create masks for missing lieklihoods
+                neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
+
+                # Gauss Newton approximation
+                # TODO: should probably write as a jax.vjp
+                # Nt x Ns x P x Ms x Ms
+                G_vec = jax.vmap( # batch over time
+                    jax.vmap( #batch over space
+                        jax.vmap( #batch over outputs
+                            lambda a, b: a @ b @ a.T
+                        ) 
+                    )
+                )(
+                    J_u_tf, neg_Lambda
+                )
+
+
+                # create masks for missing data
+                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+                chex.assert_equal(G_mask.shape, G_vec.shape)
+
+                # remove missing data from the natural gradient sum
+                G_vec_masked = G_mask * G_vec
+
+                G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+                G = G[:, None, ...] # Nt x 1 x Ms x Ms
+
+                if settings.verbose:
+                    print('ST GAUSS NEWTON')
+
+                if data.minibatch:
+                    G = G*data.minibatch_scaling
+
+                breakpoint()
+
+
+
+            white_samples = objax.random.normal(
+                [10, Y_st.shape[1], Y_st.shape[0], Y_st.shape[2], conditional_mean.shape[-2], conditional_mean.shape[-1]], 
+                mean=0.0, 
+                stddev=1.0, 
+                generator= model.inference.generator
+            )
+            print(_f_conditional_samples(m, white_samples[0]))
+            breakpoint()
+
+                
+            if False:
+                # Nt x Ns x P x 1
+                T_f = jax.vmap(
+                    lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                )(m, S, X_st, Y_st)
+
+                # Nt x Ns x P x 1 x Ms x 1
+                J_u_tf = jax.vmap(
+                    lambda m_t, S_t, x_t, y_t: jax.jacfwd(
+                        lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+                    )(m_t)
+                )(m, S, X_st, Y_st)
+
+                neg_Lambda = get_likelihood_hessian(model, T_f, laplace_log_lik=laplace_log_lik)
 
             # clean up shapes
             J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
@@ -306,9 +479,10 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
                 G = G*data.minibatch_scaling
 
         else:
-            neg_Lambda = get_likelihood_hessian(model, m, S, laplace_log_lik=laplace_log_lik)
             u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
             J_u_tf = jax.jacfwd(u_tf_fn)(m)
+
+            neg_Lambda = get_likelihood_hessian(model, u_tf_fn(m), laplace_log_lik=laplace_log_lik)
 
             # sum over B?
             G_vec = jax.vmap(
@@ -353,7 +527,7 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None):
 
     return approx_hessian
 
-def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True):
+def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True):
     q = model.approximate_posterior
 
 
@@ -386,10 +560,10 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
 
     # delta u
     if delta_u:
-        approx_hessian = gauss_newton(q_mu_z, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples)
+        approx_hessian = gauss_newton(q_mu_z, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
     else:
         def wrapped_fn(s):
-            return  gauss_newton(s, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples)
+            return  gauss_newton(s, q_var_z , model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
 
         # sample u here
         approx_hessian = mv_block_monte_carlo(
@@ -410,13 +584,21 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
     if enforce_psd_type == 'gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = True)
     elif enforce_psd_type == 'gauss_newton_delta_u':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = True)
     elif enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = True)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True)
+    elif enforce_psd_type == 'gauss_newton_mc_f':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = False)
+    elif enforce_psd_type == 'gauss_newton_delta_u_mc_f':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = False)
+    elif enforce_psd_type == 'laplace_gauss_newton_mc_f':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = False)
+    elif enforce_psd_type == 'laplace_gauss_newton_delta_u_mc_f':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = False)
     else:
         raise RuntimeError()
 

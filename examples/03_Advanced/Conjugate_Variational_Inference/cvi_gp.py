@@ -20,6 +20,8 @@ from stgp.data import Data, TemporalData
 from stgp.transforms import Independent
 from stgp.transforms.sdes import LTI_SDE
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian, ConjugatePrecisionGaussian
+from stgp.zoo.gps import batch_gp
+from stgp import settings
 
 from tqdm import trange
 
@@ -31,7 +33,19 @@ import matplotlib.pyplot as plt
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
+Y[20:30] = np.NaN
+
 print(f'X: {X.shape}, Y: {Y.shape}')
+
+def gp():
+    kern = ScaleKernel(Matern52(input_dim=1, lengthscales=[0.1]))
+    m = batch_gp(
+        X = X,
+        Y = Y,
+        kernel = kern,
+        likelihood = Gaussian(variance=0.1),
+    )
+    return m
 
 def cvi_gp(parameterisation):
     """ 
@@ -76,17 +90,27 @@ def cvi_gp(parameterisation):
         ]),
         inference='Variational'
     )
-    print(m.get_objective())
     return m
 
-def cvi_sde_gp(parallel=False, parameterisation='covariance'):
+def cvi_sde_gp(parallel=False, parameterisation='covariance', gaussian_newton_st=None):
     """ CVI-GP with a state-space GP surrogate model parameterised using moment parameterisation.  """
     # Construct Model
+
+    if gaussian_newton_st is not None:
+        settings.cvi_ng_exploit_space_time = gaussian_newton_st
+    else:
+        settings.cvi_ng_exploit_space_time = True # default setting
+
     Q = 1
     sparsity = stgp.sparsity.NoSparsity(Z = X)
 
     kern = ScaledMatern52(input_dim=1, lengthscales=[0.1], variance=1.0)
     latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
+
+    if parallel:
+        filter_type = 'parallel'
+    else:
+        filter_type = 'sequential'
 
     if parameterisation == 'covariance':
         cvi_class = ConjugateGaussian
@@ -95,7 +119,8 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
     else:
         raise NotImplementedError()
 
-    data = Data(X, Y)
+    #data = Data(X, Y)
+    data = TemporalData(X, Y)
     m = GP(
         data = data,
         prior = Independent(latent_gps),
@@ -109,9 +134,9 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
                 surrogate_model = lambda X, Y, likelihood:  stgp.models.GP(
                     data=TemporalData(X.X, Y, sort=False), # Data should already be in the correct format
                     prior=LTI_SDE(Independent([latent_gps[q]])), 
-                    likelihood=[likelihood],
+                    likelihood=likelihood,
                     inference='Sequential',
-                    parallel=parallel
+                    filter_type=filter_type
                 )  
             )
             for q in range(Q)
@@ -122,22 +147,67 @@ def cvi_sde_gp(parallel=False, parameterisation='covariance'):
 
 
 models = {
-    'cvi_gp_precision': cvi_gp(parameterisation='precision'),
-    'cvi_gp': cvi_gp(parameterisation='covariance'),
-    'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
-    'cvi_sde_gp_seq_covariance': cvi_sde_gp(parallel=False, parameterisation='covariance'),
-    'cvi_sde_gp_parallel_precision': cvi_sde_gp(parallel=True, parameterisation='precision'),
-    'cvi_sde_gp_parallel_covariance': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+    #'cvi_gp_precision': cvi_gp(parameterisation='precision'),
+    #'cvi_gp': cvi_gp(parameterisation='covariance'),
+    #'cvi_sde_gp_seq_precision': cvi_sde_gp(parallel=False, parameterisation='precision'),
+    'gp': {
+        'model': gp(),
+        'ng': False,
+    },
+    'cvi_sde_gp_seq_covariance': {
+        'model': cvi_sde_gp(parallel=False, parameterisation='covariance'),
+        'ng': True,
+        'ng_enforce_type': None,
+        'gaussian_newton_st': None
+    },
+
+    'cvi_sde_gp_seq_covariance_gauss_newton_st': {
+        'model': cvi_sde_gp(parallel=False, parameterisation='covariance', gaussian_newton_st=True),
+        'ng': True,
+        'ng_enforce_type': 'laplace_gauss_newton_delta_u',
+        'gaussian_newton_st': True
+    },
+    'cvi_sde_gp_seq_covariance_gauss_newton': {
+        'model': cvi_sde_gp(parallel=False, parameterisation='covariance', gaussian_newton_st=False),
+        'ng': True,
+        'ng_enforce_type': 'laplace_gauss_newton_delta_u',
+        'gaussian_newton_st': False
+    },
+    'cvi_sde_gp_parallel_covariance': {
+        'model': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+        'ng': True,
+        'ng_enforce_type': None,
+        'gaussian_newton_st': None
+    },
+    'cvi_sde_gp_parallel_covariance_gauss_newton': {
+        'model': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+        'ng': True,
+        'ng_enforce_type': 'laplace_gauss_newton_delta_u',
+        'gaussian_newton_st': False
+    },
+    'cvi_sde_gp_parallel_covariance_gauss_newton_st': {
+        'model': cvi_sde_gp(parallel=True, parameterisation='covariance'),
+        'ng': True,
+        'ng_enforce_type': 'laplace_gauss_newton_delta_u',
+        'gaussian_newton_st': True
+    }
 }
 
 if True:
     for k, m in models.items():
-        ng_trainer = NatGradTrainer(m)
-        ng_trainer.train(0.9, 1)
+        if m['ng']:
+            if m['gaussian_newton_st'] is not None:
+                settings.cvi_ng_exploit_space_time = m['gaussian_newton_st']
+            else:
+                settings.cvi_ng_exploit_space_time = True # default setting
+
+            ng_trainer = NatGradTrainer(m['model'], enforce_psd_type=m['ng_enforce_type'])
+            ng_trainer.train(1.0, 1)
 
 # check that the ELBOs remain the same after
 if True:
     for k, m in models.items():
+        m = m['model']
         print(f'{k}: {m.get_objective()}')
 
 N_models = len(models)
@@ -145,7 +215,7 @@ N_models = len(models)
 fig, axes = plt.subplots(N_models, 1, squeeze=False)
 
 for i, key   in enumerate(models):
-    m = models[key]
+    m = models[key]['model']
 
     ax_i = axes[i][0]
 

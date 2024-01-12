@@ -51,6 +51,8 @@ parallel_kf_force_linear_solve = False
 cg_precondition_rank = 20
 cg_max_iter = 1000
 
+whiten_space = False
+
 jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10
