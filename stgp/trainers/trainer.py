@@ -329,8 +329,8 @@ class SwitchTrainer(Trainer):
         learning_rates: list,
         epochs: list,
         callback = None,
-        raise_error = True
-
+        raise_error = True,
+        trainer_kwargs = None
     ):
         iters = epochs[1]
         epochs = int(epochs[0])
@@ -345,12 +345,18 @@ class SwitchTrainer(Trainer):
         try:
             for i in range(epochs):
                 for j in range(num_trainers):
+                    if trainer_kwargs is None:
+                        trainer_j_kwargs = {}
+                    else:
+                        trainer_j_kwargs = trainer_kwargs[j]
+
                     lc_j, _ = self.trainer_list[j].train(
                         learning_rates[j], 
                         iters[j], 
                         None, # We do not support individual trainer callbacks
                         epoch_ofset = completed_epochs[j],
-                        raise_error = True
+                        raise_error = True,
+                        **trainer_j_kwargs
                     )
 
                     total_elbos.append(lc_j)

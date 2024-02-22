@@ -230,7 +230,7 @@ def lmc_drd_regression(X, Y, P=None, Q=None, kernels = None, inference = 'Batch'
     return m
 
 
-def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, inference='Variational', constraint=None, ell_samples=100, lengthscale=1.0, variance=1.0, lik_noise=0.1, normalise_data=True, M=None, additive=False, whiten=False):
+def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, inference='Variational', constraint=None, ell_samples=100, lengthscale=1.0, W_lengthscales = None, f_lengthscales = None, variance=1.0, lik_noise=0.1, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational mean-field GPRN model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -242,11 +242,26 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
     if Q is None:
         Q = P
 
+    if W_lengthscales is None:
+        W_lengthscales = [
+            [
+                lengthscale
+                for q in range(Q)
+            ]
+            for p in range(P)
+        ]
+
+    if f_lengthscales is None:
+        f_lengthscales = [lengthscale for q in range(Q)]
+
+    W_lengthscales = np.array(W_lengthscales)
+    f_lengthscales = np.array(f_lengthscales)
+
     if W_kernels is None:
         W_kernels = [
             [
                 ScaleKernel(
-                    RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                    RBF(input_dim = D, lengthscales=np.ones(D)*W_lengthscales[p, q], additive = additive),
                     variance = variance
                 )
                 for q in range(Q)
@@ -257,7 +272,7 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
     if f_kernels is None:
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*f_lengthscales[q], additive = additive),
                 variance = variance
             )
             for q in range(Q)
@@ -322,7 +337,7 @@ def gprn_regression(X, Y, P=None, Q=None, W_kernels=None, f_kernels=None, infere
     return m
 
 
-def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
+def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  W_lengthscales=None, f_lengthscales=None, lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational full-Gaussian GPRN_DRD model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -335,10 +350,18 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
 
     num_W = int(Q * (Q-1)/2)
 
+    num_latents = Q + num_W
+
+    if W_lengthscales is None:
+        W_lengthscales = [lengthscale for i in range(num_W)]
+
+    if f_lengthscales is None:
+        f_lengthscales = [lengthscale for i in range(Q)]
+
     if W_kernels is None:
         W_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*W_lengthscales[q], additive = additive),
                 variance = variance
             )
             for q in range(num_W)
@@ -353,7 +376,7 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
 
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*f_lengthscales[q], additive = additive),
                 variance = scale_var
             )
             for q in range(Q)
@@ -421,7 +444,7 @@ def gprn_drd_regression(X, Y, P=None, W_kernels=None, f_kernels=None, latent_var
     return m
 
 
-def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
+def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kernels=None, latent_variance = 1.0, variance = 1.0, ell_samples=100, lengthscale=1.0,  v_lengthscales = None, W_lenthscales=None, f_lengthscales=None, lik_noise=0.1, meanfield=True, normalise_data=True, M=None, additive=False, whiten=False):
     """ Helper function for returning a variational full-Gaussian Noise Varying GPRN_DRD model with Gaussian likelihood across all outputs.  """
 
     D = X.shape[1]
@@ -434,10 +457,17 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
 
     num_W = int(Q * (Q-1)/2)
 
+    if v_lengthscales is None:
+        v_lengthscales = np.ones(P)*lengthscale
+    if W_lenthscales is None:
+        W_lenthscales = np.ones(num_W)*lengthscale
+    if f_lengthscales is None:
+        f_lengthscales = np.ones(Q)*lengthscale
+
     if v_kernels is None:
         v_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*v_lengthscales[q], additive = additive),
                 variance = variance
             )
             for q in range(P)
@@ -446,7 +476,7 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
     if W_kernels is None:
         W_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*W_lenthscales[q], additive = additive),
                 variance = variance
             )
             for q in range(num_W)
@@ -456,13 +486,13 @@ def gprn_drd_nv_regression(X, Y, P=None, W_kernels=None, f_kernels=None, v_kerne
         # kernel variances must be 1, so that K is a correlation matrix
         f_kernels = [
             ScaleKernel(
-                RBF(input_dim = D, lengthscales=np.ones(D)*lengthscale, additive = additive),
+                RBF(input_dim = D, lengthscales=np.ones(D)*f_lengthscales[q], additive = additive),
                 variance = variance
             )
             for q in range(Q)
         ]
 
-        # fix f kernels variance
+        # fix f kernels variance to ensure a correlation matrix
         [kern.variance_param.fix() for kern in f_kernels]
 
     # setup model

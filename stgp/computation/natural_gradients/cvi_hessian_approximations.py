@@ -43,6 +43,13 @@ def data_decomposes_across_time(data) -> bool:
         return False
 
 def create_new_single_time_data_of_same_type(data, X, Y):
+    """
+    Helper function that creates a new data object using X and Y (which typically will be a single time point)
+        and returns an data object with the same type as data.
+
+    This is useful when trying to vmap over the variational approxiamte posterior marginals.
+    """
+
     data_type = _ensure_str(data)
     """ Constructs new data of the same type with new data points X, Y. Does not sort. """
     if data_type == 'Data':
@@ -63,10 +70,13 @@ def create_new_single_time_data_of_same_type(data, X, Y):
     raise RuntimeError(f'Data type {data_type} not supported')
 
 def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
-
+    """
+        Computes d^2 p(Y | F) / dF df^T either exactly or using a laplace approximation
+    """
     data = model.data
-    if data_decomposes_across_time(data):
 
+    if data_decomposes_across_time(data) and len(T_f.shape) == 4:
+        chex.assert_rank(T_f, 4)
 
         if not laplace_log_lik:
             raise NotImplementedError()
@@ -90,7 +100,7 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
         Y = model.data.Y
 
         # N x P x 1
-        T_f = compute_u_to_tf(model, m, S)
+        chex.assert_rank(T_f, 3)
 
         # TODO: only works for exponential family likelihoods atm
         # [N x P x B]
@@ -165,9 +175,9 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False, data = None):
 
     return q_f_mu, q_f_var
 
-def compute_f_to_tf(m, q_f_mu, q_f_var):
+def compute_f_to_tf(m, q_f_mu):
     """
-    Computes E[T(F)] ~ T(E[F]) by the delta method
+    Computes an evaluation of T(F) 
 
     Args:
         q_f_mu: Shape N X Q x B or [(N X Q x B)]
@@ -210,10 +220,281 @@ def compute_u_to_tf(model, q_mu_z, q_var_z, data=None):
     q_f_mu, q_f_var = compute_u_to_f(model, q_mu_z, q_var_z, data=data)
 
     # compute f -> T(f)
-    T_f = compute_f_to_tf(model, q_f_mu, q_f_var)
+    T_f = compute_f_to_tf(model, q_f_mu)
     chex.assert_rank(T_f, 3)
 
     return T_f
+
+def _get_shape_conditional_f(model, m, S, data, X_st, Y_st) -> list:
+    """
+    For monte-carlo sampling we need the shapes of p(f|u) so we generate the white samples.
+    We always return a list so we can support multiple outputs of different dimensions
+    """
+
+    # passing through S*0 makes means we only return the condition variance p(f|u) not the marginal q(f)
+    # THIS IS JUST TO GET SHAPES -- VERY HACKY
+    conditional_mean, conditional_var = compute_u_to_f(
+        model, 
+        m[0][None, ...], 
+        S[0][None, ...]*0.0, 
+        data=create_new_single_time_data_of_same_type(
+            data, 
+            X=X_st[0][None, ...], 
+            Y=Y_st[0][None, ...]
+        )
+    )
+
+    if type(conditional_mean) is not list:
+        conditional_mean = [conditional_mean]
+    else:
+        if False:
+            # the only time we will get a list is with MultiOutput, so wrap all other cases so they can be handled in the same way
+            if type(model.prior) is not MultiOutput:
+                conditional_mean = [conditional_mean]
+
+    conditional_mean_shape = [
+        a.shape for a in  conditional_mean
+    ]
+
+    return conditional_mean_shape
+
+def _reparamaterise_f_to_tf(model, eps, pred_mu, pred_var):
+    P = len(eps)
+
+    # should all be [Ns x Q x B]
+    [chex.assert_equal_shape([pred_mu[p], eps[p]]) for p in range(P)]
+
+    f_samples = []
+    for p in range(P):
+        pred_var_p = np.array(pred_var[p]) #Ns x B x Q x Q
+        pred_var_p_chol = np.linalg.cholesky(pred_var_p) #Ns x Q x B x B
+
+        eps_p = eps[p][..., None] #Ns x Q x B x 1
+        eps_p = np.transpose(eps_p, [0, 2, 1, 3]) #Ns x B x Q x 1
+        pred_mu_p = np.array(pred_mu[p])[..., None] #Ns x Q x B x 1
+        pred_mu_p = np.transpose(pred_mu_p, [0, 2, 1, 3]) #Ns x B x Q x 1
+
+        f_samples_p = pred_mu_p + pred_var_p_chol * eps_p # reparam trick -- Ns x B x Q x 1 
+        f_samples_p = f_samples_p[..., 0] #Ns x B x Q 
+        f_samples_p = np.transpose(f_samples_p, [0, 2, 1]) #Ns x Q x 1
+        f_samples.append(f_samples_p)
+
+    # should all be [Ns x Q x B]
+    [chex.assert_equal_shape([pred_mu[p], f_samples[p]]) for p in range(P)]
+    return compute_f_to_tf( model, f_samples )
+
+def _reparamaterise_f_to_tf_across_time(model, eps, pred_mu, pred_var):
+    P = len(eps)
+    # vmap over time for arbtrary size lists of the same shape
+    f_samples =  jax.vmap(
+        lambda *x: _reparamaterise_f_to_tf(model, x[0:P], x[P:P*2], x[P*2:P*3]),
+        [0] * P + [0] * P + [0] * P, 
+    )(*eps, *pred_mu, *pred_var)
+
+    return f_samples
+
+
+def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
+    """
+    Args: 
+        eps: [Nt x Ns x  Q x 1] 
+        m: [Nt x (Ns x Q) x 1] 
+    """
+    data = model.data
+
+    def J_u_2_tf_wrapper(m_t, eps_t, S_t, x_t, y_t):
+        P = len(eps_t)
+        pred_mu_t, pred_var_t = compute_u_to_f(
+            model, 
+            m_t[None, ...], 
+            S_t[None, ...]*0.0, 
+            data=create_new_single_time_data_of_same_type(
+                data, 
+                X=x_t[None, ...], 
+                Y=y_t[None, ...]
+            )
+        )
+
+        return _reparamaterise_f_to_tf(model, eps_t, pred_mu_t, pred_var_t)
+
+    # Nt x Ns x P x 1 x Ms x 1
+    J_u_tf = jax.vmap(
+        lambda m_t, S_t, x_t, y_t, *eps_t: jax.jacfwd(
+            J_u_2_tf_wrapper, 
+            argnums=[0]
+        )(
+            m_t, eps_t, S_t, x_t, y_t
+        ),
+        [0, 0, 0, 0] + [0]*len(eps) 
+    )(
+        m, S, X_st, Y_st, *eps
+    )
+
+
+    #u_to_f_mu is [Nt x Ns x Q x B]
+    #u_to_f_var is [Nt x Ns x B x Q x Q]
+    u_to_f_mu, u_to_f_var = jax.vmap(
+        lambda m_t, S_t, x_t, y_t: compute_u_to_f(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
+    )(m, S, X_st, Y_st)
+
+
+    Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var)
+
+    neg_Lambda = get_likelihood_hessian(
+        model, 
+        Tf_sample, # Nt x Ns x P x 1
+        laplace_log_lik=laplace_log_lik
+    )
+
+    # clean up shapes
+    J_u_tf = J_u_tf[0]
+    J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
+    neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
+
+    if _ensure_str(data) == 'TemporallyGroupedData':
+        Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
+    else:
+        Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
+        Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
+
+
+    # create masks for missing lieklihoods
+    neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
+
+    # Gauss Newton approximation
+    # TODO: should probably write as a jax.vjp
+    # Nt x Ns x P x Ms x Ms
+    G_vec = jax.vmap( # batch over time
+        jax.vmap( #batch over space
+            jax.vmap( #batch over outputs
+                lambda a, b: a @ b @ a.T
+            ) 
+        )
+    )(
+        J_u_tf, neg_Lambda
+    )
+
+    # create masks for missing data
+    Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+    G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+    chex.assert_equal(G_mask.shape, G_vec.shape)
+
+    # remove missing data from the natural gradient sum
+    G_vec_masked = G_mask * G_vec
+
+    G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+    G = G[:, None, ...] # Nt x 1 x Ms x Ms
+
+    if settings.verbose:
+        print('ST GAUSS NEWTON')
+
+    if data.minibatch:
+        G = G*data.minibatch_scaling
+
+    return G
+
+def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
+    """
+    Gaussian newton approximation whilst exploiting spatio-temporal structure in the data
+    """
+    m = u
+
+    q = model.approximate_posterior
+    prior = model.prior
+    Y = model.data.Y
+
+    data = model.data
+
+    # Nt x Ns x P x 1
+    X_st, Y_st = data.X_st, data.Y_st
+
+    conditional_f_shape: list = _get_shape_conditional_f(model, m, S, data, X_st, Y_st)
+
+    sample_shape = [
+        [Y_st.shape[0], Y_st.shape[1], s[1], s[2]] # Nt x Ns x Q x B
+        for s in conditional_f_shape
+    ]
+
+    if not delta_f:
+        if settings.verbose:
+            print('NG: monte carlo approx for expectation over p(f|u)')
+
+        white_samples = [
+            objax.random.normal(
+                [settings.ng_f_samples] + s, 
+                mean=0.0, 
+                stddev=1.0, 
+                generator= model.inference.generator
+            )
+            for s in sample_shape
+        ]
+
+        G_over_samples = jax.vmap(
+            lambda *sample: _f_conditional_samples(m, sample, model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik)
+        )(*white_samples)
+
+        G = np.mean(G_over_samples, axis=0)
+    else:
+        if settings.verbose:
+            print('NG: delta method for expectation over p(f|u)')
+        # passing through a sample of zero means that all covariance terms will cancel and we will just have the mean, hence the delta method
+        G = _f_conditional_samples(m, [np.zeros(sample_shape[p]) for p in range(len(sample_shape))],  model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik)
+
+    return G
+
+
+def gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
+    """
+    Gaussian newton approximation without exploiting spatio-temporal structure in the data. This is inefficient but simple to implement
+        so useful for testing and debugging purposes.
+    """
+    if delta_f is False:
+        raise NotImplementedError('delta_f = False is only implemented with data that decomposes across time!')
+    m = u
+    q = model.approximate_posterior
+    prior = model.prior
+    Y = model.data.Y
+
+    u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
+    J_u_tf = jax.jacfwd(u_tf_fn)(m)
+
+    neg_Lambda = get_likelihood_hessian(model, u_tf_fn(m), laplace_log_lik=laplace_log_lik)
+
+    # sum over B?
+    G_vec = jax.vmap(
+        # sum over N
+        lambda Ju: jax.vmap(
+                # sum over P/Q
+                jax.vmap(
+                    lambda a, b: a @ b @ a.T
+                )
+            )(
+                Ju[:, :, None, ...], 
+                neg_Lambda[..., None]
+            ),
+        3
+    )(J_u_tf)
+
+    Y_mask = get_same_shape_mask(Y)
+    Y_reshaped_for_G_mask = Y_mask[None, ...][..., None, None, None, None] 
+
+    G_mask = np.tile( Y_reshaped_for_G_mask, [G_vec.shape[0], 1, 1, 1, G_vec.shape[4], G_vec.shape[5], G_vec.shape[6]])
+    chex.assert_equal(G_mask.shape, G_vec.shape)
+
+    # remove missing data from the natural gradient sum
+    G_vec_masked = G_mask * G_vec
+
+    G = np.sum(G_vec_masked, [1, 2, 3, 6])[:, None, ...]
+
+    if model.data.minibatch:
+        G = G*model.data.minibatch_scaling
+
+    if settings.verbose:
+        print('D GAUSS NEWTON')
+
+    return G
+
+
 
 def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
     """
@@ -235,294 +516,19 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, d
         #do not batch so we use the same batch as used in teh ELBO computation
         pass
 
-    def J_u(m):
+    if data_decomposes_across_time(model.data):
+        G = gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
 
-        # jacobian of u -> T(f(u))
-        # [N x P x B x M x Q x B]
-        # TODO: this is very memory intensive :( 
-        # Would rewriting it as jacobian vector product help?
-
-        if data_decomposes_across_time(model.data):
-            data = model.data
-
-            # Nt x Ns x P x 1
-            X_st, Y_st = data.X_st, data.Y_st
-
-            # passing through S*0 makes means we only return the condition variance p(f|u) not the marginal q(f)
-            # THIS IS JUST TO GET SHAPES -- VERY HACKY
-            conditional_mean, conditional_var = compute_u_to_f(
-                model, 
-                m[0][None, ...], 
-                S[0][None, ...]*0.0, 
-                data=create_new_single_time_data_of_same_type(
-                    data, 
-                    X=X_st[0][None, ...], 
-                    Y=Y_st[0][None, ...]
-                )
-            )
-            conditional_mean = np.array(conditional_mean)
-            conditional_var = np.array(conditional_var)
-
-
-
-            def _f_conditional_samples(m, eps):
-                """
-                Args: 
-                    eps: [P x Nt x Ns x Q x 1] 
-                    m: [Nt x (Ns x Q) x 1] 
-                """
-                if False:
-                    f_conditional_mean, f_conditional_var = jax.vmap(
-                        lambda m_t, S_t, x_t, y_t: compute_u_to_f(model, m_t[None, ...], S_t[None, ...]*0.0, data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-                    )(m, S, X_st, Y_st)
-
-                    eps = np.array(eps)
-                    f_conditional_mean = np.array(f_conditional_mean)[:, :, :, 0, :][..., None]
-                    f_conditional_var = np.array(f_conditional_var)[:, :, :, 0, :, :]
-
-                    f_conditional_var_chol = np.linalg.cholesky(f_conditional_var)
-
-                    f_samples = f_conditional_mean + f_conditional_var_chol * eps
-                    f_samples = f_samples[..., 0]
-
-                    print(compute_f_to_tf(model, f_samples, None))
-                    breakpoint()
-
-                def wrap(m_t, eps_t, S_t, x_t, y_t):
-                    pred_mu_t, pred_var_t = compute_u_to_f(
-                        model, 
-                        m_t[None, ...], 
-                        S_t[None, ...]*0.0, 
-                        data=create_new_single_time_data_of_same_type(
-                            data, 
-                            X=x_t[None, ...], 
-                            Y=y_t[None, ...]
-                        )
-                    )
-                    eps_t = eps_t[..., None]
-                    pred_mu_t = np.array(pred_mu_t)[..., None]
-                    pred_var_t = np.array(pred_var_t)
-
-                    pred_var_t_chol = np.linalg.cholesky(pred_var_t)
-
-                    f_samples = pred_mu_t + pred_var_t_chol * eps_t # reparam trick
-                    f_samples = f_samples[..., 0]
-
-                    return compute_f_to_tf(
-                        model, 
-                        f_samples, # reparameterisation trick
-                        None, 
-                    )
-
-                # Nt x Ns x P x 1 x Ms x 1
-                J_u_tf = jax.vmap(
-                    lambda eps_t, m_t, S_t, x_t, y_t: jax.jacfwd(
-                        wrap, 
-                        argnums=[0]
-                    )(
-                        m_t, eps_t, S_t, x_t, y_t
-                    ),
-                    [1, 0, 0, 0, 0]
-                )(
-                    eps, m, S, X_st, Y_st 
-                )
-
-
-                if False:
-                    breakpoint()
-                    # Nt x Ns x P x 1 x Ms x 1
-                    J_u_tf = jax.vmap(
-                        lambda f_mu_t, f_var_t, m_t, S_t, x_t, y_t: jax.jacfwd(
-                            lambda _m_t: compute_f_to_tf(
-                                model, 
-                                f_mu_t + cholesky(f_var_t) @ _m_t[None, ...], # reparameterisation trick
-                                S_t[None, ...], 
-                                data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...])
-                            )
-                        )(m_t)
-                    )(f_conditional_mean, f_conditional_var, m, S, X_st, Y_st)
-
-                u_to_f_mu, u_to_f_var = jax.vmap(
-                    lambda m_t, S_t, x_t, y_t: compute_u_to_f(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-                )(m, S, X_st, Y_st)
-
-                u_to_f_mu = np.array(u_to_f_mu)[..., None]
-                u_to_f_var = np.array(u_to_f_var)
-                u_to_f_var_chol = np.linalg.cholesky(u_to_f_var)
-                T_f_samples = u_to_f_mu + u_to_f_var_chol * eps[..., None]
-
-                neg_Lambda = get_likelihood_hessian(
-                    model, 
-                    T_f_samples[..., 0], 
-                    laplace_log_lik=laplace_log_lik
-                )
-
-                # clean up shapes
-                J_u_tf = J_u_tf[0]
-                J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
-                neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
-
-                if _ensure_str(data) == 'TemporallyGroupedData':
-                    Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
-                else:
-                    Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
-                    Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
-
-                # create masks for missing lieklihoods
-                neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
-
-                # Gauss Newton approximation
-                # TODO: should probably write as a jax.vjp
-                # Nt x Ns x P x Ms x Ms
-                G_vec = jax.vmap( # batch over time
-                    jax.vmap( #batch over space
-                        jax.vmap( #batch over outputs
-                            lambda a, b: a @ b @ a.T
-                        ) 
-                    )
-                )(
-                    J_u_tf, neg_Lambda
-                )
-
-
-                # create masks for missing data
-                Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-                G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-                chex.assert_equal(G_mask.shape, G_vec.shape)
-
-                # remove missing data from the natural gradient sum
-                G_vec_masked = G_mask * G_vec
-
-                G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
-                G = G[:, None, ...] # Nt x 1 x Ms x Ms
-
-                if settings.verbose:
-                    print('ST GAUSS NEWTON')
-
-                if data.minibatch:
-                    G = G*data.minibatch_scaling
-
-                breakpoint()
-
-
-
-            white_samples = objax.random.normal(
-                [10, Y_st.shape[1], Y_st.shape[0], Y_st.shape[2], conditional_mean.shape[-2], conditional_mean.shape[-1]], 
-                mean=0.0, 
-                stddev=1.0, 
-                generator= model.inference.generator
-            )
-            print(_f_conditional_samples(m, white_samples[0]))
+        if False:
+            G_d = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
+            print(G-G_d)
+            print(np.sum(G-G_d))
+            print(np.sum(np.abs(G-G_d)))
             breakpoint()
+    else:
+        G = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
 
-                
-            if False:
-                # Nt x Ns x P x 1
-                T_f = jax.vmap(
-                    lambda m_t, S_t, x_t, y_t: compute_u_to_tf(model, m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-                )(m, S, X_st, Y_st)
-
-                # Nt x Ns x P x 1 x Ms x 1
-                J_u_tf = jax.vmap(
-                    lambda m_t, S_t, x_t, y_t: jax.jacfwd(
-                        lambda _m_t: compute_u_to_tf(model, _m_t[None, ...], S_t[None, ...], data=create_new_single_time_data_of_same_type(data, X=x_t[None, ...], Y=y_t[None, ...]))
-                    )(m_t)
-                )(m, S, X_st, Y_st)
-
-                neg_Lambda = get_likelihood_hessian(model, T_f, laplace_log_lik=laplace_log_lik)
-
-            # clean up shapes
-            J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
-            neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
-
-            # TODO: there is an inconsistency in how temporally grouped stores Y
-            # it should be Nt x P x Ns to match the Spatio-temporal Case
-
-            if _ensure_str(data) == 'TemporallyGroupedData':
-                Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
-            else:
-                Y_st_mask = get_same_shape_mask(Y_st) # Nt x P x Ns 
-                Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
-
-            # create masks for missing lieklihoods
-            neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
-
-            # Gauss Newton approximation
-            # TODO: should probably write as a jax.vjp
-            # Nt x Ns x P x Ms x Ms
-            G_vec = jax.vmap( # batch over time
-                jax.vmap( #batch over space
-                    jax.vmap( #batch over outputs
-                        lambda a, b: a @ b @ a.T
-                    ) 
-                )
-            )(
-                J_u_tf, neg_Lambda
-            )
-
-
-            # create masks for missing data
-            Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-            G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-            chex.assert_equal(G_mask.shape, G_vec.shape)
-
-            # remove missing data from the natural gradient sum
-            G_vec_masked = G_mask * G_vec
-
-            G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
-            G = G[:, None, ...] # Nt x 1 x Ms x Ms
-
-            if settings.verbose:
-                print('ST GAUSS NEWTON')
-
-            if data.minibatch:
-                G = G*data.minibatch_scaling
-
-        else:
-            u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
-            J_u_tf = jax.jacfwd(u_tf_fn)(m)
-
-            neg_Lambda = get_likelihood_hessian(model, u_tf_fn(m), laplace_log_lik=laplace_log_lik)
-
-            # sum over B?
-            G_vec = jax.vmap(
-                # sum over N
-                lambda Ju: jax.vmap(
-                        # sum over P/Q
-                        jax.vmap(
-                            lambda a, b: a @ b @ a.T
-                        )
-                    )(
-                        Ju[:, :, None, ...], 
-                        neg_Lambda[..., None]
-                    ),
-                3
-            )(J_u_tf)
-
-            Y_mask = get_same_shape_mask(Y)
-            Y_reshaped_for_G_mask = Y_mask[None, ...][..., None, None, None, None] 
-
-            G_mask = np.tile( Y_reshaped_for_G_mask, [G_vec.shape[0], 1, 1, 1, G_vec.shape[4], G_vec.shape[5], G_vec.shape[6]])
-            chex.assert_equal(G_mask.shape, G_vec.shape)
-
-            # remove missing data from the natural gradient sum
-            G_vec_masked = G_mask * G_vec
-
-            G = np.sum(G_vec_masked, [1, 2, 3, 6])[:, None, ...]
-
-            if model.data.minibatch:
-                G = G*model.data.minibatch_scaling
-
-            if settings.verbose:
-                print('D GAUSS NEWTON')
-
-
-        if settings.debug_mode:
-            breakpoint()
-
-        return G
-
-    approx_hessian = 0.5 *  J_u(u)
+    approx_hessian = 0.5 *  G
     chex.assert_rank(approx_hessian, 4)
 
     return approx_hessian

@@ -155,7 +155,8 @@ m = stgp.models.GP(
 )
 print(m.get_objective())
 
-NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u_mc_f').train(1.0, 1)
+stgp.settings.cvi_ng_exploit_space_time = False
+NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u').train(1.0, 1)
 
 print(m.get_objective())
 

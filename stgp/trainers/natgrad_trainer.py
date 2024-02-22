@@ -139,6 +139,7 @@ def update_vars(model, vars_to_update, params):
     else:
         raise RuntimeError()
 
+MOMENTUM_TERMS = []
 
 class NatGradTrainer(Trainer):
     def __init__(
@@ -201,10 +202,14 @@ class NatGradTrainer(Trainer):
         callback=None,
         epoch_ofset=0,
         verbose=False,
-        raise_error = True
+        raise_error = True,
+        momentum=False,
+        momentum_rate = 0.1
     ):
+        global MOMENTUM_TERMS
 
-        def gradient_step(i, global_i):
+        def gradient_step(i, global_i, momentum, momentum_terms):
+
             if self.total_epochs:
                 percent = (global_i+1)/self.total_epochs
             else:
@@ -217,7 +222,7 @@ class NatGradTrainer(Trainer):
                 lr = np.power(learning_rate[1], percent) * np.power(learning_rate[0], (1-percent))
 
             elif self.schedule == 'constant':
-                lr = learning_rate
+                lr = learning_rate[0]
             else:
                 raise NotImplementedError(f'{self.schedule} is not implemented')
 
@@ -226,17 +231,45 @@ class NatGradTrainer(Trainer):
 
             params = self.natgrad_fn(lr, self.enforce_psd_type, self.prediction_samples)
 
+            if momentum:
+                #print(f'using momentum -- {momentum_rate}')
+                if len(momentum_terms) == 0:
+                    momentum_terms = [params]
+                elif len(momentum_terms) == 1:
+                    # [new, old]
+                    momentum_terms = [params, momentum_terms[0]]
+                else:
+                    new_param_1 = params[0] + momentum_rate * (momentum_terms[1][0] - momentum_terms[0][0])
+
+                    # update in cholesky space to ensure PSDness
+                    new_param_2_chol = np.linalg.cholesky(params[1]) + momentum_rate * (np.linalg.cholesky(momentum_terms[1][1]) - np.linalg.cholesky(momentum_terms[0][1]))
+                    new_param_2 = new_param_2_chol @ np.transpose(new_param_2_chol, [0, 2, 1])
+
+                    params = [new_param_1, new_param_2]
+                    #params = [new_param_1, params[1]]
+
+                    # [new, old]
+                    momentum_terms = [params, momentum_terms[0]]
+
             if np.any(np.isnan(params[0])) or np.any(np.isnan(params[1])):
                 print('NaN encountered whilst natgrad training!')
-                return False
+                return True, momentum_terms
 
             update_vars(self.m, self.vars_to_update, params)
-            return True
+            return False, momentum_terms
 
         epoch_arr = []
+        momentum_terms = MOMENTUM_TERMS
+
         for i in range(epochs):
             max_attempt = self.nan_max_attempt
-            while not gradient_step(i, i+epoch_ofset):
+
+            while True:
+                err_flag, momentum_terms = gradient_step(i, i+epoch_ofset, momentum, momentum_terms)
+
+                if not err_flag:
+                    break
+
                 # we have run out of attempts
                 if max_attempt == 0:
                     if raise_error:
@@ -257,6 +290,9 @@ class NatGradTrainer(Trainer):
 
             if callback is not None:
                 callback(i, None, None)
+
+        if momentum:
+            MOMENTUM_TERMS = momentum_terms
 
         return jnp.array(epoch_arr).flatten(), None
 

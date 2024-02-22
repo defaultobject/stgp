@@ -40,8 +40,9 @@ class VB_NG_ADAM(Trainer):
         learning_rates: list,
         epochs: list,
         callback = None,
-        raise_error = True
-
+        raise_error = True,
+        ng_momentum=False,
+        ng_momentum_rate = None
     ):
         """
         Args:
@@ -50,7 +51,7 @@ class VB_NG_ADAM(Trainer):
         """
         # first update the natural gradients, this is so the first gradients from adam are starting from a 'good point'
         self.ng_trainer.train(learning_rates[1], epochs[1][1], raise_error=raise_error)
-        return self.switch_trainer.train(learning_rates, epochs, callback, raise_error=raise_error)
+        return self.switch_trainer.train(learning_rates, epochs, callback, raise_error=raise_error, trainer_kwargs=[{}, {'momentum': ng_momentum, 'momentum_rate': ng_momentum_rate}])
 
 class LikNoiseSplitTrainer(Trainer):
     """ A trainer that holds the likelihood noise for a percentage of the training epochs """

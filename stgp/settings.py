@@ -10,6 +10,11 @@ verbose = False
 
 in_strict_mode = False
 
+experimental_simple_time_weight = False
+experimental_cumsum_time_weight = False
+experimental_precomputed_segements = None
+experimental_precomputed_num_segements = None
+experimental_precomputed_cumsum_eps = 0.01
 
 # controls whether batchjax can convert loops into vmaps
 use_loop_mode = False
@@ -56,6 +61,7 @@ whiten_space = False
 jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10
+ng_f_samples = 10
 
 class strict_mode:
     """Enable strict_mode.

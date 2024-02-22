@@ -177,11 +177,16 @@ else:
 # Train
 if True:
     print(m.get_objective())
-    max_iters = 1000
+    max_iters = 10000
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton_delta_u_mc_f')
     ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton_delta_u')
     #ng_trainer = NatGradTrainer(m)
     m.approximate_posterior.fix()
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)
+
+    #ng_trainer.train(0.1, 1)
+    #print(m.get_objective())
+    #breakpoint()
 
     if False:
         lc_arr_1, _ = ng_trainer.train(0.001, 100)
@@ -222,8 +227,6 @@ plt.plot(XS, post_mu_y[:, 0])
 plt.scatter(X, Y[:, 0])
 plt.show()
 
-
-breakpoint()
 
 pred_mu, pred_var = m.predict_latents(XS)
 pred_var = np.diagonal(pred_var, axis1=1, axis2=2)

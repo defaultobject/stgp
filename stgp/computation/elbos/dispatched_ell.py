@@ -20,9 +20,12 @@ from ...core.model_types import get_model_type, LinearModel, NonLinearModel, get
 from ...core.block_types import get_block_type, compare_block_types, Block
 from ...core.gp_prior import GPPrior
 from ..permutations import  permute_mat
+from ... import settings
+from ..parameter_transforms import softplus
 
 from batchjax import batch_or_loop, BatchType
 from numpy.polynomial.hermite import hermgauss
+from jax import lax
 
 
 
@@ -36,15 +39,7 @@ def scalar_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
 @dispatch(GaussianProductLikelihood, Block.BLOCK)
 def element_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood):
     lik_var = np.diag(likelihood.variance)
-    if False:
-        #-3.98213104e+03
-        new =  full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
-        true = scalar_gaussian_expected_log_likelihood(X, Y[0][:, None], lik_var[0][0], q_f_mu[0][:, None], np.reshape(q_f_var[0][0], [1, 1]))
-        #print(new, true, new-true)
-        #breakpoint()
-        return true
-    else:
-        return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
+    return full_gaussian_expected_log_likelihood(X, Y, lik_var, q_f_mu, q_f_var)
 
 
 # ====================== GAUSSIAN ELLs ===================
@@ -308,6 +303,7 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     # otherwise we have to let the likelihood handle it
 
     # Get nan mask for output
+    raw_Y = Y
     mask = get_same_shape_mask(Y)
 
     # Convert nans to zeros
@@ -475,6 +471,32 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         #chex.assert_shape(ell, [N, P, 1])
 
+        if settings.experimental_simple_time_weight:
+            if settings.verbose:
+                print('using experimental_simple_time_weight')
+            alpha = 1.0
+            time_weight = alpha * ((np.max(X[:, 0])-X[:, 0])+1)
+            ell = time_weight[:, None, None]*np.array(ell)
+
+        if settings.experimental_cumsum_time_weight:
+            if settings.verbose:
+                print('using experimental_cumsum_time_weight')
+
+            # TODO: assuming ordered by time
+            # group by time
+            # use a precomputed segment_sum to make things jittable
+            t_int = settings.experimental_precomputed_segements
+            #_, t_int = np.unique(np.squeeze(t), return_inverse =True)
+            ell_sum_by_time = jax.ops.segment_sum(
+                np.squeeze(ell),
+                t_int, 
+                num_segments = settings.experimental_precomputed_num_segements
+            )
+            ell_cumsum = np.cumsum(ell_sum_by_time)[:-1]
+            ell_cumsum = np.hstack([np.array([0]), ell_cumsum])
+            ell_weights = softplus(settings.experimental_precomputed_cumsum_eps*np.clip(ell_cumsum*-1, a_max=0))
+            ell =  ell_weights * ell_sum_by_time
+
         ell = np.sum(np.array(ell))
 
         return ell
@@ -608,6 +630,9 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
             X_p, Y_p, q_f_mu_p, q_f_var_p, likelihood_p, prior_p, approximate_posterior, inference, block_type_p
         )
         ell_arr.append(ell_p)
+
+    if settings.verbose:
+        print('ell_arr: ', ell_arr)
 
     return np.sum(np.array(ell_arr))
 
