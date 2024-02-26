@@ -504,7 +504,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         return pred_R
 
-    def predict_temporal(self, XS):
+    def predict_temporal(self, XS, filter_only=False):
         """
         Predicts in time locations in XS and at the spatial locations in the training data
         This is useful because Kalman filtering and smoothing algorithms are used to predict in time, and then spatial predictions is handled separately.
@@ -585,11 +585,39 @@ class ST_SDE_GP(BASE_SDE_GP):
         #[data.unique_idx][data.sort_idx]
 
         # Compute posterior at temporal_test_data
-        mu_t, var_t = self.filter_and_smooth(
-            temporal_test_data,
-            self.prior,
-            R = R
-        )
+        if filter_only:
+            mu_t, var_t = self.filter(
+                temporal_test_data,
+                self.prior,
+                R = R
+            )
+
+            
+            # in time - latent - space - state
+            # remove the extra state dims
+            # assuming latent is 1
+            _mu_t = np.copy(mu_t)
+
+
+            # TODO: this is just a quick way to get the state size
+            flat_mu_t = np.reshape(
+                mu_t,
+                [
+                    temporal_test_data.Nt, 
+                    self.prior.num_latents, 
+                    self.data.Ns, 
+                    -1
+                ]
+            )
+            state_size = flat_mu_t.shape[-1]
+            mu_t = mu_t[:, ::state_size, ...]
+            var_t = var_t[:, ::state_size, ...][:, :, ::state_size]
+        else:
+            mu_t, var_t = self.filter_and_smooth(
+                temporal_test_data,
+                self.prior,
+                R = R
+            )
 
         return XS_st_data, all_temporal_data, temporal_test_data, mu_t, var_t[:, None, ...]
 
@@ -855,7 +883,7 @@ class ST_SDE_GP(BASE_SDE_GP):
             #   perhaps we can combine at some point?
             raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
 
-        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, mu_t, var_t = self.predict_temporal(XS)
+        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
         var_t = var_t[:, 0, ...]
 
         # mu_t and var_t are in time-latent-space format
