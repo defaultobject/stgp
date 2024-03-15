@@ -222,7 +222,10 @@ class NatGradTrainer(Trainer):
                 lr = np.power(learning_rate[1], percent) * np.power(learning_rate[0], (1-percent))
 
             elif self.schedule == 'constant':
-                lr = learning_rate[0]
+                if type(learning_rate) is not list:
+                    lr = learning_rate
+                else:
+                    lr = learning_rate[0]
             else:
                 raise NotImplementedError(f'{self.schedule} is not implemented')
 
