@@ -19,7 +19,7 @@ it seems that it is easier to install tensorflow properly first and then figure 
  # pip will complain but requried for tensorflow
  pip install numpy --upgrade
 
- pip install tensorflow_probability
+ pip install tensorflow_probability==0.23
 
  # for m1 jax -- for some reason need to specify most recent release?
  # must use conda-forge channel for m1
