@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 import objax
 import numpy as np
@@ -99,7 +99,7 @@ if True:
     for i in trange(max_iters):
         trainer.train(0.01, 1)
         lc_i, _ = ng_trainer.train(0.01, 1)
-        lc_arr.append(float(lc_i))
+        lc_arr.append(float(np.squeeze(lc_i)))
         
 
     plt.plot(lc_arr)

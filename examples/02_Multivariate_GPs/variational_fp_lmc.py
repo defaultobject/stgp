@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 import objax
@@ -76,11 +76,11 @@ print('NLPD: ', m.nlpd(X, Y, num_samples=10000))
 pred_mu, pred_var = m.predict_f(XS)
 
 if True:
-    max_iters = 200
+    max_iters = 500
 
-    #ng_trainer = NatGradTrainer(m)
+    ng_trainer = NatGradTrainer(m)
     #ng_trainer = NatGradTrainer(m, enforce_psd_type='gauss_newton', prediction_samples=100)
-    ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+    #ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
     m.approximate_posterior.fix()
 
     trainer = GradDescentTrainer(m, objax.optimizer.Adam)

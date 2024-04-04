@@ -1,7 +1,7 @@
 """
 When computing natural gradients we need to compute dE[log P(Y|T(F))]/dS, which is not gurarenteed to ensure P.S.D updates.
 
-Here we compute Gaus-Newton style approximations of this hessian.
+Here we compute Gauss-Newton style approximations of this hessian.
 """
 import jax
 import jax.numpy as np
@@ -148,6 +148,8 @@ def compute_u_to_f(m, q_m, q_S, return_var_only = False, data = None):
 
     Args:
         m: model
+        q_m: M x Q x 1
+        q_S: M x 1 x Q x Q
     """
     likelihood = m.likelihood
     prior = m.prior
@@ -259,6 +261,12 @@ def _get_shape_conditional_f(model, m, S, data, X_st, Y_st) -> list:
     return conditional_mean_shape
 
 def _reparamaterise_f_to_tf(model, eps, pred_mu, pred_var):
+    """
+    Args:
+        eps:
+        pred_mu:
+        pred_var:
+    """
     P = len(eps)
 
     # should all be [Ns x Q x B]
@@ -274,7 +282,8 @@ def _reparamaterise_f_to_tf(model, eps, pred_mu, pred_var):
         pred_mu_p = np.array(pred_mu[p])[..., None] #Ns x Q x B x 1
         pred_mu_p = np.transpose(pred_mu_p, [0, 2, 1, 3]) #Ns x B x Q x 1
 
-        f_samples_p = pred_mu_p + pred_var_p_chol * eps_p # reparam trick -- Ns x B x Q x 1 
+
+        f_samples_p = pred_mu_p + np.nan_to_num(pred_var_p_chol * eps_p) # reparam trick -- Ns x B x Q x 1 
         f_samples_p = f_samples_p[..., 0] #Ns x B x Q 
         f_samples_p = np.transpose(f_samples_p, [0, 2, 1]) #Ns x Q x 1
         f_samples.append(f_samples_p)
@@ -297,8 +306,10 @@ def _reparamaterise_f_to_tf_across_time(model, eps, pred_mu, pred_var):
 def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
     """
     Args: 
-        eps: [Nt x Ns x  Q x 1] 
+        eps: sample of size [Nt x Ns x  Q x 1] 
         m: [Nt x (Ns x Q) x 1] 
+        X_st: Nt x Ns x D
+        Y_st: Nt x P x Ns if not TemporallyGrouped else Nt x  Ns x P
     """
     data = model.data
 
@@ -307,14 +318,13 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
         pred_mu_t, pred_var_t = compute_u_to_f(
             model, 
             m_t[None, ...], 
-            S_t[None, ...]*0.0, 
+            S_t[None, ...]*0.0,  
             data=create_new_single_time_data_of_same_type(
                 data, 
                 X=x_t[None, ...], 
                 Y=y_t[None, ...]
             )
         )
-
         return _reparamaterise_f_to_tf(model, eps_t, pred_mu_t, pred_var_t)
 
     # Nt x Ns x P x 1 x Ms x 1
@@ -405,15 +415,21 @@ def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_li
 
     data = model.data
 
-    # Nt x Ns x P x 1
+    # Nt x P x Ns format
     X_st, Y_st = data.X_st, data.Y_st
 
     conditional_f_shape: list = _get_shape_conditional_f(model, m, S, data, X_st, Y_st)
 
-    sample_shape = [
-        [Y_st.shape[0], Y_st.shape[1], s[1], s[2]] # Nt x Ns x Q x B
-        for s in conditional_f_shape
-    ]
+    if _ensure_str(data) == 'TemporallyGroupedData':
+        sample_shape = [
+            [Y_st.shape[0], Y_st.shape[1], s[1], s[2]] # Nt x Ns x Q x B
+            for s in conditional_f_shape
+        ]
+    else:
+        sample_shape = [
+            [Y_st.shape[0], Y_st.shape[2], s[1], s[2]] # Nt x Ns x Q x B
+            for s in conditional_f_shape
+        ]
 
     if not delta_f:
         if settings.verbose:

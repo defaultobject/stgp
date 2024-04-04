@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 import objax
 import numpy as np
@@ -70,7 +70,7 @@ m = stgp.models.GP(
 print(m.get_objective())
 
 # Train
-if True:
+if False:
     max_iters = 200
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))

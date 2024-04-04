@@ -1,7 +1,7 @@
 """ Unittests for dispatched full-posterior marginals. """
 import jax 
 import jax.numpy as jnp
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', True)
 import objax

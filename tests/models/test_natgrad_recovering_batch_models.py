@@ -1,7 +1,7 @@
 """ Unittests for recovering batch models. """
 import jax 
 import jax.numpy as jnp
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', True)
 import objax
@@ -86,6 +86,8 @@ def test__lmc_and_vi_fp_lmc_match_after_natgrad(seed, P, N, NS, vi_fp_lmc, lmc):
     # collect predictions
     vgp_pred_mu, vgp_pred_var = vi_fp_lmc.predict_y(XS)
     gp_pred_mu, gp_pred_var = lmc.predict_y(XS)
+
+    breakpoint()
 
     # === Assert  ===
     np.testing.assert_allclose(vgp_elbo, gp_elbo, rtol=1e-4)
