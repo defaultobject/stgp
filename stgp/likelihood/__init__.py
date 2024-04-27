@@ -5,6 +5,7 @@ from .bernoulli import Bernoulli
 from .probit import Probit
 from .product_likelihood import ProductLikelihood, GaussianProductLikelihood, BlockGaussianProductLikelihood, get_product_likelihood
 from .power import PowerLikelihood
+from .loss import NonZeroLoss
 
 __all__ = [
     'Likelihood',
@@ -24,5 +25,6 @@ __all__ = [
     'get_product_likelihood',
     'PowerLikelihood',
     'ReshapedDiagonalGaussian',
-    'PrecisionBlockDiagonalGaussian'
+    'PrecisionBlockDiagonalGaussian',
+    'NonZeroLoss'
 ]

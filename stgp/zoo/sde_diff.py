@@ -331,7 +331,7 @@ def diff_gp(
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False,  lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, minibatch_size = None
+    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False,  lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, permute_H=True, minibatch_size = None
 ):
     """
     Args:
@@ -558,7 +558,8 @@ def diff_cvi_sde_vgp(
                             kernel = base_st_kerns[i]
                         )
                     ]),
-                    overwrite_H=overwrite_H
+                    overwrite_H=overwrite_H,
+                    permute=permute_H
                 )
                 for i in range(num_latents)
             ])
@@ -572,7 +573,8 @@ def diff_cvi_sde_vgp(
                         )
                     ]),
                     keep_dims=keep_dims,
-                    overwrite_H=overwrite_H
+                    overwrite_H=overwrite_H,
+                    permute=permute_H
                 )
                 for i in range(num_latents)
             ])
@@ -587,7 +589,8 @@ def diff_cvi_sde_vgp(
                     )
                     for q in range(num_latents)
                 ]),
-                overwrite_H=overwrite_H
+                overwrite_H=overwrite_H,
+                permute=permute_H
             )
         else:
             latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(
@@ -599,7 +602,8 @@ def diff_cvi_sde_vgp(
                     for q in range(num_latents)
                 ]),
                 keep_dims=keep_dims,
-                overwrite_H=overwrite_H
+                overwrite_H=overwrite_H,
+                permute=permute_H
             )
 
 

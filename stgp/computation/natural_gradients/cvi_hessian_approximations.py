@@ -32,6 +32,19 @@ from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_e
 
 from ...transforms import MultiOutput
 
+def get_Y_in_correct_shape(data):
+    """
+    Return Y in [Nt, Ns, P] shape 
+    
+    This is necessary because TemporallyGroupedData return Y in a different shape to all other sequential datasets
+    """
+    Y_st = data.Y_st
+    if _ensure_str(data) != 'TemporallyGroupedData':
+        Y_st = np.transpose(Y_st, [0, 2, 1])
+
+    return Y_st
+
+
 def data_decomposes_across_time(data) -> bool:
     time_data_types = ['TemporallyGroupedData', 'SpatioTemporalData', 'TemporalData', 'MultiOutputTemporalData']
 
@@ -76,10 +89,23 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
     data = model.data
 
     if data_decomposes_across_time(data) and len(T_f.shape) == 4:
+        # T_f: Nt x Ns x P x 1
         chex.assert_rank(T_f, 4)
 
         if not laplace_log_lik:
-            raise NotImplementedError()
+            Y_st = get_Y_in_correct_shape(model.data)
+
+            hess = batch_or_loop(
+                lambda y, t, lik: jax.vmap(jax.vmap(lik.log_hessian_scalar))(y, t),
+                [Y_st, T_f[..., 0], model.likelihood.likelihood_arr],
+                [2, 2, 0],
+                dim = len(model.likelihood.likelihood_arr),
+                out_dim=1,
+                batch_type = get_batch_type(model.likelihood.likelihood_arr)
+            )
+            hess = np.array(hess)
+            hess = np.transpose(hess, [1, 2, 0]) # [Nt, Ns, P]
+            neg_Lambda = hess[..., None] # [Nt, Ns, P, 1]
         else:
             # batch over Nt and Ns, only evaluate the conditional var on the indiviual P x 1 outputs
             Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f) ))(T_f)
@@ -94,6 +120,7 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
                 #  when wrapping a likelihood in a ProductLikelihood
                 neg_Lambda = neg_Lambda[..., None]
 
+
     else:
         q = model.approximate_posterior
         prior = model.prior
@@ -102,7 +129,6 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
         # N x P x 1
         chex.assert_rank(T_f, 3)
 
-        # TODO: only works for exponential family likelihoods atm
         # [N x P x B]
         if not laplace_log_lik:
             hess = batch_or_loop(
@@ -116,6 +142,7 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
             neg_Lambda = np.array(hess)
             neg_Lambda = (neg_Lambda.T)[..., None]
         else:
+            # TODO: only works for exponential family likelihoods atm
 
             Lambda = jax.vmap(
                 lambda f: model.likelihood.conditional_var(f[None, :]) # []

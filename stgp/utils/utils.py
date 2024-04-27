@@ -7,6 +7,7 @@ from .. import settings
 from ..core.block_types import Block, get_block_dim
 from batchjax import BatchType
 import numpy as onp
+from ..dispatch import _ensure_str
 
 """ General Utils. """
 def ensure_module_list(arr: list) -> objax.ModuleList:
@@ -33,12 +34,34 @@ def key_that_ends_with(d: dict, k: str):
             return key
     return None
 
+def get_obj_type(obj):
+    if _ensure_str(obj) in ['ProductLikelihood', 'GaussianProductLikelihood']:
+        return [get_obj_type(lik) for lik in obj.likelihood_arr]
 
-def can_batch(module_list):
+    return type(obj)
+
+def do_obj_types_match(t1, t2):
+    if type(t1) is list:
+        if type(t2) is not list:
+            return False
+        if len(t1) != len(t2):
+            return False
+        return all(
+            [do_obj_types_match(t1[i], t2[i]) for i in range(len(t1))]
+        )
+
+    if type(t2) is list:
+        return False
+
+    return t1 == t2
+    
+
+
+def can_batch(module_list, debug=False):
     # if all types are the same then batch
-    first_type = type(module_list[0])
+    first_type = get_obj_type(module_list[0])
 
-    if all(type(m) == first_type for m in module_list):
+    if all(do_obj_types_match(get_obj_type(m), first_type) for m in module_list):
         return True
 
     return False

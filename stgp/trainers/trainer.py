@@ -195,7 +195,7 @@ class ScipyTrainer(Trainer):
 
         self.objective_fn = objective_fn
 
-    def train(self, learning_rate, epochs, callback=None, ng_trainer = False, ng_lr = None, raise_error=True):
+    def train(self, learning_rate, epochs, callback=None, ng_trainer = False, ng_lr = None, raise_error=True, epoch_ofset = None):
         """ For consistency we accept learning_rate here although it is not used. """
 
         x0 = self.trainable_vc.tensors()

@@ -36,6 +36,14 @@ def predict_y_full(XS, likelihood, post_mu, post_var):
 
 # ======= Diagonal var ========
 
+@dispatch(Posterior, 'NonZeroLoss')
+def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+    chex.assert_rank([post_mu, post_var], [2, 3])
+    chex.assert_equal([post_var.shape[1], post_var.shape[2]], [1, 1])
+
+    return likelihood.conditional_mean(post_mu), post_var
+
+
 @dispatch(Posterior, 'Gaussian')
 def predict_y_diagonal(XS, likelihood, post_mu, post_var):
     chex.assert_rank([post_mu, post_var], [2, 3])

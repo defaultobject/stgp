@@ -82,16 +82,20 @@ class LTI_SDE(SDE):
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """
-    def __init__(self, gp: 'Model', whiten_space=False, overwrite_H=True):
+    def __init__(self, gp: 'Model', whiten_space=False, overwrite_H=True, keep_dims = None, permute=True):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.whiten_space = whiten_space
         self._num_latents = len(self.gp.state_space_dim())
 
         # select all dims
-        self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
+        if keep_dims is None:
+            self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
+        else:
+            self.keep_dims = np.array(keep_dims)
 
         self.overwrite_H = overwrite_H
+        self.permute = permute
 
     @property
     def temporal_output_dim(self):
@@ -114,6 +118,11 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             # for some kernels, like the periodic kernel) the state does not correspond exactly
             #   to f and its time derivatives, so this needs to be handled by the kernel itself
             _, _, _, H_t, _ = self.gp.state_space_representation(X_s)
+            _H_t = H_t # for debugging
+
+            if not self.permute:
+                return H_t
+
             if False:
                 if X_s is None:
                     return H_t
@@ -156,18 +165,20 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             for q in range(Q)
         ])
 
+
         return H
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
     """
     Observe partial deriatives. Useful when we have observations on [f, df/dt] but we want to use a smoother kernel like the matern52/72 etc.
     """
-    def __init__(self, gp: 'Model', keep_dims, whiten_space=False, overwrite_H=True):
+    def __init__(self, gp: 'Model', keep_dims, whiten_space=False, overwrite_H=True, permute=True):
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.keep_dims = np.array(keep_dims)
         self.whiten_space = whiten_space,
         self.overwrite_H = overwrite_H
+        self.permute=permute
 
     @property
     def temporal_output_dim(self):
