@@ -248,8 +248,6 @@ class ApproxSDEPeriodic_BN(MarkovKernel, Periodic):
 
 
     def expm(self, dt, X_spatial=None):
-        """appproximate matrix exponential A = expm(F * dt)"""
-
         F, _, _, _, _ = self.to_ss(X_spatial) 
 
         return expm( F * dt)

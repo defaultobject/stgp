@@ -201,6 +201,11 @@ class MarkovKernel(Kernel):
     def cf_to_ss_spatial(self, sparsity):
         raise NotImplementedError()
 
+    def Q(self, dt, A, P_inf, X_spatial=None):
+        return P_inf - A_k @  P_inf @ A_k.T
+
+
+
 class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
     def state_space_dim(self):
         # only need return the time dim

@@ -55,7 +55,7 @@ class LTI_SDE(SDE):
 
         return L
 
-    def Q(self, x, X_s, t):
+    def Qc(self, x, X_s, t):
         _, _, Q, _, _ = self.gp.state_space_representation(X_s)
 
         return Q
@@ -79,6 +79,9 @@ class LTI_SDE(SDE):
 
     def expm(self, X_s, t):
         return self.gp.expm(t, X_s)
+
+    def Q(self, dt_k, A_k, P_inf, X_spatial=None):
+        return self.gp.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """

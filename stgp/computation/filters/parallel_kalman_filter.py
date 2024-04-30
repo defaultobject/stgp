@@ -235,7 +235,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
     #dt = np.ones(Y.shape[0])*dt[1]
     lik_mat_arr = lik_mat
     A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
-    Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+    #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+    Q_arr = jax.vmap(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s))(dt, A_arr)
     H_arr = np.tile(H[None, ...], [lik_mat_arr.shape[0], 1, 1])
     #Q_arr = Q_arr.at[0].set(P_inf)
 

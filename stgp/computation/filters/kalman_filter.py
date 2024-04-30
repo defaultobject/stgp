@@ -220,7 +220,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     P_k = carry['P']
 
     A_k = prior.expm(X_s, dt_k)
-    Q_k = P_inf - A_k @  P_inf @ A_k.T
+    Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k

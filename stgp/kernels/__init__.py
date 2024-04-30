@@ -18,6 +18,7 @@ from .deep_kernels import DeepStationary
 from .bias import BiasKernel
 from .rq import RQ
 from .periodic import Periodic, ApproxSDEPeriodic
+from .wiener import IntegratedWiener, Wiener, WienerVelocity
 
 __all__ = [
     "Kernel",
@@ -38,5 +39,8 @@ __all__ = [
     "ScaledMatern52",
     "ScaledMatern72",
     "Periodic",
-    "ApproxSDEPeriodic"
+    "ApproxSDEPeriodic",
+    "IntegratedWiener",
+    "Wiener",
+    "WienerVelocity"
 ]

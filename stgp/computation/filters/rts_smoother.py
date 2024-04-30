@@ -47,7 +47,8 @@ def rts_step(prior, carry, x, X_s, full_state):
     dt_k = x['dt']
 
     A_k = prior.expm(X_s, dt_k)
-    Q_k = P_inf - A_k @  P_inf @ A_k.T
+    Q_k = prior.Q(dt_k, A_k, P_inf, X_s)
+    #Q_k = P_inf - A_k @  P_inf @ A_k.T
 
     m_predicted = A_k @ x['m']
     P_predicted = A_k @ x['P'] @ A_k.T + Q_k

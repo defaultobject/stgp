@@ -406,6 +406,18 @@ class Independent(Transform):
 
         return to_block_diag(A_blocks)
 
+    def Q(self, dt_k, A_k, P_inf, X_spatial=None):
+        Q_blocks = batch_or_loop(
+            lambda dt, A, P, Xs, latent:  latent.kernel.Q(dt, A, P, X_spatial=Xs),
+            [dt_k, A_k, P_inf, X_spatial, self.parent],
+            [None, None, None, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+
+        return to_block_diag(Q_blocks)
+
     def fix(self):
         for q in self.parent:
             q.fix()

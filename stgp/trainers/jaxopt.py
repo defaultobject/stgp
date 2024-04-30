@@ -25,7 +25,7 @@ class JaxoptTrainer(ScipyTrainer):
 
     Heavily based on https://gist.github.com/slinderman/24552af1bdbb6cb033bfea9b2dc4ecfd with modifications to work with objax
     """
-    def __init__(self, m, optimizer, opt_args = None, hold_vars = None):
+    def __init__(self, m, optimizer, opt_args = None, hold_vars = None, maxiter=1):
 
         super(JaxoptTrainer, self).__init__(m, optimizer, opt_args = opt_args, hold_vars = hold_vars)
 
@@ -38,7 +38,8 @@ class JaxoptTrainer(ScipyTrainer):
         def fun_flat(x_flat):
             self.m.vars().assign(self.original_m_vars_tensors)
             self.trainable_vc.assign(unravel(x_flat))
-            return self.objective_fn()
+            val= self.objective_fn()
+            return val
 
         def grad_flat(x_flat):
             self.m.vars().assign(self.original_m_vars_tensors)
@@ -52,23 +53,35 @@ class JaxoptTrainer(ScipyTrainer):
 
         self.flat_fun = lambda x_flat: (fun_flat(x_flat), grad_flat(x_flat))
 
-        self.jax_opt_fn = self.optimizer(fun=self.flat_fun, maxiter=1, value_and_grad=True)
+        self.jax_opt_fn = self.optimizer(fun=self.flat_fun, maxiter=maxiter, value_and_grad=True)
 
-    def train(self, learning_rate, epochs, callback=None, raise_error=True, epoch_ofset = None):
+    def train(self, learning_rate, epochs, callback=None, raise_error=True, epoch_ofset = None, state_has_obj = True):
         """ For consistency we accept learning_rate here although it is not used. """
 
         start = timer()
-        
+
         x0, unravel  = ravel_pytree(self.trainable_vc.tensors())
+
+        state = self.jax_opt_fn.init_state(x0)
+        zero_step = self.jax_opt_fn._make_zero_step(x0, state)
+        opt_step = self.jax_opt_fn.update(x0, state)
+
+        breakpoint()
+
         epoch_arr = []
 
         # first step manually to get state
         xnew, state = self.jax_opt_fn.run(x0)
         res_x = unravel(xnew)
+
         # hack for now to reset the tracers that jaxopt is somehow introducing
         self.m.vars().assign(self.original_m_vars_tensors)
         self.trainable_vc.assign(res_x)
-        val = self.objective_fn()
+        if state_has_obj:
+            val = state.value
+        else:
+            val = self.m.get_objective()
+
         epoch_arr.append(np.array(val))
 
         if callback is not None:
@@ -84,7 +97,10 @@ class JaxoptTrainer(ScipyTrainer):
                 self.trainable_vc.assign(res_x)
 
                 # get_current_fn_val
-                val = self.objective_fn()
+                if state_has_obj:
+                    val = state.value
+                else:
+                    val = self.m.get_objective()
                 epoch_arr.append(np.array(val))
                 #val = 0
 

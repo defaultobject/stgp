@@ -285,7 +285,6 @@ def lower_triangle(val, N):
     return tri.at[idx].set(val)
 
 
-
 @partial(jit, static_argnums=(1,))
 def vectorized_lower_triangular(val:np.ndarray, N) -> np.ndarray:
     return jax.vmap(

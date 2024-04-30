@@ -18,6 +18,12 @@ from stgp.models import GP
 
 import matplotlib.pyplot as plt
 
+import jaxopt
+from jax.flatten_util import ravel_pytree
+
+
+from stgp.trainers.jaxopt import JaxoptTrainer
+
 stgp.settings.linear_solver = stgp.settings.SolveType.CG
 
 # Construct Data
@@ -32,13 +38,15 @@ K = Matern32(input_dim=1, lengthscales=[0.1])
 m = GP(X, Y, kernel=[K])
 
 
-pred_mu, pred_var = m.predict_y(XS)
-
-# Train
 print(m.get_objective())
 if True:
+    trainer = JaxoptTrainer(m, lambda args, kwargs: jaxopt.LBFGS(*args, **kwargs, linesearch="zoom", jit=False))
+    lc_arr, _ = trainer.train(None, 10, callback=progress_bar_callback(10))
+    plt.plot(lc_arr)
+    plt.show()
+else:
     max_iters = 100
-    trainer = ScipyTrainer(m, 'CG')
+    trainer = ScipyTrainer(m, 'L-BFGS-B')
     trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
 print(m.get_objective())

@@ -66,7 +66,8 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, H_k, full_state):
     P_inf = prior.P_inf(None, X_s, None)
     H = prior.H(None, X_s, None)
     A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
-    Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+    #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+    Q_arr = jax.vmap(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s))(dt, A_arr)
     H_arr = np.tile(H[None, ...], [A_arr.shape[0], 1, 1])
 
     # TODO: check indexes here
