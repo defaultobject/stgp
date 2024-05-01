@@ -35,6 +35,7 @@ from ..linalg import solve, solve_from_cholesky
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
+from ...transforms.pdes import PDE
 
 import objax
 import chex
@@ -63,6 +64,7 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
         carry:
         x:
     """
+    raise RuntimeError('NOT BEEN MAINTAINED')
     # in latent - space format
     Y_k = x['Y']
 
@@ -140,7 +142,7 @@ def _pivoted_cholesky(matrix):
     return pivoted_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
 
 @jit
-def kf_update_step(m_, P_, H_k, R_k, carry, x):
+def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     """
     Computes the Kalman filter update equations with missing data support:
     
@@ -149,7 +151,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
 
     Computes:
 
-        v_k = y_k - H_k - _m_k 
+        v_k = y_k - H_k _m_k 
         S_k = H_k _P_k H^T_k + R_k
         K_k = _P_k H^T_k S^{-1}_k
 
@@ -179,7 +181,8 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
 
     # -- KALMAN UPDATE --
     # m_, P_ is in latent - space -state format
-    mu = M @ H_k @ m_
+    #mu = M @ H_k @ m_
+    mu = M @ innovation
     var = M @ H_k @ P_ @ H_k.T @ M.T
 
     #inovation mean and variance
@@ -196,6 +199,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x):
     log_Z_k = np.sum(
         log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
     )
+
 
     if settings.kalman_filter_force_symmetric:
         P_k = force_symmetric(P_k)
@@ -225,9 +229,11 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
+    innovation = H_k @ m_
+
     if lik_cov_flag:
         R_k =  x['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, carry, x)
+        return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
     else:
         R_k_inv =  x['lik_mat']
         return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
@@ -257,9 +263,44 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     m_ = f
     P_ = F @ P @ F.T + Sigma
 
+
     if lik_cov_flag:
         R_k =  x['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, carry, x)
+        return kf_update_step(m_, P_, H_k, R_k, carry, x, H_k @ m_)
+    else:
+        R_k_inv =  x['lik_mat']
+        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
+
+@dispatch(PDE, 'sequential')
+def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
+    """ Extended Kalman Filter Predict Step """
+
+    # model will be PDE[LTI_SDE[GP]]
+
+    sde_prior = model.parent
+
+
+    P_inf = sde_prior.P_inf(None, X_s, None)
+    H_k = sde_prior.H(None, X_s, None)
+
+    dt_k = x['dt']
+    m_k = carry['m']
+    P_k = carry['P']
+
+    A_k = sde_prior.expm(X_s, dt_k)
+    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+
+    # standard Kalman prediction
+    m_ = A_k @ m_k
+    P_ = A_k @ P_k @ A_k.T + Q_k
+
+    H_k = model.H(m_, X_s, x['t'])
+    f = model.forward(m_, X_s, x['t'])
+
+
+    if lik_cov_flag:
+        R_k =  x['lik_mat']
+        return kf_update_step(m_, P_, H_k, R_k, carry, x, f[..., None])
     else:
         R_k_inv =  x['lik_mat']
         return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)

@@ -11,9 +11,32 @@ from ...dispatch import dispatch, evoke
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
+from ...transforms.pdes import PDE
+
 
 import objax
 import chex
+
+@dispatch(LTI_SDE)
+def get_model_H(prior, x, m_predicted, X_s, t, full_state):
+    if full_state:
+        # force full state
+        H_k = np.eye(x['m'].shape[0])
+    else:
+        H_k = prior.H(None, X_s, t)
+
+    return H_k
+
+@dispatch(PDE)
+def get_model_H(prior, x, m_predicted, X_s, t, full_state):
+    if full_state:
+        raise NotImplementedError()
+
+    return prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted
+
+def get_H(model, x, m_predicted, X_s, t, full_state):
+    rts_fn = evoke('get_model_H', model)
+    return rts_fn(model, x, m_predicted, X_s, t, full_state)
 
 @jit
 def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted, A_k, Q_k):
@@ -34,20 +57,14 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 
     return m, P
 
-@dispatch(LTI_SDE)
-def rts_step(prior, carry, x, X_s, full_state):
-    P_inf = prior.P_inf(None, X_s, None)
+def rts_step(prior, sde_prior, carry, x, X_s, full_state):
 
-    if full_state:
-        # force full state
-        H_k = np.eye(x['m'].shape[0])
-    else:
-        H_k = prior.H(None, X_s, None)
+    P_inf = sde_prior.P_inf(None, X_s, None)
 
     dt_k = x['dt']
 
-    A_k = prior.expm(X_s, dt_k)
-    Q_k = prior.Q(dt_k, A_k, P_inf, X_s)
+    A_k = sde_prior.expm(X_s, dt_k)
+    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
     #Q_k = P_inf - A_k @  P_inf @ A_k.T
 
     m_predicted = A_k @ x['m']
@@ -65,6 +82,8 @@ def rts_step(prior, carry, x, X_s, full_state):
 
     )
 
+    H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
+
 
     m_res =  {
         'm': m, 'P': P 
@@ -77,50 +96,18 @@ def rts_step(prior, carry, x, X_s, full_state):
 
     return m_res, p_res
 
-@dispatch(SDE)
-def rts_step(model, carry, x, X_s, full_state):
-    """ Extended Kalman Filter Predict Step """
+@dispatch(LTI_SDE)
+def rts_step_wrapper(prior, carry, x, X_s, full_state):
+    return rts_step(prior, prior, carry, x, X_s, full_state)
 
-    if full_state:
-        # force full state
-        H_k = np.eye(x['m'].shape[0])
-    else:
-        H_k = model.H(None, X_s, None)
-
-    f_fn = lambda m: model.f_dt(
-        m, X_s, x['t'], x['dt']
-    )
-    Sigma = model.Sigma_dt(
-        carry['m'], X_s, x['t'], x['dt']
-    )
-
-    f = f_fn(x['m'])
-    F = jax.jacfwd(f_fn)(x['m'])
-    F = F[:, 0, :, 0]
-
-    m, P = rts_smoother_step(
-        x['m'],
-        x['P'],
-        carry['m'],
-        carry['P'],
-        f,
-        F @ x['P'] @ F.T + Sigma,
-        F, 
-        Sigma
-
-    )
-    m_res =  {
-        'm': m, 'P': P 
-    }
-
-    p_res = {
-        'm': H_k @ m, 'P': H_k @ P @ H_k.T
-    }
-
-    return m_res, p_res
+@dispatch(PDE)
+def rts_step_wrapper(prior, carry, x, X_s, full_state):
+    return rts_step(prior, prior.parent, carry, x, X_s, full_state)
 
 def step_wrapper(data, m, full_state):
-    rts_fn = evoke('rts_step', m)
+    """ Wrapper to support scan with rts_step """
+
+    rts_fn = evoke('rts_step_wrapper', m)
 
     def _fn(carry, x):
         return rts_fn(m, carry, x, data.X_space, full_state)
@@ -128,9 +115,7 @@ def step_wrapper(data, m, full_state):
     return _fn
 
 @dispatch('sequential')
-def smoother(data, model, filter_res, dt, X_t, X_s, H_k, full_state):
-
-
+def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
@@ -153,6 +138,8 @@ def smoother(data, model, filter_res, dt, X_t, X_s, H_k, full_state):
     m = ys['m']
     P = ys['P']
 
+    H_k = get_H(model, m_init, m_init, X_s, X_t[0], full_state)
+    
 
     m = np.vstack([(H_k @ m_init)[None, ...], m])
     P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
@@ -179,17 +166,10 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     dt = np.hstack([dt, np.zeros(1)])
 
 
-    if full_state:
-        # force full state by setting H to the identity
-        H_k = np.eye(filter_res['m'][0].shape[0])
-    else:
-        H_k = model.H(None, X_s, None)
-
-
     # sequential, parallel, square_root_svm
     smoother_fn = evoke('smoother', filter_type)
 
-    mu, var  =  smoother_fn(data, model, filter_res, dt, X_t, X_s, H_k, full_state)
+    mu, var  =  smoother_fn(data, model, filter_res, dt, X_t, X_s, full_state)
 
     return mu, var
 

@@ -217,7 +217,72 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         return self.base_prior
 
 class PDE(Transform):
-    pass
+
+    def jac(self, x, X_s, t):
+        """Compute d (self.forward(x))(dx) """
+        chex.assert_rank(x, 2)
+        J =  jax.jacfwd(lambda _x: self.forward(_x, X_s, t))(x)[..., 0] 
+        chex.assert_rank(J, 2)
+        return J
+
+    def H(self, x, X_s, t):
+        return self.jac(x, X_s, t)
+
+
+class IdentityPDE(PDE):
+    def __init__(self, latent, m_init = None):
+        self._parent = latent
+        self._output_dim = 1
+        self._input_dim = self.parent.output_dim
+
+
+        if m_init is None:
+            m_init = np.zeros(self.input_dim)[:, None]
+
+        self.m_init = np.array(m_init)
+
+    def m_inf(self, x, X_s, t):
+        return self.m_init
+
+    def P_inf(self, x, X_s, t):
+        return self.parent.P_inf(x, X_s, t)
+
+    def forward(self, f):
+        """ 
+        f is of shape 3 corresponding to f, ft
+        """
+        return f[0]
+
+class SimpleODE(PDE):
+    def __init__(self, latent, m_init = None):
+        self._parent = latent
+        self._output_dim = 1
+        self._input_dim = self.parent.output_dim
+
+        if m_init is None:
+            m_init = np.zeros(self.input_dim)[:, None]
+
+        self.m_init = np.reshape(np.array(m_init), [np.array(m_init).shape[0], 1])
+        self.pred_mode = False
+
+    def m_inf(self, x, X_s, t):
+        return self.m_init
+
+    def P_inf(self, x, X_s, t):
+        return self.parent.P_inf(x, X_s, t)
+
+    def forward(self, f, X_s, t):
+        """ 
+        f is of shape 3 corresponding to f, ft
+        """
+        return f[1]-2*t
+
+    def H(self, x, X_s, t):
+        if self.pred_mode:
+            return np.array([1.0, 0.0])[None, :]
+        else:
+            return self.jac(x, X_s, t)
+
 
 class Pendulum1D(PDE):
     def __init__(self, latent, g, l, train=True):
@@ -248,6 +313,12 @@ class Pendulum1D(PDE):
             name ='Pendulum1D/l', 
             train=train
         )
+
+    def m_inf(self, x, X_s, t):
+        return np.zeros(self.input_dim)[:, None]
+
+    def P_inf(self, x, X_s, t):
+        return self.parent.P_inf(x, X_s, t)
 
     def forward(self, f):
         """ 
