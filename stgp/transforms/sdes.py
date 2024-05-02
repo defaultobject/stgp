@@ -46,35 +46,33 @@ class LTI_SDE(SDE):
         return self.gp.state_space_representation(X_s)
 
     def f(self, x, X_s, t):
-        F, _, _, _, _ = self.gp.state_space_representation(X_s)
+        F, _, _, _, _, _ = self.gp.state_space_representation(X_s)
 
         return F @ x
 
     def L(self, x, X_s, t):
-        _, L, _, _, _ = self.gp.state_space_representation(X_s)
+        _, L, _, _, _, _ = self.gp.state_space_representation(X_s)
 
         return L
 
     def Qc(self, x, X_s, t):
-        _, _, Q, _, _ = self.gp.state_space_representation(X_s)
+        _, _, Q, _, _, _ = self.gp.state_space_representation(X_s)
 
         return Q
 
     def H(self, x, X_s, t):
-        _, _, _, H, _ = self.gp.state_space_representation(X_s)
+        _, _, _, H, _, _ = self.gp.state_space_representation(X_s)
 
         return H
 
     def P_inf(self, x, X_s, t):
-        _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
+        _, _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
+        #return np.diag(np.array([1e-14, 1e6, 1e-14, 1e-6]))
 
         return Pinf
 
     def m_inf(self, x, X_s, t):
-        _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
-
-        m_inf = np.zeros([Pinf.shape[0], 1])
-
+        _, _, _, _, m_inf, _ = self.gp.state_space_representation(X_s)
         return m_inf
 
     def expm(self, X_s, t):
@@ -120,7 +118,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         else:
             # for some kernels, like the periodic kernel) the state does not correspond exactly
             #   to f and its time derivatives, so this needs to be handled by the kernel itself
-            _, _, _, H_t, _ = self.gp.state_space_representation(X_s)
+            _, _, _, H_t, _, _ = self.gp.state_space_representation(X_s)
             _H_t = H_t # for debugging
 
             if not self.permute:

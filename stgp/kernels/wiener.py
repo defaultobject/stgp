@@ -55,13 +55,20 @@ class WienerVelocity(MarkovKernel):
     """
     Following https://github.com/alshedivat/gpml/blob/master/cov/covW.m
     """
-    def __init__(self, q=1, variance=1.0):
+    def __init__(self, q=1, variance=1.0, m_init = None):
         super(WienerVelocity, self).__init__()
         
         self.q = int(q)
         self.variance_param = Parameter(variance, constraint='positive', name=f'IntegratedWiener({self.q})/variance')
         self._state_space_dim = q+1
         self.explicit_q = True
+
+        if m_init is None:
+            m_init = np.zeros(self.state_size())[:, None]
+        else:
+            m_init = np.reshape(np.array(m_init), [self.state_size(), 1])
+
+        self.m_init = m_init
         
     def state_size(self):
         return self._state_space_dim
@@ -75,10 +82,11 @@ class WienerVelocity(MarkovKernel):
         F = np.eye(dim, k = 1)
         L = np.hstack([np.zeros(q), [1]])[:, None]*var
         H = np.hstack([[1], np.zeros(q)])[None, :]
-        Pinf = np.zeros([dim, dim])
+        Pinf = np.diag(np.hstack([1e-14, np.ones(q)*1e6])) # low variance on x, high variance on the derivatives
         Qc = var
+        minf = self.m_init
 
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, minf, Pinf
 
     def expm(self, dt, X_spatial=None):
         #F, _, _, _, _ = self.to_ss(X_spatial) 

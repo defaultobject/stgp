@@ -133,16 +133,17 @@ class CombinationKernel(Kernel):
 
 class SumKernel(CombinationKernel):
     def to_ss(self, X_spatial=None):
-        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss(X_spatial)
-        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss(X_spatial)
+        k1_F, k1_L, k1_Qc, k1_H, m1_inf, k1_Pinf = self.k1.to_ss(X_spatial)
+        k2_F, k2_L, k2_Qc, k2_H, m2_inf, k2_Pinf = self.k2.to_ss(X_spatial)
 
         F = block_diag(k1_F, k2_F)
         L = block_diag(k1_L, k2_L)
         Pinf = block_diag(k1_Pinf, k2_Pinf)
         Qc = block_diag(k1_Qc, k2_Qc)
+        m_inf = np.vstack([m1_inf, m2_inf])
         H = np.hstack([k1_H, k2_H])
 
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, m_inf, Pinf
 
     def state_space_dim(self):
         return self.k1.state_space_dim()+self.k2.state_space_dim()
@@ -161,8 +162,8 @@ class SumKernel(CombinationKernel):
 
 class ProductKernel(CombinationKernel):
     def to_ss(self, X_spatial=None):
-        k1_F, k1_L, k1_Qc, k1_H, k1_Pinf = self.k1.to_ss(X_spatial)
-        k2_F, k2_L, k2_Qc, k2_H, k2_Pinf = self.k2.to_ss(X_spatial)
+        k1_F, k1_L, k1_Qc, k1_H, m1_inf, k1_Pinf = self.k1.to_ss(X_spatial)
+        k2_F, k2_L, k2_Qc, k2_H, m2_inf, k2_Pinf = self.k2.to_ss(X_spatial)
 
         I_1 = np.eye(k1_F.shape[0])
         I_2 = np.eye(k2_F.shape[0])
@@ -171,6 +172,8 @@ class ProductKernel(CombinationKernel):
         L = np.kron(k1_L, k2_L)
         Q = np.kron(k1_Qc, k2_Qc)
         Pinf = np.kron(k1_Pinf, k2_Pinf)
+        # TODO -- need to check this
+        m_inf = np.kron(m1_inf, m2_inf)
         H = np.kron(k1_H, k2_H)
 
         return F, L, Qc, H, Pinf
@@ -229,10 +232,10 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
             # whitened rep
             K_spatial = np.eye(K_spatial.shape[0])
 
-        F, L, Qc, H, Pinf = self.k1.to_ss()
+        F, L, Qc, H, m_inf, Pinf = self.k1.to_ss()
 
         return space_time_state_space_rep(
-            K_spatial,  F, L, Qc, H, Pinf
+            K_spatial,  F, L, Qc, H, m_inf, Pinf
         )
 
     def state_size(self):

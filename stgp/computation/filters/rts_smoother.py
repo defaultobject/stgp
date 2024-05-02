@@ -21,7 +21,7 @@ import chex
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     if full_state:
         # force full state
-        H_k = np.eye(x['m'].shape[0])
+        H_k = np.eye(x.shape[0])
     else:
         H_k = prior.H(None, X_s, t)
 
@@ -31,8 +31,17 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     H1 = prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted 
     if full_state:
-        H0 = np.array([1.0, 0.0])[None, :]
-        H1 = np.vstack([H0, H1])
+        if False:
+            H0 = np.array([1.0, 0.0])[None, :]
+            H1 = np.vstack([H0, H1])
+        else:
+            H01 = np.array([1.0, 0.0, 0.0, 0.0])[None, :]
+            H03 = np.array([0.0, 0.0, 1.0, 0.0])[None, :]
+            H1 = np.vstack([
+                H01, 
+                H1[[0], :],
+                H03, H1[[1], :]
+            ])
 
     return H1
 

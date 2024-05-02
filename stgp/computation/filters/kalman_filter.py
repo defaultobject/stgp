@@ -294,14 +294,14 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-    H_k = model.H(m_, X_s, x['t'])
+
     f = model.forward(m_, X_s, x['t'])
+    H_k = model.H(m_, X_s, x['t'])
 
     if False:
         print('H_k: ', H_k)
         print('m_:', m_)
         print('f: ', f)
-        print('manual: ', m_[1]-2*x['t'])
         breakpoint()
 
 
@@ -380,7 +380,8 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     dt = np.diff(X_t)
 
     # TODO: fix this
-    dt = np.hstack([np.ones(1), dt])
+    #dt = np.hstack([np.ones(1), dt])
+    dt = np.hstack([np.zeros(1), dt])
 
     # Fix Y shapeo
     Nt = data.Nt

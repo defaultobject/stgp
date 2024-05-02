@@ -27,6 +27,7 @@ def matern32_temporal_state_space_rep(lengthscale, variance):
         [12.0 * 3.0 ** 0.5 / lengthscale ** 3.0 * variance]
     ])
 
+    minf = np.zeros([2, 1])
     Pinf = np.array(
         [
             [variance, 0.0],
@@ -34,18 +35,20 @@ def matern32_temporal_state_space_rep(lengthscale, variance):
         ]
     )
 
-    return F, L, Qc, H, Pinf
+    return F, L, Qc, H, minf, Pinf
 
 
 @jit
-def space_time_state_space_rep(K_spatial, F, L, Qc, H, Pinf):
-    eye = np.eye(K_spatial.shape[0])
+def space_time_state_space_rep(K_spatial, F, L, Qc, H, m_inf, Pinf):
+    Ns = K_spatial.shape[0]
+    eye = np.eye(Ns)
 
     F_st = np.kron(eye, F)
     L_st = np.kron(eye, L)
     Qc_st = np.kron(K_spatial, Qc)
     H_st = np.kron(eye, H)
     Pinf_st = np.kron(K_spatial, Pinf)
+    m_inf_st = np.kron(np.ones([Ns, 1]), m_inf)
 
-    return F_st, L_st, Qc_st, H_st, Pinf_st
+    return F_st, L_st, Qc_st, H_st, m_inf_st, Pinf_st
 

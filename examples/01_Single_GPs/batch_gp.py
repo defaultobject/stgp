@@ -29,17 +29,18 @@ stgp.settings.linear_solver = stgp.settings.SolveType.CG
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 100, seed=0)
 
-#K = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=0.2)
-K = Matern32(input_dim=1, lengthscales=[0.1])
+K = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
+#K = Matern32(input_dim=1, lengthscales=[0.1])
 
 
 # Construct Model
 # Will use default RBF kernel and Gaussian Likelihood
 m = GP(X, Y, kernel=[K])
+m.print()
 
 
 print(m.get_objective())
-if True:
+if False:
     trainer = JaxoptTrainer(m, lambda args, kwargs: jaxopt.LBFGS(*args, **kwargs, linesearch="zoom", jit=False))
     lc_arr, _ = trainer.train(None, 10, callback=progress_bar_callback(10))
     plt.plot(lc_arr)

@@ -221,6 +221,7 @@ class PDE(Transform):
     def jac(self, x, X_s, t):
         """Compute d (self.forward(x))(dx) """
         chex.assert_rank(x, 2)
+        # P x D
         J =  jax.jacfwd(lambda _x: self.forward(_x, X_s, t))(x)[..., 0] 
         chex.assert_rank(J, 2)
         return J
@@ -276,7 +277,8 @@ class SimpleODE(PDE):
 
         df/dt = 2*t
         """
-        return f[1]-2*t
+        #return f[1]-2*t
+        return f[1]+np.sin(t)
 
     def H(self, x, X_s, t):
         return self.jac(x, X_s, t)
@@ -669,15 +671,21 @@ class _LotkaVolterraSystemX(PDE):
             train=train
         )
 
-    def forward(self, f):
-        """ 
-        f is of shape 4 corresponding to x, xt, y, yt
-        """
+    def _dfdt(self, f, X_s, t):
+        """ Evalutate df/dt """
         x, xt, y, yt = f
         alpha = self.alpha_param.value
         beta = self.beta_param.value
 
-        return (xt - (alpha * x - beta * x * y))[:, None]
+        return alpha * x - beta * x * y
+
+
+    def forward(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        x, xt, y, yt = f
+        return (xt - self._dfdt(f, X_s, t))[:, None]
 
 class _LotkaVolterraSystemY(PDE):
 
@@ -702,15 +710,63 @@ class _LotkaVolterraSystemY(PDE):
             train=train
         )
 
-    def forward(self, f):
-        """ 
-        f is of shape 4 corresponding to x, xt, y, yt
-        """
+    def _dfdt(self, f, X_s, t):
+        """ Evalutate df/dt """
         x, xt, y, yt = f
         delta = self.delta_param.value
         gamma = self.gamma_param.value
 
-        return (yt - (delta * x * y  - gamma * y))[:, None]
+        return delta * x * y  - gamma * y
+
+    def forward(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        x, xt, y, yt = f
+
+        return (yt - self._dfdt(f, X_s, t))[:, None]
+
+class LotkaVolterra(PDE):
+    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True):
+        self.components = [
+            _LotkaVolterraSystemX(None, alpha, beta, train=train), 
+            _LotkaVolterraSystemY(None, delta, gamma, train=train), 
+        ]
+        if m_init is None:
+            m_init = np.array([0.0, 0.0, 0.0, 0.0])[:, None]
+        else:
+            m_init = np.array(m_init).reshape([4, 1])
+
+        self.m_init = m_init
+
+        self._parent = latent
+
+    def m_inf(self, x, X_s, t):
+        return self.m_init
+
+    def P_inf(self, x, X_s, t):
+        return self.parent.P_inf(x, X_s, t)
+
+    def _dfdt(self, f, X_s, t):
+        """ Evalutate df/dt """
+        f0 = np.squeeze(self.components[0]._dfdt(f, X_s, t))
+        f1 = np.squeeze(self.components[1]._dfdt(f, X_s, t))
+        return np.array([f0, f1])
+        
+
+    def forward(self, f, X_s, t):
+        """ 
+        f is of shape 3 corresponding to f, ft
+
+        df/dt = 2*t
+        """
+        y0 = np.squeeze(self.components[0].forward(f, X_s, t))
+        y1 = np.squeeze(self.components[1].forward(f, X_s, t))
+        return np.array([y0, y1])
+
+    def H(self, x, X_s, t):
+        return self.jac(x, X_s, t)
+    
 
 def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):
     """
@@ -723,3 +779,5 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):
         _LotkaVolterraSystemX(latent[0], alpha, beta, train=train), 
         _LotkaVolterraSystemY(latent[1], delta, gamma, train=train), 
     ]
+
+

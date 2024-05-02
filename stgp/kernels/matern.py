@@ -131,6 +131,8 @@ class Matern52(StationaryKernel, MarkovKernel):
         )
         H = np.array([[1.0, 0.0, 0.0]])
         kappa = 5.0 / 3.0 * var / ls**2.0
+
+        minf = np.zeros([3, 1])
         Pinf = np.array(
             [
                 [var, 0.0, -kappa],
@@ -138,7 +140,7 @@ class Matern52(StationaryKernel, MarkovKernel):
                 [-kappa, 0.0, 25.0 * var / ls**4.0],
             ]
         )
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, minf, Pinf
 
     def state_size(self):
         return 3
@@ -209,6 +211,7 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
         )
         H = np.array([[1.0, 0.0, 0.0]])
         kappa = 5.0 / 3.0 * var / ls**2.0
+        minf = np.zeros([3, 1])
         Pinf = np.array(
             [
                 [var, 0.0, -kappa],
@@ -216,7 +219,7 @@ class ScaledMatern52(StationaryVarianceKernel, MarkovKernel):
                 [-kappa, 0.0, 25.0 * var / ls**4.0],
             ]
         )
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, minf, Pinf
 
     def state_size(self):
         return 3
@@ -286,12 +289,13 @@ class ScaledMatern72(StationaryVarianceKernel, MarkovKernel):
         H = np.array([[1, 0, 0, 0]])
         kappa = 7.0 / 5.0 * var / ls**2.0
         kappa2 = 9.8 * var / ls**4.0
+        minf = np.zeros([4, 1])
         Pinf = np.array([[var,   0.0,    -kappa, 0.0],
                          [0.0,    kappa,   0.0,    -kappa2],
                          [-kappa, 0.0,     kappa2, 0.0],
                          [0.0,    -kappa2, 0.0,    343.0*var / ls**6.0]])
 
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, minf, Pinf
 
     def state_size(self):
         return 4

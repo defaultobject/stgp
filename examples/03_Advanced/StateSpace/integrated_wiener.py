@@ -32,7 +32,8 @@ import matplotlib.pyplot as plt
 batch = False
 q = 1
 var = 1.0
-train = False
+train = True
+matern=False
 
 np.random.seed(0)
 
@@ -42,7 +43,7 @@ _, X, Y = single_output_timeseries(200, 100, seed=0)
 X = np.linspace(0, 2, 10)[:, None]
 Y = np.zeros_like(X)
 
-#XS = np.linspace(0, np.max(X)*0.5, 1000)[:, None] # only defined for t >= 0
+XS = np.linspace(0, np.max(X), 1000)[:, None] # only defined for t >= 0
 XS = X
 
 if False:
@@ -63,14 +64,19 @@ else:
     Y = Y*0.0
     data = TemporalData(X, Y)
     lik = ReshapedGaussian(Gaussian(variance=0.0), num_blocks=data.Nt, block_size=1)
+
+    if matern:
+        kern = Matern32(lengthscales=[1.0])
+    else:
+        kern = IntegratedWiener(q=q, variance=var)
+
     latent_gp = GP(
         sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 
-        kernel =  IntegratedWiener(q=q, variance=var),
-        #kernel =  Matern32(lengthscales=[1.0]),
+        kernel =  kern,
         prior = True
     )
     #prior = IdentityPDE(LTI_SDE(Independent([latent_gp])), m_init = [[10.0], [10.0]])
-    prior = SimpleODE(LTI_SDE(Independent([latent_gp])), m_init=[2.0, 0.0])
+    prior = SimpleODE(LTI_SDE(Independent([latent_gp])), m_init=[1.0, 0.0])
     #prior = LTI_SDE(Independent([latent_gp]))
 
     m = GP(
@@ -91,7 +97,7 @@ if train:
 m.print()
 
 plot_grad = False
-if False:
+if True:
     pred_mu, pred_var = m.predict_f(XS, filter_only=True)
     pred_mu = np.squeeze(pred_mu)
     pred_var = np.squeeze(pred_var)
@@ -103,7 +109,6 @@ else:
     pred_var = np.squeeze(pred_var)
 
     grad = np.gradient(pred_mu[:, 0], np.squeeze(XS))
-    breakpoint()
 
     if plot_grad:
         i = 1

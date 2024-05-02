@@ -377,7 +377,7 @@ class Independent(Transform):
         return  [latent.kernel.state_space_dim() for latent in self.parent]
 
     def state_space_representation(self, X_s):
-        F_blocks, L_blocks, Qc_blocks, H_blocks, P_inf_blocks = batch_or_loop(
+        F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
             lambda x_s, latent:  latent.kernel.to_ss(x_s),
             [X_s, self.parent],
             [None, 0],
@@ -389,10 +389,11 @@ class Independent(Transform):
         F = to_block_diag(F_blocks)
         L = to_block_diag(L_blocks)
         Qc = to_block_diag(Qc_blocks)
+        m_inf = np.vstack(m_inf_blocks)
         P_inf = to_block_diag(P_inf_blocks)
         H = to_block_diag(H_blocks)
 
-        return F, L, Qc, H, P_inf
+        return F, L, Qc, H, m_inf, P_inf
 
     def expm(self, dt, X_s):
         A_blocks = batch_or_loop(

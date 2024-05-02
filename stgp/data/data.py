@@ -663,6 +663,8 @@ class MultiOutputTemporalData(SequentialData):
 
         super(MultiOutputTemporalData, self).__init__()
 
+        self.X_raw = np.copy(X)
+        self.Y_raw = np.copy(Y)
         if sort:
             chex.assert_rank(X, 2)
             chex.assert_rank(Y, 2)
