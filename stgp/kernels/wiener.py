@@ -84,7 +84,6 @@ class WienerVelocity(MarkovKernel):
         #F, _, _, _, _ = self.to_ss(X_spatial) 
         #_expm =  expm( F * dt)
 
-        dt = 0.1
         dim = self.state_size()
         idx = np.arange(dim)
         _weights = jax.vmap(

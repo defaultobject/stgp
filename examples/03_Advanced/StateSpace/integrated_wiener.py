@@ -38,7 +38,8 @@ np.random.seed(0)
 
 # Construct Data
 _, X, Y = single_output_timeseries(200, 100, seed=0)
-X = np.linspace(0, 2, 200)[:, None]
+#X = np.arange(0, 2, 0.01)[:, None]
+X = np.linspace(0, 2, 10)[:, None]
 Y = np.zeros_like(X)
 
 #XS = np.linspace(0, np.max(X)*0.5, 1000)[:, None] # only defined for t >= 0
@@ -61,10 +62,10 @@ if batch:
 else:
     Y = Y*0.0
     data = TemporalData(X, Y)
-    lik = ReshapedGaussian(Gaussian(variance=0.00001), num_blocks=data.Nt, block_size=1)
+    lik = ReshapedGaussian(Gaussian(variance=0.0), num_blocks=data.Nt, block_size=1)
     latent_gp = GP(
         sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 
-        kernel =  WienerVelocity(q=q, variance=var),
+        kernel =  IntegratedWiener(q=q, variance=var),
         #kernel =  Matern32(lengthscales=[1.0]),
         prior = True
     )
@@ -89,8 +90,7 @@ if train:
     plt.show()
 m.print()
 
-m.prior.pred_mode = False
-
+plot_grad = False
 if False:
     pred_mu, pred_var = m.predict_f(XS, filter_only=True)
     pred_mu = np.squeeze(pred_mu)
@@ -98,14 +98,31 @@ if False:
     pred_mu = pred_mu[:, 0]
     pred_var = pred_var[:, 0]
 else:
-    pred_mu, pred_var = m.predict_f(XS)
+    pred_mu, pred_var = m.predict_f(XS, force_full_state=True)
     pred_mu = np.squeeze(pred_mu)
     pred_var = np.squeeze(pred_var)
 
-print(np.sum(pred_mu), np.sum(pred_var))
+    grad = np.gradient(pred_mu[:, 0], np.squeeze(XS))
+    breakpoint()
+
+    if plot_grad:
+        i = 1
+    else: 
+        i = 0
+    pred_mu = pred_mu[:, i]
+    pred_var = pred_var[:, i]
+
+
 
 plt.figure()
 plt.fill_between(np.squeeze(XS), pred_mu - 1.96*np.sqrt(pred_var), pred_mu + 1.96*np.sqrt(pred_var), alpha=0.4)
-plt.plot(XS, pred_mu)
-plt.scatter(X, Y)
+plt.plot(XS, pred_mu, label='learnt')
+if plot_grad:
+    plt.plot(np.linspace(0, 2, 100), np.linspace(0, 2, 100)*2, label='truth', linestyle='dashed')
+    plt.plot(XS, grad, label='np grad', linestyle='dashed')
+else:
+    plt.plot(np.linspace(0, 2, 100), np.linspace(0, 2, 100)**2+2, label='truth', linestyle='dashed')
+    plt.plot(XS, grad, label='np grad', linestyle='dashed')
+plt.legend()
+plt.plot()
 plt.show()

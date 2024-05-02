@@ -297,6 +297,14 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     H_k = model.H(m_, X_s, x['t'])
     f = model.forward(m_, X_s, x['t'])
 
+    if False:
+        print('H_k: ', H_k)
+        print('m_:', m_)
+        print('f: ', f)
+        print('manual: ', m_[1]-2*x['t'])
+        breakpoint()
+
+
 
     if lik_cov_flag:
         R_k =  x['lik_mat']

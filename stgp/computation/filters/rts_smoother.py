@@ -29,10 +29,12 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 
 @dispatch(PDE)
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
+    H1 = prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted 
     if full_state:
-        raise NotImplementedError()
+        H0 = np.array([1.0, 0.0])[None, :]
+        H1 = np.vstack([H0, H1])
 
-    return prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted
+    return H1
 
 def get_H(model, x, m_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', model)

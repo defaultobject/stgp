@@ -263,7 +263,6 @@ class SimpleODE(PDE):
             m_init = np.zeros(self.input_dim)[:, None]
 
         self.m_init = np.reshape(np.array(m_init), [np.array(m_init).shape[0], 1])
-        self.pred_mode = False
 
     def m_inf(self, x, X_s, t):
         return self.m_init
@@ -274,14 +273,13 @@ class SimpleODE(PDE):
     def forward(self, f, X_s, t):
         """ 
         f is of shape 3 corresponding to f, ft
+
+        df/dt = 2*t
         """
         return f[1]-2*t
 
     def H(self, x, X_s, t):
-        if self.pred_mode:
-            return np.array([1.0, 0.0])[None, :]
-        else:
-            return self.jac(x, X_s, t)
+        return self.jac(x, X_s, t)
 
 
 class Pendulum1D(PDE):

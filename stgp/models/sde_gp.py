@@ -234,7 +234,6 @@ class BASE_SDE_GP(Posterior):
             filter_type = self.filter_type
         ) 
 
-        
         mu, var = rts_smoother.smoother_loop(
             data, 
             prior,
@@ -432,6 +431,7 @@ class T_SDE_GP(BASE_SDE_GP):
             out_dim = state_dim
         else:
             out_dim = self.output_dim
+
 
         # mu, var are in time - latent- space format but space is 1
         # Therefore we just need to stack them as no permutations are required
