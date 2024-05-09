@@ -8,7 +8,7 @@ from functools import partial
 
 from ... import settings
 from ...utils.nan_utils import get_same_shape_mask 
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag, get_block_diagonal
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag, get_block_diagonal, mat_inv
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke

@@ -42,6 +42,9 @@ class LTI_SDE(SDE):
         except Exception as e:
             return 1
 
+    def state_space_dim(self):
+        return self.gp.state_space_dim()
+
     def state_space_representation(self, X_s, dt, t):
         return self.gp.state_space_representation(X_s)
 
@@ -67,7 +70,6 @@ class LTI_SDE(SDE):
 
     def P_inf(self, x, X_s, t):
         _, _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
-        #return np.diag(np.array([1e-14, 1e6, 1e-14, 1e-6]))
 
         return Pinf
 
@@ -98,6 +100,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         self.overwrite_H = overwrite_H
         self.permute = permute
 
+
+
     @property
     def temporal_output_dim(self):
         """ Returns the full state.  """
@@ -124,23 +128,8 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             if not self.permute:
                 return H_t
 
-            if False:
-                if X_s is None:
-                    return H_t
-                else:
-                    raise NotImplementedError('Not Implemented for spatial models')
-
         # only keep the deriatives that we care about
         H_t = H_t[self.keep_dims]
-
-        if False:
-            #When there are no spatial points there is no need to permute
-            #as it will automatically be in time-latent format
-            if X_s is None:
-                return to_block_diag([
-                    H_t
-                    for q in range(Q)
-                ])
 
         # need to permute from latent-ds-space-df to latent-df-ds-space
         if X_s is None:

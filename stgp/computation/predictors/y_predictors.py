@@ -7,7 +7,7 @@ import warnings
 
 from ...likelihood import ProductLikelihood, Gaussian
 from ...transforms import LinearTransform, Independent, Transform
-from ...dispatch import dispatch, evoke, DispatchNotFound
+from ...dispatch import dispatch, evoke, DispatchNotFound, _ensure_str
 from ...utils.batch_utils import batch_over_module_types
 from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter, vec_add_jitter
@@ -64,8 +64,14 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
     chex.assert_rank([post_mu, post_var], [3, 4])
     chex.assert_equal([post_var.shape[2], post_var.shape[3]], [1, 1])
 
-    # make the likelihood variance the same shape as the (predictive) posterior variance
-    lik_var = np.tile(likelihood.base.variance, [post_var.shape[0], 1])[..., None, None]
+    # TODO: small hack to add support for DiagionalGaussian
+    if _ensure_str(likelihood.base)=='DiagonalGaussian':
+        # extract the diagonal of the DiagonalGaussian first
+        # then tile/repeat for each of the prediction locations
+        lik_var = np.tile(np.diag(likelihood.base.variance), [post_var.shape[0], 1])[..., None, None]
+    else:
+        # make the likelihood variance the same shape as the (predictive) posterior variance
+        lik_var = np.tile(likelihood.base.variance, [post_var.shape[0], 1])[..., None, None]
 
     chex.assert_equal([lik_var.shape], [post_var.shape])
 
@@ -89,6 +95,14 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+
+    if type(post_mu) == list:
+        post_mu = np.array(post_mu)
+        post_var = np.array(post_var)
+        chex.assert_rank([post_mu, post_var], [4, 5])
+
+        post_mu = np.transpose(post_mu, [1, 0, 2, 3])[:, :, 0, :]
+        post_var = np.transpose(post_var, [1, 0, 2, 3, 4])[:, :, 0, :, :]
 
     chex.assert_rank([post_mu, post_var], [3, 4])
 

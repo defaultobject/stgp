@@ -9,9 +9,9 @@ Implements
     Independent
 """
 from ..core import Prior, GPPrior, Model
-from ..utils.utils import ensure_module_list, can_batch, get_batch_type
+from ..utils.utils import ensure_module_list, can_batch, get_batch_type, _ensure_str
 from batchjax import batch_or_loop, BatchType
-from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT
+from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT, get_block_diagonal
 from ..core import Block
 
 import jax
@@ -20,6 +20,8 @@ import objax
 import chex
 
 from typing import List, Optional
+
+import warnings
 
 class Transform(GPPrior):
     """
@@ -47,6 +49,7 @@ class Transform(GPPrior):
 
         # parent obj that is being transformed
         self._parent = None
+        self.data_y_index = None
 
     @property
     def full_transform(self):
@@ -374,7 +377,12 @@ class Independent(Transform):
 
     def state_space_dim(self):
         # use loop so that we get a list of int outputs
-        return  [latent.kernel.state_space_dim() for latent in self.parent]
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda  latent:  latent.kernel.state_space_dim()
+        else:
+            fn = lambda  latent:  latent.state_space_dim()
+
+        return [fn(latent) for latent in self.parent]
 
     def state_space_representation(self, X_s):
         F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
@@ -382,7 +390,7 @@ class Independent(Transform):
             [X_s, self.parent],
             [None, 0],
             dim = self.output_dim,
-            out_dim = 5,
+            out_dim = 6,
             batch_type = get_batch_type(self.parent)
         )
 
@@ -396,8 +404,14 @@ class Independent(Transform):
         return F, L, Qc, H, m_inf, P_inf
 
     def expm(self, dt, X_s):
+        # TODO: clean up at some point (see self.P_inf)
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda d, x_s, latent:  latent.kernel.expm(dt, x_s)
+        else:
+            fn = lambda d, x_s, latent:  latent.expm(dt, x_s)
+
         A_blocks = batch_or_loop(
-            lambda d, x_s, latent:  latent.kernel.expm(dt, x_s),
+            fn,
             [dt, X_s, self.parent],
             [None, None, 0],
             dim = self.output_dim,
@@ -407,11 +421,80 @@ class Independent(Transform):
 
         return to_block_diag(A_blocks)
 
+    def P_inf(self, x, X_s, t):
+
+        # TODO: clean up at some point
+        # this is just a way to support wrapping both SDE_GPs and Transforms of them in an Independent
+        #  these should have the same api and then this would not be necessary
+
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda x, X_s, t, latent:  latent.kernel.P_inf(x, X_s, t)
+        else:
+            fn = lambda x, X_s, t, latent:  latent.P_inf(x, X_s, t)
+
+        P_inf_blocks = batch_or_loop(
+            fn,
+            [x, X_s, t, self.parent],
+            [None, None, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+
+        return to_block_diag(P_inf_blocks)
+
+    def H(self, x, X_s, t):
+
+        # TODO: clean up at some point (see self.P_inf)
+
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda x, X_s, t, latent:  latent.kernel.H(x, X_s, t)
+        else:
+            fn = lambda x, X_s, t, latent:  latent.H(x, X_s, t)
+
+        H_inf_blocks = batch_or_loop(
+            fn,
+            [x, X_s, t, self.parent],
+            [None, None, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+
+        return np.hstack(H_inf_blocks)
+
     def Q(self, dt_k, A_k, P_inf, X_spatial=None):
+        #warnings.warn('HACK IN INDEPENDENT TRANSFORM Q')
+        # A_k, P_inf SHOULD be in block form here, but they are not...
+        # for now it is okay as IWP handles it self (?) and all other kernels 
+        # will be the same across latent functions so this will return the same thing
+        #return self.parent[0].kernel.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
+
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda dt, A, P, Xs, latent:  latent.kernel.Q(dt, A, P, X_spatial=Xs)
+        else:
+            fn = lambda dt, A, P, Xs, latent:  latent.Q(dt, A, P, X_spatial=Xs)
+
+        # all of this is just a way to bypass the fact that A_k and P_inf are not blocks
+        # i am trying to figure what the blocks SHOULD have been
+        # extracting them, and then procedding as normal
+
+        dims = self.state_space_dim()
+        if type(dims) is list:
+            if type(dims[0]) is list:
+                block_dim = sum(dims[0])
+            else:
+                block_dim = dims[0]
+        else:
+            block_dim = dims
+
+        A_k = get_block_diagonal(A_k, block_dim)
+        P_inf = get_block_diagonal(P_inf, block_dim)
+
         Q_blocks = batch_or_loop(
-            lambda dt, A, P, Xs, latent:  latent.kernel.Q(dt, A, P, X_spatial=Xs),
+            fn,
             [dt_k, A_k, P_inf, X_spatial, self.parent],
-            [None, None, None, None, 0],
+            [None, 0, 0, None, 0],
             dim = self.output_dim,
             out_dim = 1,
             batch_type = get_batch_type(self.parent)

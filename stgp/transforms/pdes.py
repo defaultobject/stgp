@@ -3,14 +3,15 @@ import jax.numpy as np
 import chex
 
 from ..core import Block 
-from . import Transform, LinearTransform, Joint
-
+from . import Transform, LinearTransform, Joint, Independent
 
 from ..dispatch import evoke
-from ..computation.matrix_ops import get_block_diagonal
+from ..computation.matrix_ops import to_block_diag, get_block_diagonal
 from .. import Parameter
 from ..computation.matrix_ops import hessian
 from jax import jacfwd, jacrev, grad
+import objax
+import numpy as onp
 
 class DifferentialOperatorJoint(LinearTransform, Joint):
     """
@@ -81,6 +82,7 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
             )
 
             chex.assert_rank([mu, var], [3, 4])
+
         return mu, var
 
     def get_sparsity_list(self):
@@ -222,25 +224,151 @@ class PDE(Transform):
         """Compute d (self.forward(x))(dx) """
         chex.assert_rank(x, 2)
         # P x D
-        J =  jax.jacfwd(lambda _x: self.forward(_x, X_s, t))(x)[..., 0] 
+        J =  jax.jacfwd(lambda _x: self.forward_g(_x, X_s, t))(x)[..., 0] 
         chex.assert_rank(J, 2)
         return J
 
-    def H(self, x, X_s, t):
+    def H_jac(self, x, X_s, t):
         return self.jac(x, X_s, t)
+
+class StackedPDE(PDE):
+    def __init__(self, latent):
+        self.pde_prior = objax.ModuleList(latent)
+        self._parent = Independent([
+            p.parent if isinstance(p, PDE)
+            else p 
+            for p in latent #get SDE priors
+        ])
+        self.num_latents =  len(latent)
+        self._output_dim = sum([p.output_dim for p in latent])
+    
+
+    def m_inf(self, x, X_s, t):
+        m_init_arr = []
+        for i in range(self.num_latents):
+            m_init_arr.append(
+                self.pde_prior[i].m_inf(x, X_s, t)
+            )
+
+        return np.vstack(m_init_arr)
+
+    def P_inf(self, x, X_s, t):
+        P_inf_arr = []
+        for i in range(self.num_latents):
+            P_inf_arr.append(
+                self.pde_prior[i].P_inf(x, X_s, t)
+            )
+
+        return to_block_diag(P_inf_arr)
+
+    def H(self, x, X_s, t):
+        H_arr = []
+        for i in range(self.num_latents):
+            H_arr.append(
+                self.pde_prior[i].H(x, X_s, t)
+            )
+
+        return to_block_diag(H_arr)
+
+    def forward_g(self, f, X_s, t):
+        """ 
+        f is of shape 3 corresponding to f, ft
+        """
+        # assuming dims are the same
+        n_dim = f.shape[0] // self.num_latents
+        g_arr = []
+        for i in range(self.num_latents):
+            g_arr.append(
+                self.pde_prior[i].forward_g(f[i*n_dim:(i+1)*n_dim], X_s, t)
+            )
+
+        return np.hstack(g_arr)
+
+    def psuedo_observations(self):
+        z_arr = []
+        for i in range(self.num_latents):
+            z_arr.append(
+                self.pde_prior[i].psuedo_observations()
+            )
+
+        return np.vstack(z_arr)
+
+class TaylorLinearizedDE(PDE, LinearTransform):
+    def __init__(self, latent, pde_transform, input_dim, output_dim, data_y_index=None):
+        self._parent = latent
+        self.pde_transform = pde_transform
+        self._output_dim = output_dim
+        self._input_dim = input_dim
+        self.data_y_index = data_y_index
+
+    def get_linear_terms(self, mu):
+        b = self.pde_transform.forward(mu)
+        A = jacfwd(self.pde_transform.forward)(mu)[0, ..., 0]
+
+        return A, b - A@mu
+
+    def forward(self, f):
+        A, b = self.get_linear_terms(f)
+        f = np.reshape(f, [-1, 1])
+        return ((A @ f)+b)[:, 0]
+
+    def transform_diagonal(self, mu, var):
+        """
+        Computes the pointwise of 
+            F_n = W U_n
+        This functions assumes that U_n are indepenent
+        Hence F_n ~ N(W mu_n, W diag(var_n) W.T)
+        The diagonal of this is given by:
+            W mu
+            W diag(sqrt(var))
+        """
+        chex.assert_rank([mu, var], [2, 3])
+
+        A, b = self.get_linear_terms(mu)
+
+        # Mixing latent functions
+        mu = A @ mu + b
+        var = batched_diagonal_from_XDXT(A, var[..., 0])
+
+        # fix shapes
+        var = var[..., None]
+
+        return mu, var
+
+
+    def transform(self, mu, var):
+        chex.assert_rank([mu, var], [2, 3])
+        chex.assert_equal([mu.shape[1], var.shape[0]], [1, 1])
+        chex.assert_equal([var.shape[1], var.shape[2]], [mu.shape[0], mu.shape[0]])
+
+        A, b = self.get_linear_terms(mu)
+
+        g_m = A @ mu + b
+        g_S = (A @ var[0] @ A.T)[None, ...]
+
+        return g_m, g_S 
+
 
 
 class IdentityPDE(PDE):
-    def __init__(self, latent, m_init = None):
+    def __init__(self, latent, m_init = None, d = 2, full_state = True):
         self._parent = latent
         self._output_dim = 1
         self._input_dim = self.parent.output_dim
+        self.d = d # state_dim of a single latent
+        self.full_state = full_state
 
+        if self.full_state:
+            self._output_dim = d*self.parent.num_latents
+        else:
+            self._output_dim = self.parent.num_latents
 
         if m_init is None:
-            m_init = np.zeros(self.input_dim)[:, None]
+            m_init = np.zeros(self.output_dim)[:, None]
 
         self.m_init = np.array(m_init)
+
+
 
     def m_inf(self, x, X_s, t):
         return self.m_init
@@ -248,14 +376,34 @@ class IdentityPDE(PDE):
     def P_inf(self, x, X_s, t):
         return self.parent.P_inf(x, X_s, t)
 
-    def forward(self, f):
+    def H_full_state(self, x, X_s, t):
+        return np.eye(self.d*self.parent.num_latents)
+
+    def H(self, x, X_s, t):
+        if self.full_state:
+            return self.H_full_state(x, X_s, t)
+        else:
+            raise NotImplementedError()
+
+    def forward_g(self, f, X_s, t):
         """ 
-        f is of shape 3 corresponding to f, ft
+        f is of shape 2 corresponding to f, ft
         """
-        return f[0]
+        if self.full_state:
+            return np.squeeze(f)
+        else:
+            # only extract the derivative terms
+            return np.array([f[1+self.d * i] for i in range(self.parent.num_latents)])
+
+    def psuedo_observations(self):
+        # not a PDE in to enforce, so no colocation points
+        # [y1, dy1, y2, dy2]
+        if self.full_state:
+            return np.array([onp.NaN, onp.NaN]*self.parent.num_latents)[:, None]
+        return np.array([onp.NaN]*self.parent.num_latents)[:, None]
 
 class SimpleODE(PDE):
-    def __init__(self, latent, m_init = None):
+    def __init__(self, latent, m_init = None, full_state = False):
         self._parent = latent
         self._output_dim = 1
         self._input_dim = self.parent.output_dim
@@ -264,6 +412,7 @@ class SimpleODE(PDE):
             m_init = np.zeros(self.input_dim)[:, None]
 
         self.m_init = np.reshape(np.array(m_init), [np.array(m_init).shape[0], 1])
+        self.full_state = full_state
 
     def m_inf(self, x, X_s, t):
         return self.m_init
@@ -271,17 +420,44 @@ class SimpleODE(PDE):
     def P_inf(self, x, X_s, t):
         return self.parent.P_inf(x, X_s, t)
 
-    def forward(self, f, X_s, t):
+    def forward_g(self, f, X_s, t):
         """ 
         f is of shape 3 corresponding to f, ft
 
         df/dt = 2*t
         """
         #return f[1]-2*t
-        return f[1]+np.sin(t)
+        _g =  f[1]+np.sin(t)
+
+        if self.full_state:
+            return np.hstack([f[0], _g])
+        return _g
+
+    def _H(self, x, X_s, t):
+        return self.jac(x, X_s, t)
+
+    def H_jac_full_state(self, x, X_s, t):
+        H1 = self._H(x, X_s, t)
+        if not self.full_state:
+            # when full_state = True, forward_g is augments with an extra dimension
+            #   so when calling jax.jac this will automatically compute the full state H
+            # when false we compute it manually
+            H0 = np.array([1.0, 0.0])[None, :]
+            H1 = np.vstack([H0, H1])
+        return H1
+
+    def H_jac(self, x, X_s, t):
+        return self._H(x, X_s, t)
+
+    def H_full_state(self, x, X_s, t):
+        return np.eye(2)
 
     def H(self, x, X_s, t):
-        return self.jac(x, X_s, t)
+        return np.array([1.0, 0.0])[None, :]
+
+    def psuedo_observations(self):
+        return np.array([onp.NaN, 0.0])[:, None]
+
 
 
 class Pendulum1D(PDE):
@@ -649,6 +825,7 @@ def LorenzSystem(latent, sigma, rho, beta, train=True):
 
 
 class _LotkaVolterraSystemX(PDE):
+    """ Prey Component"""
 
     def __init__(self, latent, alpha, beta, train=True):
         self._parent = latent
@@ -662,16 +839,18 @@ class _LotkaVolterraSystemX(PDE):
         self.alpha_param = Parameter(
             np.array(alpha), 
             name ='LotkaVolterraSystem/alpha', 
+            constraint='positive', 
             train=train
         )
 
         self.beta_param = Parameter(
             np.array(beta), 
             name ='LotkaVolterraSystem/beta', 
+            constraint='positive', 
             train=train
         )
 
-    def _dfdt(self, f, X_s, t):
+    def _dfdt(self, f, X_s=None, t=None):
         """ Evalutate df/dt """
         x, xt, y, yt = f
         alpha = self.alpha_param.value
@@ -679,15 +858,22 @@ class _LotkaVolterraSystemX(PDE):
 
         return alpha * x - beta * x * y
 
-
-    def forward(self, f, X_s, t):
+    def forward(self, f):
         """ 
         f is of shape 4 corresponding to x, xt, y, yt
         """
         x, xt, y, yt = f
-        return (xt - self._dfdt(f, X_s, t))[:, None]
+        return (xt - self._dfdt(f))[:, None]
+
+
+    def forward_g(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        return self.forward(f)
 
 class _LotkaVolterraSystemY(PDE):
+    """ Predator Component"""
 
     def __init__(self, latent, delta, gamma, train=True):
         self._parent = latent
@@ -701,16 +887,18 @@ class _LotkaVolterraSystemY(PDE):
         self.delta_param = Parameter(
             np.array(delta), 
             name ='LotkaVolterraSystem/delta', 
+            constraint='positive', 
             train=train
         )
 
         self.gamma_param = Parameter(
             np.array(gamma), 
             name ='LotkaVolterraSystem/gamma', 
+            constraint='positive', 
             train=train
         )
 
-    def _dfdt(self, f, X_s, t):
+    def _dfdt(self, f, X_s=None, t=None):
         """ Evalutate df/dt """
         x, xt, y, yt = f
         delta = self.delta_param.value
@@ -718,28 +906,45 @@ class _LotkaVolterraSystemY(PDE):
 
         return delta * x * y  - gamma * y
 
-    def forward(self, f, X_s, t):
+    def forward(self, f):
         """ 
         f is of shape 4 corresponding to x, xt, y, yt
         """
         x, xt, y, yt = f
 
-        return (yt - self._dfdt(f, X_s, t))[:, None]
+        return (yt - self._dfdt(f))[:, None]
+
+    def forward_g(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        return self.forward(f)
 
 class LotkaVolterra(PDE):
-    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True):
-        self.components = [
+    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True, full_state = False, train_m_init=False):
+        self.components = objax.ModuleList([
             _LotkaVolterraSystemX(None, alpha, beta, train=train), 
             _LotkaVolterraSystemY(None, delta, gamma, train=train), 
-        ]
+        ])
         if m_init is None:
             m_init = np.array([0.0, 0.0, 0.0, 0.0])[:, None]
         else:
             m_init = np.array(m_init).reshape([4, 1])
 
-        self.m_init = m_init
-
         self._parent = latent
+
+        self.full_state = full_state
+
+        if self.full_state:
+            self._output_dim = 4
+        else:
+            self._output_dim = 2
+
+        self.m_init_param = Parameter(m_init, name=f'LotkaVolterra/m_init', train=train_m_init)
+
+    @property
+    def m_init(self):
+        return self.m_init_param.value
 
     def m_inf(self, x, X_s, t):
         return self.m_init
@@ -747,25 +952,67 @@ class LotkaVolterra(PDE):
     def P_inf(self, x, X_s, t):
         return self.parent.P_inf(x, X_s, t)
 
-    def _dfdt(self, f, X_s, t):
+    def _dfdt(self, f, X_s=None, t=None):
         """ Evalutate df/dt """
-        f0 = np.squeeze(self.components[0]._dfdt(f, X_s, t))
-        f1 = np.squeeze(self.components[1]._dfdt(f, X_s, t))
+        f0 = np.squeeze(self.components[0]._dfdt(f))
+        f1 = np.squeeze(self.components[1]._dfdt(f))
         return np.array([f0, f1])
         
 
-    def forward(self, f, X_s, t):
+    def forward(self, f):
         """ 
-        f is of shape 3 corresponding to f, ft
-
-        df/dt = 2*t
+        args:
+            f: (D x 1) : 
         """
-        y0 = np.squeeze(self.components[0].forward(f, X_s, t))
-        y1 = np.squeeze(self.components[1].forward(f, X_s, t))
+        chex.assert_rank(f, 2)
+
+        y0 = np.squeeze(self.components[0].forward(f))
+        y1 = np.squeeze(self.components[1].forward(f))
+
+        if self.full_state:
+            return np.array([f[0][0], y0, f[2][0], y1])
+
         return np.array([y0, y1])
 
-    def H(self, x, X_s, t):
+    def forward_g(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x, xt, y, yt
+        """
+        return self.forward(f)
+
+    def _H(self, x, X_s, t):
         return self.jac(x, X_s, t)
+
+    def H_jac_full_state(self, x, X_s, t):
+        H01 = self._H(x, X_s, t)
+
+        H01 = np.array([1.0, 0.0, 0.0, 0.0])[None, :]
+        H03 = np.array([0.0, 0.0, 1.0, 0.0])[None, :]
+        H = np.vstack([
+            H01, 
+            H01[[0], :],
+            H03, H01[[1], :]
+        ])
+        return H
+
+    def H_jac(self, x, X_s, t):
+        return self._H(x, X_s, t)
+
+    def H_full_state(self, x, X_s, t):
+        return np.eye(4)
+
+    def H(self, x, X_s, t):
+        if self.full_state:
+            return self.H_full_state(x, X_s, t)
+        else:
+            return np.eye(4)[[0, 2], :]
+
+    def psuedo_observations(self):
+        # [y1, dy1, y2, dy2]
+        if self.full_state:
+            return np.array([onp.NaN, 0.0, onp.NaN, 0.0])[:, None]
+        return np.array([0.0, 0.0])[:, None]
+
     
 
 def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):

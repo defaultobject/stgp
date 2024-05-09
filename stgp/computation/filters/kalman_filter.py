@@ -226,6 +226,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     A_k = prior.expm(X_s, dt_k)
     Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
+
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
@@ -275,6 +276,9 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
 def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
 
+    if not lik_cov_flag:
+        raise NotImplementedError()
+
     # model will be PDE[LTI_SDE[GP]]
 
     sde_prior = model.parent
@@ -290,12 +294,36 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     A_k = sde_prior.expm(X_s, dt_k)
     Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
+    #Q_0 = sde_prior.parent[0].Q(dt_k, sde_prior.parent[0].expm(X_s, dt_k), sde_prior.parent[0].P_inf(None, X_s, None), X_spatial=X_s)
+    #Q_1 = sde_prior.parent[1].Q(dt_k, sde_prior.parent[1].expm(X_s, dt_k), sde_prior.parent[1].P_inf(None, X_s, None), X_spatial=X_s)
+
     # standard Kalman prediction
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
 
-    f = model.forward(m_, X_s, x['t'])
+    f = model.forward_g(m_, X_s, x['t'])
+    H_jac_k = model.H_jac(m_, X_s, x['t'])
+
+    # compute prediction with the PDE transform
+    R_k =  x['lik_mat']
+    y_psuedo = model.psuedo_observations()
+    #we only observer y_psuedo at the training locations, because we discretise the prior first
+    # . then we obtain a Gaussian prior. Hence we should not observer y_psuedo at testing locations
+    y_psuedo = y_psuedo * x['train_test_mask']
+
+    # construct a state dict for the pseudo observation update step
+    x_psuedo = {
+        'Y': y_psuedo, 
+        't': x['t'], 
+        'dt': x['dt'], 
+        'lik_mat': x['lik_mat'], 
+    }
+
+    Ns_colocation = f.shape[0]
+    carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, f[..., None])
+    m_, P_ = carry['m'], carry['P']
+
     H_k = model.H(m_, X_s, x['t'])
 
     if False:
@@ -304,14 +332,8 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         print('f: ', f)
         breakpoint()
 
-
-
-    if lik_cov_flag:
-        R_k =  x['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, carry, x, f[..., None])
-    else:
-        R_k_inv =  x['lik_mat']
-        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
+    innovation = H_k @ m_
+    return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
 
 
 def filter_step_wrapper(data, m, lik_cov_flag):
@@ -324,7 +346,7 @@ def filter_step_wrapper(data, m, lik_cov_flag):
     return _fn
 
 @dispatch('sequential')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask):
     """
     Args:
         lik_mat: is either R of R_inv, the block diagonal covariance ot the block_diagonal precision
@@ -348,7 +370,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
             'dt': dt,
             't': X_t,
             'Y': Y,
-            'lik_mat': lik_mat
+            'lik_mat': lik_mat,
+            'train_test_mask': train_test_mask
         },
         unroll = unroll
     )
@@ -359,7 +382,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
 
     return lml, filter_res
 
-def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False):
+def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False, train_test_mask=None):
     """
     Args:
         R: in time - latent - space format
@@ -378,6 +401,9 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     X_t = data.X_time
     Y = data.Y_st
     dt = np.diff(X_t)
+
+    if train_test_mask is None:
+        train_test_mask = np.ones(data.Nt)
 
     # TODO: fix this
     #dt = np.hstack([np.ones(1), dt])
@@ -409,7 +435,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
     filter_fn = evoke('filter', filter_type)
 
-    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag)
+    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask)
 
     return lml, filter_res
 

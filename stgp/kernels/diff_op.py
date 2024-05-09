@@ -14,6 +14,7 @@ class DerivativeKernel(Kernel):
     def __init__(self, parent_kernel = None) :
         self.parent_kernel = parent_kernel
         self.active_dims = None
+        self.parent = self.parent_kernel
 
     def K_diag(self, X):
         chex.assert_rank(X, 1)
@@ -42,6 +43,13 @@ class DerivativeKernel(Kernel):
 
     def expm(self, dt, X_spatial=None):
         return self.base.expm(dt, X_spatial = X_spatial)
+
+    def Q(self, dt_k, A_k, P_inf, X_spatial=None):
+        return self.base.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
+    def P_inf(self, x, X_s, t):
+        return self.base.P_inf(x, X_s, t)
+
+
 
     @property
     def base(self):

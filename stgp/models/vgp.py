@@ -242,7 +242,7 @@ class VGP(Posterior):
 
         return mean, var
 
-    def predict_y(self, XS, diagonal=True, squeeze=True, output_first = False, num_samples = None, posterior = False):
+    def predict_y(self, XS, diagonal=True, squeeze=True, output_first = False, num_samples = None, posterior = False, fix_shapes=True):
         P = self.prior.output_dim
         N = XS.shape[0]
 
@@ -259,13 +259,14 @@ class VGP(Posterior):
 
         chex.assert_rank([mu_arr, var_arr], [3, 4])
 
-        mu_arr, var_arr = fix_prediction_shapes(
-            mu_arr, 
-            var_arr,
-            diagonal = diagonal,
-            squeeze = squeeze,
-            output_first = output_first
-        )
+        if fix_shapes:
+            mu_arr, var_arr = fix_prediction_shapes(
+                mu_arr, 
+                var_arr,
+                diagonal = diagonal,
+                squeeze = squeeze,
+                output_first = output_first
+            )
 
 
         return mu_arr, var_arr

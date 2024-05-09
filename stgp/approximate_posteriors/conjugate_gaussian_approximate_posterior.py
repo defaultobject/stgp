@@ -208,6 +208,8 @@ class FullConjugateGaussian(ConjugateGaussian, FullGaussianApproximatePosterior)
 
         if Y_tilde is None:
             Y_tilde = 1e-5*np.ones([self.M, self.block_size])
+            #onp.random.seed(0)
+            #Y_tilde = np.array(100*onp.random.randn(self.M, self.block_size))
 
         if V_tilde is None:
             V_tilde = np.tile(

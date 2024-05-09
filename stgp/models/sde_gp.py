@@ -209,13 +209,14 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False):
+    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
             R = R,
             R_inv = R_inv,
-            filter_type = self.filter_type
+            filter_type = self.filter_type,
+            train_test_mask = train_test_mask
         ) 
 
         mu, var = kf_res['m'], kf_res['P']
@@ -225,13 +226,14 @@ class BASE_SDE_GP(Posterior):
         else:
             return mu, var
 
-    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False):
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
             R = R,
             R_inv = R_inv,
-            filter_type = self.filter_type
+            filter_type = self.filter_type,
+            train_test_mask=train_test_mask
         ) 
 
         mu, var = rts_smoother.smoother_loop(
@@ -336,12 +338,12 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def predict_y(self, XS, diagonal=True, squeeze=True):
+    def predict_y(self, XS, diagonal=True, squeeze=True, force_full_state=False):
         if not diagonal :
             # TODO: only supports diagonal
             raise RuntimeError('Only diagonal predict_y is support')
 
-        pred_mu, pred_var = self.predict_f(XS, squeeze=False, diagonal=True)
+        pred_mu, pred_var = self.predict_f(XS, squeeze=False, diagonal=True, force_full_state=force_full_state)
         chex.assert_rank([pred_mu, pred_var], [3, 4])
 
         pred_y_mu, pred_y_var = evoke('predict_y_diagonal', self, self.likelihood)(
@@ -375,6 +377,13 @@ class T_SDE_GP(BASE_SDE_GP):
 
         return R
 
+    def get_train_test_mask(self, data):
+        Nt = self.data.Nt
+        points_added = data.Nt-Nt 
+        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.NaN])
+        sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
+        return sorted_mask
+
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, filter_only: bool =False, force_full_state: bool = False):
         """
         Args:
@@ -407,7 +416,8 @@ class T_SDE_GP(BASE_SDE_GP):
             mu, var = self.filter(
                 test_data,
                 self.prior,
-                R = self.get_likelihood_for_prediction(test_data)
+                R = self.get_likelihood_for_prediction(test_data),
+                train_test_mask = self.get_train_test_mask(test_data),
             )
             chex.assert_rank([mu, var], [3, 3])
 
@@ -417,6 +427,7 @@ class T_SDE_GP(BASE_SDE_GP):
                 test_data,
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data),
+                train_test_mask = self.get_train_test_mask(test_data),
                 full_state = force_full_state
             )
 

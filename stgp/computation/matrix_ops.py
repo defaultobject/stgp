@@ -29,6 +29,8 @@ def shape_rank(X):
         shape = ()  
     return len(shape)
 
+
+
 def hessian(f, argnums):
     return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 
@@ -283,6 +285,7 @@ def lower_triangle(val, N):
     #return jax.ops.index_update(tri, jax.ops.index[np.tril_indices(N, 0)], val)
     idx = np.tril_indices(N, 0)
     return tri.at[idx].set(val)
+
 
 
 @partial(jit, static_argnums=(1,))

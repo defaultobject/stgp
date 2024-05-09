@@ -31,16 +31,16 @@ q = 1
 var = 1.0
 train = False
 
-#X = np.linspace(0, 40, 10)[:, None]
+#X = np.linspace(0, 40, 2000)[:, None]
 X = np.arange(0, 40, 0.01)[:, None]
 Y = np.zeros_like(X)
-Y = np.hstack([Y, Y])
+Y = np.hstack([Y, Y])*np.NaN
 XS = np.linspace(0, np.max(X), 2000)[:, None]
 
 print(X.shape, Y.shape, XS.shape)
-
 data = MultiOutputTemporalData(X, Y)
-lik = ReshapedGaussian(DiagonalGaussian(variance=[0.0, 0.0]), num_blocks=data.Nt, block_size=2)
+lik = ReshapedGaussian(DiagonalGaussian(variance=[1e-3, 1e-3]), num_blocks=data.Nt, block_size=2)
+#lik = ReshapedGaussian(Gaussian(variance=[1e-3, 1e-3]), num_blocks=data.Nt, block_size=2)
 
 latent_gp = Independent([
     GP(
@@ -52,7 +52,7 @@ latent_gp = Independent([
 ])
 
 #prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [20.0, 10.0, 20.0, 10.0])
-prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [ 20.0, -10.0,  20.0,   10.0 ])
+prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [ 20.0, 0.0,  20.0,   0.0 ])
 print(prior._dfdt(prior.m_init, None, 0.0))# to get get the initial values
 
 m = GP(
@@ -69,20 +69,25 @@ if train:
     plt.plot(lc)
     plt.show()
 
-pred_mu, pred_var = m.predict_f(XS, filter_only=True)
-#pred_mu, pred_var = m.predict_f(XS, filter_only=False, force_full_state=True)
+#pred_mu, pred_var = m.predict_f(XS, filter_only=True)
+pred_mu, pred_var = m.predict_f(XS, filter_only=False, force_full_state=True)
 pred_mu = np.squeeze(pred_mu)
 pred_var = np.squeeze(pred_var)
 
+y1_grad = np.gradient(pred_mu[:, 0], np.squeeze(XS))
+y2_grad = np.gradient(pred_mu[:, 2], np.squeeze(XS))
+
 print(pred_mu.shape)
 
-if False:
+if True:
     Q = 4
     fig, ax = plt.subplots(Q, 1)
     for i in range(Q):
         ax[i].fill_between(np.squeeze(XS), pred_mu[:, i] - 1.96*np.sqrt(pred_var[:, i]), pred_mu[:, i] + 1.96*np.sqrt(pred_var[:, i]), alpha=0.4)
         ax[i].plot(XS, pred_mu[:, i], label='learnt')
 
+    ax[1].plot(XS, y1_grad, linestyle='dashed')
+    ax[3].plot(XS, y2_grad, linestyle='dashed')
     plt.show()
 
 

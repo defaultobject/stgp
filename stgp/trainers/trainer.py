@@ -366,8 +366,11 @@ class SwitchTrainer(Trainer):
                 # After calling all individual trainers we have completed one training epoch
                 if callback is not None:
                     total_elbo_idx = -(num_trainers-self.callback_idx)
-                    # we use flatten and [-1] to handle both scalars and arrays
-                    val_to_pass = np.array([total_elbos[total_elbo_idx]]).flatten()[-1]
+                    val_to_pass = np.array([total_elbos[total_elbo_idx]]).flatten()
+                    if len(val_to_pass) > 0:
+                        # we use flatten and [-1] to handle both scalars and arrays
+                        val_to_pass = val_to_pass[-1]
+
                     callback(i, None, val_to_pass)
 
         except RuntimeError as e:

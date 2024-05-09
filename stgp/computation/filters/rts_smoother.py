@@ -31,18 +31,7 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     H1 = prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted 
     if full_state:
-        if False:
-            H0 = np.array([1.0, 0.0])[None, :]
-            H1 = np.vstack([H0, H1])
-        else:
-            H01 = np.array([1.0, 0.0, 0.0, 0.0])[None, :]
-            H03 = np.array([0.0, 0.0, 1.0, 0.0])[None, :]
-            H1 = np.vstack([
-                H01, 
-                H1[[0], :],
-                H03, H1[[1], :]
-            ])
-
+        H1 = prior.H_full_state(m_predicted, X_s, t)
     return H1
 
 def get_H(model, x, m_predicted, X_s, t, full_state):
@@ -68,15 +57,17 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 
     return m, P
 
-def rts_step(prior, sde_prior, carry, x, X_s, full_state):
 
+
+@dispatch(LTI_SDE)
+def rts_step_wrapper(prior, carry, x, X_s, full_state):
+    sde_prior = prior
     P_inf = sde_prior.P_inf(None, X_s, None)
 
     dt_k = x['dt']
 
     A_k = sde_prior.expm(X_s, dt_k)
     Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
-    #Q_k = P_inf - A_k @  P_inf @ A_k.T
 
     m_predicted = A_k @ x['m']
     P_predicted = A_k @ x['P'] @ A_k.T + Q_k
@@ -107,13 +98,46 @@ def rts_step(prior, sde_prior, carry, x, X_s, full_state):
 
     return m_res, p_res
 
-@dispatch(LTI_SDE)
-def rts_step_wrapper(prior, carry, x, X_s, full_state):
-    return rts_step(prior, prior, carry, x, X_s, full_state)
-
 @dispatch(PDE)
 def rts_step_wrapper(prior, carry, x, X_s, full_state):
-    return rts_step(prior, prior.parent, carry, x, X_s, full_state)
+    sde_prior = prior.parent
+    P_inf = sde_prior.P_inf(None, X_s, None)
+
+    dt_k = x['dt']
+
+    A_k = sde_prior.expm(X_s, dt_k)
+    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
+
+    m_predicted = A_k @ x['m']
+    P_predicted = A_k @ x['P'] @ A_k.T + Q_k
+
+    m, P = rts_smoother_step(
+        x['m'],
+        x['P'],
+        carry['m'],
+        carry['P'],
+        m_predicted,
+        P_predicted,
+        A_k, 
+        Q_k
+
+    )
+
+
+    H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
+    #H_k = np.eye(2)
+
+
+    m_res =  {
+        'm': m, 'P': P 
+    }
+
+    p_res = {
+        'm': H_k @ m, 'P': H_k @ P @ H_k.T
+    }
+
+
+    return m_res, p_res
 
 def step_wrapper(data, m, full_state):
     """ Wrapper to support scan with rts_step """

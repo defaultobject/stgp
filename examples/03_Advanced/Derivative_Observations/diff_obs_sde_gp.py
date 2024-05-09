@@ -1,7 +1,7 @@
 """ Batch Gaussian Process Regression with a Derivative Observations"""
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 import jax.numpy as jnp
@@ -14,7 +14,7 @@ import stgp
 from stgp import settings
 from stgp.trainers import GradDescentTrainer, ScipyTrainer, NatGradTrainer
 from stgp.trainers.callbacks import progress_bar_callback
-from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32
+from stgp.kernels import RBF, ScaleKernel, BiasKernel, Kernel, Matern32, Matern52, ScaledMatern52, ScaledMatern32, IntegratedWiener
 from stgp.transforms import Independent
 from stgp.transforms.sdes import LTI_SDE_Full_State_Obs
 from stgp.likelihood import Gaussian, DiagonalGaussian, ReshapedGaussian
@@ -56,6 +56,7 @@ if False:
 
 # construct model kernel and likelihood
 base_kernel_1d = ScaledMatern32(input_dim = 1, lengthscales = [0.1], variance=1.0)
+#base_kernel_1d = IntegratedWiener(q=1, variance=1.0)
 latent_gp = GP(
     sparsity=stgp.sparsity.NoSparsity(Z=X), 
     kernel = base_kernel_1d
@@ -71,7 +72,7 @@ m = stgp.models.GP(
     likelihood = lik,
     full_state_observed = True,
     inference='Sequential',
-    parallel=True
+    filter_type='sequential'
 )
 m.print()
 

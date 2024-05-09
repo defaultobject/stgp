@@ -27,6 +27,8 @@ from stgp.transforms.sdes import LTI_SDE_Full_State_Obs, LTI_SDE, LTI_SDE_Full_S
 
 import numpy as onp
 
+import warnings
+
 def _get_time_diff_kernel_mean(time_kernel, time_diff):
     if time_diff == 1:
         time_kern = FirstOrderDerivativeKernel(time_kernel, input_index = 0)
@@ -331,7 +333,7 @@ def diff_gp(
 
 
 def diff_cvi_sde_vgp(
-    X, Y, num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False,  lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, permute_H=True, minibatch_size = None
+    X, Y,  num_latents=None, time_diff = 1, space_diff = 1, time_kernel = None, space_kernel = None, space_diff_kernel = None, fix_y=False,  lik_var = 1.0, Zs= None, train_Z = True, ell_samples=None, prior_fn = None, keep_dims=None , hierarchical=None, meanfield=False, parallel = False, multioutput_prior = False, temporally_grouped=False, lik_arr=None, verbose=False , overwrite_H=True, permute_H=True, minibatch_size = None, sde_prior = None, latent_sde_fn = None
 ):
     """
     Args:
@@ -548,68 +550,99 @@ def diff_cvi_sde_vgp(
         base_st_kerns = time_diff_kern
 
     # surrogate model prior
-    if meanfield:
-        if keep_dims is None:
-            latent_sde_gp = Independent([
-                LTI_SDE_Full_State_Obs(
-                    Independent([
-                        GP(
-                            sparsity=sparsity, 
-                            kernel = base_st_kerns[i]
-                        )
-                    ]),
-                    overwrite_H=overwrite_H,
-                    permute=permute_H
-                )
-                for i in range(num_latents)
-            ])
-        else:
-            latent_sde_gp = Independent([
-                LTI_SDE_Full_State_Obs_With_Mask(
-                    Independent([
-                        GP(
-                            sparsity=sparsity, 
-                            kernel = base_st_kerns[i]
-                        )
-                    ]),
-                    keep_dims=keep_dims,
-                    overwrite_H=overwrite_H,
-                    permute=permute_H
-                )
-                for i in range(num_latents)
-            ])
+    if latent_sde_fn is not None:
+        latent_sde_gp = latent_sde_fn(
+            sparsity = sparsity, 
+            base_st_kerns = base_st_kerns,
+            num_latents = num_latents, 
+            overwrite_H = overwrite_H, 
+            permute_H = permute_H,
+            keep_dims = keep_dims
+        )
 
     else:
-        if keep_dims is None:
-            latent_sde_gp = LTI_SDE_Full_State_Obs(
-                Independent([
-                    GP(
-                        sparsity=sparsity, 
-                        kernel = base_st_kerns[q]
+        if meanfield:
+            if keep_dims is None:
+                latent_sde_gp = Independent([
+                    LTI_SDE_Full_State_Obs(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[i]
+                            )
+                        ]),
+                        overwrite_H=overwrite_H,
+                        permute=permute_H
                     )
-                    for q in range(num_latents)
-                ]),
-                overwrite_H=overwrite_H,
-                permute=permute_H
-            )
+                    for i in range(num_latents)
+                ])
+            else:
+                latent_sde_gp = Independent([
+                    LTI_SDE_Full_State_Obs_With_Mask(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[i]
+                            )
+                        ]),
+                        keep_dims=keep_dims,
+                        overwrite_H=overwrite_H,
+                        permute=permute_H
+                    )
+                    for i in range(num_latents)
+                ])
+
         else:
-            latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(
-                Independent([
-                    GP(
-                        sparsity=sparsity, 
-                        kernel = base_st_kerns[q]
+            if keep_dims is None:
+                if sde_prior is None:
+                    latent_sde_gp = LTI_SDE_Full_State_Obs(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[q]
+                            )
+                            for q in range(num_latents)
+                        ]),
+                        overwrite_H=overwrite_H,
+                        permute=permute_H
                     )
-                    for q in range(num_latents)
-                ]),
-                keep_dims=keep_dims,
-                overwrite_H=overwrite_H,
-                permute=permute_H
-            )
+                else:
+                    latent_sde_gp = sde_prior(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[q]
+                            )
+                            for q in range(num_latents)
+                        ])
+                    )
+            else:
+                if sde_prior is None:
+                    latent_sde_gp = LTI_SDE_Full_State_Obs_With_Mask(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[q]
+                            )
+                            for q in range(num_latents)
+                        ]),
+                        keep_dims=keep_dims,
+                        overwrite_H=overwrite_H,
+                        permute=permute_H
+                    )
+                else:
+                    latent_sde_gp = sde_prior(
+                        Independent([
+                            GP(
+                                sparsity=sparsity, 
+                                kernel = base_st_kerns[q]
+                            )
+                            for q in range(num_latents)
+                        ])
+                    )
 
 
-    # Setup likelihood
-    if type(lik_var) is not list:
-        lik_var = [lik_var for p in range(P)]
+
 
     # setup approximate posterior
 
@@ -724,7 +757,16 @@ def diff_cvi_sde_vgp(
         # construct PDE transform
         diff_op_prior = prior_fn(diff_op_prior)
 
+        if diff_op_prior is None:
+            warnings.warn('prior_fn return None')
+
+
+
     if lik_arr is None:
+        # Setup likelihood
+        if type(lik_var) is not list:
+            lik_var = [lik_var for p in range(P)]
+
         lik_arr = [Gaussian(lik_var[p]) for p in range(P)]
 
     if multioutput_prior:

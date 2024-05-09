@@ -123,6 +123,8 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
         [0, 0, 0, 0, 0],
         0
     )(X_blocks, Y, lik_mat, q_f_mu, q_f_var)
+    #breakpoint()
+
 
     ell = np.sum(ell_arr)
 
@@ -203,7 +205,6 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     # Only sums the ELL terms without missing data
     ell = np.sum(ell_arr)
-
 
     return ell
 
@@ -345,8 +346,6 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
         )
 
         return ell
-
-    breakpoint()
 
 
 @dispatch(Data, ProductLikelihood, Transform, ApproximatePosterior, Block.DIAGONAL)
@@ -615,7 +614,13 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
         lik_block_type = likelihood.block_type
 
         X_p = data.X
-        Y_p = data.Y[:, p][:, None]
+
+        # This is a bit hacky, it is just a way to define which output of Y correspond to the outputs of q(f)
+        # ideally data would be a data list and then it is specified through the data object, not the transform
+        if prior_p.data_y_index is not None:
+            Y_p = data.Y[:, prior_p.data_y_index]
+        else:
+            Y_p = data.Y[:, p][:, None]
 
         block_type_p: Block = compare_block_types(
             lik_block_type, 

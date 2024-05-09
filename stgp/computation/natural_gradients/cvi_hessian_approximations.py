@@ -224,6 +224,7 @@ def compute_f_to_tf(m, q_f_mu):
         # assumes that each output is a single output
         for i, p in enumerate(m.prior.parent):
             t_p = _process_samples(q_f_mu[i], lambda x:x, p)
+            # TODO: only support single output transforms
             #q_f_res.append(np.squeeze(t_p))
             q_f_res.append(t_p[..., 0, 0])
 
