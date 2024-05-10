@@ -312,14 +312,18 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
 
     # batch over outputs
     # log likelihood for each outout
-    ll_arr = batch_or_loop(
-        lambda y, f, lik: np.squeeze(lik.log_likelihood(y, f)),
-        [Y, transformed_f, likelihood_arr],
-        [0, 1, 0],
-        dim = num_likelihoods,
-        out_dim=1,
-        batch_type = get_batch_type(likelihood_arr)
-    )
+    if settings.experimental_allow_f_multi_dim_per_output:
+        # TODO: dimensions might go funny here...
+        ll_arr = [ np.squeeze(likelihood_arr[0].log_likelihood(Y[0], transformed_f)) ]
+    else:
+        ll_arr = batch_or_loop(
+            lambda y, f, lik: np.squeeze(lik.log_likelihood(y, f)),
+            [Y, transformed_f, likelihood_arr],
+            [0, 1, 0],
+            dim = num_likelihoods,
+            out_dim=1,
+            batch_type = get_batch_type(likelihood_arr)
+        )
     # P x N x B
     ll_arr = np.array(ll_arr)
     # Fix shapes so that ll_arr matches Y
@@ -511,7 +515,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     """
     TODO: this is a hack for now 
     """
-
     def ell_scalar(y, f_mu, f_var):
         y = np.squeeze(y)
         f_mu = np.squeeze(f_mu)
@@ -601,7 +604,8 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
     ell_arr = []
 
     # TODO: what about data?
-    for p in range(prior.output_dim):
+    num_likelihoods = len(likelihood.likelihood_arr)
+    for p in range(num_likelihoods):
         prior_p = prior.parent[p]
         likelihood_p = likelihood.likelihood_arr[p]
         q_f_mu_p = q_f_mu_arr[p]

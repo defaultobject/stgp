@@ -555,6 +555,7 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
 @dispatch(FullGaussianApproximatePosterior, Likelihood, Transform, whiten=False)
 def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, num_samples=None, posterior=False):
 
+
     if num_samples is None:
         num_samples = inference.prediction_samples
 
@@ -775,7 +776,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
             )
             mu_res.append(mu_i)
         mu = mu_res
-        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, 0, :]
+        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, :, 0]
     else:
         mu = approximate_expectation(
             lambda f: f, 

@@ -37,6 +37,9 @@ class Likelihood(objax.Module):
     def log_hessian_scalar(self, y, f):
         return hessian(lambda t: self.log_likelihood_scalar(y, t), 0)(f)
 
+    def laplace_approx(self, f):
+        return -(1/self.conditional_var(f))
+
 class FullLikelihood(Likelihood):
     """Likelihood that does not decompose """
     @property

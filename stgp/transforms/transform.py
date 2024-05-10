@@ -443,6 +443,26 @@ class Independent(Transform):
 
         return to_block_diag(P_inf_blocks)
 
+    def m_inf(self, x, X_s, t):
+
+        # TODO: clean up at some point (see self.P_inf)
+
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda x, X_s, t, latent:  latent.kernel.m_inf(x, X_s, t)
+        else:
+            fn = lambda x, X_s, t, latent:  latent.m_inf(x, X_s, t)
+
+        m_inf_blocks = batch_or_loop(
+            fn,
+            [x, X_s, t, self.parent],
+            [None, None, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+
+        return np.hstack(m_inf_blocks)
+
     def H(self, x, X_s, t):
 
         # TODO: clean up at some point (see self.P_inf)
@@ -603,6 +623,7 @@ class One2One(NonLinearTransform):
             out_dim = 1,
             batch_type = get_batch_type(self.transform_arr)
         )
+        f_transformed = np.array(f_transformed)
 
 
         f_transformed = np.reshape(f_transformed, [num_outputs, 1])

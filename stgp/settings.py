@@ -16,6 +16,8 @@ experimental_precomputed_segements = None
 experimental_precomputed_num_segements = None
 experimental_precomputed_cumsum_eps = 0.01
 
+experimental_allow_f_multi_dim_per_output = False
+
 # controls whether batchjax can convert loops into vmaps
 use_loop_mode = False
 

@@ -13,6 +13,7 @@ from batchjax import batch_or_loop, BatchType
 from ..matrix_ops import add_jitter, vec_add_jitter
 from ..model_ops import get_vec_gaussian_likelihood_variances
 from ...core import Posterior
+from ... import settings
 
 # Gaussian Likelihoods
 
@@ -77,6 +78,25 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
     return post_mu, post_var + lik_var
 
+@dispatch('FullConjugateGaussian', 'HetGaussian')
+def predict_y_diagonal(XS, likelihood, post_mu, post_var):
+    warnings.warn('post_var should be full matrix -- approximating with diagonal for now')
+    post_mu = np.squeeze(post_mu)
+    post_var = np.squeeze(post_var)
+
+    m_f = post_mu[:, 0][:, None]
+    m_g = post_mu[:, 1][:, None]
+
+    k_f = post_var[:, 0][:, None]
+    k_g = post_var[:, 1][:, None]
+
+    mean = m_f
+    var = k_f + np.exp(2 * m_g + 2 * k_g)
+
+    var = k_f + m_g**2
+
+    return mean, var[..., None]
+
 # ======= Dispatchers ========
 
 @dispatch(Posterior, "HetGaussian", Transform)
@@ -91,7 +111,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         mean = m_f
         var = k_f + np.exp(2 * m_g + 2 * k_g)
 
-        return mean, var[..., None]
+        return mean, m_g**2
 
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
@@ -99,12 +119,18 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
     if type(post_mu) == list:
         post_mu = np.array(post_mu)
         post_var = np.array(post_var)
-        chex.assert_rank([post_mu, post_var], [4, 5])
+        if settings.experimental_allow_f_multi_dim_per_output:
+            post_mu = np.transpose(post_mu, [1, 0, 2, 3])
+            post_var = np.transpose(post_var, [1, 0, 2, 3, 4])
+            chex.assert_rank([post_mu, post_var], [4, 5])
+        else:
 
-        post_mu = np.transpose(post_mu, [1, 0, 2, 3])[:, :, 0, :]
-        post_var = np.transpose(post_var, [1, 0, 2, 3, 4])[:, :, 0, :, :]
+            post_mu = np.transpose(post_mu, [1, 0, 2, 3])[:, :, 0, :]
+            post_var = np.transpose(post_var, [1, 0, 2, 3, 4])[:, :, 0, :, :]
 
-    chex.assert_rank([post_mu, post_var], [3, 4])
+            chex.assert_rank([post_mu, post_var], [3, 4])
+    else:
+        chex.assert_rank([post_mu, post_var], [3, 4])
 
     if diagonal:
         likelihood_arr = likelihood.likelihood_arr
@@ -135,6 +161,8 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
                     mu_arr.append(mu_p)
                     var_arr.append(var_p)
                 except DispatchNotFound as e:
+                    print(e)
+                    print('Likelihood dispatch not found!')
                     mu_arr.append(post_mu[:, p]*np.nan)
                     var_arr.append(post_var[:, p]*np.nan)
 

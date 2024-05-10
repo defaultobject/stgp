@@ -19,6 +19,7 @@ class LTI_SDE(SDE):
     def __init__(self, gp: 'Model'):
         self.gp = gp
         self.whiten_space = False # required for api consistentcy
+        self._parent = self.gp
 
     @property
     def temporal_output_dim(self):
@@ -29,7 +30,8 @@ class LTI_SDE(SDE):
 
     @property
     def _output_dim(self):
-        return 1
+        #return 1
+        return self.gp.output_dim
 
     @property
     def spatial_output_dim(self):

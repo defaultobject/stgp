@@ -4,8 +4,9 @@ sys.path.append('../')
 sys.path.append('../../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
+jax_config.update('jax_disable_jit', True)
 import objax
 import numpy as np
 
@@ -20,6 +21,8 @@ from stgp.transforms import Independent
 from stgp.transforms.sdes import LTI_SDE
 from stgp.approximate_posteriors import MeanFieldConjugateGaussian, ConjugateGaussian
 
+from stgp import settings
+
 from tqdm import trange
 
 import stgp
@@ -27,8 +30,10 @@ from stgp.models import GP
 
 import matplotlib.pyplot as plt
 
+settings.verbose = True
+
 # Construct Data
-XS, X, Y = single_output_timeseries(1000, 1000, seed=0)
+XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
 print(f'X: {X.shape}, Y: {Y.shape}')
 
@@ -39,7 +44,7 @@ sparsity = stgp.sparsity.NoSparsity(Z = X)
 kern = ScaledMatern32(input_dim=1, lengthscales=[0.1], variance=1.0)
 latent_gps = [GP(sparsity=sparsity, kernel=kern, prior=True)]
 
-data = Data(X, Y)
+data = TemporalData(X, Y, sort=True)
 
 m = GP(
     data = data,
@@ -64,9 +69,9 @@ m = GP(
 
 
 m.print()
-print(m.get_objective())
+#print(m.get_objective())
 
-ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton')
+ng_trainer = NatGradTrainer(m, enforce_psd_type='laplace_gauss_newton_delta_u')
 ng_trainer.train(1.0, 1)
 print(m.get_objective())
 print(GP( data = data, prior = Independent(latent_gps), likelihood = GaussianProductLikelihood([Gaussian()])).get_objective())

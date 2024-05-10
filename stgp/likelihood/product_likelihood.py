@@ -79,6 +79,16 @@ class ProductLikelihood(Likelihood):
 
         return np.array(samples_arr)
 
+    def laplace_approx(self, f):
+        laplace_approx_arr = []
+        for i, lik in enumerate(self.likelihood_arr):
+            laplace_approx_arr.append(
+                lik.laplace_approx(f[:, i][:, None])
+            )
+
+        return np.array(laplace_approx_arr)
+
+
 class GaussianProductLikelihood(ProductLikelihood):
 
     @property
