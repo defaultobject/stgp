@@ -32,7 +32,7 @@ stgp.settings.linear_solver = stgp.settings.SolveType.CG
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 100, seed=0)
 
-K = ArcCosine(order=0)
+K = ArcCosine(order=0, active_dims=[0])
 #K = Matern32(input_dim=1, lengthscales=[0.1])
 
 Y[40:50] = np.NaN

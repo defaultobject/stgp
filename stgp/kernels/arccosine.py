@@ -26,7 +26,9 @@ class ArcCosine(NonStationaryKernel):
 
     def add_bias(self, x):
         return np.stack([x, np.ones_like(x)])[:, None]
+
     def K_diag(self, X):
+        X = self._apply_active_dim(X)
         K = jax.vmap(lambda x: self._K_scaler(np.squeeze(x), np.squeeze(x)))(X)
         chex.assert_rank(K, 1)
         return K
