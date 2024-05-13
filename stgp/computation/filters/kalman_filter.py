@@ -294,22 +294,18 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     A_k = sde_prior.expm(X_s, dt_k)
     Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
-    #Q_0 = sde_prior.parent[0].Q(dt_k, sde_prior.parent[0].expm(X_s, dt_k), sde_prior.parent[0].P_inf(None, X_s, None), X_spatial=X_s)
-    #Q_1 = sde_prior.parent[1].Q(dt_k, sde_prior.parent[1].expm(X_s, dt_k), sde_prior.parent[1].P_inf(None, X_s, None), X_spatial=X_s)
-
     # standard Kalman prediction
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
-
 
     f = model.forward_g(m_, X_s, x['t'])
     H_jac_k = model.H_jac(m_, X_s, x['t'])
 
     # compute prediction with the PDE transform
     R_k =  x['lik_mat']
-    y_psuedo = model.psuedo_observations()
+    y_psuedo = model.psuedo_observations(X_s)
     #we only observer y_psuedo at the training locations, because we discretise the prior first
-    # . then we obtain a Gaussian prior. Hence we should not observer y_psuedo at testing locations
+    # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
     y_psuedo = y_psuedo * x['train_test_mask']
 
     # construct a state dict for the pseudo observation update step
@@ -321,7 +317,7 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     }
 
     Ns_colocation = f.shape[0]
-    carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, f[..., None])
+    carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
     m_, P_ = carry['m'], carry['P']
 
     H_k = model.H(m_, X_s, x['t'])
@@ -333,6 +329,8 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         breakpoint()
 
     innovation = H_k @ m_
+
+    breakpoint()
 
     return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
 

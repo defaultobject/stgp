@@ -220,6 +220,12 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
 class PDE(Transform):
 
+    def m_inf(self, x, X_s, t):
+        return self.m_init
+
+    def P_inf(self, x, X_s, t):
+        return self.parent.P_inf(x, X_s, t)
+
     def jac(self, x, X_s, t):
         """Compute d (self.forward(x))(dx) """
         chex.assert_rank(x, 2)
@@ -284,11 +290,11 @@ class StackedPDE(PDE):
 
         return np.hstack(g_arr)
 
-    def psuedo_observations(self):
+    def psuedo_observations(self, X_s):
         z_arr = []
         for i in range(self.num_latents):
             z_arr.append(
-                self.pde_prior[i].psuedo_observations()
+                self.pde_prior[i].psuedo_observations(X_s)
             )
 
         return np.vstack(z_arr)
@@ -395,7 +401,7 @@ class IdentityPDE(PDE):
             # only extract the derivative terms
             return np.array([f[1+self.d * i] for i in range(self.parent.num_latents)])
 
-    def psuedo_observations(self):
+    def psuedo_observations(self, X_s):
         # not a PDE in to enforce, so no colocation points
         # [y1, dy1, y2, dy2]
         if self.full_state:
@@ -455,7 +461,7 @@ class SimpleODE(PDE):
     def H(self, x, X_s, t):
         return np.array([1.0, 0.0])[None, :]
 
-    def psuedo_observations(self):
+    def psuedo_observations(self, X_s):
         return np.array([onp.NaN, 0.0])[:, None]
 
 
@@ -705,7 +711,7 @@ class HeatEquation2D(PDE, LinearTransform):
         return self._transform_covar(parent_covar)
 
 class AllenCahn(PDE):
-    def __init__(self, latent, train=True):
+    def __init__(self, latent, train=True, m_init = None, m_init_dim = None, train_m_init=True):
         self._parent = latent
         self._output_dim = 1
 
@@ -713,6 +719,31 @@ class AllenCahn(PDE):
             self._input_dim = None
         else:
             self._input_dim = self.parent.output_dim
+
+        # TODO: fix
+        if m_init is None:
+            m_init = np.array([0.0]*m_init_dim)[:, None]
+        else:
+            m_init = np.array(m_init).reshape([-1, 1])
+
+        self.m_init_param = Parameter(m_init, name=f'LotkaVolterra/m_init', train=train_m_init)
+
+        self.ndt = 2
+        self.nds = 2
+        self.full_state = True
+
+    @property
+    def m_init(self):
+        return self.m_init_param.value
+
+    def H_full_state(self, x, X_s, t):
+        return np.eye(self.ndt * self.nds * X_s.shape[0])
+
+    def H(self, x, X_s, t):
+        if self.full_state:
+            return self.H_full_state(x, X_s, t)
+        else:
+            raise NotImplementedError()
 
     def _f(self, init_x, t):
         raise NotImplementedError()
@@ -728,6 +759,28 @@ class AllenCahn(PDE):
         res = dt - 0.0001 * dx2 + 5 * (t**3) - 5 * t
 
         return np.array([res])
+
+    def forward_g(self, f, X_s, t):
+        """ 
+        f is of shape 4 corresponding to x , dxs2, dxt, dxs2, dxt
+        """
+        f = np.reshape(f, [1, self.nds, X_s.shape[0], self.ndt])
+        f = np.transpose(f, [0, 2, 3, 1]) # Nt, Ns, ndt, nds
+        f = np.reshape(f, [1, X_s.shape[0], self.nds*self.ndt])
+        res =  jax.vmap(lambda _f: self.forward([_f[0], _f[1], _f[2]]))(f[0])
+        return res
+
+    def jac(self, x, X_s, t):
+        """Compute d (self.forward(x))(dx) """
+        chex.assert_rank(x, 2)
+        # P x D
+        J =  jax.jacfwd(lambda _x: self.forward_g(_x, X_s, t))(x)[:, 0, :, 0]
+        chex.assert_rank(J, 2)
+        return J
+
+    def psuedo_observations(self, X_s):
+        Ns = X_s.shape[0]
+        return np.array([0.0]*Ns)[:, None]
 
 
 class _LorenzSystemX(PDE):
@@ -1007,7 +1060,7 @@ class LotkaVolterra(PDE):
         else:
             return np.eye(4)[[0, 2], :]
 
-    def psuedo_observations(self):
+    def psuedo_observations(self, X_s):
         # [y1, dy1, y2, dy2]
         if self.full_state:
             return np.array([onp.NaN, 0.0, onp.NaN, 0.0])[:, None]

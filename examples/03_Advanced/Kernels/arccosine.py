@@ -11,9 +11,10 @@ import numpy as np
 from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer
+from stgp.trainers.standard import ADAM, LBFGS
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels.matern import ScaledMatern32, Matern32
-from stgp.kernels.arccosine import ArcCosine
+from stgp.kernels.arccosine import ArcCosine, NeuralNetworkKernel
 from stgp.likelihood import Gaussian
 
 import stgp
@@ -32,12 +33,13 @@ stgp.settings.linear_solver = stgp.settings.SolveType.CG
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 100, seed=0)
 
-K = ArcCosine(order=0, active_dims=[0])
+#K = ArcCosine(order=0, active_dims=[0])
+K = NeuralNetworkKernel(input_dim=1, active_dims=[0])
 #K = Matern32(input_dim=1, lengthscales=[0.1])
 
 Y[40:50] = np.NaN
 
-if True:
+if False:
     print(K.K(X, X))
     plt.imshow(K.K(X, X))
     plt.show()
@@ -47,6 +49,14 @@ if True:
 m = GP(X, Y, kernel=[K], likelihood=Gaussian(variance=0.1))
 
 m.print()
+m.get_objective()
+
+if True:
+    lc, _ = LBFGS(m).train(None, 100, callback=progress_bar_callback(100))
+    plt.plot(lc)
+    plt.show()
+m.print()
+m.get_objective()
 
 pred_mu, pred_var = m.predict_y(XS)
 

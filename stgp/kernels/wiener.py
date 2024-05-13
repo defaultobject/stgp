@@ -8,6 +8,12 @@ from jax.scipy.special import factorial
 from . import StationaryKernel, StationaryVarianceKernel, MarkovKernel
 from .. import Parameter
 
+def symmetric_abs(a, b):
+    """ Force dabs(x)/dx at x=0 to be 0 """
+    tau = np.abs(a-b)
+    #return tau
+    return tau * np.where(np.isinf(1/tau), 0.0, 1.0)
+
 class Wiener(MarkovKernel):
     def __init__(self, q=1):
         super(Wiener, self).__init__()
@@ -151,17 +157,19 @@ class WienerVelocity(MarkovKernel):
         """
         if q ==1:
             K(X1, X2) = theta^2((1.0/3.0) * min(x1, x2)^3 + |a-b|*0.5*min(a, b))
+
+        when computing derivatives through this kernel, all derivates are wrt to x1
         """
 
         q = self.q
         var = self.variance_param.value
 
-        tau = np.abs(x1-x2)
+        tau = symmetric_abs(x1, x2)
+        #_min = symmetric_min(x1, x2)
         _min = np.min(np.array([x1, x2]))
-
         ai, bi, ri = _integrated_wiener_coef(q, x1, x2)
 
-        _k = (1/ai)*(_min**(2*q+1)) + bi*(_min**(q+1)) * tau * ri
+        _k = (1/ai)*_min**(2*q+1) + bi*_min**(q+1) * tau * ri
         return var * _k
 
 IntegratedWiener = WienerVelocity

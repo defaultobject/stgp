@@ -205,6 +205,7 @@ class MarkovKernel(Kernel):
         raise NotImplementedError()
 
     def Q(self, dt, A_k, P_inf, X_spatial=None):
+        # TODO: ONLY applies for stationary models
         return P_inf - A_k @  P_inf @ A_k.T
 
 
@@ -214,12 +215,13 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         # only need return the time dim
         return self.k1.state_space_dim()
 
-    def __init__(self, K_temporal, K_spatial, spatial_output_dim: int = 1, whiten_space = False):
+    def __init__(self, K_temporal, K_spatial, spatial_output_dim: int = 1, whiten_space = False, stationary=True):
         self.k1 = K_temporal
         self.k2 = K_spatial
         # when k2 is a DiffOp kernel this will change the output dim of space
         self.spatial_output_dim = spatial_output_dim
         self.whiten_space = whiten_space
+        self.stationary = stationary
 
     def to_ss(self, X_spatial):
         # if the spatial kernel is a derivate kernel, just evaluate the base kernel
@@ -251,6 +253,16 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
 
         return A
 
+
+    def Q(self, dt, A_k, P_inf, X_spatial=None):
+        if self.stationary:
+            return P_inf - A_k @ P_inf @ A_k.T
+        else:
+            Q1 = self.k1.Q(dt, A_k, P_inf, X_spatial)
+
+            X_spatial = np.hstack([np.zeros([X_spatial.shape[0], 1]), X_spatial])
+            K_spatial = self.k2.K(X_spatial, X_spatial)
+            return np.kron(K_spatial, Q1)
 
 class WhiteNoiseKernel(Kernel):
     def __init__(

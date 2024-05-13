@@ -31,6 +31,7 @@ def shape_rank(X):
 
 
 
+#@partial(jit, static_argnums=(1))
 def hessian(f, argnums):
     return jacfwd(jacrev(f, argnums=argnums), argnums=argnums)
 

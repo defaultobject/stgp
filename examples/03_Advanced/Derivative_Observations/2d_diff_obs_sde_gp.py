@@ -1,5 +1,5 @@
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
 import jax.numpy as jnp
@@ -24,7 +24,7 @@ from stgp.data import Data
 import matplotlib.pyplot as plt
 
 import sys
-sys.path.append('/Users/ohamelijnck/Documents/projects/stgp/examples')
+sys.path.append('/Users/oliverhamelijnck/Documents/projects/stgp/examples')
 from example_utils.data_zoo import single_output_spatial_data
 from example_utils import colors
 

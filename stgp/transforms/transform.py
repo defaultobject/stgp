@@ -375,6 +375,19 @@ class Independent(Transform):
         """
         return self.output_dim
 
+    @property
+    def spatial_output_dim(self):
+        # TODO: hack for deadline
+        try:
+            # use loop so that we get a list of int outputs
+            if hasattr(self.parent[0], 'kernel'):
+                fn = lambda  latent:  latent.kernel.spatial_output_dim
+            else:
+                fn = lambda  latent:  latent.spatial_output_dim
+            return [fn(latent) for latent in self.parent]
+        except Exception as e:
+            return [1]
+
     def state_space_dim(self):
         # use loop so that we get a list of int outputs
         if hasattr(self.parent[0], 'kernel'):
@@ -490,6 +503,11 @@ class Independent(Transform):
         # will be the same across latent functions so this will return the same thing
         #return self.parent[0].kernel.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
 
+        if X_spatial is None:
+            Ns = 1
+        else:
+            Ns = X_spatial.shape[0]
+
         if hasattr(self.parent[0], 'kernel'):
             fn = lambda dt, A, P, Xs, latent:  latent.kernel.Q(dt, A, P, X_spatial=Xs)
         else:
@@ -499,14 +517,18 @@ class Independent(Transform):
         # i am trying to figure what the blocks SHOULD have been
         # extracting them, and then procedding as normal
 
-        dims = self.state_space_dim()
-        if type(dims) is list:
-            if type(dims[0]) is list:
-                block_dim = sum(dims[0])
+        dt_dims = self.state_space_dim()
+        ds_dims = self.spatial_output_dim
+
+        if type(dt_dims) is list:
+            if type(dt_dims[0]) is list:
+                block_dim = sum(dt_dims[0])*sum(ds_dims[0])
             else:
-                block_dim = dims[0]
+                block_dim = dt_dims[0]*ds_dims[0]
         else:
-            block_dim = dims
+            block_dim = dt_dims*ds_dims
+
+        block_dim = block_dim*Ns
 
         A_k = get_block_diagonal(A_k, block_dim)
         P_inf = get_block_diagonal(P_inf, block_dim)

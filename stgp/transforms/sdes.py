@@ -1,6 +1,7 @@
 from . import Transform, Independent
 from ..computation.permutations import data_order_to_output_order, ld_to_dl, dl_to_ld
 from ..computation.matrix_ops import to_block_diag
+from .. import Parameter
 
 import jax.numpy as np
 
@@ -16,10 +17,17 @@ class SDE(Transform):
 
 class LTI_SDE(SDE):
     """ @TODO: Only for single latent functions"""
-    def __init__(self, gp: 'Model'):
+    def __init__(self, gp: 'Model', m_init=None, train_m_init = True):
         self.gp = gp
         self.whiten_space = False # required for api consistentcy
         self._parent = self.gp
+
+        if m_init is not None:
+            # ensure correct dimension
+            m_init = np.reshape(np.array(m_init), [-1, 1])
+            self.m_init_param = Parameter(m_init, name=f'LTI_SDE/m_init', train=train_m_init)
+        else:
+            self.m_init_param = None
 
     @property
     def temporal_output_dim(self):
@@ -35,7 +43,7 @@ class LTI_SDE(SDE):
 
     @property
     def spatial_output_dim(self):
-        # TODO: this is a bit hacky atm
+        # TODO: this is a hacky atm
 
         # if the spatial kernel is a derivate kernel this will get ignored by the filter and computed explicitely after smoothing.
         # i.e when in a hierachical model the filter does not compute sptial derivates and so the spatial dim here will be 1
@@ -76,7 +84,10 @@ class LTI_SDE(SDE):
         return Pinf
 
     def m_inf(self, x, X_s, t):
-        _, _, _, _, m_inf, _ = self.gp.state_space_representation(X_s)
+        if self.m_init_param is None:
+            _, _, _, _, m_inf, _ = self.gp.state_space_representation(X_s)
+        else:
+            return self.m_init_param.value
         return m_inf
 
     def expm(self, X_s, t):
@@ -87,7 +98,8 @@ class LTI_SDE(SDE):
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """
-    def __init__(self, gp: 'Model', whiten_space=False, overwrite_H=True, keep_dims = None, permute=True):
+    def __init__(self, gp: 'Model', whiten_space=False, overwrite_H=True, keep_dims = None, permute=True, m_init=None, train_m_init = True):
+        super(LTI_SDE_Full_State_Obs, self).__init__(gp, m_init=m_init, train_m_init = train_m_init)
         self.gp = gp
         self._state_space_dim = sum(self.gp.state_space_dim())
         self.whiten_space = whiten_space

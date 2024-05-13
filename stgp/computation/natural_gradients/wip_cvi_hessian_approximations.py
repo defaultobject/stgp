@@ -12,7 +12,7 @@ from batchjax import batch_or_loop, BatchType
 from functools import partial
 
 from ... import settings
-from ...utils.nan_utils import get_same_shape_mask 
+from ...utils.nan_utils import get_same_shape_mask , mask_matrix
 from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
@@ -31,6 +31,7 @@ from ...sparsity import NoSparsity, FreeSparsity, Sparsity, SpatialSparsity
 from .exponential_family_transforms import xi_to_theta, theta_to_lambda, xi_to_expectation, expectation_to_xi, lambda_to_theta, theta_to_xi, theta_to_lambda_diagonal, lambda_to_theta_diagonal, reparametise_cholesky_grad
 
 from ...transforms import MultiOutput
+
 
 def get_Y_in_correct_shape(data):
     """
@@ -97,28 +98,27 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
 
             hess = batch_or_loop(
                 lambda y, t, lik: jax.vmap(jax.vmap(lik.log_hessian_scalar))(y, t),
-                [Y_st, T_f[..., 0], model.likelihood.likelihood_arr],
+                [Y_st, T_f, model.likelihood.likelihood_arr],
                 [2, 2, 0],
                 dim = len(model.likelihood.likelihood_arr),
                 out_dim=1,
                 batch_type = get_batch_type(model.likelihood.likelihood_arr)
             )
-            hess = np.array(hess)
-            hess = np.transpose(hess, [1, 2, 0]) # [Nt, Ns, P]
-            neg_Lambda = hess[..., None] # [Nt, Ns, P, 1]
+            hess = np.array(hess) # P x Nt x Ns x  B x B
+            neg_Lambda = np.transpose(hess, [1, 2, 0, 3, 4]) # [Nt, Ns, P, B, B]
         else:
             # batch over Nt and Ns, only evaluate the conditional var on the indiviual P x 1 outputs
-            Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f) ))(T_f)
+            neg_Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.laplace_approx(f) ))(T_f)
 
             # laplace approximation of the hessian
-            neg_Lambda = -(1/Lambda)
-            neg_Lambda = neg_Lambda[..., 0, 0] # will be [Nt x Ns x P x 1]
+            #neg_Lambda = -(1/Lambda) # or [Nt, Ns, P, 1] or [Nt, Ns, P, B, B]
 
-            # ensure rank 4
-            if len(neg_Lambda.shape) == 3:
+            # ensure rank 5
+            if len(neg_Lambda.shape) == 4:
                 # this is required due to an inconsistency in return dimensions
                 #  when wrapping a likelihood in a ProductLikelihood
                 neg_Lambda = neg_Lambda[..., None]
+
 
 
     else:
@@ -224,15 +224,11 @@ def compute_f_to_tf(m, q_f_mu):
         # assumes that each output is a single output
         for i, p in enumerate(m.prior.parent):
             t_p = _process_samples(q_f_mu[i], lambda x:x, p)
-            # TODO: only support single output transforms
-            #q_f_res.append(np.squeeze(t_p))
-            q_f_res.append(t_p[..., 0, 0])
+            q_f_res.append(t_p[..., 0])
 
         # fix shapes
-        q_f_res = np.array(q_f_res).T
-        chex.assert_rank(q_f_res, 2)
-
-        q_f_res = q_f_res[..., None]
+        q_f_res = np.transpose(np.array(q_f_res), [1, 0, 2]) # 1 x P x B
+        chex.assert_rank(q_f_res, 3)
     else:
         q_f_res = _process_samples(q_f_mu[0], lambda x:x, m.prior)
 
@@ -278,7 +274,7 @@ def _get_shape_conditional_f(model, m, S, data, X_st, Y_st) -> list:
         conditional_mean = [conditional_mean]
     else:
         if False:
-            # the only time we will get a list is with MultiOutput, so wrap all other cases so they can be handled in the same way
+            # the only time we will get a list is with MultiOutput, so wrap all other cases so they can be handled in the same way
             if type(model.prior) is not MultiOutput:
                 conditional_mean = [conditional_mean]
 
@@ -297,7 +293,7 @@ def _reparamaterise_f_to_tf(model, eps, pred_mu, pred_var):
     """
     P = len(eps)
 
-    # should all be [Ns x Q x B]
+    # should all be [Ns x Q x B]
     [chex.assert_equal_shape([pred_mu[p], eps[p]]) for p in range(P)]
 
     f_samples = []
@@ -316,7 +312,7 @@ def _reparamaterise_f_to_tf(model, eps, pred_mu, pred_var):
         f_samples_p = np.transpose(f_samples_p, [0, 2, 1]) #Ns x Q x 1
         f_samples.append(f_samples_p)
 
-    # should all be [Ns x Q x B]
+    # should all be [Ns x Q x B]
     [chex.assert_equal_shape([pred_mu[p], f_samples[p]]) for p in range(P)]
     return compute_f_to_tf( model, f_samples )
 
@@ -355,7 +351,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
         )
         return _reparamaterise_f_to_tf(model, eps_t, pred_mu_t, pred_var_t)
 
-    # Nt x Ns x P x 1 x Ms x 1
+    # Nt x Ns x P x B x Ms x 1
     J_u_tf = jax.vmap(
         lambda m_t, S_t, x_t, y_t, *eps_t: jax.jacfwd(
             J_u_2_tf_wrapper, 
@@ -376,18 +372,19 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
     )(m, S, X_st, Y_st)
 
 
-    Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var)
+    Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var) # Nt x Ns x P x B 
 
     neg_Lambda = get_likelihood_hessian(
         model, 
-        Tf_sample, # Nt x Ns x P x 1
+        Tf_sample, # Nt x Ns x P x B
         laplace_log_lik=laplace_log_lik
     )
 
     # clean up shapes
     J_u_tf = J_u_tf[0]
-    J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
-    neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
+    J_u_tf = J_u_tf[:, :, :, :, :, 0] # Nt x Ns x P x B x Ms
+    J_u_tf = np.transpose(J_u_tf, [0, 1, 2, 4, 3]) # Nt x Ns x P x Ms x B
+    #neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
 
     if _ensure_str(data) == 'TemporallyGroupedData':
         Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
@@ -397,7 +394,10 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
 
 
     # create masks for missing lieklihoods
-    neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
+    neg_Lambda = mask_matrix(
+        neg_Lambda, 
+        np.tile(Y_st_mask[..., None, None], [1, 1, 1, neg_Lambda.shape[-1], neg_Lambda.shape[-1]])
+    )
 
     # Gauss Newton approximation
     # TODO: should probably write as a jax.vjp
@@ -412,19 +412,22 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
         J_u_tf, neg_Lambda
     )
 
+
     # create masks for missing data
     Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
     G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
     chex.assert_equal(G_mask.shape, G_vec.shape)
 
     # remove missing data from the natural gradient sum
-    G_vec_masked = G_mask * G_vec
+    G_vec_masked = mask_matrix(G_vec, G_mask)
 
     G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
     G = G[:, None, ...] # Nt x 1 x Ms x Ms
 
+
     if settings.verbose:
         print('ST GAUSS NEWTON')
+        breakpoint()
 
     if data.minibatch:
         G = G*data.minibatch_scaling
@@ -654,6 +657,7 @@ def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enf
 
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian
+
 
 
 
