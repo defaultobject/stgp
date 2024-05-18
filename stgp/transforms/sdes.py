@@ -105,7 +105,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
         self.whiten_space = whiten_space
         self._num_latents = len(self.gp.state_space_dim())
 
-        # select all dims
+        # select all dims per latent functino
         if keep_dims is None:
             self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
         else:
@@ -113,6 +113,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         self.overwrite_H = overwrite_H
         self.permute = permute
+        self.m_init_param = None
 
 
 
@@ -142,14 +143,12 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             if not self.permute:
                 return H_t
 
-        # only keep the deriatives that we care about
-        H_t = H_t[self.keep_dims]
-
         # need to permute from latent-ds-space-df to latent-df-ds-space
         if X_s is None:
             Ns = 1
         else:
             Ns = X_s.shape[0]
+
         dt = self.gp.state_space_dim()[0]
         ds = self.spatial_output_dim
         dt_keep = len(self.keep_dims)
@@ -169,7 +168,6 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             for q in range(Q)
         ])
 
-
         return H
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
@@ -183,6 +181,7 @@ class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
         self.whiten_space = whiten_space,
         self.overwrite_H = overwrite_H
         self.permute=permute
+        self.m_init_param = None
 
     @property
     def temporal_output_dim(self):
@@ -215,4 +214,11 @@ class EulerMaruyama(SDE):
 
     def _f(self, x, t):
         return self.base_sde._f(x, t)
+
+
+class LinearizedFilter_SDE(LTI_SDE):
+
+    @property
+    def _output_dim(self):
+        return 4
 

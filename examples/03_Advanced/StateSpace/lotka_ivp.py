@@ -34,12 +34,12 @@ train = False
 #X = np.linspace(0, 40, 2000)[:, None]
 X = np.arange(0, 40, 0.01)[:, None]
 Y = np.zeros_like(X)
-Y = np.hstack([Y, Y])*np.NaN
+Y = np.hstack([Y, Y, Y, Y])*np.NaN
 XS = np.linspace(0, np.max(X), 2000)[:, None]
 
 print(X.shape, Y.shape, XS.shape)
 data = MultiOutputTemporalData(X, Y)
-lik = ReshapedGaussian(DiagonalGaussian(variance=[1e-3, 1e-3]), num_blocks=data.Nt, block_size=2)
+lik = ReshapedGaussian(DiagonalGaussian(variance=[1e-3, 1e-3, 1e-3, 1e-3]), num_blocks=data.Nt, block_size=4)
 #lik = ReshapedGaussian(Gaussian(variance=[1e-3, 1e-3]), num_blocks=data.Nt, block_size=2)
 
 latent_gp = Independent([
@@ -51,18 +51,27 @@ latent_gp = Independent([
     for i in range(2)
 ])
 
-#prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [20.0, 10.0, 20.0, 10.0])
-prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [ 20.0, 0.0,  20.0,   0.0 ])
-print(prior._dfdt(prior.m_init, None, 0.0))# to get get the initial values
+# must be the same shape and ordering as Y
+#boundary_conditions = np.array([[ 20.0, 0.0,  20.0,   0.0 ]])
+boundary_conditions = np.array([[ 20.0,  10.0, 20.0, 10.0]])
+boundary_conditions = np.vstack([boundary_conditions, np.ones([data.Nt-1, boundary_conditions.shape[1]])*np.NaN])[..., None]
+
+if False:
+    prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [20.0, 10.0, 20.0, 10.0], boundary_conditions=boundary_conditions*np.NaN, full_state=True, boundary_by_init=True)
+else:
+    prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, boundary_conditions=boundary_conditions, train_m_init = False, full_state = True, boundary_by_init=False)
 
 m = GP(
     data = data,
     prior = prior,
     likelihood = lik,
-    inference='Sequential'
+    inference='Sequential',
+    full_state = True
 )
 
-m.get_objective()
+pred_mu, pred_var = m.predict_f(XS, filter_only=False, force_full_state=True)
+
+print(m.get_objective())
 
 if train:
     lc, _ = LBFGS(m).train(None, 100, callback=progress_bar_callback(100))

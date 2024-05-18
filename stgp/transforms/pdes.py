@@ -218,7 +218,14 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         # when not hierarchical this should have the same behavior as base prior
         return self.base_prior
 
+
+
 class PDE(Transform):
+    def __init__(self):
+        self.boundary_conditions = None
+        self.boundary_by_init = False
+        self.observe_data = False
+        self.colocation_noise = 0.0
 
     def m_inf(self, x, X_s, t):
         return self.m_init
@@ -306,12 +313,20 @@ class TaylorLinearizedDE(PDE, LinearTransform):
         self._output_dim = output_dim
         self._input_dim = input_dim
         self.data_y_index = data_y_index
+        self.latents = self.parent.latents
 
     def get_linear_terms(self, mu):
-        b = self.pde_transform.forward(mu)
-        A = jacfwd(self.pde_transform.forward)(mu)[0, ..., 0]
+        b = self.pde_transform.forward(mu)[:, None]
+        A = jacfwd(self.pde_transform.forward)(mu)[..., 0]
+
+        # TODO: hacky
+        if len(A.shape) == 3:
+            A = A[0]
+            b = b[0]
+
 
         return A, b - A@mu
+        #return A, b 
 
     def forward(self, f):
         A, b = self.get_linear_terms(f)
@@ -353,8 +368,6 @@ class TaylorLinearizedDE(PDE, LinearTransform):
         g_S = (A @ var[0] @ A.T)[None, ...]
 
         return g_m, g_S 
-
-
 
 class IdentityPDE(PDE):
     def __init__(self, latent, m_init = None, d = 2, full_state = True):
@@ -711,9 +724,15 @@ class HeatEquation2D(PDE, LinearTransform):
         return self._transform_covar(parent_covar)
 
 class AllenCahn(PDE):
-    def __init__(self, latent, train=True, m_init = None, m_init_dim = None, train_m_init=True):
+    def __init__(self, latent, train=True, m_init = None, m_init_dim = None, train_m_init=True, boundary_conditions=None, boundary_by_init=False, observe_data=False):
+
+        super(AllenCahn, self).__init__()
+
         self._parent = latent
-        self._output_dim = 1
+        self.latents = self.parent.latents # legacy reasons
+        self.temporal_output_dim = 2
+        self.spatial_output_dim = 2
+
 
         if self.parent is None:
             self._input_dim = None
@@ -726,24 +745,34 @@ class AllenCahn(PDE):
         else:
             m_init = np.array(m_init).reshape([-1, 1])
 
-        self.m_init_param = Parameter(m_init, name=f'LotkaVolterra/m_init', train=train_m_init)
+        self.m_init_param = Parameter(m_init, name=f'AllenCahn/m_init', train=train_m_init)
 
         self.ndt = 2
         self.nds = 2
         self.full_state = True
+        self._output_dim = 4
+
+        self.boundary_conditions = boundary_conditions
+        self.boundary_by_init = boundary_by_init
+        self.observe_data = observe_data
 
     @property
     def m_init(self):
         return self.m_init_param.value
 
     def H_full_state(self, x, X_s, t):
-        return np.eye(self.ndt * self.nds * X_s.shape[0])
+        return self.parent.H(x, X_s, t)
+        #H_full_state =  np.eye(self.ndt * self.nds * X_s.shape[0])
+        #return H_full_state
 
     def H(self, x, X_s, t):
         if self.full_state:
             return self.H_full_state(x, X_s, t)
         else:
             raise NotImplementedError()
+
+    def H_jac(self, x, X_s, t):
+        return self.jac(x, X_s, t)
 
     def _f(self, init_x, t):
         raise NotImplementedError()
@@ -764,10 +793,11 @@ class AllenCahn(PDE):
         """ 
         f is of shape 4 corresponding to x , dxs2, dxt, dxs2, dxt
         """
+        # in [ds, space, df]
         f = np.reshape(f, [1, self.nds, X_s.shape[0], self.ndt])
         f = np.transpose(f, [0, 2, 3, 1]) # Nt, Ns, ndt, nds
-        f = np.reshape(f, [1, X_s.shape[0], self.nds*self.ndt])
-        res =  jax.vmap(lambda _f: self.forward([_f[0], _f[1], _f[2]]))(f[0])
+        f = np.reshape(f, [1, X_s.shape[0], self.nds*self.ndt]) #N x d
+        res =  jax.vmap(lambda _f: self.forward([_f[0], _f[2], _f[1]]))(f[0])
         return res
 
     def jac(self, x, X_s, t):
@@ -880,9 +910,10 @@ def LorenzSystem(latent, sigma, rho, beta, train=True):
 class _LotkaVolterraSystemX(PDE):
     """ Prey Component"""
 
-    def __init__(self, latent, alpha, beta, train=True):
+    def __init__(self, latent, alpha, beta, train=True, data_y_index=[0]):
         self._parent = latent
         self._output_dim = 1
+        self.data_y_index = data_y_index
 
         if self.parent is None:
             self._input_dim = None
@@ -928,9 +959,10 @@ class _LotkaVolterraSystemX(PDE):
 class _LotkaVolterraSystemY(PDE):
     """ Predator Component"""
 
-    def __init__(self, latent, delta, gamma, train=True):
+    def __init__(self, latent, delta, gamma, train=True, data_y_index=[1]):
         self._parent = latent
         self._output_dim = 1
+        self.data_y_index = data_y_index
 
         if self.parent is None:
             self._input_dim = None
@@ -974,7 +1006,9 @@ class _LotkaVolterraSystemY(PDE):
         return self.forward(f)
 
 class LotkaVolterra(PDE):
-    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True, full_state = False, train_m_init=False):
+    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True, full_state = False, train_m_init=False, boundary_conditions=None, boundary_by_init=False, observe_data=False):
+        super(LotkaVolterra, self).__init__()
+
         self.components = objax.ModuleList([
             _LotkaVolterraSystemX(None, alpha, beta, train=train), 
             _LotkaVolterraSystemY(None, delta, gamma, train=train), 
@@ -994,16 +1028,24 @@ class LotkaVolterra(PDE):
             self._output_dim = 2
 
         self.m_init_param = Parameter(m_init, name=f'LotkaVolterra/m_init', train=train_m_init)
+        self.boundary_conditions = boundary_conditions
+        self.boundary_by_init = boundary_by_init
+        self.observe_data = observe_data
 
     @property
     def m_init(self):
         return self.m_init_param.value
 
     def m_inf(self, x, X_s, t):
-        return self.m_init
+        if self.boundary_by_init:
+            return self.m_init
+        return np.zeros_like(self.m_init)
 
     def P_inf(self, x, X_s, t):
-        return self.parent.P_inf(x, X_s, t)
+        if self.boundary_by_init:
+            return self.parent.P_inf(x, X_s, t)
+
+        return np.eye(self.output_dim)*1e6
 
     def _dfdt(self, f, X_s=None, t=None):
         """ Evalutate df/dt """
@@ -1068,7 +1110,7 @@ class LotkaVolterra(PDE):
 
     
 
-def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):
+def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_index=[0, 1]):
     """
     THe lorenz stystem describes the following system of equations
 
@@ -1076,8 +1118,8 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True):
         dy/dt = delta * x * y  - gamma * y
     """
     return [
-        _LotkaVolterraSystemX(latent[0], alpha, beta, train=train), 
-        _LotkaVolterraSystemY(latent[1], delta, gamma, train=train), 
+        _LotkaVolterraSystemX(latent[0], alpha, beta, train=train, data_y_index=[data_y_index[0]]), 
+        _LotkaVolterraSystemY(latent[1], delta, gamma, train=train, data_y_index=[data_y_index[1]]), 
     ]
 
 

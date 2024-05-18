@@ -226,14 +226,15 @@ class BASE_SDE_GP(Posterior):
         else:
             return mu, var
 
-    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None):
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
             R = R,
             R_inv = R_inv,
             filter_type = self.filter_type,
-            train_test_mask=train_test_mask
+            train_test_mask=train_test_mask,
+            train_index=train_index
         ) 
 
         mu, var = rts_smoother.smoother_loop(
@@ -377,12 +378,14 @@ class T_SDE_GP(BASE_SDE_GP):
 
         return R
 
-    def get_train_test_mask(self, data):
+    def get_train_test_index_and_mask(self, data):
         Nt = self.data.Nt
         points_added = data.Nt-Nt 
         unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.NaN])
+        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
         sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
-        return sorted_mask
+        train_index = unsorted_range[data.unique_idx][data.sort_idx]
+        return train_index, sorted_mask
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, filter_only: bool =False, force_full_state: bool = False):
         """
@@ -412,12 +415,14 @@ class T_SDE_GP(BASE_SDE_GP):
             sort=True 
         )
 
+        train_index, train_mask = self.get_train_test_index_and_mask(test_data)
         if filter_only:
             mu, var = self.filter(
                 test_data,
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data),
-                train_test_mask = self.get_train_test_mask(test_data),
+                train_test_mask = train_mask,
+                train_index = train_index
             )
             chex.assert_rank([mu, var], [3, 3])
 
@@ -427,7 +432,8 @@ class T_SDE_GP(BASE_SDE_GP):
                 test_data,
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data),
-                train_test_mask = self.get_train_test_mask(test_data),
+                train_test_mask = train_mask,
+                train_index = train_index,
                 full_state = force_full_state
             )
 
@@ -910,8 +916,6 @@ class ST_SDE_GP(BASE_SDE_GP):
             # we need to return the data objects so that the unsorting can be performed
             return xs_spatial_data, all_temporal_data, XS_data, mu_t, var_t[:, None, ...]
 
-
-
         mu_t = all_temporal_data.unsort(mu_t)[self.data.Nt:]
         var_t = all_temporal_data.unsort(var_t)[self.data.Nt:]
 
@@ -921,6 +925,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, all_temporal_data, self, self.prior)(
             xs_spatial_data, stacked_temporal_test_data, mu_t, var_t, self, False
         )
+
 
         # convert to time-space-latent format
         # TODO: how are multiple latent functions handled here?

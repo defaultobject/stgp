@@ -339,6 +339,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     new_V_tilde = new_V_tilde[None, ...]
 
 
+
     return new_Y_tilde, new_V_tilde
 
 @dispatch('VGP', FullConjugateGaussian, NoSparsity)

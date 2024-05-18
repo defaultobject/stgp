@@ -34,7 +34,7 @@ import numpy as onp
 from ..linalg import solve, solve_from_cholesky
 
 # Import types
-from ...transforms.sdes import SDE, LTI_SDE
+from ...transforms.sdes import SDE, LTI_SDE, LinearizedFilter_SDE
 from ...transforms.pdes import PDE
 
 import objax
@@ -272,6 +272,44 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         R_k_inv =  x['lik_mat']
         return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
 
+@dispatch(LinearizedFilter_SDE, 'sequential')
+def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
+    """ Form of Extended Kalman Filter Predict Step """
+
+    P_inf = prior.P_inf(None, X_s, None)
+    H_k = prior.H(None, X_s, None)
+
+    dt_k = x['dt']
+
+    m_k = carry['m']
+    P_k = carry['P']
+
+    A_k = prior.expm(X_s, dt_k)
+    Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+
+
+    m_ = A_k @ m_k
+    P_ = A_k @ P_k @ A_k.T + Q_k
+
+    #H_k is given by the cholesky of the 
+    # Y is g(m)
+    small_noise = 1e-6
+    f = x['Y']
+    H_jac_k = cholesky(x['lik_mat'])/(np.sqrt(small_noise))
+    R_k = np.eye(m_.shape[0])*small_noise
+
+    # construct a state dict for the pseudo observation update step
+    x_psuedo = {
+        'Y': np.zeros(f.shape[0])[:, None], 
+        't': x['t'], 
+        'dt': x['dt'], 
+        'lik_mat': R_k, 
+    }
+
+    Ns_colocation = f.shape[0]
+    return kf_update_step(m_, P_, H_jac_k, R_k, carry, x_psuedo, f)
+
+
 @dispatch(PDE, 'sequential')
 def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
@@ -294,6 +332,7 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     A_k = sde_prior.expm(X_s, dt_k)
     Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
+
     # standard Kalman prediction
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
@@ -301,8 +340,23 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     f = model.forward_g(m_, X_s, x['t'])
     H_jac_k = model.H_jac(m_, X_s, x['t'])
 
-    # compute prediction with the PDE transform
+    # full state
+    H_k = model.H(m_, X_s, x['t'])
     R_k =  x['lik_mat']
+
+    if model.boundary_conditions is not None:
+        # observer boundary conditions
+        x_boundary = {
+            'Y': x['boundary_data'], 
+            't': x['t'], 
+            'dt': x['dt'], 
+            'lik_mat': x['lik_mat'], 
+        }
+        carry, ys = kf_update_step(m_, P_, H_k, R_k*0.0, carry, x_boundary, H_k @ m_)
+        m_, P_ = carry['m'], carry['P']
+
+
+    # compute prediction with the PDE transform
     y_psuedo = model.psuedo_observations(X_s)
     #we only observer y_psuedo at the training locations, because we discretise the prior first
     # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
@@ -318,9 +372,12 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
 
     Ns_colocation = f.shape[0]
     carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
+    #carry, ys = kf_update_step(m_, P_, H_jac_k, np.eye(Ns_colocation)*1e-6, carry, x_psuedo, np.squeeze(f)[..., None])
     m_, P_ = carry['m'], carry['P']
 
-    H_k = model.H(m_, X_s, x['t'])
+    #print(mat_inv(H_jac_k @ np.eye(Ns_colocation)*(-1e-6) @ H_jac_k.T))
+    #breakpoint()
+
 
     if False:
         print('H_k: ', H_k)
@@ -328,11 +385,12 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         print('f: ', f)
         breakpoint()
 
-    innovation = H_k @ m_
+    if model.observe_data:
+        innovation = H_k @ m_
 
-    breakpoint()
+        return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
 
-    return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+    return carry, ys
 
 
 def filter_step_wrapper(data, m, lik_cov_flag):
@@ -345,7 +403,7 @@ def filter_step_wrapper(data, m, lik_cov_flag):
     return _fn
 
 @dispatch('sequential')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
     """
     Args:
         lik_mat: is either R of R_inv, the block diagonal covariance ot the block_diagonal precision
@@ -359,19 +417,30 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask)
     step_wrap = filter_step_wrapper(data, prior, lik_cov_flag)
     unroll = 1
 
+    carry_dict = {
+        'dt': dt,
+        't': X_t,
+        'Y': Y,
+        'lik_mat': lik_mat,
+        'train_test_mask': train_test_mask,
+        'train_index': train_index
+    }
+
+    # TODO: use dispatch here?
+    if isinstance(prior, PDE):
+        if prior.boundary_conditions is not None:
+            boundary_conditions = prior.boundary_conditions
+            # ensure same shape as Y
+            boundary_conditions = np.array(boundary_conditions)[train_index]
+            carry_dict['boundary_data'] = boundary_conditions
+
     carry, ys = scan(
         step_wrap,
         {
             'm': m_inf,
             'P': P_inf
         },
-        {
-            'dt': dt,
-            't': X_t,
-            'Y': Y,
-            'lik_mat': lik_mat,
-            'train_test_mask': train_test_mask
-        },
+        carry_dict,
         unroll = unroll
     )
 
@@ -381,7 +450,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask)
 
     return lml, filter_res
 
-def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False, train_test_mask=None):
+def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False, train_test_mask=None, train_index=None):
     """
     Args:
         R: in time - latent - space format
@@ -403,6 +472,9 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
     if train_test_mask is None:
         train_test_mask = np.ones(data.Nt)
+
+    if train_index is None:
+        train_index = np.arange(Y.shape[0])
 
     # TODO: fix this
     #dt = np.hstack([np.ones(1), dt])
@@ -434,7 +506,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
     filter_fn = evoke('filter', filter_type)
 
-    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask)
+    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index)
 
     return lml, filter_res
 

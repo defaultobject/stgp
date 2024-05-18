@@ -61,7 +61,7 @@ class WienerVelocity(MarkovKernel):
     """
     Following https://github.com/alshedivat/gpml/blob/master/cov/covW.m
     """
-    def __init__(self, q=1, variance=1.0, m_init = None, train_m_init=False):
+    def __init__(self, q=1, variance=1.0, stable_state_covariance=0.0, m_init = None, train_m_init=False):
         super(WienerVelocity, self).__init__()
         
         self.q = int(q)
@@ -75,6 +75,7 @@ class WienerVelocity(MarkovKernel):
             m_init = np.reshape(np.array(m_init), [self.state_size(), 1])
 
         self.m_init_param = Parameter(m_init, name=f'IntegratedWiener({self.q})/m_init', train=train_m_init)
+        self.stable_state_covariance = stable_state_covariance
 
     @property
     def m_init(self):
@@ -92,7 +93,7 @@ class WienerVelocity(MarkovKernel):
         F = np.eye(dim, k = 1)
         L = np.hstack([np.zeros(q), [1]])[:, None]*var
         H = np.hstack([[1], np.zeros(q)])[None, :]
-        Pinf = np.diag(np.hstack([1e-14, np.ones(q)*1e6])) # low variance on x, high variance on the derivatives
+        Pinf = np.eye(self.state_size())*self.stable_state_covariance # low variance on x, high variance on the derivatives
         Qc = var
         minf = self.m_init
 

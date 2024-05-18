@@ -87,6 +87,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
     if len(q_f_var.shape) == 4:
         q_f_var = q_f_var[:, 0, : ,:]
 
+
     # ensure correct shapes
     chex.assert_rank([Y, q_f_mu, q_f_var], [3, 3, 3])
     chex.assert_equal(Y.shape, q_f_mu.shape)

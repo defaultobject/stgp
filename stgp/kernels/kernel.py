@@ -454,8 +454,22 @@ class NonStationaryKernel(Kernel):
         pass
 
 class Linear(Kernel):
+    def __init__(
+        self,
+        offset: Optional[np.ndarray] = None,
+    ) -> None:
+
+        super(Linear, self).__init__(1, None)
+        if offset is None:
+            variance = 0.0
+        else:
+            ensure_float(offset)
+
+        self.offset_param = Parameter(offset,  name='Linear/offset')
+
     def _K(self, X1, X2):
-        return X1 @ X2.T
+        c = self.offset_param.value
+        return (X1-c) @ (X2-c).T
 
     def K_diag(self, X1):
         return np.square(self._apply_active_dim(X1))[:, 0]

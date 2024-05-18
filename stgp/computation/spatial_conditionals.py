@@ -13,7 +13,7 @@ from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussian
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent, Joint
-from ..transforms.pdes import DifferentialOperatorJoint
+from ..transforms.pdes import DifferentialOperatorJoint, PDE
 from ..transforms.sdes import SDE
 from .kernel_ops import _batched_diff_kernel, _batched_st_kernel
 
@@ -202,6 +202,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 @dispatch(Data, Input, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, SDE)
+@dispatch(Data, Data, BASE_SDE_GP, PDE)
 def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp, diagonal):
     """
     gp is a GP prior with a spatio-temporal kernel 
