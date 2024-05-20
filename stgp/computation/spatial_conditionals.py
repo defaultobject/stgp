@@ -2,7 +2,7 @@
 from ..dispatch import dispatch, evoke, _ensure_str
 from ..utils.batch_utils import batch_over_module_types
 from ..utils.utils import get_batch_type
-from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks, gaussian_spatial_conditional_cholesky, gaussian_spatial_conditional_inv
+from .marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_spatial_conditional_diagional, gaussian_spatial_conditional, gaussian_linear_operator_spatial_conditional, gaussian_conditional_blocks, gaussian_linear_operator_spatial_conditional_blocks, gaussian_spatial_conditional_cholesky, gaussian_spatial_conditional_inv, gaussian_linear_operator_spatial_conditional_no_S_cholesky, gaussian_linear_operator_spatial_conditional_blocks_avoid_S_chol
 from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block, mat_inv
 from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
@@ -155,8 +155,16 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         else:
             spatial_fn = gaussian_spatial_conditional_inv
             Kzz_mat = mat_inv(Kzz_full)
+
+        S = pred_var_chol
     else:
-        spatial_fn = gaussian_linear_operator_spatial_conditional
+        if settings.avoid_s_cholesky:
+            spatial_fn = gaussian_linear_operator_spatial_conditional_no_S_cholesky
+            S = pred_var
+        else:
+            spatial_fn = gaussian_linear_operator_spatial_conditional
+            S = pred_var_chol
+
         Kzz_mat = Kzz_full
 
     # TODO: derive proper mean 
@@ -187,7 +195,7 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         Kss_full, 
         Ktt_full, #batching 
         pred_mean, #batching
-        pred_var_chol, #batching
+        S, #batching -- either pred_var or pred_var_chol
         mean_x, 
         mean_xs
     )
@@ -361,13 +369,22 @@ def differential_spatial_conditional(
             # whiten transform in space
             Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
             # TODO: fix the hardcoded time dim
-            breakpoint()
             Kzz_chol = np.kron(np.eye(2), Kzz_chol)
             pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
+            breakpoint()
+
+    #K_x_t = K_x_t*2
+
+    if settings.avoid_s_cholesky:
+        S = pred_var
+        spatial_fn = gaussian_linear_operator_spatial_conditional_blocks_avoid_S_chol
+    else:
+        S = pred_var_chol
+        spatial_fn = gaussian_linear_operator_spatial_conditional_blocks
 
     # batch over time
     mu_p, var_p_bd = jax.vmap(
-        gaussian_linear_operator_spatial_conditional_blocks,
+        spatial_fn,
         batch_arr,
     )( 
         Q*out_dim,
@@ -378,10 +395,11 @@ def differential_spatial_conditional(
         K_spatial_ss, 
         K_x_t, #batching 
         pred_mean, #batching
-        pred_var_chol, #batching
+        S, #batching
         mean_x, 
         mean_xs
     )
+
 
     mu_p_bd = np.reshape(mu_p, [-1, Q* out_dim, 1])
     var_p_bd = np.reshape(var_p_bd, [-1, 1, Q*out_dim, Q*out_dim])

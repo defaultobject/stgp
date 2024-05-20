@@ -732,6 +732,7 @@ class AllenCahn(PDE):
         self.latents = self.parent.latents # legacy reasons
         self.temporal_output_dim = 2
         self.spatial_output_dim = 2
+        self.num_latents = len(self.latents)*self.temporal_output_dim*self.spatial_output_dim
 
 
         if self.parent is None:

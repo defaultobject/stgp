@@ -120,7 +120,6 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
                 #  when wrapping a likelihood in a ProductLikelihood
                 neg_Lambda = neg_Lambda[..., None]
 
-
     else:
         q = model.approximate_posterior
         prior = model.prior

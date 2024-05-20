@@ -14,7 +14,7 @@ from ..dispatch import dispatch
 from .gaussian import log_gaussian
 from ..sparsity import NoSparsity, Sparsity, FullSparsity
 from .. import utils
-from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky, get_block_diagonal, block_from_vec, to_block_diag
+from .matrix_ops import cholesky, triangular_solve, add_jitter, diagonal_from_cholesky, cholesky_solve, diagonal_from_cholesky, block_diagonal_from_cholesky, get_block_diagonal, block_from_vec, to_block_diag, block_diagonal_from_LXLT
 
 from .permutations import left_permute_mat, permute_vec,permute_vec_ld_to_dl
 
@@ -181,6 +181,42 @@ def gaussian_linear_operator_spatial_conditional(XS:np.ndarray, X: np.ndarray, K
 
     return mu, sig
 
+@jit
+def gaussian_linear_operator_spatial_conditional_no_S_cholesky(XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxsxs, Ktt, m, S, mean_x, mean_xs):
+    """
+    Computes:
+        mu =  [I_Dt ⊗  Ksz Kzz⁻¹] m_t
+        var =  Ktt ⊗  blkdiag[ Kss - Ksz Kzz⁻¹ Kzs] + blkdiag[ [I_Dt ⊗  Ksz Kzz⁻¹] Stt [I_Dt ⊗  Ksz Kzz⁻¹]^T ]^T_t
+    """
+
+
+
+    # number of dimensions in the time prior
+    Dt = Ktt.shape[0]
+
+    N = Kxsxs.shape[0]
+    M = m.shape[0]
+    I_t = np.eye(Dt)
+
+    k_zz_chol = cholesky(add_jitter(Kzz, settings.jitter))
+
+    A = triangular_solve(k_zz_chol, Kxz.T, lower=True) # M x N
+    A1 = triangular_solve(k_zz_chol.T, A, lower=False) # M x N
+    A1_t = np.kron(I_t, A1)
+
+    A2 = (A1_t).T # N x M 
+
+    mu = mean_xs + A1_t.T @ (m-mean_x) # N x 1
+
+    sig = np.kron(
+        Ktt,
+        (Kxsxs - A.T @ A)  #N x N
+    ) + A2 @ S @ A2.T
+
+
+
+    return mu, sig
+
 def compute_intermediate_mats(Ktt_q, Kxx_q, Kxz_q, Kzz_q, N, Dt, Ds):
     """
     Args:
@@ -297,6 +333,81 @@ def gaussian_linear_operator_spatial_conditional_blocks(block_size: int, XS:np.n
     # Ns x B x B
     # -> Ns x [ Q x Dt x Ds] x [Q x Dt x Ds]
     B1 = block_diagonal_from_cholesky(B1, block_size)
+
+    pred_var = spatial_pred_var + B1
+
+    # [Q x Dt - Ds- Ns] x 1
+    pred_mean = A1_t.T @ m 
+
+    # -> [Ns x Q x Dt - Ds] 
+    pred_mean = permute_vec_ld_to_dl(pred_mean, num_latents=block_size, num_data=N)
+    pred_mean = np.reshape(pred_mean, [N, block_size])
+
+    chex.assert_shape(pred_mean, [N, block_size])
+    chex.assert_shape(pred_var, [N, block_size, block_size])
+
+    pred_mean = pred_mean[..., None]
+    pred_var = pred_var[:, None, ...]
+
+    return pred_mean, pred_var
+
+@partial(jit, static_argnums=(0))
+def gaussian_linear_operator_spatial_conditional_blocks_avoid_S_chol(block_size: int, XS:np.ndarray, X: np.ndarray, Kzz, Kxz, Kxx, Ktt, m, S, mean_x, mean_xs):
+    """
+    Args:
+        Ktt: QxDtxDt
+        Kzz: Qx[DsxN]x[DsxN] or Qx[Ns]x[N]
+        Kxz: Qx[DsxNs]x[DsxN] or Qx[DsxNs]x[N]
+        Kxx: NsxQx[Ds]x[Ds]
+
+        m: [Q x Dt x Ds x Ns] x 1 or [Q x Dt x Ns] x 1 
+        S: [Q x Dt x Ds x Ns] x [Q x Dt x Ds x Ns] or [Q x Dt x Ns] x [Q x Dt x Ns]
+        
+    or (depends on hierarchial nor not)
+
+    Output 
+        In Ns x [Q x Dt x Ds] format
+    """
+    # number of dimensions in the time prior
+    Q = Ktt.shape[0]
+    Dt = Ktt.shape[1]
+
+    # N = number of spatial points
+    #Ds = number of spatial outputs
+    N, _, Ds, _  = Kxx.shape
+    M = m.shape[0]
+    
+    # We need to compute
+    # mu_t = blk_diag[ I_Dt ⊗  Ksz Kzz⁻¹] m_t 
+    # var_t = blk_diag[Ktt ⊗  [ Kss - Ksz Kzz⁻¹ Kss]] + blk_diag[[I_Dt ⊗ Ksz Kzz⁻¹]] Stt blk_diag[[I_Dt ⊗ Ksz Kzz⁻¹]^T]
+
+    # Res:
+    #   [0] spatial_pred_var: Q x Ns x Ds x Ds
+    #   [1] A1: Not permutated: Q x [Dt - Ds- Ns] - [Dt - Ds- N]
+    #   [2] A1_t: Not permutated: Q x [Dt - Ds- Ns] - [Dt - Ds- Ns]
+    res = jax.vmap(compute_intermediate_mats, [0, 1, 0, 0, None, None, None])(
+        Ktt, Kxx, Kxz, Kzz, N, Dt, Ds
+    )
+
+    # A1: Not permutated:  [Q x Dt - Ds- Ns] - [Q x Dt - Ds- N] or [Q x Dt - Ds- Ns] - [Q x Dt - N]
+    A1_up = to_block_diag(res[1])
+    # Not permutated: [Q x Dt - Ds- Ns] - [Q x Dt - Ds- Ns] or [Q x Dt - Ns] - [Q x Dt - Ds- Ns]
+    A1_t = to_block_diag(res[2])
+
+    # Ns x Q x [Dt x Ds] x [Dt x Ds]
+    spatial_pred_var = np.transpose(res[0], [1, 0, 2, 3])
+
+    # Ns x [Q x Dt x Ds] x [Q x Dt x Ds]
+    spatial_pred_var = jax.vmap(to_block_diag)(spatial_pred_var)
+
+    # A1_up @ S_chol: [Q x Dt - Ds- Ns] - [Q x Dt - Ds- N]
+    # left_permute_mat -> [Ns x Q x Dt x Ds] - [Q x Dt - Ds- N] 
+    B1 = left_permute_mat(A1_up, block_size)
+
+    # Ns x B x B
+    # -> Ns x [ Q x Dt x Ds] x [Q x Dt x Ds]
+    B1 = block_diagonal_from_LXLT(B1, S, block_size)
+
     pred_var = spatial_pred_var + B1
 
     # [Q x Dt - Ds- Ns] x 1

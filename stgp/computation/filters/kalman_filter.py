@@ -232,6 +232,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
 
     innovation = H_k @ m_
 
+
     if lik_cov_flag:
         R_k =  x['lik_mat']
         return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)

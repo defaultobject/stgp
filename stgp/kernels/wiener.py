@@ -61,7 +61,7 @@ class WienerVelocity(MarkovKernel):
     """
     Following https://github.com/alshedivat/gpml/blob/master/cov/covW.m
     """
-    def __init__(self, q=1, variance=1.0, stable_state_covariance=0.0, m_init = None, train_m_init=False):
+    def __init__(self, q=1, variance=1.0, stable_state_covariance=0.0, m_init = None, train_m_init=False, active_dims = None):
         super(WienerVelocity, self).__init__()
         
         self.q = int(q)
@@ -76,6 +76,9 @@ class WienerVelocity(MarkovKernel):
 
         self.m_init_param = Parameter(m_init, name=f'IntegratedWiener({self.q})/m_init', train=train_m_init)
         self.stable_state_covariance = stable_state_covariance
+
+        self.input_dim = 1
+        self.active_dims = active_dims
 
     @property
     def m_init(self):

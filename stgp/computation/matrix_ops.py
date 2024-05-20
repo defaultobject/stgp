@@ -166,6 +166,15 @@ def batched_diagonal_from_XDXT(X, D):
 
     return res
 
+@partial(jit, static_argnums=(2))
+def block_diagonal_from_LXLT(L, X, block_size):
+    """
+    Extracts block diagonals from LX L^T
+    """
+    # TODO: implement fast version
+    R = L @ X @ L.T
+
+    return get_block_diagonal(R, block_size)
 
 @partial(jit, static_argnums=(1))
 def block_diagonal_from_cholesky(L, block_size):

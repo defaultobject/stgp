@@ -67,6 +67,7 @@ def cvi_block_update(lambda_1, lambda_2, m, s, m_grad, s_grad, beta, enforce_psd
     # Natural gradient update updatae
     lambda_1_new  = (1-beta)*lambda_1 + beta* grad_1
 
+
     # lambda 2 approximation to enforce psd
     if enforce_psd_type == None:
         lambda_2_new  = (1-beta)*lambda_2 + beta* grad_2
@@ -380,6 +381,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
+
     if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
         var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
         enforce_psd_type = None

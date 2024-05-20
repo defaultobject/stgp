@@ -64,6 +64,7 @@ jitter = 1e-5
 ng_jitter = 1e-7
 ng_samples = 10
 ng_f_samples = 10
+avoid_s_cholesky=False
 
 class strict_mode:
     """Enable strict_mode.
