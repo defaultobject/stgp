@@ -143,6 +143,9 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
         'm': H_k @ m, 'P': H_k @ P @ H_k.T
     }
 
+    if settings.debug_mode:
+        breakpoint()
+
 
     return m_res, p_res
 

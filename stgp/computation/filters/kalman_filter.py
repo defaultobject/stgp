@@ -21,7 +21,7 @@ from jax.lax import scan
 from functools import partial
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
@@ -310,6 +310,32 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     Ns_colocation = f.shape[0]
     return kf_update_step(m_, P_, H_jac_k, R_k, carry, x_psuedo, f)
 
+def _state_block_dim(model, X_spatial):
+    if X_spatial is None:
+        Ns = 1
+    else:
+        Ns = X_spatial.shape[0]
+
+    dt_dims = model.state_space_dim()
+    ds_dims = model.spatial_output_dim
+
+    if type(ds_dims) is list:
+        if type(ds_dims[0]) is list:
+            ds_dims = np.sum(ds_dims[0])
+        else:
+            ds_dims = ds_dims[0]
+
+    if type(dt_dims) is list:
+        if type(dt_dims[0]) is list:
+            block_dim = sum(dt_dims[0])*ds_dims
+        else:
+            block_dim = dt_dims[0]*ds_dims
+    else:
+        block_dim = dt_dims*ds_dims
+
+    block_dim = block_dim*Ns
+
+    return block_dim
 
 @dispatch(PDE, 'sequential')
 def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
@@ -323,7 +349,9 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     sde_prior = model.parent
 
 
-    P_inf = sde_prior.P_inf(None, X_s, None)
+    #P_inf = sde_prior.P_inf(None, X_s, None)
+
+    F, L, Qc, _, _, P_inf = sde_prior.state_space_representation(X_s, None, None)
     H_k = sde_prior.H(None, X_s, None)
 
     dt_k = x['dt']
@@ -331,19 +359,25 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     P_k = carry['P']
 
     A_k = sde_prior.expm(X_s, dt_k)
-    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+
+
+    if False:
+        Q_k = lti_disc(F, Qc, L, x['dt'], settings.jitter, _state_block_dim(sde_prior, X_s))
+    else:
+        Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
 
 
     # standard Kalman prediction
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-    f = model.forward_g(m_, X_s, x['t'])
-    H_jac_k = model.H_jac(m_, X_s, x['t'])
-
     # full state
     H_k = model.H(m_, X_s, x['t'])
     R_k =  x['lik_mat']
+
+    # collocation method
+    f = model.forward_g(m_, X_s, x['t'])
+    H_jac_k = model.H_jac(m_, X_s, x['t'])
 
     if model.boundary_conditions is not None:
         # observer boundary conditions
@@ -357,39 +391,38 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         m_, P_ = carry['m'], carry['P']
 
 
-    # compute prediction with the PDE transform
-    y_psuedo = model.psuedo_observations(X_s)
-    #we only observer y_psuedo at the training locations, because we discretise the prior first
-    # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
-    y_psuedo = y_psuedo * x['train_test_mask']
 
-    # construct a state dict for the pseudo observation update step
-    x_psuedo = {
-        'Y': y_psuedo, 
-        't': x['t'], 
-        'dt': x['dt'], 
-        'lik_mat': x['lik_mat'], 
-    }
-
-    Ns_colocation = f.shape[0]
-    carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
-    #carry, ys = kf_update_step(m_, P_, H_jac_k, np.eye(Ns_colocation)*1e-6, carry, x_psuedo, np.squeeze(f)[..., None])
-    m_, P_ = carry['m'], carry['P']
-
-    #print(mat_inv(H_jac_k @ np.eye(Ns_colocation)*(-1e-6) @ H_jac_k.T))
-    #breakpoint()
+    if True:
 
 
-    if False:
-        print('H_k: ', H_k)
-        print('m_:', m_)
-        print('f: ', f)
-        breakpoint()
+        # compute prediction with the PDE transform
+        y_psuedo = model.psuedo_observations(X_s)
+        #we only observer y_psuedo at the training locations, because we discretise the prior first
+        # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
+        y_psuedo = y_psuedo * x['train_test_mask']
+
+        # construct a state dict for the pseudo observation update step
+        x_psuedo = {
+            'Y': y_psuedo, 
+            't': x['t'], 
+            'dt': x['dt'], 
+            'lik_mat': x['lik_mat'], 
+        }
+
+        Ns_colocation = f.shape[0]
+        carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
+        #carry, ys = kf_update_step(m_, P_, H_jac_k, np.eye(Ns_colocation)*1e-6, carry, x_psuedo, np.squeeze(f)[..., None])
+        m_, P_ = carry['m'], carry['P']
+
 
     if model.observe_data:
         innovation = H_k @ m_
 
-        return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+        carry, ys =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+        m_, P_ = carry['m'], carry['P']
+
+
+
 
     return carry, ys
 
@@ -506,6 +539,8 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
         print(f'running {filter_type} kalman filter')
 
     filter_fn = evoke('filter', filter_type)
+
+
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index)
 

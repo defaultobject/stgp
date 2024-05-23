@@ -9,6 +9,8 @@ import chex
 from jax import jacfwd, jacrev, grad
 import objax
 from .. import settings
+from jax.scipy.linalg import expm
+
 
 def first_axis_dim(X):
     if type(X) is list:
@@ -403,3 +405,15 @@ def solve_with_additive_inverse(A, B_inv, C):
 @jit
 def force_symmetric(A):
     return 0.5 * (A+A.T)
+
+@partial(jit, static_argnums=(4 ,5))
+def lti_disc(F, Q, L, dt, jitter, block_size):
+    """ Matrix Fraction Decomposition """
+    zeros = np.zeros_like(F)
+    eye = np.eye(F.shape[0])
+    CD = expm(np.block([[F, L @ Q @ L.T], [zeros, -F.T]])*dt, max_squarings=64) @ np.vstack([zeros, eye])
+    C = CD[:block_size]
+    D = CD[block_size:]
+    Sigma = np.linalg.solve(D.T, C.T).T
+    return Sigma
+

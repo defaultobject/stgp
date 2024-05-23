@@ -13,6 +13,8 @@ from ...dispatch import dispatch, evoke
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
 
+from .rts_smoother import get_H
+
 import objax
 import chex
 
@@ -53,7 +55,7 @@ def smoothing_operator(x1, x2):
     return E, g, L
 
 @dispatch('parallel')
-def smoother(data, prior, filter_res, dt, X_t, X_s, H_k, full_state):
+def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
@@ -90,6 +92,8 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, H_k, full_state):
 
     m = res[1]
     P = res[2]
+
+    H_k = get_H(prior, None, None, X_s, X_t[0], full_state)
 
     # Extract obdereved state
     m = jax.vmap(lambda H_k, m_k: H_k @ m_k)(H_arr, m)

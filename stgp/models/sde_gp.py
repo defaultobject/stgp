@@ -209,15 +209,17 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None):
+    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
             R = R,
             R_inv = R_inv,
             filter_type = self.filter_type,
-            train_test_mask = train_test_mask
+            train_test_mask = train_test_mask,
+            train_index=train_index
         ) 
+
 
         mu, var = kf_res['m'], kf_res['P']
 
@@ -521,6 +523,15 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         return pred_R
 
+    def get_train_test_index_and_mask(self, data):
+        Nt = self.data.Nt
+        points_added = data.Nt-Nt 
+        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.NaN])
+        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
+        sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
+        train_index = unsorted_range[data.unique_idx][data.sort_idx]
+        return train_index, sorted_mask
+
     def predict_temporal(self, XS, filter_only=False):
         """
         Predicts in time locations in XS and at the spatial locations in the training data
@@ -598,42 +609,47 @@ class ST_SDE_GP(BASE_SDE_GP):
         )
 
         R = self.get_likelihood_for_prediction(all_temporal_data)
+        train_index, train_mask = self.get_train_test_index_and_mask(all_temporal_data)
 
-        #[data.unique_idx][data.sort_idx]
 
         # Compute posterior at temporal_test_data
         if filter_only:
             mu_t, var_t = self.filter(
                 temporal_test_data,
                 self.prior,
-                R = R
+                R = R,
+                train_test_mask=train_mask,
+                train_index=train_index
             )
 
-            
-            # in time - latent - space - state
-            # remove the extra state dims
-            # assuming latent is 1
-            _mu_t = np.copy(mu_t)
 
+            if not self.full_state_observed:
+                # in time - latent - space - state
+                # remove the extra state dims
+                # assuming latent is 1
+                _mu_t = np.copy(mu_t)
 
-            # TODO: this is just a quick way to get the state size
-            flat_mu_t = np.reshape(
-                mu_t,
-                [
-                    temporal_test_data.Nt, 
-                    self.prior.num_latents, 
-                    self.data.Ns, 
-                    -1
-                ]
-            )
-            state_size = flat_mu_t.shape[-1]
-            mu_t = mu_t[:, ::state_size, ...]
-            var_t = var_t[:, ::state_size, ...][:, :, ::state_size]
+                # TODO: this is just a quick way to get the state size
+                flat_mu_t = np.reshape(
+                    mu_t,
+                    [
+                        temporal_test_data.Nt, 
+                        self.prior.num_latents, 
+                        self.data.Ns, 
+                        -1
+                    ]
+                )
+                state_size = flat_mu_t.shape[-1]
+
+                mu_t = mu_t[:, ::state_size, ...]
+                var_t = var_t[:, ::state_size, ...][:, :, ::state_size]
         else:
             mu_t, var_t = self.filter_and_smooth(
                 temporal_test_data,
                 self.prior,
-                R = R
+                R = R,
+                train_test_mask=train_mask,
+                train_index=train_index
             )
 
         return XS_st_data, all_temporal_data, temporal_test_data, mu_t, var_t[:, None, ...]

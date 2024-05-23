@@ -223,7 +223,7 @@ def make_filtering_elements():
     pass
 
 @dispatch('parallel')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
 
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
