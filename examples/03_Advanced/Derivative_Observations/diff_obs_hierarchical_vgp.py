@@ -1,9 +1,11 @@
 """ Structured Variational Gaussian Process Regression with a Derivative Observations"""
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_check_tracer_leaks', True)
+jax_config.update('jax_traceback_filtering', 'off')
 import jax.numpy as jnp
 
 import objax
@@ -26,6 +28,9 @@ from stgp.data import Data
 from stgp.trainers.standard import VB_NG_ADAM
 
 import matplotlib.pyplot as plt
+
+from rich.console import Console
+console = Console()
 
 # Construct data
 f = lambda x: np.sin(10*x)
@@ -63,7 +68,10 @@ Z = np.linspace(0, 1, 5)[:, None]
 #sparsity=stgp.sparsity.FullSparsity(Z=Z)
 sparsity=stgp.sparsity.NoSparsity(Z=X)
 #base_kernel_1d = ScaleKernel(Matern32(input_dim = 1, lengthscales = [0.1]), 1.0)
-base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
+#base_kernel_1d = ScaleKernel(RBF(input_dim = 1, lengthscales = [0.1]), 1.0)
+base_kernel_1d = RBF(input_dim = 1, lengthscales = [0.1])
+#base_kernel_1d.fix()
+
 
 base_gp = Independent([
     GP(
@@ -94,6 +102,11 @@ m = stgp.models.GP(
     inference='Variational',
     approximate_posterior = q
 )
+
+#m.natural_gradient_update(1.0)
+#print(m.get_objective())
+print(objax.Jit(m.get_objective, m.vars())())
+breakpoint()
 
 # train
 m.print()

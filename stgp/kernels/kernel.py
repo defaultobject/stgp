@@ -253,7 +253,6 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
 
         return A
 
-
     def Q(self, dt, A_k, P_inf, X_spatial=None):
         if self.stationary:
             return P_inf - A_k @ P_inf @ A_k.T

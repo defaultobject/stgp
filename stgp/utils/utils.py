@@ -8,6 +8,8 @@ from ..core.block_types import Block, get_block_dim
 from batchjax import BatchType
 import numpy as onp
 from ..dispatch import _ensure_str
+from functools import partial
+from jax import jit
 
 """ General Utils. """
 def ensure_module_list(arr: list) -> objax.ModuleList:
@@ -305,4 +307,39 @@ def fix_block_shapes(m, S, data, likelihood, approximate_posterior, block_type):
             raise NotImplementedError()
 
     return mu, var
+
+_callable_hash = {}
+
+
+def jit_fn_with_callable(fn, func, func_obj, args, static_args):
+    """
+    fn is a function that takes func as an initial argument
+    """
+
+    #jitted_fn = jit(fn, static_argnums=[0]+static_args)
+    _hash = fn
+    if _hash in _callable_hash.keys():
+        jit_func_vars = _callable_hash[_hash] 
+    else:
+        def func_vars(fn, func, _func_obj, func_args, *_args):
+            original_vals = _func_obj.vars().tensors()
+            _func_obj.vars().assign(func_args)
+            res = fn(func, *_args)
+            _func_obj.vars().assign(original_vals)
+            return res
+        _callable_hash[_hash] = func_vars
+
+    if True:
+        res =  jax.jit(
+            _callable_hash[_hash],
+            static_argnums = [0, 1, 2, ]+[k+4 for k in static_args]
+        )(
+            fn, func, func_obj, func_obj.vars().tensors(), *args
+        )
+    else:
+        res = _callable_hash[_hash](fn, func, func_obj, func_obj.vars().tensors(), *args)
+
+    return res
+
+
 

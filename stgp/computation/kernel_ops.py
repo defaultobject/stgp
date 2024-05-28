@@ -96,14 +96,14 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical, batch_s
         # Ns x Ns
         K_base_spatial_zz_fn = lambda q: base_space_kernel(q).K(X_space, X_space)
 
-        K_spatial_sz_fn = lambda q, xs: (q.covar_from_fn(xs, X_space, base_space_kernel(q).K))[:, :Ms]
+        K_spatial_sz_fn = lambda q, xs: (q.covar_from_fn(xs, X_space, base_space_kernel(q).K, mod=base_space_kernel(q)))[:, :Ms]
 
         K_x_t_fn = lambda q: jax.vmap(
-            lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K)
+            lambda t: base_prior(q).covar_from_fn(t, t, base_time_kernel(q).K, mod=base_time_kernel(q))
         )(X_time[:, None, :])
 
         K_spatial_ss_fn = lambda q, xs: jax.vmap(
-            lambda x: q.covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
+            lambda x: q.covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K, mod=base_space_kernel(q))
         )(xs)
 
     else:
@@ -111,18 +111,17 @@ def _batched_diff_kernel(prior, X_time, XS_space, X_space, hierarchical, batch_s
         base_kern = lambda q: base_prior(q).parent.derivative_kernel.parent_kernel
 
         # Compute \nabla K_space 
-        K_base_spatial_zz_fn = lambda q: base_prior(q).covar_from_fn(X_space, X_space, base_space_kernel(q).K)
+        K_base_spatial_zz_fn = lambda q: base_prior(q).covar_from_fn(X_space, X_space, base_space_kernel(q).K, mod=base_space_kernel(q))
 
-        K_spatial_sz_fn = lambda q, xs: base_prior(q).covar_from_fn(xs, X_space, base_space_kernel(q).K) 
+        K_spatial_sz_fn = lambda q, xs: base_prior(q).covar_from_fn(xs, X_space, base_space_kernel(q).K, mod=base_space_kernel(q)) 
 
         K_x_t_fn = lambda q: jax.vmap(
-            lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K)
+            lambda t: base_prior(q).parent.covar_from_fn(t, t, base_time_kernel(q).K, mod=base_time_kernel(q))
         )(X_time[:, None, :])
 
         K_spatial_ss_fn = lambda q, xs: jax.vmap(
-            lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K)
+            lambda x: base_prior(q).covar_from_fn(x[None, :], x[None, :], base_space_kernel(q).K, mod=base_space_kernel(q))
         )(xs)
-
 
 
     # N referes to the number of spatial points

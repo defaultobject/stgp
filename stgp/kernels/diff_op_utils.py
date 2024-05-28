@@ -8,8 +8,20 @@ import chex
 
 from ..computation.matrix_ops import hessian
 
-#@partial(jit, static_argnums=(2, 3, 4))
-def FirstOrderDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_index, d_computed):
+
+def FirstOrderDerivativeKernel_vmap_over_derivatives(var_fn, X1, X2, input_index, d_computed):
+    def _compute_derivatives(x1, x2):
+        K = FirstOrderDerivativeKernel_compute_derivatives(var_fn, x1, x2, input_index, d_computed)
+        return K 
+
+    def k2(x1, X2):
+        return jax.vmap(_compute_derivatives, (None, 0))(x1, X2)
+
+    K = jax.vmap(k2, (0, None))(X1, X2)
+    return K
+
+
+def FirstOrderDerivativeKernel_compute_derivatives(var_fn, x1, x2, input_index, d_computed):
     """
     Let T to denote a differential operator: d/dt
 
@@ -30,6 +42,7 @@ def FirstOrderDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_index, 
 
     This means that the output is ordered by [f_1, (T)f_1, ..., f_B, (T)f_B]^T.
     """
+    print('================== FirstOrderDerivativeKernel_compute_derivatives ==================')
 
     #B x B
     k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])
@@ -66,7 +79,6 @@ def FirstOrderDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_index, 
     # K,       K(T)
     # (T)K,    (T)K(T)
 
-
     # for a given B_i, B_j compute the derivate kernels
     #def get_K(i, j):
     #    return np.array([
@@ -98,9 +110,19 @@ def FirstOrderDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_index, 
 
 
 
-# TODO: why cant i jit here?
-#@partial(jit, static_argnums=(2, 3, 4))
-def SecondOrderOnlyDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_index, d_computed):
+def SecondOrderOnlyDerivativeKernel_vmap_over_derivatives(var_fn, X1, X2, input_index, d_computed):
+    print('================== SecondOrderOnlyDerivativeKernel_vmap_over_derivatives ==================')
+    def _compute_derivatives(x1, x2):
+        K = SecondOrderOnlyDerivativeKernel_compute_derivatives(var_fn, x1, x2, input_index, d_computed)
+        return K 
+
+    def k2(x1, X2):
+        return jax.vmap(_compute_derivatives, (None, 0))(x1, X2)
+
+    K = jax.vmap(k2, (0, None))(X1, X2)
+    return K
+
+def SecondOrderOnlyDerivativeKernel_compute_derivatives(var_fn, x1, x2, input_index, d_computed):
 
     """
     Let T to denote a differential operator: d/dt
@@ -122,6 +144,8 @@ def SecondOrderOnlyDerivativeKernel_compute_derivatives(x1, x2, var_fn, input_in
 
     This means that the output is ordered by [f_1, (T^2)f_1, ..., f_B, (T^2)f_B]^T.
     """
+
+    print('================== SecondOrderOnlyDerivativeKernel_compute_derivatives ==================')
 
     #B x B
     k = lambda x1, x2: var_fn(x1[None, ...], x2[None, ...])

@@ -437,6 +437,7 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 
             # [N] x [Dt x Dt] x [Dt x Ds]
             Kxx_diag = jax.vmap(lambda x: prior.covar(x, x))(XS[:, None, ...])
+            #Kxx_diag = np.tile(np.eye(2, 2)[None, ...], [XS.shape[0], 1, 1])
 
             # N x [ Dt x Dt] 
             mu, var = gaussian_conditional_blocks(

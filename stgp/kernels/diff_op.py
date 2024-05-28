@@ -1,13 +1,15 @@
 from . import Kernel
 import jax
+from jax import jit
 import jax.numpy as np
 from jax import jacfwd, jacrev, grad
 from ..computation.matrix_ops import hessian
 from .white_noise import WhiteNoise
+from ..utils.utils import jit_fn_with_callable
 
 import chex
 
-from .diff_op_utils import FirstOrderDerivativeKernel_compute_derivatives, SecondOrderOnlyDerivativeKernel_compute_derivatives
+from .diff_op_utils import FirstOrderDerivativeKernel_compute_derivatives, SecondOrderOnlyDerivativeKernel_compute_derivatives, FirstOrderDerivativeKernel_vmap_over_derivatives, SecondOrderOnlyDerivativeKernel_vmap_over_derivatives
 
 class DerivativeKernel(Kernel):
     """
@@ -27,10 +29,10 @@ class DerivativeKernel(Kernel):
         """ This is is being used as a prior kernel therefore we can pass through the
         kernel function """
 
-        return self._K_from_fn(X1, X2, self.parent_kernel.K)
+        return self._K_from_fn(X1, X2, self.parent_kernel.K, mod=self.parent)
 
-    def K_from_fn(self, X1, X2, var_fn):
-        return self._K_from_fn(X1, X2, var_fn)
+    def K_from_fn(self, X1, X2, var_fn, mod=None):
+        return self._K_from_fn(X1, X2, var_fn, mod=mod)
 
     def to_ss(self, X_spatial=None):
         """
@@ -78,6 +80,7 @@ class DummyDerivativeKernel(DerivativeKernel):
     def _K_from_fn(self, X1, X2, var_fn):
         return self.K(X1, X2)
 
+
 class FirstOrderDerivativeKernel(DerivativeKernel):
     """ Construct FirstOrderDerivative kernel for the input index provided """
     def __init__(
@@ -94,19 +97,20 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
         self.output_dim  = self.d_computed * self.parent_output_dim 
         self.input_index = input_index
 
-    def _compute_derivatives(self, x1, x2, var_fn):
-        K = FirstOrderDerivativeKernel_compute_derivatives(x1, x2, var_fn, self.input_index, self.d_computed)
+    def _K_from_fn(self, X1, X2, var_fn, mod):
+
+        print('================== _K_from_fn ==================')
 
 
-        chex.assert_shape(K, [self.output_dim, self.output_dim])
-
-        return K
-
-    def _K_from_fn(self, X1, X2, var_fn):
-        def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
-
-        K = jax.vmap(k2, (0, None))(X1, X2)
+        #return FirstOrderDerivativeKernel_vmap_over_derivatives(var_fn, X1, X2, self.input_index, self.d_computed)
+        
+        K = jit_fn_with_callable(
+            FirstOrderDerivativeKernel_vmap_over_derivatives,
+            var_fn,
+            mod,
+            args = [X1, X2, self.input_index, self.d_computed],
+            static_args = [2, 3]
+        )
 
         # K is in data-diff format -- convert to diff-data format
         # forces B - D - data format
@@ -276,17 +280,14 @@ class SecondOrderOnlyDerivativeKernel(DerivativeKernel):
         self.output_dim  = self.d_computed * self.parent_output_dim 
         self.input_index = input_index
 
-    def _compute_derivatives(self, x1, x2, var_fn):
-        K = SecondOrderOnlyDerivativeKernel_compute_derivatives(x1, x2, var_fn, self.input_index, self.d_computed)
-        chex.assert_shape(K, [self.output_dim, self.output_dim])
-
-        return K
-
-    def _K_from_fn(self, X1, X2, var_fn):
-        def k2(x1, X2):
-            return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
-
-        K = jax.vmap(k2, (0, None))(X1, X2)
+    def _K_from_fn(self, X1, X2, var_fn, mod):
+        K = jit_fn_with_callable(
+            SecondOrderOnlyDerivativeKernel_vmap_over_derivatives,
+            var_fn,
+            mod,
+            args = [X1, X2, self.input_index, self.d_computed],
+            static_args = [2, 3]
+        )
 
         # K is in data-diff format -- convert to diff-data format
         K_reshaped = np.block([
