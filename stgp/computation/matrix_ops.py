@@ -12,6 +12,7 @@ from .. import settings
 from jax.scipy.linalg import expm
 
 
+
 def first_axis_dim(X):
     if type(X) is list:
         return len(X)
@@ -416,4 +417,10 @@ def lti_disc(F, Q, L, dt, jitter, block_size):
     D = CD[block_size:]
     Sigma = np.linalg.solve(D.T, C.T).T
     return Sigma
+
+
+    
+
+    
+
 

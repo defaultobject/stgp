@@ -359,8 +359,16 @@ def diff_cvi_sde_vgp(
         if not hierarchical:
             raise RuntimeError('Can only pass space_diff_kernel in a hierarchical model')
 
+    if type(X) is list:
+        data_list = True
+    else:
+        data_list = False
+
     # Figure out what setting we are constructing a model in
-    dim = X.shape[1]
+    if data_list:
+        dim = X[0].shape[1]
+    else:
+        dim = X.shape[1]
 
     if dim > 1:
         include_space = True
@@ -393,17 +401,27 @@ def diff_cvi_sde_vgp(
         time_kernel = [time_kernel]
         space_kernel = [space_kernel]
 
-    # Setup sequential data
-    N, P = Y.shape
-    if include_space:
-        if temporally_grouped:
-            data = TemporallyGroupedData(X=X, Y=Y, minibatch_size=minibatch_size)
+    def _get_data_type(X, Y):
+        N, P = Y.shape
+        if include_space:
+            if temporally_grouped:
+                data = TemporallyGroupedData(X=X, Y=Y, minibatch_size=minibatch_size)
+            else:
+                data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
         else:
-            data = stgp.data.SpatioTemporalData(X=X, Y=Y, sort=True)
-    else:
-        data = stgp.data.MultiOutputTemporalData(X=X, Y=Y, sort=True)
+            data = stgp.data.MultiOutputTemporalData(X=X, Y=Y, sort=True)
 
-    Ms = data.Ns
+        return data
+        
+
+    # Setup sequential data
+    if data_list:
+        data =  stgp.data.TemporalDataList([_get_data_type(X[i], Y[i]) for i in range(len(X))])
+    else:
+        N, P = Y.shape
+        data = _get_data_type(X, Y)
+
+    #Ms = data.Ns
 
     # We only support the same inducing locations across all latent functions
     #   this is due to how the multi-latent kalman filter is constructed
@@ -522,6 +540,7 @@ def diff_cvi_sde_vgp(
                 )
                 for q in range(num_latents)
             ]
+            print(diff_op_prior[0].parent.kernel)
 
     diff_op_prior = Independent(diff_op_prior)
 

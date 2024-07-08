@@ -22,7 +22,7 @@ from functools import partial
 
 from ... import settings 
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc
-from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
+from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 import numpy as onp
@@ -141,6 +141,22 @@ def _pivoted_cholesky(matrix):
     """ wrap pivoted_cholesky to make max_rank static """
     return pivoted_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
 
+def get_Y_mask(Y_k):
+    mask_k = get_same_shape_mask(Y_k)
+
+
+    # Construct spatial mask
+    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
+
+    M = np.multiply(
+        m_vec,
+        np.eye(Y_k.shape[0])
+    )
+
+    return M
+
+
+
 @jit
 def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     """
@@ -168,16 +184,8 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     Y_k = x['Y']
 
     mask_k = get_same_shape_mask(Y_k)
-
+    M = get_Y_mask(Y_k)
     Y_k = np.nan_to_num(Y_k)
-
-    # Construct spatial mask
-    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
-
-    M = np.multiply(
-        m_vec,
-        np.eye(Y_k.shape[0])
-    )
 
     # -- KALMAN UPDATE --
     # m_, P_ is in latent - space -state format
@@ -351,7 +359,7 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
 
     #P_inf = sde_prior.P_inf(None, X_s, None)
 
-    F, L, Qc, _, _, P_inf = sde_prior.state_space_representation(X_s, None, None)
+    F, L, Qc, H_sde_prior, _, P_inf = sde_prior.state_space_representation(X_s, None, None)
     H_k = sde_prior.H(None, X_s, None)
 
     dt_k = x['dt']
@@ -360,11 +368,13 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
 
     A_k = sde_prior.expm(X_s, dt_k)
 
-
     if False:
         Q_k = lti_disc(F, Qc, L, x['dt'], settings.jitter, _state_block_dim(sde_prior, X_s))
     else:
         Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+
+    calibration_sigma_n = carry['calibration_sigma_n']
+    Q_k = calibration_sigma_n * Q_k
 
 
     # standard Kalman prediction
@@ -372,12 +382,22 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     P_ = A_k @ P_k @ A_k.T + Q_k
 
     # full state
-    H_k = model.H(m_, X_s, x['t'])
+    H_k = model.H(H_sde_prior@m_, X_s, x['t'])
     R_k =  x['lik_mat']
 
-    # collocation method
-    f = model.forward_g(m_, X_s, x['t'])
-    H_jac_k = model.H_jac(m_, X_s, x['t'])
+    if model.forcing_function is not None:
+        force = x['forcing_function']
+
+        # collocation method
+        f = model.forward_g(H_sde_prior@m_, X_s, x['t'], force=force)
+        H_jac_k = model.H_jac(H_sde_prior@m_, X_s, x['t'], force=force)
+
+    else:
+        # collocation method
+        f = model.forward_g(H_sde_prior@m_, X_s, x['t'])
+        H_jac_k = model.H_jac(H_sde_prior@m_, X_s, x['t'])
+
+
 
     if model.boundary_conditions is not None:
         # observer boundary conditions
@@ -387,14 +407,10 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
             'dt': x['dt'], 
             'lik_mat': x['lik_mat'], 
         }
-        carry, ys = kf_update_step(m_, P_, H_k, R_k*0.0, carry, x_boundary, H_k @ m_)
+        carry, ys = kf_update_step(m_, P_, H_k @ H_sde_prior, R_k*0.0, carry, x_boundary, H_k @ H_sde_prior @ m_)
         m_, P_ = carry['m'], carry['P']
 
-
-
     if True:
-
-
         # compute prediction with the PDE transform
         y_psuedo = model.psuedo_observations(X_s)
         #we only observer y_psuedo at the training locations, because we discretise the prior first
@@ -410,19 +426,44 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         }
 
         Ns_colocation = f.shape[0]
-        carry, ys = kf_update_step(m_, P_, H_jac_k, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
-        #carry, ys = kf_update_step(m_, P_, H_jac_k, np.eye(Ns_colocation)*1e-6, carry, x_psuedo, np.squeeze(f)[..., None])
-        m_, P_ = carry['m'], carry['P']
 
+        carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo, np.squeeze(f)[..., None])
+        #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
+        m_, P_ = carry['m'], carry['P']
 
     if model.observe_data:
-        innovation = H_k @ m_
 
-        carry, ys =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+        if model.observation_function is not None:
+            _f = H_sde_prior@m_
+            H_k = model.obs_jac(_f, X_s, x['t'])
+            innovation = model.observation_function(_f, X_s, x['t'])
+        else:
+            innovation = H_k @ m_
+
+
+        carry, ys =  kf_update_step(m_, P_, H_k @ H_sde_prior, R_k, carry, x, innovation)
         m_, P_ = carry['m'], carry['P']
 
+    if False:
+        # calibration
+        # THIS NEEDS TO AFFECT Q, intermediate step? -- what will sigma_n be where we don't have data?
+        # presumably zero... but Q will still be there, so very unclear atm...
+        Y_k = y_psuedo
+        f_k =  np.squeeze(f)[..., None]
+        mask_k = get_same_shape_mask(Y_k)[:, 0]
+        M = get_Y_mask(Y_k)
+        Y_k = np.nan_to_num(Y_k)
 
+        err = Y_k-f_k
+        HQHT = H_jac_k @ H_sde_prior@Q_k @ H_sde_prior.T@H_jac_k.T
+        #HQHT = add_jitter(HQHT, settings.jitter)
 
+        sigma_n = avg_mahal_with_mask(err, HQHT, mask_k)
+        sigma_n = np.nan_to_num(sigma_n)
+        #carry['calibration_sigma_n'] = np.squeeze(sigma_n) +calibration_sigma_n
+        carry['calibration_sigma_n'] = np.squeeze(sigma_n) 
+    else:
+        carry['calibration_sigma_n'] = 1.0
 
     return carry, ys
 
@@ -459,21 +500,34 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         'train_test_mask': train_test_mask,
         'train_index': train_index
     }
+    
+    state_dict = {
+        'm': m_inf,
+        'P': P_inf
+    }
 
     # TODO: use dispatch here?
     if isinstance(prior, PDE):
+
         if prior.boundary_conditions is not None:
             boundary_conditions = prior.boundary_conditions
             # ensure same shape as Y
             boundary_conditions = np.array(boundary_conditions)[train_index]
             carry_dict['boundary_data'] = boundary_conditions
 
+        if prior.forcing_function is not None:
+            # ensure same shape as Y
+            forcing_function = prior.forcing_function
+            forcing_function = np.array(forcing_function)[train_index]
+            carry_dict['forcing_function'] = forcing_function
+
+        state_dict['calibration_sigma_n'] = 1.0
+
+
+
     carry, ys = scan(
         step_wrap,
-        {
-            'm': m_inf,
-            'P': P_inf
-        },
+        state_dict,
         carry_dict,
         unroll = unroll
     )
@@ -539,8 +593,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
         print(f'running {filter_type} kalman filter')
 
     filter_fn = evoke('filter', filter_type)
-
-
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index)
 

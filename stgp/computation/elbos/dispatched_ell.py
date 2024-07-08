@@ -216,7 +216,7 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
 
     parent_lik = likelihood.parent
 
-    parent_ell =  evoke('expected_log_likelihood', parent_lik, block_type)(
+    parent_ell =  evoke('single_output_expected_log_likelihood', parent_lik, block_type)(
         X, Y, q_f_mu, q_f_var, parent_lik, block_type
     )
 
@@ -376,7 +376,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
     # TODO: there is a choice here between quadrature and monte-carlo estimation
     # TODO: need to check if a likelihood has a closed form ELL
-    if isinstance(model_type, LinearModel) and gauss_lik_flag:
+    #if isinstance(model_type, LinearModel) and gauss_lik_flag:
+    try:
         # check if closed form expression exists
         # batch over each output
         likelihood_arr = likelihood.likelihood_arr
@@ -403,7 +404,10 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
 
-    else:
+    except DispatchNotFound as e:
+        if settings.verbose:
+            print(e)
+
         likelihood_arr = likelihood.likelihood_arr
 
         # q_f_mu is of shape:
@@ -460,6 +464,8 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         return ell
     except DispatchNotFound as e:
+        if settings.verbose:
+            print(e)
         # approximate expected log likelihood
         ell = approximate_expectation(
             compute_ell_for_sample, 
@@ -631,10 +637,6 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
             lik_block_type, 
             get_block_type(q_block_size)
         )
-
-        #idx = np.squeeze(~np.isnan(Y_p))
-
-        #return gaussian_expected_log_likelihood(X_p[idx, :], Y_p[idx, :], likelihood_p.likelihood_arr[0].variance, q_f_mu_p[..., 0][idx, :], q_f_var_p[:, :, 0, 0][idx, :])
 
         ell_p =  evoke('expected_log_likelihood', data, likelihood_p, prior_p, approximate_posterior, block_type_p)(
             X_p, Y_p, q_f_mu_p, q_f_var_p, likelihood_p, prior_p, approximate_posterior, inference, block_type_p

@@ -82,6 +82,7 @@ def variational_params(data, approximate_posterior, likelihood, prior, sparsity,
         mu: Mx1
         var: Mx1x1
     """
+
     mu, var = approximate_posterior.surrogate.posterior(diagonal=True)
     N = mu.shape[0]
 
@@ -266,6 +267,9 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
 @dispatch(FullConjugateGaussian, Likelihood, Transform, Sparsity, False)
 def variational_params(data, approximate_posterior, likelihood, prior, sparsity, whiten):
     """  conjugate Full-posterior approximate posterior setting """
+
+    #q_m, q_S =  jax.jit(approximate_posterior.surrogate.posterior_blocks)()
+
     q_m, q_S =  approximate_posterior.surrogate.posterior_blocks()
 
     chex.assert_rank([q_m, q_S], [3, 4])

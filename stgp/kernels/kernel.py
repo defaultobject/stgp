@@ -159,6 +159,10 @@ class SumKernel(CombinationKernel):
         A2 = self.k2.expm(dt, X_spatial)
         return block_diag(A1, A2)
 
+    def Q(self, dt, A_k, P_inf, X_spatial=None):
+        # TODO: ONLY applies for stationary models
+        return P_inf - A_k @  P_inf @ A_k.T
+
 
 class ProductKernel(CombinationKernel):
     def to_ss(self, X_spatial=None):

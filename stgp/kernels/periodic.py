@@ -229,6 +229,7 @@ class ApproxSDEPeriodic_BN(MarkovKernel, Periodic):
         L = np.eye(2 * (self.order + 1))
         Qc = np.zeros(2 * (self.order + 1))
         Pinf = np.kron(np.diag(q2), np.eye(2))
+        minf = np.zeros([Pinf.shape[0], 1])
 
         H_obs = np.kron(np.ones([1, self.order + 1]), np.array([1., 0.]))
 
@@ -244,11 +245,11 @@ class ApproxSDEPeriodic_BN(MarkovKernel, Periodic):
         else:
             H = H_obs
 
-        return F, L, Qc, H, Pinf
+        return F, L, Qc, H, minf, Pinf
 
 
     def expm(self, dt, X_spatial=None):
-        F, _, _, _, _ = self.to_ss(X_spatial) 
+        F, _, _, _, _, _ = self.to_ss(X_spatial) 
 
         return expm( F * dt)
 

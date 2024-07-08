@@ -221,28 +221,193 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
 
 
 class PDE(Transform):
-    def __init__(self):
-        self.boundary_conditions = None
-        self.boundary_by_init = False
-        self.observe_data = False
-        self.colocation_noise = 0.0
+    """
+    Parent Class for differential equation transforms.
+
+    This is designed EKF style and GP collocation style models.
+
+    For EKF style models we require the followign methods to be defined
+        m_inf/P_inf: this defines the inital mean of the Kalman filter. Initially was only implemented for stationary models, hence 
+            called m_inf not m_init
+
+        H_jac: 
+    """
+    def __init__(
+        self,
+        latent,
+        m_init=None,
+        train_m_init = False, # by default do not train m_init
+        boundary_conditions = None,
+        boundary_by_init = None,
+        forcing_function = None,
+        observe_data = False,
+        colocation_noise = 0.0,
+        ndt = None,
+        nds = None,
+        full_state = True,
+        _output_dim = None,
+        dfdt_idx = 1,
+        observation_function = None
+    ):
+        self._parent = latent
+        self.latents = self.parent.latents # legacy reasons
+        self.num_latents = len(self.latents)
+
+        self.boundary_conditions = boundary_conditions        
+        self.boundary_by_init = boundary_by_init
+        self.observe_data = observe_data
+        self.colocation_noise = colocation_noise
+
+        self.forcing_function = forcing_function
+
+        self.ndt = ndt
+        self.nds = nds
+        self.full_state = full_state
+        self._output_dim = _output_dim
+        self._input_dim = self.parent.output_dim
+
+        self.dfdt_idx = dfdt_idx
+
+        self.observation_function = observation_function
+
+        if m_init is not None:
+            m_init = np.array(m_init)
+            # ensure rank 2
+            if len(m_init.shape) == 1:
+                m_init = m_init[:, None]
+            self.m_init_param = Parameter(np.array(m_init), name=f'AllenCahn/m_init', train=train_m_init)
+        else:
+            self.m_init_param = None
+
 
     def m_inf(self, x, X_s, t):
-        return self.m_init
+        if self.m_init_param is None:
+            return self.parent.m_inf(x, X_s, t)
+        else:
+            return self.m_init_param.value
+
 
     def P_inf(self, x, X_s, t):
         return self.parent.P_inf(x, X_s, t)
 
-    def jac(self, x, X_s, t):
-        """Compute d (self.forward(x))(dx) """
+    def _jac(self, x, fn):
+        # compute jacobians for both prior transform and likelihood link function
         chex.assert_rank(x, 2)
+
         # P x D
-        J =  jax.jacfwd(lambda _x: self.forward_g(_x, X_s, t))(x)[..., 0] 
+        J =  jax.jacfwd(fn)(x) 
+
+        chex.assert_rank(J, 4)
+
+        J = J[:, 0, :, 0]
+
         chex.assert_rank(J, 2)
         return J
 
-    def H_jac(self, x, X_s, t):
-        return self.jac(x, X_s, t)
+    def obs_jac(self, x, X_s, t):
+        chex.assert_rank(x, 2)
+
+        if self.observation_function is None:
+            raise RuntimeError('observation_function must be defined')
+
+        # P x D
+        J =  self._jac(x, lambda _x: self.observation_function(_x, X_s, t))
+
+        chex.assert_rank(J, 2)
+        return J 
+
+    def jac(self, x, X_s, t, force=None):
+        """Compute d (self.forward_g(x, X_s, t))(dx) """
+        chex.assert_rank(x, 2)
+
+        # P x D
+        J =  self._jac(x, lambda _x: self.forward_g(_x, X_s, t, force=force))
+
+        chex.assert_rank(J, 2)
+        return J
+
+    def H_jac(self, x, X_s, t, force=None):
+        return self.jac(x, X_s, t, force=force)
+
+    def H_full_state(self, x, X_s, t, force=None):
+        return self.parent.H(x, X_s, t)
+
+    def H(self, x, X_s, t, force=None):
+        return self.parent.H(x, X_s, t)
+
+    def forward(self, f, x=None, force=None):
+        # x = [t, Xs] should be an input here...
+        if x is not None:
+            t = x[0]
+            if x.shape[0] > 1:
+                Xs = x[1:]
+            else:
+                Xs = None
+        else:
+            t = None
+            Xs = None
+
+        dt = f[self.dfdt_idx] # could be a list
+        chex.assert_rank(dt, 1)
+
+        dfdt = self._dfdt(f, X_s=Xs, t=t, force=force)
+        chex.assert_rank(dfdt, 1)
+
+        res = dt - dfdt
+        res = np.array([res])
+        chex.assert_rank(res, 2)
+
+        return res
+
+    def _dfdt(self, f, X_s=None, t=None, force=None):
+        """ Evaluate right hand side of df/dt = ..."""
+        raise NotImplementedError()
+
+    def forward_g(self, f, X_s, t, force=None):
+
+        if X_s is None:
+            return self.forward(f, force=force)
+        else:
+            breakpoint()
+            Q = self.input_dim
+            dt = self.ndt
+            ds = self.nds
+            Ns = self.X_s.shape[0]
+
+            #f is in [Q, ds, Ns, df]
+            f = np.reshape(f, [Q, ds, Ns, dt])
+            f = np.transpose(f, [2, 0, 3, 1]) # Ns, Q, dt, ds
+            # rearrange to 
+            f = np.reshape(f, [Ns, Q*ds*dt]) #N x d
+            res =  jax.vmap(self.forward)(f) # batch over Xs
+            return res
+
+        return res
+
+    def psuedo_observations(self, X_s):
+        """ Only observe dt """
+        Q = self.input_dim
+
+        if self.full_state:
+            #state is in [Q, ds, Ns, df]
+            # add nans
+
+            if X_s is not None:
+                Ns = X_s.shape
+                nds = self.nds
+            else:
+                Ns = 1
+                nds = 1
+
+            # find out where all the dt terms are
+            zeros = np.zeros([Q, nds, Ns, self.ndt])*onp.NaN
+            zeros = zeros.at[..., 1].set(0.0).reshape([-1, 1])
+            return zeros
+
+        else:
+            return np.array([0.0]*Ns*Q)[:, None]
+
+
 
 class StackedPDE(PDE):
     def __init__(self, latent):
@@ -1007,8 +1172,8 @@ class _LotkaVolterraSystemY(PDE):
         return self.forward(f)
 
 class LotkaVolterra(PDE):
-    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True, full_state = False, train_m_init=False, boundary_conditions=None, boundary_by_init=False, observe_data=False):
-        super(LotkaVolterra, self).__init__()
+    def __init__(self, latent,  alpha, beta, delta, gamma, m_init=None, train=True, full_state = False, train_m_init=False, boundary_conditions=None, boundary_by_init=False, observe_data=False, ekf=True):
+        super(LotkaVolterra, self).__init__(latent)
 
         self.components = objax.ModuleList([
             _LotkaVolterraSystemX(None, alpha, beta, train=train), 
@@ -1017,9 +1182,8 @@ class LotkaVolterra(PDE):
         if m_init is None:
             m_init = np.array([0.0, 0.0, 0.0, 0.0])[:, None]
         else:
-            m_init = np.array(m_init).reshape([4, 1])
+            m_init = np.array(m_init) # ensure jax array
 
-        self._parent = latent
 
         self.full_state = full_state
 
@@ -1032,21 +1196,28 @@ class LotkaVolterra(PDE):
         self.boundary_conditions = boundary_conditions
         self.boundary_by_init = boundary_by_init
         self.observe_data = observe_data
+        self.ekf = ekf
 
     @property
     def m_init(self):
         return self.m_init_param.value
 
     def m_inf(self, x, X_s, t):
-        if self.boundary_by_init:
-            return self.m_init
-        return np.zeros_like(self.m_init)
+        if self.ekf:
+            if self.boundary_by_init:
+                return self.m_init
+            return np.zeros_like(self.m_init)
+        else:
+            return self.parent.m_inf(x, X_s, t)
 
     def P_inf(self, x, X_s, t):
-        if self.boundary_by_init:
-            return self.parent.P_inf(x, X_s, t)
+        if self.ekf:
+            if self.boundary_by_init:
+                return self.parent.P_inf(x, X_s, t)
 
-        return np.eye(self.output_dim)*1e6
+            return np.eye(self.output_dim)*1e6
+        else:
+            return self.parent.P_inf(x, X_s, t)
 
     def _dfdt(self, f, X_s=None, t=None):
         """ Evalutate df/dt """
@@ -1066,9 +1237,9 @@ class LotkaVolterra(PDE):
         y1 = np.squeeze(self.components[1].forward(f))
 
         if self.full_state:
-            return np.array([f[0][0], y0, f[2][0], y1])
+            return np.array([f[0][0], y0, f[2][0], y1])[:, None]
 
-        return np.array([y0, y1])
+        return np.array([y0, y1])[:, None]
 
     def forward_g(self, f, X_s, t):
         """ 
@@ -1122,5 +1293,16 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_in
         _LotkaVolterraSystemX(latent[0], alpha, beta, train=train, data_y_index=[data_y_index[0]]), 
         _LotkaVolterraSystemY(latent[1], delta, gamma, train=train, data_y_index=[data_y_index[1]]), 
     ]
+
+
+def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False):
+    class PDE_TRANSFORM(PDE):
+        def forward_g(self, f, X_s, t, force=None):
+            chex.assert_rank(f, 2)
+            res =  forward_fn(f, force)
+            chex.assert_rank(res, 2)
+            return res
+
+    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observe_data=observe_data)
 
 

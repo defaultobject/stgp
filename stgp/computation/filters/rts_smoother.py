@@ -20,7 +20,7 @@ import chex
 @dispatch(LinearizedFilter_SDE)
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     # force full state
-    H_k = np.eye(x.shape[0])
+    H_k = np.eye(x.shape[0]) 
 
     return H_k
 
@@ -36,10 +36,13 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 
 @dispatch(PDE)
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
+    H_sde_prior = prior.parent.H(None, X_s, t)
+
     H1 = prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted 
     if full_state:
         H1 = prior.H_full_state(m_predicted, X_s, t)
-    return H1
+
+    return H1 @ H_sde_prior
 
 def get_H(model, x, m_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', model)
@@ -114,6 +117,7 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     A_k = sde_prior.expm(X_s, dt_k)
     Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
+
 
     m_predicted = A_k @ x['m']
     P_predicted = A_k @ x['P'] @ A_k.T + Q_k

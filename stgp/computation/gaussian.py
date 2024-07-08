@@ -12,6 +12,24 @@ from ..utils.nan_utils import mask_to_identity, get_mask, mask_vector
 from .linalg import solve, solve_from_cholesky, log_determinant, log_determinant_from_cholesky
 
 @jit
+def mahal_with_mask(x, sigma, mask):
+    x = np.nan_to_num(x, nan=0.0)
+    sigma = mask_to_identity(sigma, mask)
+
+    sigma_chol = cholesky(sigma)
+    mahal = x.T @ cholesky_solve(sigma_chol, x)
+
+    return mahal
+
+@jit
+def avg_mahal_with_mask(x, sigma, mask):
+    mahal = mahal_with_mask(x, sigma, mask)
+    N_mask = np.sum(1-mask)
+    return (1/N_mask)*mahal
+
+
+
+@jit
 def log_gaussian_scalar(Y, mu, variance):
     # ensure scalar
     chex.assert_rank(mu, 0)

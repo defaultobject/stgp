@@ -221,6 +221,22 @@ class DataList(Data):
     def X(self):
         return self._X.X
 
+class TemporalDataList(Data):
+    # X, Y are a list, assumed that all X lie at same temporal points
+
+    # Y is a list, assumed that X is the same across all the lists
+    def __init__(self, data_list):
+        self.data_list = data_list
+
+    @property
+    def Y(self):
+        return self._Y
+
+    @property
+    def X(self):
+        return self._X
+
+
 class TransformedData(Data):
     def __init__(self, base_data, transform_arr):
         self.transform_arr = objax.ModuleList(transform_arr)

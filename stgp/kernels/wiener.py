@@ -95,7 +95,10 @@ class WienerVelocity(MarkovKernel):
 
         F = np.eye(dim, k = 1)
         L = np.hstack([np.zeros(dim-1), [1]])[:, None]
-        H = np.hstack([[1], np.zeros(q)])[None, :]
+        if False:
+            H = np.hstack([[1], np.zeros(q)])[None, :]
+        else:
+            H = np.eye(dim)
         Pinf = np.eye(self.state_size())*self.stable_state_covariance # low variance on x, high variance on the derivatives
         Qc = var
         minf = self.m_init

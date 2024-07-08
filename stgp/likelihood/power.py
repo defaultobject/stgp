@@ -5,7 +5,7 @@ from . import Likelihood, FullLikelihood, DiagonalLikelihood, BlockDiagonalLikel
 from .. import Parameter
 
 class PowerLikelihood(Likelihood):
-    def __init__(self, base_lik = None, a = None, train=True):
+    def __init__(self, base_lik = None, a = None, train=False):
 
         if base_lik is None:
             raise RuntimeError('Likelihood must be passed.')

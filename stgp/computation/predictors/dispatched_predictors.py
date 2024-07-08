@@ -350,7 +350,6 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     else:
         raise NotImplementedError()
 
-
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 

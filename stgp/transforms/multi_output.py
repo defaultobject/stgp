@@ -218,6 +218,7 @@ class LMC_Base(LinearTransform):
 
         self._input_dim = input_dim
         self._output_dim = output_dim
+        self.latents = latents
 
     @property
     def base_prior(self):
