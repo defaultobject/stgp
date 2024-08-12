@@ -77,7 +77,7 @@ class DummyDerivativeKernel(DerivativeKernel):
     def K(self, X1, X2):
         return self.parent_kernel.K(X1, X2)
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         return self.K(X1, X2)
 
 
@@ -97,7 +97,7 @@ class FirstOrderDerivativeKernel(DerivativeKernel):
         self.output_dim  = self.d_computed * self.parent_output_dim 
         self.input_index = input_index
 
-    def _K_from_fn(self, X1, X2, var_fn, mod):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
 
         print('================== _K_from_fn ==================')
 
@@ -247,7 +247,7 @@ class SecondOrderDerivativeKernel(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -396,7 +396,7 @@ class FirstOrderDerivativeKernel_1D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -518,7 +518,7 @@ class FirstOrderKroneckerDerivativeKernel_2D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -603,7 +603,7 @@ class SecondOrderDerivativeKernel_1D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -704,7 +704,7 @@ class SecondOrderDerivativeKernel_2D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -731,7 +731,7 @@ class SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D(SecondOrderDerivativeKer
         super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_2D, self).__init__(parent_kernel)
         self.output_dim = 3
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         Kxx = var_fn(X1, X2)
 
         def k2(x1, X2):
@@ -847,7 +847,7 @@ class SecondOrderDerivativeKernel_3D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -928,7 +928,7 @@ class FirstOrderDerivativeKernel_3D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -1009,7 +1009,7 @@ class FirstOrderDerivativeKernel_2D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -1113,7 +1113,7 @@ class SecondOrderOnlyDerivativeKernel_2D(DerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         def k2(x1, X2):
             return jax.vmap(self._compute_derivatives, (None, 0, None))(x1, X2, var_fn)
 
@@ -1151,7 +1151,7 @@ class SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D(SecondOrderDerivativeKer
         super(SecondOrderSpaceFirstOrderTimeDerivativeKernel_3D, self).__init__(parent_kernel)
         self.output_dim = 4
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         Kxx = var_fn(X1, X2)
 
         def k2(x1, X2):
@@ -1236,7 +1236,7 @@ class ClosedFormRBFFirstOrderDerivativeKernel(FirstOrderDerivativeKernel):
 
         return K
 
-    def _K_from_fn(self, X1, X2, var_fn):
+    def _K_from_fn(self, X1, X2, var_fn, mod=None):
         # by construction var_fn is just the kernel function self.parent_kernel
 
         def k2(x1, X2, K_fn):

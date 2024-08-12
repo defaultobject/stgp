@@ -65,7 +65,7 @@ class WienerVelocity(MarkovKernel):
         super(WienerVelocity, self).__init__()
         
         self.q = int(q)
-        self.variance_param = Parameter(variance, constraint='positive', name=f'IntegratedWiener({self.q})/variance')
+        self.variance_param = Parameter(np.array(variance),  name=f'IntegratedWiener({self.q})/variance', train=False)
         self._state_space_dim = q+1
         self.explicit_q = True
 

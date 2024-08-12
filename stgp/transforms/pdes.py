@@ -39,6 +39,9 @@ class DifferentialOperatorJoint(LinearTransform, Joint):
         self.has_parent = has_parent
         self.hierarchical = hierarchical
         self.whiten_space = whiten_space
+        #self.latents = self.parent.latents
+
+
 
     @property
     def full_transform(self):
@@ -250,8 +253,8 @@ class PDE(Transform):
         observation_function = None
     ):
         self._parent = latent
-        self.latents = self.parent.latents # legacy reasons
-        self.num_latents = len(self.latents)
+        #self.latents = self.parent.latents # legacy reasons
+        self.num_latents = 1
 
         self.boundary_conditions = boundary_conditions        
         self.boundary_by_init = boundary_by_init
@@ -269,6 +272,9 @@ class PDE(Transform):
         self.dfdt_idx = dfdt_idx
 
         self.observation_function = observation_function
+
+        self.data_y_index = None
+        
 
         if m_init is not None:
             m_init = np.array(m_init)
@@ -704,6 +710,7 @@ class DampedPendulum1D(PDE):
         """
         self._parent = latent
         self._output_dim = 1
+        self.data_y_index = None
 
         if self.parent is None:
             self._input_dim = None
@@ -757,6 +764,26 @@ class DampedPendulum1D(PDE):
         b = self.b_param.value
 
         res = dt2 + ls * np.sin(t) + b * dt
+
+        return np.array([res])
+
+class DampedPendulum1D_MissingSIN(DampedPendulum1D):
+
+    def forward(self, f):
+        """ 
+        f is of shape 3 corresponding to f, ft, ft2
+        """
+        t = f[0]
+        dt = f[1]
+        dt2 = f[2]
+
+        g = f[3]
+
+
+        ls = self.g_param.value / self.l_param.value
+        b = self.b_param.value
+
+        res = dt2 + ls * g + b * dt
 
         return np.array([res])
 
@@ -891,13 +918,18 @@ class HeatEquation2D(PDE, LinearTransform):
 class AllenCahn(PDE):
     def __init__(self, latent, train=True, m_init = None, m_init_dim = None, train_m_init=True, boundary_conditions=None, boundary_by_init=False, observe_data=False):
 
-        super(AllenCahn, self).__init__()
+        super(AllenCahn, self).__init__(latent = latent)
 
         self._parent = latent
-        self.latents = self.parent.latents # legacy reasons
+        self.num_latents = 1
         self.temporal_output_dim = 2
         self.spatial_output_dim = 2
-        self.num_latents = len(self.latents)
+
+        if m_init_dim is None and m_init is None:
+            # hacky way to support old model
+            self.latents = None
+        else:
+            self.latents = self.parent.latents # legacy reasons
 
 
         if self.parent is None:
@@ -907,11 +939,14 @@ class AllenCahn(PDE):
 
         # TODO: fix
         if m_init is None:
+            if m_init_dim is None:
+                m_init_dim = 1
+
             m_init = np.array([0.0]*m_init_dim)[:, None]
         else:
             m_init = np.array(m_init).reshape([-1, 1])
 
-        self.m_init_param = Parameter(m_init, name=f'AllenCahn/m_init', train=train_m_init)
+        #self.m_init_param = Parameter(m_init, name=f'AllenCahn/m_init', train=train_m_init)
 
         self.ndt = 2
         self.nds = 2
@@ -957,7 +992,7 @@ class AllenCahn(PDE):
 
     def forward_g(self, f, X_s, t):
         """ 
-        f is of shape 4 corresponding to x , dxs2, dxt, dxs2, dxt
+        f is of shape 4 corresponding to x , dxs2, dxt, dxs2 dxts2
         """
         # in [ds, space, df]
         f = np.reshape(f, [1, self.nds, X_s.shape[0], self.ndt])
@@ -1116,7 +1151,7 @@ class _LotkaVolterraSystemX(PDE):
         return (xt - self._dfdt(f))[:, None]
 
 
-    def forward_g(self, f, X_s, t):
+    def forward_g(self, f, X_s, t, force=None):
         """ 
         f is of shape 4 corresponding to x, xt, y, yt
         """
@@ -1165,7 +1200,7 @@ class _LotkaVolterraSystemY(PDE):
 
         return (yt - self._dfdt(f))[:, None]
 
-    def forward_g(self, f, X_s, t):
+    def forward_g(self, f, X_s, t, force=None):
         """ 
         f is of shape 4 corresponding to x, xt, y, yt
         """
@@ -1241,7 +1276,7 @@ class LotkaVolterra(PDE):
 
         return np.array([y0, y1])[:, None]
 
-    def forward_g(self, f, X_s, t):
+    def forward_g(self, f, X_s, t, force=None):
         """ 
         f is of shape 4 corresponding to x, xt, y, yt
         """
@@ -1282,20 +1317,22 @@ class LotkaVolterra(PDE):
 
     
 
-def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_index=[0, 1]):
+def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_index=None):
     """
     THe lorenz stystem describes the following system of equations
 
         dx/dt = alpha *x - beta *x * y
         dy/dt = delta * x * y  - gamma * y
     """
+    if data_y_index is None:
+        raise RuntimeError('data_y_index must be passed!')
     return [
         _LotkaVolterraSystemX(latent[0], alpha, beta, train=train, data_y_index=[data_y_index[0]]), 
         _LotkaVolterraSystemY(latent[1], delta, gamma, train=train, data_y_index=[data_y_index[1]]), 
     ]
 
 
-def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False):
+def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False, boundary_by_init=True):
     class PDE_TRANSFORM(PDE):
         def forward_g(self, f, X_s, t, force=None):
             chex.assert_rank(f, 2)
@@ -1303,6 +1340,6 @@ def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m
             chex.assert_rank(res, 2)
             return res
 
-    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observe_data=observe_data)
+    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observe_data=observe_data, boundary_by_init=boundary_by_init)
 
 

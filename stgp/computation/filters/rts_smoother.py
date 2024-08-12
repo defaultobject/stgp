@@ -38,11 +38,15 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     H_sde_prior = prior.parent.H(None, X_s, t)
 
-    H1 = prior.H(m_predicted, X_s, t) # computed Jacobian at m_predicted 
     if full_state:
         H1 = prior.H_full_state(m_predicted, X_s, t)
+    else:
+        #H1 = prior.H_jac(m_predicted, X_s, t) # computed Jacobian at m_predicted 
+        #H1 = prior.H_jac(m_predicted, X_s, t) # computed Jacobian at m_predicted 
+        H1 = H1 = prior.H(m_predicted, X_s, t) 
 
-    return H1 @ H_sde_prior
+
+    return H1 
 
 def get_H(model, x, m_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', model)

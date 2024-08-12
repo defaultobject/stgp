@@ -168,7 +168,6 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             for q in range(Q)
         ])
 
-
         return H
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):

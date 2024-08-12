@@ -19,6 +19,7 @@ def mahal_with_mask(x, sigma, mask):
     sigma_chol = cholesky(sigma)
     mahal = x.T @ cholesky_solve(sigma_chol, x)
 
+
     return mahal
 
 @jit

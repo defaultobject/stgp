@@ -151,6 +151,23 @@ class BASE_SDE_GP(Posterior):
         if type(self.likelihood) == list:
             self._likelihood = get_product_likelihood(self._likelihood)
 
+    def filter_meta(self):
+        R, R_inv = get_R_R_inv(self.likelihood)
+
+        _, filter_res  = kalman_filter.filter_loop(
+            self.data,
+            self.prior,
+            R = R,
+            R_inv = R_inv,
+            filter_type = self.filter_type
+        )
+
+        # TODO: quick fix to support older models
+        if 'meta' in filter_res.keys():
+            return filter_res['meta']
+
+        return {}
+
 
     def log_marginal_likelihood(self):
         R, R_inv = get_R_R_inv(self.likelihood)

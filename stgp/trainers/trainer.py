@@ -135,7 +135,6 @@ class Trainer:
         else:
             self.grad_fn = objax.Jit(ReverseModeGrad(objective_fn, vars_to_train), all_vars)
 
-
         self.objective_fn = objective_fn
 
         # Get optimizer
