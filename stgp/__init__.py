@@ -14,6 +14,7 @@ from .computation.predictors import *
 from .computation.elbos import *
 from .computation.natural_gradients import *
 from .computation.spatial_conditionals import *
+from .computation.kernel_psi_statistics import *
 
 from .data import *
 from .metrics import *

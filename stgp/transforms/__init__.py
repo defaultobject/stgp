@@ -6,6 +6,7 @@ from .data_latent_permutation import DataLatentPermutation, IndependentDataLaten
 from .output_map import OutputMap
 from .aggregate import Aggregate
 from .nearest_neighbours import NearestNeighbours, PrecomputedNearestNeighbours, DataStack
+from .uncertain_inputs import UncertainPredictionInput 
 
 __all__ = [
     "Transform", 
@@ -26,5 +27,6 @@ __all__ = [
     "CompositeTransform",
     "NearestNeighbours",
     "PrecomputedNearestNeighbours",
-    "DataStack"
+    "DataStack",
+    "UncertainPredictionInput"
 ]

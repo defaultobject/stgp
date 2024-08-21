@@ -59,6 +59,11 @@ class GPPrior(Prior):
         return Z
 
     @property
+    def approximately_linear(self):
+        # False as it is linear
+        return False
+
+    @property
     def base_prior(self):
         return self
 

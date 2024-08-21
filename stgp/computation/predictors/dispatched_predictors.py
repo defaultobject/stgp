@@ -19,7 +19,7 @@ from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood, Di
 from ...approximate_posteriors import GaussianApproximatePosterior, MeanFieldApproximatePosterior, ApproximatePosterior
 from ...dispatch import dispatch, evoke
 from ..gaussian import log_gaussian
-from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform, Aggregate
+from ...transforms import Independent, Transform, LinearTransform, NonLinearTransform, Aggregate, UncertainPredictionInput
 from ..permutations import data_order_to_output_order, permute_mat_ld_to_dl, permute_mat_dl_to_ld, permute_mat_tps_to_tsp, permute_vec_tps_to_tsp, permute_vec_dl_to_ld, permute_mat_tsp_to_tps
 
 from ...utils import utils
@@ -41,7 +41,6 @@ import chex
 from typing import List
 from objax import ModuleList
 from batchjax import batch_or_loop, BatchType
-
 
 
 # =========================== Likelihood specific GPR prediction equations ===========================
@@ -353,7 +352,101 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     chex.assert_rank([mu, var], [3, 4])
     return mu, var
 
-@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, Independent)
+# ============================ Single outputs ====================
+@dispatch(Data, 'BatchGP', Likelihood, UncertainPredictionInput)
+def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+    print('UncertainPredictionInput')
+    base_gp = prior.parent
+    noise_gp = prior.prediction_gp
+
+    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
+
+    #noise_pred_mu = [XS]
+    # noise_pred_var = noise_pred_var*0.0
+
+    first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp.kernel)(
+        XS, data.X, noise_pred_mu[0], noise_pred_var[0][0], base_gp.kernel
+    )
+
+    N = data.N
+    X = data.X
+    Y = data.Y
+    likelihood_var = likelihood.variance * np.eye(N)
+    K_ss = base_gp.covar(XS, XS)
+    K_sx = base_gp.covar(XS, X)
+    K_xx = base_gp.covar(X, X)
+    K_tilde = K_xx + likelihood_var
+    K_tilde_chol = cholesky(K_tilde)
+
+    K_tilde_inv = cholesky_solve(K_tilde_chol, np.eye(N))
+    beta = cholesky_solve(K_tilde_chol, Y)
+
+    if False:
+        mu_true = K_sx @ beta
+    else:
+        mu_true = K_sx @ beta
+        mu = first_argument_form @ beta
+
+    var = both_argument_form
+    var = var - np.sum(np.multiply((K_tilde_inv - beta @ beta.T)[None, None, ...], square_form), axis=[2, 3])
+
+    llT = jax.vmap(
+        jax.vmap(
+            lambda a, b: a[:, None]@b[None, :],
+            [None, 1]
+        ),
+        [1,  None]
+    )(first_argument_form, first_argument_form)
+
+    var = var - np.sum(np.multiply( np.transpose(llT, [2, 3, 0, 1]), (beta @ beta.T)[None, None, ...]), axis=[2, 3])
+
+    if True:
+        var_true = K_ss - K_sx @ cholesky_solve(K_tilde_chol, K_sx.T)
+        breakpoint()
+
+    return mu, var
+
+
+@dispatch(Data, 'BatchGP', Likelihood, LinearTransform)
+def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+    print('LinearTransform')
+    breakpoint()
+
+@dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
+def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+    # first check for any special cases. In this case every independent prior will need to handled separately and then combined
+    #   otherwise we can directly compute latent-data format using prior.covar/var/mean 
+
+    # check if any of the priors are using a linear approximation that requires a special case
+    approx_lin_arr = [p.approximately_linear for p in prior.parent]
+
+    if any(approx_lin_arr):
+        X = data.X
+        Y = data.Y
+        # need to use special cases
+        marginal_mu, marginal_var =  batch_over_module_types(
+            'predict_blocks',
+            [data, 'BatchGP'],
+            [gp.likelihood.likelihood_arr, prior.parent],
+            [XS, data, gp, gp.likelihood.likelihood_arr, prior.parent, block_size],
+            [None, None, None, 0,  0, None],
+            len(prior.parent),
+            2
+        )
+
+        marginal_mu = np.array(marginal_mu)
+        marginal_var = np.array(marginal_var)
+
+        return marginal_mu, marginal_var
+
+
+    else:
+        # can use batched form
+        return evoke('predict_blocks', data, gp, likelihood, LinearTransform)(
+            XS, data, gp, likelihood, prior, block_size
+        )
+
+
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     """
@@ -431,7 +524,10 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     return mu, var
 
 
+
 # =========================== Model Specific prediction equations ===========================
+
+
 @dispatch(Data, 'BatchGP', Likelihood, LinearTransform)
 @dispatch(Data, 'BatchGP', Likelihood, Independent)
 def predict(XS, data, gp, likelihood, prior, diagonal: bool):

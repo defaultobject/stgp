@@ -51,6 +51,7 @@ class Transform(GPPrior):
         self._parent = None
         self.data_y_index = None
 
+
     @property
     def full_transform(self):
         return False
@@ -119,6 +120,10 @@ class NonLinearTransform(Transform):
 class LinearTransform(Transform):
     def __init__(self, latent):
         self._parent = latent
+
+    @property
+    def approximately_linear(self) -> bool:
+        return False
 
     @property
     def in_block_dim(self) -> Block:
