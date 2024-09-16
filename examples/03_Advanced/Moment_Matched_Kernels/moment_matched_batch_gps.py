@@ -4,7 +4,7 @@ sys.path.append('../')
 sys.path.append('../../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 import objax
 import numpy as np
@@ -70,7 +70,7 @@ m_hr = GP(
 
 m = MultiObjectiveModel([m_hr, m_lr])
 
-if True:
+if False:
     # Train
     epochs = 200
     callback = progress_bar_callback(epochs)
@@ -91,6 +91,12 @@ if True:
 # predict
 pred_mu_lr, pred_var_lr = m_lr.predict_f(XS)
 pred_mu_hr, pred_var_hr = m_hr.predict_f(XS)
+
+pred_mu_lr = np.squeeze(pred_mu_lr)
+pred_var_lr = np.squeeze(pred_var_lr)
+
+pred_mu_hr = np.squeeze(pred_mu_hr)
+pred_var_hr = np.squeeze(pred_var_hr)
 
 fig, axes = plt.subplots(2, 1)
 
