@@ -34,6 +34,8 @@ from ..model_ops import get_diagonal_gaussian_likelihood_variances
 
 from .base_predictors import gaussian_prediction, gaussian_predictive_covar, gaussian_predictive_mean, gaussian_prediction_diagonal, gaussian_prediction_blocks, gaussian_prediction_diagonal_with_additive_noise_precision, gaussian_prediction_with_additive_noise_precision
 
+from ..kernel_psi_statistics import get_psi_statistics_linear_form
+
 import jax
 from jax import jit
 import jax.numpy as np
@@ -355,55 +357,9 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 # ============================ Single outputs ====================
 @dispatch(Data, 'BatchGP', Likelihood, UncertainPredictionInput)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
-    print('UncertainPredictionInput')
-    base_gp = prior.parent
-    noise_gp = prior.prediction_gp
+    mean_weights, var = get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size)
 
-    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
-
-    #noise_pred_mu = [XS]
-    # noise_pred_var = noise_pred_var*0.0
-
-    first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp.kernel)(
-        XS, data.X, noise_pred_mu[0], noise_pred_var[0][0], base_gp.kernel
-    )
-
-    N = data.N
-    X = data.X
-    Y = data.Y
-    likelihood_var = likelihood.variance * np.eye(N)
-    K_ss = base_gp.covar(XS, XS)
-    K_sx = base_gp.covar(XS, X)
-    K_xx = base_gp.covar(X, X)
-    K_tilde = K_xx + likelihood_var
-    K_tilde_chol = cholesky(K_tilde)
-
-    K_tilde_inv = cholesky_solve(K_tilde_chol, np.eye(N))
-    beta = cholesky_solve(K_tilde_chol, Y)
-
-    if False:
-        mu_true = K_sx @ beta
-    else:
-        mu_true = K_sx @ beta
-        mu = first_argument_form @ beta
-
-    var = both_argument_form
-    var = var - np.sum(np.multiply((K_tilde_inv - beta @ beta.T)[None, None, ...], square_form), axis=[2, 3])
-
-    llT = jax.vmap(
-        jax.vmap(
-            lambda a, b: a[:, None]@b[None, :],
-            [None, 1]
-        ),
-        [1,  None]
-    )(first_argument_form, first_argument_form)
-
-    var = var - np.sum(np.multiply( np.transpose(llT, [2, 3, 0, 1]), (beta @ beta.T)[None, None, ...]), axis=[2, 3])
-
-    if True:
-        var_true = K_ss - K_sx @ cholesky_solve(K_tilde_chol, K_sx.T)
-        breakpoint()
-
+    mu = mean_weights @ data.Y
     return mu, var
 
 

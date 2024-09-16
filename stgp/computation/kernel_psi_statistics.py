@@ -3,8 +3,10 @@ import jax
 import jax.numpy as np
 import chex
 from ..dispatch import dispatch, evoke
-from ..kernels import RBF
-from ..computation.gaussian import log_gaussian_scalar
+from ..kernels import RBF, SpatioTemporalSeperableKernel
+from .gaussian import log_gaussian_scalar
+from .matrix_ops import cholesky, cholesky_solve
+
 
 def rbf_Li(ls, mi, si, xi):
     lam = ls **2
@@ -74,14 +76,6 @@ def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
 
     sq = np.squeeze
 
-    # [Ns x Ns]
-    both_argument_form = jax.vmap(
-        jax.vmap(lambda x_i, x_j, m_i, m_j, s_i, s_j, s_ij: rbf_Mij(ls, sq(m_i), sq(m_j), sq(s_i), sq(s_j), sq(s_ij), x_i, x_j), [0, None, 0, None, 0, None, 0]),
-        [None, 0, None, 0, None, 0, 0]
-    )(XS, XS, noise_m, noise_m , S_diag, S_diag, noise_S)
-    print(both_argument_form)
-    breakpoint()
-
     # [Ns x N]
     first_argument_form =  jax.vmap(
         lambda mi, si: jax.vmap(
@@ -121,7 +115,61 @@ def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
     # [Ns x Ns x N x N]
     square_form = L - L_first_diag + L_diag
 
-
+    # [Ns x Ns]
+    both_argument_form = jax.vmap(
+        jax.vmap(lambda x_i, x_j, m_i, m_j, s_i, s_j, s_ij: rbf_Mij(ls, sq(m_i), sq(m_j), sq(s_i), sq(s_j), sq(s_ij), x_i, x_j), [0, None, 0, None, 0, None, 0]),
+        [None, 0, None, 0, None, 0, 0]
+    )(XS, XS, noise_m, noise_m , S_diag, S_diag, noise_S)
 
 
     return first_argument_form, square_form, both_argument_form
+
+@dispatch(SpatioTemporalSeperableKernel)
+def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
+    breakpoint()
+
+
+def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
+    base_gp = prior.parent
+    noise_gp = prior.prediction_gp
+
+    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
+
+    # for testing
+    #noise_pred_mu = [XS]
+    #noise_pred_var = noise_pred_var*0.0
+
+    first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp.kernel)(
+        XS, data.X, noise_pred_mu[0], noise_pred_var[0][0], base_gp.kernel
+    )
+
+    N = data.N
+    X = data.X
+    Y = data.Y
+    likelihood_var = likelihood.variance * np.eye(N)
+    K_ss = base_gp.covar(XS, XS)
+    K_sx = base_gp.covar(XS, X)
+    K_xx = base_gp.covar(X, X)
+    K_tilde = K_xx + likelihood_var
+    K_tilde_chol = cholesky(K_tilde)
+
+    K_tilde_inv = cholesky_solve(K_tilde_chol, np.eye(N))
+    beta = cholesky_solve(K_tilde_chol, Y)
+
+    mean_weights = (cholesky_solve(K_tilde_chol, first_argument_form.T).T)
+
+
+    var = both_argument_form
+    var = var - np.sum(np.multiply((K_tilde_inv - beta @ beta.T)[None, None, ...], square_form), axis=[2, 3])
+
+    llT = jax.vmap(
+        jax.vmap(
+            lambda a, b: a[:, None]@b[None, :],
+            [None, 1]
+        ),
+        [1,  None]
+    )(first_argument_form, first_argument_form)
+
+    var = var - np.sum(np.multiply( np.transpose(llT, [2, 3, 0, 1]), (beta @ beta.T)[None, None, ...]), axis=[2, 3])
+
+    return mean_weights, var

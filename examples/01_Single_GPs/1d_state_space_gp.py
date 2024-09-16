@@ -24,8 +24,6 @@ from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
 from stgp.transforms import Independent
 
-from stgp.utils.jaxpr import _jaxpr_graph, _plot_objective_jaxpr
-
 stgp.settings.verbose = True
 
 import matplotlib.pyplot as plt
@@ -54,8 +52,6 @@ prior = LTI_SDE(Independent([latent_gp]))
 #   filter_type='square_root_svm' 
 m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='sequential')
 
-_plot_objective_jaxpr(m)
-breakpoint()
 
 # Train
 print(m.get_objective())

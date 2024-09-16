@@ -6,27 +6,21 @@
 
 ### m1 specific steps
 
-it seems that it is easier to install tensorflow properly first and then figure out jax and stgp
-
 ```bash
- conda create -n stgp_lib_only python=3.9
- conda activate stgp_lib_only
- # set up tf for m1
- conda install -c apple tensorflow-deps
- pip install tensorflow-metal
- pip install tensorflow-macos
+conda create -n stgp python=3.11
+conda activate stgp
+pip install tensorflow-metal
+pip install tensorflow_probability==0.23
+conda install -c conda-forge jax==0.4.25 jaxlib==0.4.25
 
- # pip will complain but requried for tensorflow
- pip install numpy --upgrade
+pip install jax
+pip install tensorflow tensorflow_probability tf_keras
+pip install -r requirements.txt
 
- pip install tensorflow_probability==0.23
+conda install python-graphviz
+pip install networkx
 
- # for m1 jax -- for some reason need to specify most recent release?
- # must use conda-forge channel for m1
- conda install jax==0.4.8 -c conda-forge
-
- # now that tensorflow and jax is installed properly we can install stgp
- pip install -e . 
+pip install -e .
 ```
 
 ## Docker
