@@ -124,7 +124,6 @@ def single_output_expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, blo
         [0, 0, 0, 0, 0],
         0
     )(X_blocks, Y, lik_mat, q_f_mu, q_f_var)
-    #breakpoint()
 
 
     ell = np.sum(ell_arr)
@@ -362,17 +361,7 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
     chex.assert_equal([q_f_mu.shape[0], q_f_mu.shape[1]] , [N, P])
     chex.assert_equal([q_f_var.shape[0], q_f_var.shape[1]] , [N, P])
 
-
     model_type = get_model_type(prior)
-
-    # TODO: this is not very general, fix this at some point
-    gauss_lik_flag = False
-    if isinstance(likelihood, ProductLikelihood):
-        # check if all likelihood_arr are Gaussian
-        gauss_lik_flag = all([isinstance(lik, Gaussian) or isinstance(lik, DiagonalGaussian)  for lik in likelihood.likelihood_arr])
-    elif isinstance(likelihood, BlockDiagonalGaussian):
-        gauss_lik_flag = True
-
 
     # TODO: there is a choice here between quadrature and monte-carlo estimation
     # TODO: need to check if a likelihood has a closed form ELL
@@ -384,13 +373,12 @@ def expected_log_likelihood(X, Y, q_f_mu, q_f_var, likelihood, prior, approximat
 
         block_arr = [block_type for l in likelihood_arr]
 
-        # Ensure rank 2 after batching
-        Y = Y[..., None]
+        # Y[..., None] is to ensure rank 2 after batching
         ell_arr = batch_over_module_types(
             evoke_name = 'single_output_expected_log_likelihood',
             evoke_params = [],
             module_arr = [likelihood_arr, block_arr],
-            fn_params = [X, Y, q_f_mu, q_f_var, likelihood_arr, block_arr],
+            fn_params = [X, Y[..., None], q_f_mu, q_f_var, likelihood_arr, block_arr],
             fn_axes = [None, 1, 1, 1, 0, 0],
             dim = P,
             out_dim  = 1 
@@ -585,20 +573,10 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     X = data.X
     Y = data.Y
-    
-    if False:
-        try:
-            ell_true = jax.vmap( full_gaussian_expected_log_likelihood, [None, 0, None, 0, 0])(X, Y[:, [0]][..., None], np.reshape(likelihood.likelihood_arr[0].variance, [1, 1]), q_f_mu_arr[:, 0, ...][..., None], q_f_var_arr[:, :, 0, 0][..., None])
-
-            return np.sum(ell_true)
-        except Exception as e:
-            pass
 
     ell =  evoke('expected_log_likelihood', data, likelihood, prior, approximate_posterior, block_type_p)(
         X, Y, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference, block_type_p
     )
-
-    #breakpoint()
 
     return ell
 

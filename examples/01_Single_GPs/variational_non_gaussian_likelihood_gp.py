@@ -71,9 +71,9 @@ if True:
 
     lc_arr,  _ = trainer.train([0.01, 0.1], [max_iters, [1, 1]], callback= progress_bar_callback(max_iters))
 
-    breakpoint()
-    plt.plot(lc_arr[::2])
-    plt.show()
+    if False:
+        plt.plot(lc_arr[::2])
+        plt.show()
 
 else:
     trainer = ADAM(m)
@@ -92,7 +92,6 @@ plt.show()
 post = m.confidence_intervals(X)
 
 print(np.squeeze(Y)-np.squeeze(post[1]))
-breakpoint()
 
 # Predict
 pred_mu, pred_var = m.predict_f(X)
