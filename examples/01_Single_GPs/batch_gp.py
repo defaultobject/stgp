@@ -29,8 +29,8 @@ stgp.settings.linear_solver = stgp.settings.SolveType.CG
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 100, seed=0)
 
-K = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
-#K = Matern32(input_dim=1, lengthscales=[0.1])
+#K = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0, mask=[1])
+K = Matern32(input_dim=1, lengthscales=[0.1], mask=[1])
 
 
 # Construct Model

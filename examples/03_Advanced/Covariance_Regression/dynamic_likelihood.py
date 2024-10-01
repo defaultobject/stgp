@@ -87,8 +87,8 @@ if False:
     plt.show()
 
 print(m.samples(XS, num_samples=10))
+print(m.nlpd(X, Y, num_samples=100))
 breakpoint()
-print(m.nlpd(X, Y))
-print(m.predict_f(XS))
+print(m.predict_f(XS, num_samples=100))
 breakpoint()
 

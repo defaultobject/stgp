@@ -1,3 +1,10 @@
+""" 
+
+This file provides the parent class for all Kernel methods and some basic kernel types and constructions such as
+    Combinations such as adding and products
+    Stationary Kernels
+    SpatioTemporal Kernels
+"""
 import objax
 import chex
 import jax
@@ -51,6 +58,7 @@ class Kernel(objax.Module):
 
     @abstractmethod
     def K(self, X1: np.array, X2: np.array):
+        """ Check shapes of inputs are correct and apply active dims """
         chex.assert_rank([X1, X2], [2, 2])
         chex.assert_equal(X1.shape[1], X2.shape[1])
 
@@ -60,6 +68,7 @@ class Kernel(objax.Module):
         return self._K(_X1, _X2)
 
     def _K(self, X1, X2):
+        """ Batch over X1, X2 inputs and apply scalar dims. Assumes a product over features. """
         D = X1.shape[1]
         def _K_d2(x1, x2):
             chex.assert_shape(x1, [D])
@@ -324,6 +333,7 @@ class StationaryKernel(Kernel):
         input_dim: Optional[int] = 1,
         active_dims: Optional[np.ndarray] = None,
         additive = False,
+        mask = None,
         name = None
     ) -> None:
         if lengthscales is None and input_dim is None:
@@ -361,6 +371,12 @@ class StationaryKernel(Kernel):
 
         self.additive = additive
 
+        if mask is not None:
+            mask = np.array(mask) # will be the same length as lengthscales, 0 means  mask, 1 means keep
+
+        self.mask = mask
+
+
     def fix(self):
         self.lengthscale_param.fix()
 
@@ -379,6 +395,7 @@ class StationaryKernel(Kernel):
             return np.ones(X1.shape[0])
 
     def _K(self, X1, X2):
+        """ Batch over X1, X2 inputs. Additionally supports masking of inputs (as an alternative to active_dims)."""
         D = X1.shape[1]
 
         # TODO: do we want to jits here?
@@ -396,9 +413,22 @@ class StationaryKernel(Kernel):
 
             chex.assert_equal(k_d1_d2.shape[0], D)
 
+
             if additive:
+                if self.mask is not None:
+                    # When masking additive kernels we jsut need to set the corresponding kernels to zero
+                    k_d1_d2 = k_d1_d2*self.mask
+
                 k_xx =  np.sum(k_d1_d2)
             else:
+
+                if self.mask is not None:
+                    # when masking product kernels we need to set the masked value to 1, and leave the rest unchanged
+                    # (1-mask) sets the thing we want to 1, everything else zero
+                    # k_d1_d2*(1-self.mask) keeps everything we want to mask
+                    # k_d1_d2 - k_d1_d2*(1-self.mask) now just removes the thing we want to mask
+                    k_d1_d2 = k_d1_d2 - k_d1_d2*(1-self.mask)
+
                 k_xx =  np.prod(k_d1_d2)
 
             chex.assert_rank(k_xx, 0)

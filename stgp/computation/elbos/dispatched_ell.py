@@ -328,9 +328,12 @@ def compute_ell_for_sample(transformed_f, X, Y, prior, likelihood, approximate_p
     ll_arr = np.array(ll_arr)
     # Fix shapes so that ll_arr matches Y
     ll_arr = ll_arr[..., None]
-    chex.assert_equal(ll_arr.shape, Y.shape)
-    # Mask out log-liklihoods that correspond to missing data
-    ll_arr = mask_matrix(ll_arr, mask)
+
+    # TODO: fix masking when Y is a list
+    if type(Y) is not list:
+        chex.assert_equal(ll_arr.shape, Y.shape)
+        # Mask out log-liklihoods that correspond to missing data
+        ll_arr = mask_matrix(ll_arr, mask)
     ll_arr = np.transpose(ll_arr, [1, 0, 2])
 
     return ll_arr

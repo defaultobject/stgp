@@ -34,6 +34,8 @@ from ...approximate_posteriors import ApproximatePosterior, MeanFieldApproximate
 from ...likelihood import Likelihood, ProductLikelihood, DiagonalLikelihood, BlockDiagonalLikelihood, Gaussian
 from ...sparsity import FreeSparsity, Sparsity
 
+from ... import settings
+
 # ================================== Dispatched q(u) ==============================
 # 
 # Must return ranks [2, 3]
@@ -228,10 +230,19 @@ def variational_params(data, approximate_posterior, likelihood, prior, whiten):
     # q_S is [Q x 1 x MB x MB]
 
     # TODO: fix this
-    if False:
-        if type(q_m) is list:
-            # hack for now to get models with mixed number of inducing points to work
-            return q_m, q_S
+    if settings.use_loop_mode:
+        if False:
+            if type(q_m) is list:
+                # hack for now to get models with mixed number of inducing points to work
+                return q_m, q_S
+        q_m = np.array(q_m)
+        q_S = np.array(q_S)
+        q_m = np.transpose(q_m, [1, 0, 2])
+        q_S = np.transpose(q_S, [1, 0, 2, 3])
+        print(q_m.shape)
+        print(q_S.shape)
+        breakpoint()
+        return q_m, q_S
 
     if q_S.shape[1] == 1:
         # q_m, q_S are batched across latents in the first dimension. Transpose to make it the last axis

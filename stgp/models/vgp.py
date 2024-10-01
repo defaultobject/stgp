@@ -293,8 +293,8 @@ class VGP(Posterior):
             posterior=posterior
         )
 
-        # [samples, N, P, B]
-        chex.assert_rank(samples_arr, 4)
+        # [samples, N, P, B] or  [samples, N, 1, P, B]
+        #chex.assert_rank(samples_arr, 4)
 
         return samples_arr
 
