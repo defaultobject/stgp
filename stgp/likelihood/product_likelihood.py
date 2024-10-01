@@ -103,6 +103,10 @@ class GaussianProductLikelihood(ProductLikelihood):
             batch_type = get_batch_type(self.likelihood_arr)
         )
 
+        # ensure array
+        var_arr = np.array(var_arr)
+
+
         return var_arr
 
 

@@ -303,8 +303,9 @@ class ScaleKernel(Kernel):
         if variance is None:
             variance = 1.0
         else:
-            ensure_float(variance)
+            variance = ensure_float(variance)
 
+        variance = ensure_array(variance)
         self.variance_param = Parameter(variance, constraint='positive', name='ScaleKernel/Variance')
 
     @property
@@ -494,17 +495,18 @@ class Linear(Kernel):
 
         super(Linear, self).__init__(1, None)
         if offset is None:
-            variance = 0.0
+            offset = 0.0
         else:
-            ensure_float(offset)
+            offset = ensure_float(offset)
 
-        self.offset_param = Parameter(offset,  name='Linear/offset')
+        self.offset_param = Parameter(ensure_array(offset),  name='Linear/offset')
 
     def _K(self, X1, X2):
         c = self.offset_param.value
         return (X1-c) @ (X2-c).T
 
     def K_diag(self, X1):
-        return np.square(self._apply_active_dim(X1))[:, 0]
+        c = self.offset_param.value
+        return np.square(self._apply_active_dim(X1-c))[:, 0]
 
 
