@@ -108,7 +108,7 @@ class Trainer:
 
         return hold_vars
 
-    def __init__(self, m, optimizer, opt_args = None, hold_vars = None, forward_mode = False):
+    def __init__(self, m, optimizer, opt_args = None, hold_vars = None, forward_mode = False, nan_max_attempt=None):
         if opt_args == None:
             opt_args = {}
 
@@ -141,6 +141,12 @@ class Trainer:
         self.opt = optimizer(vars_to_train, **opt_args)
         self.vars_to_train = vars_to_train
         self.all_vars = all_vars
+
+        if nan_max_attempt is None:
+            nan_max_attempt = 1
+
+        self.nan_max_attempt = nan_max_attempt
+        
 
 class ScipyTrainer(Trainer):
     """
@@ -262,12 +268,29 @@ class GradDescentTrainer(Trainer):
 
         def train_op():
             grad = self.grad_fn()
+
+            # check for nans
+            if np.any([np.any(np.isnan(a)) for a in grad]):
+                return None, None
+
             val = self.objective_fn()
             self.opt(learning_rate, grad)
             return grad, val
 
         for i in range(epochs):
+            max_attempt = self.nan_max_attempt
+
             grad, val = train_op()
+
+            if grad is None:
+                # nan found in gradient
+                if max_attempt  == 0:
+                    val = np.NaN
+                else:
+                    # try again
+                    max_attempt = max_attempt - 1
+                    print('retrying grad step')
+                    continue
 
             if np.isnan(val):
                 if raise_error:

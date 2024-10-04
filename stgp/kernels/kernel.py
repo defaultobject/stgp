@@ -426,9 +426,8 @@ class StationaryKernel(Kernel):
                 if self.mask is not None:
                     # when masking product kernels we need to set the masked value to 1, and leave the rest unchanged
                     # (1-mask) sets the thing we want to 1, everything else zero
-                    # k_d1_d2*(1-self.mask) keeps everything we want to mask
-                    # k_d1_d2 - k_d1_d2*(1-self.mask) now just removes the thing we want to mask
-                    k_d1_d2 = k_d1_d2 - k_d1_d2*(1-self.mask)
+                    # k_d1_d2*self.mask sets the things we want to mask to zero, everything else unchanged
+                    k_d1_d2 = (1-self.mask) + k_d1_d2*self.mask
 
                 k_xx =  np.prod(k_d1_d2)
 

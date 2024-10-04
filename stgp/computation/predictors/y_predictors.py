@@ -166,8 +166,8 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
                     mu_arr.append(post_mu[:, p]*np.nan)
                     var_arr.append(post_var[:, p]*np.nan)
 
-            mu_arr = np.array(mu_arr)
-            var_arr = np.array(var_arr)
+        mu_arr = np.array(mu_arr)
+        var_arr = np.array(var_arr)
 
         # fix data-latent ordering due to batching
         mu_arr = np.transpose(mu_arr, [1, 0, 2])

@@ -172,12 +172,13 @@ class Periodic(Kernel):
         ls = self.lengthscale_param.value
         variance = self.variance_param.value
         frequency = self.frequency_param.value
+        period = 1 / frequency
 
         tau = np.abs(x1 - x2)
 
         k = variance * np.exp(
             - 2 * np.square(
-                np.sin( frequency * tau / 2) / ls
+                np.sin(  tau / (2*period)) / ls
             )
         )
 

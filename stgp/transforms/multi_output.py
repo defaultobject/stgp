@@ -423,9 +423,13 @@ class LMC_DRD(LMC_Base):
 
     @property
     def W(self):
-        z_arr = self.z_arr.value
-        correlation_cholesky =  get_correlation_cholesky(z_arr, self.P, self.Q)
-
+        correlation_cholesky = self.correlation_cholesky
         var_diag = np.diag(self.variances.value)
 
         return var_diag @ correlation_cholesky
+
+    @property
+    def correlation_cholesky(self):
+        z_arr = self.z_arr.value
+        correlation_cholesky =  get_correlation_cholesky(z_arr, self.P, self.Q)
+        return correlation_cholesky
