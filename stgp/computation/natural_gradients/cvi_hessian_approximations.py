@@ -630,6 +630,47 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian
 
+def laplace_gauss_newton_natural_gradient_for_mf_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True):
+    q = model.approximate_posterior
+
+
+    # block diagonal
+    approx_posteriors = q.approx_posteriors
+    q_mu_z, q_var_z = batch_or_loop(
+        lambda q: q.surrogate.posterior_blocks(),
+        [approx_posteriors],
+        [0],
+        dim = len(approx_posteriors),
+        out_dim=2,
+        batch_type = get_batch_type(approx_posteriors)
+    )
+
+    # fix shapes
+    approx_hessian = batch_or_loop(
+        lambda m, S: gauss_newton(m, S, model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f),
+        [q_mu_z, q_var_z],
+        [0, 0],
+        dim = len(approx_posteriors),
+        out_dim=1,
+        batch_type = get_batch_type(approx_posteriors)
+    ) 
+
+    approx_hessian = approx_hessian[:, :, 0, ...]
+    approx_hessian = np.transpose(approx_hessian, [1, 0, 2, 3])
+
+    chex.assert_rank(approx_hessian, 4)
+    return approx_hessian
+
+
+def get_mf_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
+    if enforce_psd_type == 'laplace_gauss_newton_delta_u':
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_mf_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True)
+    else:
+        raise RuntimeError()
+
+    chex.assert_rank(approx_hessian, 4)
+    return approx_hessian
+
 
 def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
     if enforce_psd_type == 'gauss_newton':

@@ -17,7 +17,7 @@ from ..integrals.samples import _process_samples
 from ..integrals.approximators import mv_block_monte_carlo
 from ..permutations import data_order_to_output_order, permute_mat, permute_vec
 
-from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation
+from .cvi_hessian_approximations import get_full_gaussian_hessian_approximation, get_mf_gaussian_hessian_approximation
 from .parameterisations import get_parameterisation_class 
 
 from ...dispatch import _ensure_str
@@ -124,8 +124,10 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     var_grads = np.reshape(var_grads, [Q, N, B, B])
 
     if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
-        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
+        var_grads = get_mf_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
+        breakpoint()
         var_grads = np.transpose(var_grads, [1, 0, 2, 3])
+
         enforce_psd_type = None
     else:
         # in time-latent-space 
