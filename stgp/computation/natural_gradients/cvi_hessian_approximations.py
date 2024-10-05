@@ -368,7 +368,6 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
     )
 
 
-
     #u_to_f_mu is [Nt x Ns x Q x B]
     #u_to_f_var is [Nt x Ns x B x Q x Q]
     u_to_f_mu, u_to_f_var = jax.vmap(
@@ -377,6 +376,14 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
 
 
     Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var)
+
+    if True:
+        u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
+        _J_u_tf = jax.jacfwd(u_tf_fn)(m)
+        _Tf_sample = u_tf_fn(m)
+        print(_J_u_tf)
+        breakpoint()
+
 
     neg_Lambda = get_likelihood_hessian(
         model, 
@@ -429,6 +436,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
         G_vec_masked = G_mask * G_vec # Nt x Ns x P x Q x Ms x Ms
 
         G = np.sum(G_vec_masked, [1, 2]) # Nt x Q x Ms x Ms
+        breakpoint()
     else:
         # Gauss Newton approximation
         # TODO: should probably write as a jax.vjp
@@ -453,6 +461,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
 
         G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
         G = G[:, None, ...] # Nt x 1 x Ms x Ms
+        breakpoint()
 
     if settings.verbose:
         print('ST GAUSS NEWTON')
@@ -687,7 +696,6 @@ def laplace_gauss_newton_natural_gradient_for_mf_gaussian_approx_posterior(model
         q_mu_z = np.reshape(q_mu_z, [q_mu_z.shape[0], -1, 1])
 
         approx_hessian = gauss_newton(q_mu_z, q_var_z, model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f, mf=True)
-        breakpoint()
 
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian

@@ -70,8 +70,8 @@ def inv_sigmoid(val):
 
 @jit
 def correlation_transform(val, a):
-    return 2*inv_probit(val) - 1
-    #return 2 * sigmoid(a * val) - 1
+    #return 2*inv_probit(val) - 1
+    return 2 * sigmoid(a * val) - 1
 
 @jit
 def inv_correlation_transform(val, a):
@@ -114,10 +114,17 @@ def get_correlation_cholesky(z_arr, P, Q):
     #chol = jax.ops.index_add(chol, jax.ops.index[np.tril_indices(P, -1)], z_arr)
     chol = update_idx(chol, np.tril_indices(P, -1), z_arr)
 
+
     # construct elements (1-z**2)^0.5
     # [ 0 1 ]
     # [ (1-z^2)^0.5 0 ]
-    chol_a = (1 - chol ** 2) ** 0.5
+
+    # we want to do
+    #   chol_a = (1 - chol ** 2) ** 0.5
+    # but the square root is not differnetiable at zero and so this can raise NaNs
+    #   (comes up when computing natural gradient approximations)
+    # so instead we add one to diagonal, take the square root, and then remove the diagonal
+    chol_a = ((1 - chol ** 2)+np.eye(P)) ** 0.5 - np.eye(P)
 
     # zero out elements in upper triangle
     # [ 0 0 ]
@@ -148,9 +155,6 @@ def get_correlation_cholesky(z_arr, P, Q):
     # [ 1 1 ]
     # [ z (1-z^2)^0.5 ]
     chol = np.multiply(chol, chol_a)
-
-    # construct full correlation matrix
-    weights = chol @ chol.T
 
     return chol
 
