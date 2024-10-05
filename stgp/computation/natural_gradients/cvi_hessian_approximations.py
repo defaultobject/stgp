@@ -330,7 +330,7 @@ def _reparamaterise_f_to_tf_across_time(model, eps, pred_mu, pred_var):
     return f_samples
 
 
-def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
+def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, mf=False):
     """
     Args: 
         eps: sample of size [Nt x Ns x  Q x 1] 
@@ -368,6 +368,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
     )
 
 
+
     #u_to_f_mu is [Nt x Ns x Q x B]
     #u_to_f_var is [Nt x Ns x B x Q x Q]
     u_to_f_mu, u_to_f_var = jax.vmap(
@@ -398,29 +399,60 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
     # create masks for missing lieklihoods
     neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
 
-    # Gauss Newton approximation
-    # TODO: should probably write as a jax.vjp
-    # Nt x Ns x P x Ms x Ms
-    G_vec = jax.vmap( # batch over time
-        jax.vmap( #batch over space
-            jax.vmap( #batch over outputs
-                lambda a, b: a @ b @ a.T
-            ) 
+    if mf:
+        Q = S.shape[1]
+        # Nt x Ns x P x Q x Ms x 1
+        J_u_tf = np.reshape(J_u_tf, [J_u_tf.shape[0], J_u_tf.shape[1], J_u_tf.shape[2], Q, -1, J_u_tf.shape[-1]])
+
+        G_vec = jax.vmap( # batch over time
+            jax.vmap( #batch over space
+                jax.vmap( #batch over outputs
+                    jax.vmap( #batch over meanfield components
+                        lambda a, b: a @ b @ a.T,
+                        [0, None]
+                    )
+                ) 
+            )
+        )(
+            J_u_tf, neg_Lambda
         )
-    )(
-        J_u_tf, neg_Lambda
-    )
 
-    # create masks for missing data
-    Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-    G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-    chex.assert_equal(G_mask.shape, G_vec.shape)
+        # Nt x Ns x P x Q x Ms x Ms
+        
+        # create masks for missing data
+        Y_reshaped_for_G_mask = Y_st_mask[..., None, None, None] # Nt x Ns x P x Q x 1 x1
+        G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-3], G_vec.shape[-2], G_vec.shape[-1]])
+        chex.assert_equal(G_mask.shape, G_vec.shape)
 
-    # remove missing data from the natural gradient sum
-    G_vec_masked = G_mask * G_vec
 
-    G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
-    G = G[:, None, ...] # Nt x 1 x Ms x Ms
+        # remove missing data from the natural gradient sum
+        G_vec_masked = G_mask * G_vec # Nt x Ns x P x Q x Ms x Ms
+
+        G = np.sum(G_vec_masked, [1, 2]) # Nt x Q x Ms x Ms
+    else:
+        # Gauss Newton approximation
+        # TODO: should probably write as a jax.vjp
+        # Nt x Ns x P x Ms x Ms
+        G_vec = jax.vmap( # batch over time
+            jax.vmap( #batch over space
+                jax.vmap( #batch over outputs
+                    lambda a, b: a @ b @ a.T
+                ) 
+            )
+        )(
+            J_u_tf, neg_Lambda
+        )
+
+        # create masks for missing data
+        Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+        G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+        chex.assert_equal(G_mask.shape, G_vec.shape)
+
+        # remove missing data from the natural gradient sum
+        G_vec_masked = G_mask * G_vec
+
+        G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+        G = G[:, None, ...] # Nt x 1 x Ms x Ms
 
     if settings.verbose:
         print('ST GAUSS NEWTON')
@@ -430,7 +462,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False):
 
     return G
 
-def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
+def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True, mf=False):
     """
     Gaussian newton approximation whilst exploiting spatio-temporal structure in the data
     """
@@ -473,7 +505,7 @@ def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_li
         ]
 
         G_over_samples = jax.vmap(
-            lambda *sample: _f_conditional_samples(m, sample, model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik)
+            lambda *sample: _f_conditional_samples(m, sample, model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik, mf=mf)
         )(*white_samples)
 
         G = np.mean(G_over_samples, axis=0)
@@ -481,12 +513,12 @@ def gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_li
         if settings.verbose:
             print('NG: delta method for expectation over p(f|u)')
         # passing through a sample of zero means that all covariance terms will cancel and we will just have the mean, hence the delta method
-        G = _f_conditional_samples(m, [np.zeros(sample_shape[p]) for p in range(len(sample_shape))],  model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik)
+        G = _f_conditional_samples(m, [np.zeros(sample_shape[p]) for p in range(len(sample_shape))],  model, S, X_st, Y_st, laplace_log_lik=laplace_log_lik, mf=mf)
 
     return G
 
 
-def gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
+def gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True, mf=False):
     """
     Gaussian newton approximation without exploiting spatio-temporal structure in the data. This is inefficient but simple to implement
         so useful for testing and debugging purposes.
@@ -539,7 +571,7 @@ def gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=False, pre
 
 
 
-def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True):
+def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, delta_f=True, mf=False):
     """
     Args:
         u: Nt x Ms x D
@@ -560,7 +592,7 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, d
         pass
 
     if data_decomposes_across_time(model.data):
-        G = gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
+        G = gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f, mf=mf)
 
         if False:
             G_d = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
@@ -569,7 +601,7 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, d
             print(np.sum(np.abs(G-G_d)))
             breakpoint()
     else:
-        G = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
+        G = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f, mf=mf)
 
     approx_hessian = 0.5 *  G
     chex.assert_rank(approx_hessian, 4)
@@ -644,19 +676,18 @@ def laplace_gauss_newton_natural_gradient_for_mf_gaussian_approx_posterior(model
         out_dim=2,
         batch_type = get_batch_type(approx_posteriors)
     )
+    if True:
+        # convert to [N, Q, B] format
+        q_mu_z = np.transpose(q_mu_z, [1, 0, 2, 3])
+        q_var_z = np.transpose(q_var_z, [1, 0, 2, 3, 4])
+        q_mu_z = q_mu_z[..., 0]
+        q_var_z = q_var_z[:, :, 0, ...]
 
-    # fix shapes
-    approx_hessian = batch_or_loop(
-        lambda m, S: gauss_newton(m, S, model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f),
-        [q_mu_z, q_var_z],
-        [0, 0],
-        dim = len(approx_posteriors),
-        out_dim=1,
-        batch_type = get_batch_type(approx_posteriors)
-    ) 
+        # convert to [N, Q*B, 1] format
+        q_mu_z = np.reshape(q_mu_z, [q_mu_z.shape[0], -1, 1])
 
-    approx_hessian = approx_hessian[:, :, 0, ...]
-    approx_hessian = np.transpose(approx_hessian, [1, 0, 2, 3])
+        approx_hessian = gauss_newton(q_mu_z, q_var_z, model, laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f, mf=True)
+        breakpoint()
 
     chex.assert_rank(approx_hessian, 4)
     return approx_hessian

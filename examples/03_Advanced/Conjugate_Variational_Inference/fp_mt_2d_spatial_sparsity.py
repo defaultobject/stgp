@@ -85,7 +85,6 @@ prior._W.fix()
 Mt = Z[0].raw_Z.Nt
 Ms = Z[0].raw_Z.Ns
 
-
 q = FullConjugateGaussian(
     X = Z[0], # for state-space models we require the same Z across all latents
     num_latents=Q,

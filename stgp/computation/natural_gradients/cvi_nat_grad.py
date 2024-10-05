@@ -125,8 +125,7 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
         var_grads = get_mf_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
-        breakpoint()
-        var_grads = np.transpose(var_grads, [1, 0, 2, 3])
+        var_grads = np.transpose(var_grads, [1, 0, 2, 3]) # Q x Nt x Ms x Ms
 
         enforce_psd_type = None
     else:
