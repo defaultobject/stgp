@@ -12,6 +12,21 @@ from .. import settings
 from jax.scipy.linalg import expm
 
 
+def get_tensor_memory_in_gb(A):
+    bytes_to_gb = 1e-9
+    A_shape = np.prod(np.array(A.shape))*bytes_to_gb
+
+    if A.dtype == 'float64':
+        return A_shape*8
+    elif A.dtype == 'int64':
+        return A_shape*8
+    if A.dtype == 'float34':
+        return A_shape*4
+    elif A.dtype == 'int64':
+        return A_shape*4
+
+    raise RuntimeError(f'{A.dtype} dtype not implemented')
+        
 
 def first_axis_dim(X):
     if type(X) is list:

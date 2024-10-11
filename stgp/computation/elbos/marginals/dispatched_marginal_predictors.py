@@ -48,70 +48,76 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
         pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
 
     else:
-        # this just predict at the inducing points in time
-        XS_temporal_data, sorted_data, _, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
-        chex.assert_rank([mu, var], [3, 4])
+        if hasattr(approximate_posterior.surrogate, 'predict_temporal'):
+            # this just predict at the inducing points in time
+            XS_temporal_data, sorted_data, _, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
+            chex.assert_rank([mu, var], [3, 4])
 
-        # construct data with same temporal points as sort_data but with all the required spatial points
+            # construct data with same temporal points as sort_data but with all the required spatial points
 
-        # construct temporally grouped data so we know what spatial points we need
-        xs_data_temp = TemporallyGroupedData(XS, None)
+            # construct temporally grouped data so we know what spatial points we need
+            xs_data_temp = TemporallyGroupedData(XS, None)
 
-        # we need a dummy spatial point to padd out the temporal predictions as we have to predict across all of time
-        dummy_space = xs_data_temp.X_space[0]
+            # we need a dummy spatial point to padd out the temporal predictions as we have to predict across all of time
+            dummy_space = xs_data_temp.X_space[0]
 
-        # time x space format
-        mu = sorted_data.unsort(mu)[data.Nt:]
-        var = sorted_data.unsort(var)[data.Nt:]
+            # time x space format
+            mu = sorted_data.unsort(mu)[data.Nt:]
+            var = sorted_data.unsort(var)[data.Nt:]
 
-        # time-space 
-        all_dummy_XS = xs_data_temp.X_st
+            # time-space 
+            all_dummy_XS = xs_data_temp.X_st
 
-        # time-space 
-        xs_data = TemporallyGroupedData(all_dummy_XS, None, sort=False)
+            # time-space 
+            xs_data = TemporallyGroupedData(all_dummy_XS, None, sort=False)
 
-        if _ensure_str(prior) == 'GPPrior':
-            prior_parent = Independent([prior])
-            sparsity = [sparsity]
-            data_x = approximate_posterior.surrogate.data._X 
-            approximate_posterior = MeanFieldConjugateGaussian(approximate_posteriors=[approximate_posterior])
+            if _ensure_str(prior) == 'GPPrior':
+                prior_parent = Independent([prior])
+                sparsity = [sparsity]
+                data_x = approximate_posterior.surrogate.data._X 
+                approximate_posterior = MeanFieldConjugateGaussian(approximate_posteriors=[approximate_posterior])
+            else:
+                prior_parent = prior.parent
+                data_x =approximate_posterior.surrogate.data._X 
+
+            mu, var = evoke('spatial_conditional', xs_data, prior_parent, prior_parent, approximate_posterior)(
+                xs_data, 
+                data_x, 
+                mu, 
+                var[:, 0, ...], 
+                approximate_posterior,
+                likelihood,
+                prior_parent,
+                sparsity,
+                out_block,
+                whiten
+            )
+
+            chex.assert_rank([mu, var], [3, 4])
+
+
+            out_dim = prior.output_dim
+
+            # fix permutations
+            mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
+            var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var)
+
+            mu_p = np.reshape(mu_p, [-1, out_dim, 1])
+            var_p = batched_block_diagional(var_p, out_dim)
+            var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
+
+
+            # time x space format
+            pred_mu = XS_temporal_data.unsort(mu_p)
+            pred_var = XS_temporal_data.unsort(var_p)
+
+            chex.assert_equal([pred_mu.shape[0]], [pred_var.shape[0]])
+            chex.assert_equal([XS.shape[0]], [pred_mu.shape[0]])
         else:
-            prior_parent = prior.parent
-            data_x =approximate_posterior.surrogate.data._X 
-
-        mu, var = evoke('spatial_conditional', xs_data, prior_parent, prior_parent, approximate_posterior)(
-            xs_data, 
-            data_x, 
-            mu, 
-            var[:, 0, ...], 
-            approximate_posterior,
-            likelihood,
-            prior_parent,
-            sparsity,
-            out_block,
-            whiten
-        )
-
-        chex.assert_rank([mu, var], [3, 4])
-
-
-        out_dim = prior.output_dim
-
-        # fix permutations
-        mu_p = jax.vmap(lambda a: permute_vec(a, out_dim))(mu)
-        var_p = jax.vmap(lambda A: permute_mat(A[0], out_dim))(var)
-
-        mu_p = np.reshape(mu_p, [-1, out_dim, 1])
-        var_p = batched_block_diagional(var_p, out_dim)
-        var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
-
-
-        # time x space format
-        pred_mu = XS_temporal_data.unsort(mu_p)
-        pred_var = XS_temporal_data.unsort(var_p)
-
-        chex.assert_equal([pred_mu.shape[0]], [pred_var.shape[0]])
-        chex.assert_equal([XS.shape[0]], [pred_mu.shape[0]])
+            # backup up if there are not effecient ways to predict_f
+            mu, var = approximate_posterior.surrogate.predict_f(XS, diagonal=False, squeeze=False)
+            # fix block sizes
+            pred_mu, pred_var = fix_block_shapes(mu, var, data, likelihood, approximate_posterior, out_block)
 
     chex.assert_rank([pred_mu, pred_var], [3, 4])
 

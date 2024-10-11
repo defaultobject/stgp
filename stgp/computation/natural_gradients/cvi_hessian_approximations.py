@@ -3,7 +3,12 @@ When computing natural gradients we need to compute dE[log P(Y|T(F))]/dS, which 
 
 Here we compute Gauss-Newton style approximations of this hessian.
 """
+
 import jax
+import jax.profiler
+import os
+import sys
+
 import jax.numpy as np
 from jax import  grad, jit, jacfwd, vjp
 import chex
@@ -13,7 +18,7 @@ from functools import partial
 
 from ... import settings
 from ...utils.nan_utils import get_same_shape_mask 
-from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag
+from ..matrix_ops import cholesky, cholesky_solve, triangular_solve, vec_add_jitter, add_jitter, lower_triangle, vectorized_lower_triangular_cholesky, vectorized_lower_triangular, lower_triangular_cholesky, lower_triangle, to_block_diag, get_tensor_memory_in_gb
 from ...utils.utils import vc_keep_vars, get_parameters, get_var_name_with_id, get_batch_type
 from ..elbos.elbos import compute_expected_log_liklihood, compute_expected_log_liklihood_with_variational_params
 from ...dispatch import dispatch, evoke
@@ -377,7 +382,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
 
     Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var)
 
-    if True:
+    if False:
         u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
         _J_u_tf = jax.jacfwd(u_tf_fn)(m)
         _Tf_sample = u_tf_fn(m)
@@ -403,6 +408,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
         Y_st_mask = np.transpose(Y_st_mask, [0, 2, 1]) # Nt x Ns x P 
 
 
+
     # create masks for missing lieklihoods
     neg_Lambda = neg_Lambda * Y_st_mask[..., None, None]
 
@@ -425,43 +431,121 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
         )
 
         # Nt x Ns x P x Q x Ms x Ms
-        
+
+        # Y_st_mask has shape Nt x Ns x 2
+
         # create masks for missing data
         Y_reshaped_for_G_mask = Y_st_mask[..., None, None, None] # Nt x Ns x P x Q x 1 x1
         G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-3], G_vec.shape[-2], G_vec.shape[-1]])
         chex.assert_equal(G_mask.shape, G_vec.shape)
 
-
         # remove missing data from the natural gradient sum
         G_vec_masked = G_mask * G_vec # Nt x Ns x P x Q x Ms x Ms
 
         G = np.sum(G_vec_masked, [1, 2]) # Nt x Q x Ms x Ms
-        breakpoint()
     else:
-        # Gauss Newton approximation
-        # TODO: should probably write as a jax.vjp
-        # Nt x Ns x P x Ms x Ms
-        G_vec = jax.vmap( # batch over time
-            jax.vmap( #batch over space
-                jax.vmap( #batch over outputs
-                    lambda a, b: a @ b @ a.T
-                ) 
+        if False:
+            # Gauss Newton approximation
+            # TODO: should probably write as a jax.vjp
+            # Nt x Ns x P x Ms x Ms
+            # HUGE + mostly zeros!?!?!
+            G_vec = jax.vmap( # batch over time
+                jax.vmap( #batch over space
+                    jax.vmap( #batch over outputs
+                        lambda a, b: a @ b @ a.T
+                    ) 
+                )
+            )(
+                J_u_tf, neg_Lambda
             )
-        )(
-            J_u_tf, neg_Lambda
-        )
 
-        # create masks for missing data
-        Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
-        G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
-        chex.assert_equal(G_mask.shape, G_vec.shape)
+            # create masks for missing data
+            Y_reshaped_for_G_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+            G_mask = np.tile( Y_reshaped_for_G_mask, [1, 1, 1, G_vec.shape[-2], G_vec.shape[-1]])
+            chex.assert_equal(G_mask.shape, G_vec.shape)
+
+            # remove missing data from the natural gradient sum
+            G_vec_masked = G_mask * G_vec
+
+            G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+            G = G[:, None, ...] # Nt x 1 x Ms x Ms
+            G_true = G
+
 
         # remove missing data from the natural gradient sum
-        G_vec_masked = G_mask * G_vec
+        Y_reshaped_for_neg_lambda_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+        chex.assert_equal(neg_Lambda.shape, Y_reshaped_for_neg_lambda_mask.shape)
+        neg_Lambda = neg_Lambda * Y_reshaped_for_neg_lambda_mask
 
-        G = np.sum(G_vec_masked, [1, 2]) # Nt x Ms x Ms
+
+        if True:
+            def cumsum_inner(carry, state):
+                """
+                Args:
+                    carry:
+                        x: Ms x Ms
+                    state:
+                        J_u_tf: Ms x P
+                        neg_Lambda: P x P
+                """
+                J_u_tf = state['J_u_tf']
+                neg_Lambda = state['neg_Lambda']
+                x = carry['x']
+                x =  x + J_u_tf @ neg_Lambda @ J_u_tf.T
+                return {'x': x}, state
+
+            def cumsum(carry, state):
+                """
+                Args:
+                    carry:
+                        x: Ms x Ms
+                    state:
+                        J_u_tf: Ns x Ms x P
+                        neg_Lambda: Ns x P x P
+                """
+
+                # inner_res_carry['x'] Ms x Ms
+                inner_res_carry, inner_res_state = jax.lax.scan( #sum over P
+                    cumsum_inner,
+                    carry, 
+                    state
+                )
+
+                return inner_res_carry, state
+
+
+
+            # G will be [Nt x Ms x Ms]
+            G = jax.vmap( # batch over time
+                lambda j, n:  jax.lax.scan( # sum over Ns
+                    cumsum,
+                    {'x': np.zeros([J_u_tf.shape[-2], J_u_tf.shape[-2]])}, # Ms x Ms
+                    {'J_u_tf': j, 'neg_Lambda': n}
+                )[0]['x']
+            )(
+                J_u_tf, neg_Lambda
+            )
+        else:
+            G_vec = jax.vmap( # batch over time
+                jax.vmap( #batch over space
+                    jax.vmap( #batch over outputs
+                        lambda a, b: a @ b @ a.T
+                    ) 
+                )
+            )(
+                J_u_tf, neg_Lambda
+            )
+
+            G = np.sum(G_vec, [1, 2]) # Nt x Ms x Ms
+
         G = G[:, None, ...] # Nt x 1 x Ms x Ms
-        breakpoint()
+        if False:
+            print(G-G_true)
+            print(np.sum(G-G_true))
+            print('Y_reshaped_for_G_mask: ', get_tensor_memory_in_gb(Y_reshaped_for_G_mask))
+            print('G_mask: ', get_tensor_memory_in_gb(G_mask))
+            print('G_vec: ', get_tensor_memory_in_gb(G_vec))
+            print('G: ', get_tensor_memory_in_gb(G))
 
     if settings.verbose:
         print('ST GAUSS NEWTON')
@@ -644,6 +728,8 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
         #q_var_z = q_var_z[:, None, ...]
         
     else:
+        # TODO: do not need to recompute!
+        print('laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior -- 1')
         # get parameters of q(u) in time-latent-space order
         q_mu_z, q_var_z = q.surrogate.posterior_blocks()
         chex.assert_rank([q_mu_z, q_var_z], [3, 4])

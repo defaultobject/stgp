@@ -1,5 +1,10 @@
 import jax
 import jax.numpy as np
+
+import jax.profiler
+import os
+import sys
+
 from jax import  grad, jit, jacfwd, vjp
 import chex
 import objax
@@ -362,10 +367,12 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     # Predict in time-latent-space order
     # Predict first so we know the shape of the blocks
+    print('natural_gradients -- 1')
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
     chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # Collect CVI parameters
+    print('natural_gradients -- 2')
     raw_Y_arr, lambda_1_arr, lambda_2_arr = _get_fp_params(q_mu_z, model, parameterisation)
 
     #Nt, Nl, Ns = raw_Y_arr.shape
@@ -378,12 +385,13 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     # still in time-latent-space format as reshape does not affect this
     N, Q = q_mu_z.shape[0], q_mu_z.shape[1]
 
+    print('natural_gradients -- 3')
     # still in time-latent-space
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
-
     if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
+        print('natural_gradients -- 4')
         var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
         enforce_psd_type = None
     else:
@@ -406,6 +414,16 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     )(
         lambda_1_arr, lambda_2_arr, q_mu_z, q_var_z[:, 0, ...], mu_grads, var_grads[:, 0, ...], beta, enforce_psd_type
     )
+
+
+    if False:
+        #res = m.get_objective()
+        new_lambda_1.block_until_ready()
+
+        jax.profiler.save_device_memory_profile("/Users/oliverhamelijnck/Downloads/memory.prof")
+        os.system(f"~/go/bin/pprof -unit 'gb' -top {sys.executable} /Users/oliverhamelijnck/Downloads/memory.prof ")
+
+        breakpoint()
 
     # reshape will preserve the data-latent format
     return new_lambda_1, new_lambda_2

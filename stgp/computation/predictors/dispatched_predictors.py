@@ -404,6 +404,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
 
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
+@dispatch(Data, 'BatchGP', BlockDiagonalGaussian, Independent)
 def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     """
     Compute the posterior with the same block structure as the likelihood
@@ -467,8 +468,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     # we need ot return in time-latent-space format (to mimic the kalman filter)
     var = permute_mat_tsp_to_tps(var, likelihood.num_latents)
 
-    mu = np.reshape(mu, [likelihood.num_latents, likelihood.num_blocks, -1])
-    mu = np.reshape(np.transpose(mu, [1, 0, 2]), [likelihood.num_blocks, likelihood.block_size])
+    mu = np.reshape(mu, [likelihood.num_latents, NS, -1])
+    mu = np.reshape(np.transpose(mu, [1, 0, 2]), [NS, likelihood.block_size])
 
     mu = mu[..., None]
 

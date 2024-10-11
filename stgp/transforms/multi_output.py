@@ -158,7 +158,9 @@ class GPRN_DRD(GPRN_Base):
 
         var_diag = np.diag(self.variances.value)
 
-        return (var_diag @ correlation_cholesky @ latent_f)
+        res = (var_diag @ correlation_cholesky @ latent_f)
+
+        return res
 
 class GPRN_DRD_EXP(GPRN_Base):
     def __init__(self, v, W_vec, f, a=None, variances =  None, input_dim: int = None, output_dim: int = None):

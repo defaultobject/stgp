@@ -19,6 +19,7 @@ from stgp.trainers import ScipyTrainer, GradDescentTrainer
 from stgp.trainers.standard import ADAM
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import Matern32, ScaledMatern32, ScaledMatern52, ScaledMatern72
+from stgp.kernels.bias import ConstantKernel
 from stgp.data import TemporalData
 from stgp.likelihood import Gaussian, ReshapedGaussian
 from stgp.transforms.sdes import LTI_SDE
@@ -33,11 +34,14 @@ np.random.seed(0)
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
+Y = Y+10
+
 # Construct Model
 data = TemporalData(X, Y)
 lik = ReshapedGaussian(Gaussian(variance=1.0), num_blocks=data.Nt, block_size=1)
 #kern = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
-kern = Matern32(input_dim=1, lengthscales=[1.0])
+#kern = Matern32(input_dim=1, lengthscales=[1.0])
+kern = ConstantKernel(variance=1.0)+Matern32(input_dim=1, lengthscales=[1.0])
 
 latent_gp = GP(
     sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 

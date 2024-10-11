@@ -55,8 +55,6 @@ def _get_fp_params(q_mu_z, model, parameterisation):
     theta_1 = Y_tilde_arr
     theta_2 = q.surrogate.likelihood.variance
 
-    print('theta_1: ', np.sum(theta_1), 'theta_2: ', np.sum(theta_2))
-
     if _ensure_str(parameterisation) == 'NG_Moment':
         lambda_1_arr, lambda_2_arr = jax.vmap(theta_to_lambda)(theta_1, theta_2)
     elif _ensure_str(parameterisation) == 'NG_Precision':
