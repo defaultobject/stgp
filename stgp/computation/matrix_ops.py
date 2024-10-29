@@ -10,6 +10,7 @@ from jax import jacfwd, jacrev, grad
 import objax
 from .. import settings
 from jax.scipy.linalg import expm
+import numpy as onp
 
 
 def get_tensor_memory_in_gb(A):
@@ -22,11 +23,26 @@ def get_tensor_memory_in_gb(A):
         return A_shape*8
     if A.dtype == 'float34':
         return A_shape*4
-    elif A.dtype == 'int64':
+    elif A.dtype == 'int32':
+        return A_shape*4
+    elif A.dtype == 'uint32':
         return A_shape*4
 
-    raise RuntimeError(f'{A.dtype} dtype not implemented')
-        
+    print(f'{A.dtype} dtype not implemented')
+
+    return -100
+
+def pad_by_repeat_last_elem(A, pad_size, pad_with_nan = False):
+    """ Pad matrix A by repeating the last element pad_size times """
+    if pad_size == 0:
+        return A
+
+    pad_to_add = np.repeat(A[-1][None, ...], pad_size, axis=0)
+
+    if pad_with_nan:
+        pad_to_add = pad_to_add*onp.NaN
+
+    return np.vstack([A, pad_to_add])
 
 def first_axis_dim(X):
     if type(X) is list:

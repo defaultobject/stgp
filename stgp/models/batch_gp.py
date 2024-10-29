@@ -34,6 +34,7 @@ class BatchGP(Posterior):
         likelihood: 'Likelihood'=None, 
         kernel: 'Kernel'=None, 
         prior: 'Transform' = None, 
+        approximation: str = None,
         **kwargs
     ):
         # will save X, Y as a property
@@ -43,6 +44,7 @@ class BatchGP(Posterior):
         self._likelihood = likelihood
         self.kernel = kernel
         self._prior = prior
+        self.approximation = approximation
 
         self.set_defaults()
 
@@ -120,7 +122,8 @@ class BatchGP(Posterior):
             self.data,
             self, 
             self.likelihood,
-            self.prior
+            self.prior,
+            self.approximation
         )
 
         chex.assert_rank(nlml, 0)

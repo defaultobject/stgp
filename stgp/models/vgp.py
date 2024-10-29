@@ -40,6 +40,7 @@ class VGP(Posterior):
         minibatch_size=None,
         ell_samples=None,
         prediction_samples=None,
+        output_dim = None,
         **kwargs
     ):
 
@@ -57,6 +58,8 @@ class VGP(Posterior):
         self.ell_samples = ell_samples
         self.prediction_samples = prediction_samples
 
+        self._output_dim = output_dim
+
         self.set_defaults()
         self.fix_inputs()
 
@@ -68,7 +71,7 @@ class VGP(Posterior):
         raise NotImplementedError()
 
     @property
-    def output_dim(self): return self.data.Y.shape[1]
+    def output_dim(self): return self._output_dim
 
     @property
     def input_dim(self): return self.output_dim
@@ -93,10 +96,14 @@ class VGP(Posterior):
 
 
     def set_defaults(self):
-        # Figure out which prior mode is being used (kernel vs prior)
 
+
+        # Figure out which prior mode is being used (kernel vs prior)
         if (self.kernel is not None) and (self.prior is not None):
             raise RuntimeError('Only kernel or a prior must be passed')
+
+        if self._output_dim is None:
+            self._output_dim = self.data.Y.shape[1]
 
         if self.prior is None:
             # construct an independent prior for each latent function

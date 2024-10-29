@@ -62,19 +62,26 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     m_arr = filter_res['m']
     P_arr = filter_res['P']
 
+
+    if settings.low_memory_mode:
+         low_memory_wrapper = jax.remat
+    else:
+        low_memory_wrapper = lambda x: x
+
     # precompute all filtering parameters
     # TODO: this is O(N_t)!! need to distribute
     m_inf = prior.m_inf(None, X_s, None)
     P_inf = prior.P_inf(None, X_s, None)
     H = prior.H(None, X_s, None)
-    A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
+    A_arr = jax.vmap(low_memory_wrapper(lambda dt_k: prior.expm(X_s, dt_k)))(dt)
     #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
-    Q_arr = jax.vmap(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s))(dt, A_arr)
+    Q_arr = jax.vmap(low_memory_wrapper(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s)))(dt, A_arr)
     H_arr = np.tile(H[None, ...], [A_arr.shape[0], 1, 1])
+
 
     # TODO: check indexes here
     x_all = jax.vmap(
-        _generic_smoothing_element
+        low_memory_wrapper(_generic_smoothing_element)
     )(A_arr[:-1], Q_arr[:-1], m_arr[:-1], P_arr[:-1])
 
     x_last = _last_smoothing_element(None, None, m_arr[-1], P_arr[-1])
@@ -85,7 +92,7 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     ]
 
     res = associative_scan(
-        jax.vmap(smoothing_operator), 
+        jax.vmap(low_memory_wrapper(smoothing_operator)), 
         x_all,
         reverse=True
     )
@@ -96,8 +103,8 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     H_k = get_H(prior, None, None, X_s, X_t[0], full_state)
 
     # Extract obdereved state
-    m = jax.vmap(lambda H_k, m_k: H_k @ m_k)(H_arr, m)
-    P = jax.vmap(lambda H_k, P_k: H_k @ P_k @ H_k.T)(H_arr, P)
+    m = jax.vmap(low_memory_wrapper(lambda H_k, m_k: H_k @ m_k))(H_arr, m)
+    P = jax.vmap(low_memory_wrapper(lambda H_k, P_k: H_k @ P_k @ H_k.T))(H_arr, P)
 
 
     return m, P

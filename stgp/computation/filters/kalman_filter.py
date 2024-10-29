@@ -554,7 +554,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
 
 
     carry, ys = scan(
-        step_wrap,
+        jax.remat(step_wrap),
         state_dict,
         carry_dict,
         unroll = unroll

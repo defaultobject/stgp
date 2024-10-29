@@ -175,7 +175,7 @@ def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
     step_wrap = step_wrapper(data, model, full_state)
 
     carry, ys = scan(
-        step_wrap,
+        jax.remat(step_wrap),
         {
             'm': m_init,
             'P': P_init 

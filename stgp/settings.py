@@ -18,6 +18,13 @@ experimental_precomputed_cumsum_eps = 0.01
 
 experimental_allow_f_multi_dim_per_output = False
 
+# will use jax.remat where necessary to reduce memory usuage
+#   this will be compensated by slower running times
+low_memory_mode = False
+
+# When in low memory mode, controls the size that the associate scan is blocked into
+parallel_filter_block_size = None
+
 # controls whether batchjax can convert loops into vmaps
 use_loop_mode = False
 

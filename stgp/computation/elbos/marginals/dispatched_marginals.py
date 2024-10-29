@@ -28,7 +28,7 @@ from ....dispatch import dispatch, evoke
 from .... import settings
 from ....utils.batch_utils import batch_over_module_types
 from ...marginals import gaussian_conditional_diagional, gaussian_conditional, gaussian_conditional_covar, whitened_gaussian_conditional_diagional, whitened_gaussian_conditional_full, gaussian_conditional_blocks, whitened_gaussian_conditional_full
-from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional, to_block_diag
+from ...matrix_ops import diagonal_from_cholesky, get_block_diagonal, block_diagonal_from_cholesky, block_from_vec, cholesky, add_jitter, diagonal_from_XDXT, cholesky_solve, triangular_solve, batched_block_diagional, to_block_diag, get_tensor_memory_in_gb
 from ...permutations import left_permute_mat, data_order_to_output_order, permute_vec, permute_mat, unpermute_vec, unpermute_mat
 from ....core import Block, get_block_dim
 
@@ -101,6 +101,8 @@ def marginal_blocks(data, q_m, q_S, approximate_posterior, likelihood, prior, sp
         var_p_bd = np.reshape(var_p_bd, [-1, 1, Q, Q])
 
         chex.assert_rank([mu_p_bd, var_p_bd], [3, 4])
+
+
         return mu_p_bd, var_p_bd
 
     raise RuntimeError()

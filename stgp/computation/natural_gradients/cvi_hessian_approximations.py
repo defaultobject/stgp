@@ -479,6 +479,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
 
 
         if True:
+            #TODO would be trivial to use prefix sums here as well
             def cumsum_inner(carry, state):
                 """
                 Args:
@@ -688,6 +689,7 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, d
         G = gauss_newton_jacobian_approximation_across_time(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f, mf=mf)
 
         if False:
+            # TODO: need to make a unit test out of this this!
             G_d = gauss_newton_jacobian_approximation(u, S, model,  laplace_log_lik=laplace_log_lik, prediction_samples=prediction_samples, delta_f=delta_f)
             print(G-G_d)
             print(np.sum(G-G_d))
@@ -701,12 +703,15 @@ def gauss_newton(u, S, model,  laplace_log_lik=False, prediction_samples=None, d
 
     return approx_hessian
 
-def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True):
+def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True, q_mu_z = None, q_var_z = None):
     q = model.approximate_posterior
 
 
     if _ensure_str(q) == 'MeanFieldConjugateGaussian':
         # block diagonal
+
+        if q_mu_z is not None:
+            breakpoint()
 
         approx_posteriors = q.approx_posteriors
         q_mu_z, q_var_z = batch_or_loop(
@@ -731,7 +736,9 @@ def laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(mod
         # TODO: do not need to recompute!
         print('laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior -- 1')
         # get parameters of q(u) in time-latent-space order
-        q_mu_z, q_var_z = q.surrogate.posterior_blocks()
+        if q_mu_z is None:
+            q_mu_z, q_var_z = q.surrogate.posterior_blocks()
+
         chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # delta u
@@ -797,23 +804,23 @@ def get_mf_gaussian_hessian_approximation(model, beta, prediction_samples, enfor
     return approx_hessian
 
 
-def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type):
+def get_full_gaussian_hessian_approximation(model, beta, prediction_samples, enforce_psd_type, q_mu_z=None, q_var_z=None):
     if enforce_psd_type == 'gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = True, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'gauss_newton_delta_u':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = True, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'laplace_gauss_newton':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = True, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = True, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'gauss_newton_mc_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = False, delta_f = False, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'gauss_newton_delta_u_mc_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=False, delta_u = True, delta_f = False, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'laplace_gauss_newton_mc_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = False, delta_f = False, q_mu_z=q_mu_z, q_var_z=q_var_z)
     elif enforce_psd_type == 'laplace_gauss_newton_delta_u_mc_f':
-        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = False)
+        approx_hessian =  laplace_gauss_newton_natural_gradient_for_full_gaussian_approx_posterior(model, beta, prediction_samples, laplace_log_lik=True, delta_u = True, delta_f = False, q_mu_z=q_mu_z, q_var_z=q_var_z)
     else:
         raise RuntimeError()
 

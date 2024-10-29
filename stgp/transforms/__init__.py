@@ -7,6 +7,7 @@ from .output_map import OutputMap
 from .aggregate import Aggregate
 from .nearest_neighbours import NearestNeighbours, PrecomputedNearestNeighbours, DataStack
 from .uncertain_inputs import UncertainPredictionInput 
+from .dgp import DeepGP
 
 __all__ = [
     "Transform", 
@@ -28,5 +29,6 @@ __all__ = [
     "NearestNeighbours",
     "PrecomputedNearestNeighbours",
     "DataStack",
-    "UncertainPredictionInput"
+    "UncertainPredictionInput",
+    "DeepGP"
 ]

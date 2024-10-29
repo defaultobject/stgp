@@ -267,6 +267,17 @@ def log_marginal_likelihood(
 
     return lml
 
+@dispatch(Data, Model, Likelihood, 'DeepGP', 'MomentMatching')
+def log_marginal_likelihood( data, gp, likelihood, prior):
+    # collect linear forms for all layers
+    #for p in prior.parent.parent:  
+        
+
+    # construct joint model
+    breakpoint()
+
+
+
 # ===============================================================================================
 # ===============================================================================================
 # ========================================  ENTRY POINTs ========================================
@@ -286,6 +297,8 @@ def log_marginal_likelihood( data, m, likelihood, prior):
 
 
 # ====================================== NonLinear Models ======================================
+
+
 @dispatch(Data, Model, Likelihood, NonLinearModel)
 def log_marginal_likelihood( data, gp, likelihood, prior):
     raise RuntimeError('Batch Inference is not supported for Nonlinear Models. Try using Variational inference instead.')

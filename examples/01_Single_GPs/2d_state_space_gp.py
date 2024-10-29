@@ -1,18 +1,19 @@
 """ Gaussian Process Regression Computed through a State Space Representation"""
 
+#sudo docker run --mount type=bind,source=/home/u1303865/test/,target=/home/app --gpus "device=0" -p 8888:8888 defaultobject/ml:cuda12 /bin/bash -c "python test.py"
+#scp -J login-pg aquifer:'~/test/memory.prof' .
+# /usr/local/go/bin/go tool pprof -unit gb -pdf mem.prof
+
 import sys
 sys.path.append('../')
 
 import jax
 from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 from jax import make_jaxpr
-
-from example_utils.data_zoo import single_output_spatial_data
-from example_utils import colors
 
 import stgp
 from stgp import settings
@@ -29,14 +30,43 @@ from stgp.transforms import Independent
 import matplotlib.pyplot as plt
 from timeit import default_timer as timer
 
+
+def create_grid(x1, x2, y1, y2, n1=10, n2=10):
+    y = np.linspace(y1, y2, n2)
+    x = np.linspace(x1, x2, n1)
+
+    grid = []
+    for i in x:
+        for j in y:
+            grid.append([i, j])
+
+    return np.array(grid)
+
+
+def single_output_spatial_data(N_time, N_space, NS_time, NS_space, seed=0):
+    np.random.seed(seed)
+
+    X = create_grid(-1, 1, -1, 1, N_time, N_space)
+    N = X.shape[0]
+
+    y = np.sin(10*X[:, 0]) + np.sin(10*X[:, 1]) + 0.01*np.random.randn(N)
+    Y = y[:, None]
+
+    XS = create_grid(-1, 1, -1, 1, NS_time, NS_space)
+
+    return XS, X, Y
+
+
 settings.jitter = 1e-7
 #stgp.settings.linear_solver = stgp.settings.SolveType.CG
 #stgp.settings.linear_solver = stgp.settings.SolveType.EXACT
 stgp.settings.linear_solver = stgp.settings.SolveType.CHOLESKY
+stgp.settings.low_memory_mode = True
+stgp.settings.parallel_filter_block_size = 1000
 
 # Construct Data
 NS = 50
-XS, X, Y = single_output_spatial_data(10, 10, NS, NS, seed=0)
+XS, X, Y = single_output_spatial_data(10000, 100, NS, NS, seed=0)
 
 Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
@@ -57,18 +87,34 @@ latent_gp = GP(
 
 prior = LTI_SDE(Independent([latent_gp])) 
 
-parallel = False
 
-print(f'parallel: {parallel}')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='parallel')
+#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
-#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='square_root_svm')
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
+
+print(m.get_objective())
+breakpoint()
 
 # Train
-if False:
+if True:
     max_iters = 100
-    trainer = ScipyTrainer(m, 'L-BFGS-B')
-    trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+    #trainer = ScipyTrainer(m, 'L-BFGS-B')
+    #trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
+
+    trainer = ADAM(m)
+    #grad = trainer.grad_fn()
+
+    breakpoint()
+    jaxpr = jax.make_jaxpr(trainer.unjitted_grad_fn)()
+    with open("jaxpr.txt", "w") as text_file: text_file.write(str(jaxpr))
+
+    breakpoint()
+    grad = trainer.unjitted_grad_fn()
+    grad[0].block_until_ready()
+    jax.profiler.save_device_memory_profile("mem.prof")
+    breakpoint()
+
+    trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
 
 print(m.get_objective())
 

@@ -6,10 +6,16 @@ from ..dispatch import evoke
 class Batch(Inference):
     """Batch inference class."""
 
-    def neg_log_marginal_likelihood(self, data, gp, likelihood, prior):
-        lml = evoke('log_marginal_likelihood', data, gp, likelihood, prior)(
-            data, gp, likelihood, prior
-        )
+    def neg_log_marginal_likelihood(self, data, gp, likelihood, prior, approximation=None):
+
+        if approximation is not None:
+            lml = evoke('log_marginal_likelihood', data, gp, likelihood, prior, approximation)(
+                data, gp, likelihood, prior
+            )
+        else:
+            lml = evoke('log_marginal_likelihood', data, gp, likelihood, prior)(
+                data, gp, likelihood, prior
+            )
 
         return - lml
 

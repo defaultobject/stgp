@@ -127,6 +127,8 @@ class Trainer:
         # Jit required functions
         objective_fn = objax.Jit(self.m.get_objective, all_vars)
 
+        self.unjitted_grad_fn = ReverseModeGrad(objective_fn, vars_to_train)
+
         if forward_mode:
             self.grad_fn = objax.Jit(
                 ForwardModeGrad(objective_fn, vars_to_train), 

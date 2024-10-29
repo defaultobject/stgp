@@ -129,15 +129,9 @@ def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
     breakpoint()
 
 
-def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
-    base_gp = prior.parent
-    noise_gp = prior.prediction_gp
+def get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, gp, likelihood, prior, block_size):
 
-    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
-
-    # for testing
-    #noise_pred_mu = [XS]
-    #noise_pred_var = noise_pred_var*0.0
+    # TODO: check shapes
 
     first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp.kernel)(
         XS, data.X, noise_pred_mu[0], noise_pred_var[0][0], base_gp.kernel
@@ -153,11 +147,11 @@ def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
     K_tilde = K_xx + likelihood_var
     K_tilde_chol = cholesky(K_tilde)
 
+    # TODO: can we avoid direct solve?
     K_tilde_inv = cholesky_solve(K_tilde_chol, np.eye(N))
     beta = cholesky_solve(K_tilde_chol, Y)
 
     mean_weights = (cholesky_solve(K_tilde_chol, first_argument_form.T).T)
-
 
     var = both_argument_form
     var = var - np.sum(np.multiply((K_tilde_inv - beta @ beta.T)[None, None, ...], square_form), axis=[2, 3])
@@ -170,6 +164,20 @@ def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
         [1,  None]
     )(first_argument_form, first_argument_form)
 
+    # TODO: should probably write as a scan to save memory!
     var = var - np.sum(np.multiply( np.transpose(llT, [2, 3, 0, 1]), (beta @ beta.T)[None, None, ...]), axis=[2, 3])
 
     return mean_weights, var
+
+def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
+    base_gp = prior.parent
+    noise_gp = prior.prediction_gp
+
+    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
+
+    # for testing
+    #noise_pred_mu = [XS]
+    #noise_pred_var = noise_pred_var*0.0
+
+    return get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, gp, likelihood, prior, block_size)
+

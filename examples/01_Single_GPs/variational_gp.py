@@ -12,6 +12,7 @@ import numpy as np
 from example_utils.data_zoo import single_output_timeseries
 from example_utils import colors
 from stgp.trainers import ScipyTrainer, GradDescentTrainer, NatGradTrainer
+from stgp.trainers.standard import ADAM
 from stgp.trainers.callbacks import progress_bar_callback
 from stgp.kernels import RBF, ScaleKernel
 from stgp.likelihood import Gaussian, ProductLikelihood
@@ -45,6 +46,10 @@ m = GP(
 )
 
 # Train
+m.approximate_posterior.fix()
+trainer = ADAM(m)
+trainer.train(0.01, 1)
+
 if True:
     ng_trainer = NatGradTrainer(m)
     #ng_trainer = NatGradTrainer(m)

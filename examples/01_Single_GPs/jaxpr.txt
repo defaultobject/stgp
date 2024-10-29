@@ -1,0 +1,890 @@
+let atleast_1d = { [34m[22m[1mlambda [39m[22m[22m; a[35m:f64[100,1][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(a,) } in
+let positive_transform = { [34m[22m[1mlambda [39m[22m[22m; b[35m:f64[1,1][39m. [34m[22m[1mlet
+    [39m[22m[22mc[35m:f64[1,1][39m d[35m:f64[1,1][39m e[35m:f64[1,1][39m = pjit[
+      name=softplus
+      jaxpr={ [34m[22m[1mlambda [39m[22m[22m; f[35m:f64[1,1][39m. [34m[22m[1mlet
+          [39m[22m[22mg[35m:f64[1,1][39m = exp f
+          h[35m:f64[1,1][39m = add 1.0 g
+          i[35m:f64[1,1][39m = log h
+        [34m[22m[1min [39m[22m[22m(i, g, h) }
+    ] b
+  [34m[22m[1min [39m[22m[22m(c, d, e) } in
+let to_block_diag = { [34m[22m[1mlambda [39m[22m[22m; j[35m:f64[1,200,200][39m. [34m[22m[1mlet
+    [39m[22m[22mk[35m:f64[1,200,200][39m = copy j
+    pjit[name=atleast_2d jaxpr={ [34m[22m[1mlambda [39m[22m[22m; l[35m:f64[1,200,200][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m() }] k
+    m[35m:f64[200,200][39m = reshape[dimensions=None new_sizes=(200, 200)] k
+    n[35m:f64[1,200,1,200][39m = reshape[dimensions=None new_sizes=(1, 200, 1, 200)] m
+    o[35m:f64[200,200][39m = reshape[dimensions=None new_sizes=(200, 200)] n
+    p[35m:i32[1,1][39m = iota[dimension=0 dtype=int32 shape=(1, 1)] 
+    q[35m:i32[1,1][39m = add p 0
+    r[35m:i32[1,1][39m = iota[dimension=1 dtype=int32 shape=(1, 1)] 
+    s[35m:bool[1,1][39m = eq q r
+    t[35m:f64[1,1][39m = convert_element_type[new_dtype=float64 weak_type=False] s
+    u[35m:f64[1,200,200][39m = slice[
+      limit_indices=(1, 200, 200)
+      start_indices=(0, 0, 0)
+      strides=None
+    ] k
+    _[35m:f64[200,200][39m = squeeze[dimensions=(0,)] u
+    v[35m:f64[200,200][39m = broadcast_in_dim[broadcast_dimensions=() shape=(200, 200)] 1.0
+    w[35m:f64[200,200][39m = pjit[
+      name=kron
+      jaxpr={ [34m[22m[1mlambda [39m[22m[22m; x[35m:f64[1,1][39m y[35m:f64[200,200][39m. [34m[22m[1mlet
+          [39m[22m[22mz[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(0, 2)
+            shape=(1, 1, 1, 1)
+          ] x
+          ba[35m:f64[1,200,1,200][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 3)
+            shape=(1, 200, 1, 200)
+          ] y
+          bb[35m:f64[1,200,1,200][39m = mul z ba
+          bc[35m:f64[200,200][39m = reshape[dimensions=None new_sizes=(200, 200)] bb
+        [34m[22m[1min [39m[22m[22m(bc,) }
+    ] t v
+    bd[35m:f64[200,200][39m = mul o w
+  [34m[22m[1min [39m[22m[22m(bd, w) } in
+let positive_transform1 = { [34m[22m[1mlambda [39m[22m[22m; be[35m:f64[1,1][39m bf[35m:f64[1,1][39m bg[35m:f64[1,1,1][39m. [34m[22m[1mlet
+    [39m[22m[22mbh[35m:f64[1,1,1][39m = pjit[
+      name=softplus
+      jaxpr={ [34m[22m[1mlambda [39m[22m[22m; bi[35m:f64[1,1][39m bj[35m:f64[1,1][39m bk[35m:f64[1,1,1][39m. [34m[22m[1mlet
+          [39m[22m[22mbl[35m:f64[1,1,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 2)
+            shape=(1, 1, 1)
+          ] bj
+          bm[35m:f64[1,1,1][39m = div bk bl
+          bn[35m:f64[1,1,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 2)
+            shape=(1, 1, 1)
+          ] bi
+          bo[35m:f64[1,1,1][39m = mul bm bn
+        [34m[22m[1min [39m[22m[22m(bo,) }
+    ] be bf bg
+  [34m[22m[1min [39m[22m[22m(bh,) } in
+let softplus = { [34m[22m[1mlambda [39m[22m[22m; f[35m:f64[1,1][39m. [34m[22m[1mlet
+    [39m[22m[22mg[35m:f64[1,1][39m = exp f
+    h[35m:f64[1,1][39m = add 1.0 g
+    i[35m:f64[1,1][39m = log h
+  [34m[22m[1min [39m[22m[22m(i, g, h) } in
+let atleast_2d = { [34m[22m[1mlambda [39m[22m[22m; l[35m:f64[1,200,200][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m() } in
+let kron = { [34m[22m[1mlambda [39m[22m[22m; x[35m:f64[1,1][39m y[35m:f64[200,200][39m. [34m[22m[1mlet
+    [39m[22m[22mz[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+      broadcast_dimensions=(0, 2)
+      shape=(1, 1, 1, 1)
+    ] x
+    ba[35m:f64[1,200,1,200][39m = broadcast_in_dim[
+      broadcast_dimensions=(1, 3)
+      shape=(1, 200, 1, 200)
+    ] y
+    bb[35m:f64[1,200,1,200][39m = mul z ba
+    bc[35m:f64[200,200][39m = reshape[dimensions=None new_sizes=(200, 200)] bb
+  [34m[22m[1min [39m[22m[22m(bc,) } in
+let softplus1 = { [34m[22m[1mlambda [39m[22m[22m; bi[35m:f64[1,1][39m bj[35m:f64[1,1][39m bk[35m:f64[1,1,1][39m. [34m[22m[1mlet
+    [39m[22m[22mbl[35m:f64[1,1,1][39m = broadcast_in_dim[
+      broadcast_dimensions=(1, 2)
+      shape=(1, 1, 1)
+    ] bj
+    bm[35m:f64[1,1,1][39m = div bk bl
+    bn[35m:f64[1,1,1][39m = broadcast_in_dim[
+      broadcast_dimensions=(1, 2)
+      shape=(1, 1, 1)
+    ] bi
+    bo[35m:f64[1,1,1][39m = mul bm bn
+  [34m[22m[1min [39m[22m[22m(bo,) } in
+{ [34m[22m[1mlambda [39m[22m[22mbp[35m:f64[10000][39m bq[35m:f64[100,1][39m br[35m:f64[10000,1,100][39m bs[35m:f64[][39m bt[35m:f64[1][39m bu[35m:f64[1][39m; . [34m[22m[1mlet
+    [39m[22m[22m_[35m:f64[][39m bv[35m:f64[1,1][39m bw[35m:f64[1,1][39m bx[35m:f64[1,1][39m by[35m:f64[1,100,100,1][39m bz[35m:f64[1,1,1,1][39m
+      ca[35m:f64[1,100,100,1][39m cb[35m:f64[1,1][39m cc[35m:f64[1,1][39m cd[35m:f64[1,1,2][39m ce[35m:f64[1][39m cf[35m:f64[1][39m
+      cg[35m:f64[1][39m ch[35m:f64[1][39m ci[35m:f64[][39m cj[35m:f64[1,1,2][39m ck[35m:f64[1,1][39m cl[35m:f64[1][39m cm[35m:f64[][39m cn[35m:f64[1][39m
+      co[35m:f64[1,100,1,100,1][39m cp[35m:f64[1,1,1,1,1][39m cq[35m:f64[1,100,1,100,1][39m cr[35m:f64[1,1,2,1,2][39m
+      cs[35m:f64[1,100,1,100,1][39m ct[35m:f64[200,200][39m = pjit[
+      name=jit
+      jaxpr={ [34m[22m[1mlambda [39m[22m[22mcu[35m:f64[10000,100,100][39m cv[35m:i64[1][39m; cw[35m:f64[10000][39m cx[35m:f64[100,1][39m
+          cy[35m:f64[10000,1,100][39m cz[35m:f64[][39m da[35m:f64[1][39m db[35m:f64[1][39m. [34m[22m[1mlet
+          [39m[22m[22mdc[35m:f64[][39m _[35m:f64[][39m _[35m:f64[][39m = pjit[
+            name=positive_transform
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dd[35m:f64[][39m. [34m[22m[1mlet
+                [39m[22m[22mde[35m:f64[][39m df[35m:f64[][39m dg[35m:f64[][39m = pjit[
+                  name=softplus
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dh[35m:f64[][39m. [34m[22m[1mlet
+                      [39m[22m[22mdi[35m:f64[][39m = exp dh
+                      dj[35m:f64[][39m = add 1.0 di
+                      dk[35m:f64[][39m = log dj
+                    [34m[22m[1min [39m[22m[22m(dk, di, dj) }
+                ] dd
+              [34m[22m[1min [39m[22m[22m(de, df, dg) }
+          ] cz
+          dl[35m:f64[][39m = convert_element_type[new_dtype=float64 weak_type=False] dc
+          _[35m:f64[10000,100,100][39m = mul cu dl
+          dm[35m:f64[9999][39m = pjit[
+            name=diff
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dn[35m:f64[10000][39m. [34m[22m[1mlet
+                [39m[22m[22mdo[35m:f64[9999][39m = slice[
+                  limit_indices=(10000,)
+                  start_indices=(1,)
+                  strides=None
+                ] dn
+                dp[35m:f64[9999][39m = slice[
+                  limit_indices=(9999,)
+                  start_indices=(0,)
+                  strides=None
+                ] dn
+                dq[35m:f64[9999][39m = sub do dp
+              [34m[22m[1min [39m[22m[22m(dq,) }
+          ] cw
+          _[35m:f64[10000][39m = broadcast_in_dim[
+            broadcast_dimensions=()
+            shape=(10000,)
+          ] 1.0
+          _[35m:i64[10000][39m = iota[dimension=0 dtype=int64 shape=(10000,)] 
+          dr[35m:f64[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] 0.0
+          ds[35m:f64[1][39m = pjit[
+            name=atleast_1d
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dt[35m:f64[1][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(dt,) }
+          ] dr
+          du[35m:f64[9999][39m = pjit[
+            name=atleast_1d
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; dv[35m:f64[9999][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(dv,) }
+          ] dm
+          _[35m:f64[10000][39m = concatenate[dimension=0] ds du
+          dw[35m:f64[10000,100][39m = reshape[dimensions=None new_sizes=(10000, 100)] cy
+          _[35m:f64[10000,100,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(0, 1)
+            shape=(10000, 100, 1)
+          ] dw
+          dx[35m:f64[1,1][39m = broadcast_in_dim[broadcast_dimensions=(1,) shape=(1, 1)] da
+          dy[35m:f64[1,1][39m = broadcast_in_dim[broadcast_dimensions=(1,) shape=(1, 1)] db
+          dz[35m:f64[100,1][39m = broadcast_in_dim[
+            broadcast_dimensions=()
+            shape=(100, 1)
+          ] 0.0
+          ea[35m:f64[100,1][39m = pjit[name=atleast_1d jaxpr=atleast_1d] dz
+          eb[35m:f64[100,1][39m = pjit[name=atleast_1d jaxpr=atleast_1d] cx
+          ec[35m:f64[100,2][39m = concatenate[dimension=1] ea eb
+          ed[35m:bool[1][39m = lt cv 0
+          ee[35m:i64[1][39m = add cv 2
+          ef[35m:i64[1][39m = select_n ed cv ee
+          eg[35m:i32[1][39m = convert_element_type[new_dtype=int32 weak_type=False] ef
+          eh[35m:i32[1,1][39m = broadcast_in_dim[broadcast_dimensions=(0,) shape=(1, 1)] eg
+          ei[35m:f64[100,1][39m = gather[
+            dimension_numbers=GatherDimensionNumbers(offset_dims=(0,), collapsed_slice_dims=(1,), start_index_map=(1,))
+            fill_value=None
+            indices_are_sorted=False
+            mode=GatherScatterMode.PROMISE_IN_BOUNDS
+            slice_sizes=(100, 1)
+            unique_indices=False
+          ] ec eh
+          ej[35m:bool[1][39m = lt cv 0
+          ek[35m:i64[1][39m = add cv 2
+          el[35m:i64[1][39m = select_n ej cv ek
+          em[35m:i32[1][39m = convert_element_type[new_dtype=int32 weak_type=False] el
+          en[35m:i32[1,1][39m = broadcast_in_dim[broadcast_dimensions=(0,) shape=(1, 1)] em
+          eo[35m:f64[100,1][39m = gather[
+            dimension_numbers=GatherDimensionNumbers(offset_dims=(0,), collapsed_slice_dims=(1,), start_index_map=(1,))
+            fill_value=None
+            indices_are_sorted=False
+            mode=GatherScatterMode.PROMISE_IN_BOUNDS
+            slice_sizes=(100, 1)
+            unique_indices=False
+          ] ec en
+          ep[35m:f64[1,1][39m eq[35m:f64[1,1][39m er[35m:f64[1,1][39m = pjit[
+            name=positive_transform
+            jaxpr=positive_transform
+          ] dy
+          es[35m:f64[1,100,100,1][39m et[35m:f64[1,1][39m eu[35m:f64[1,100,100,1][39m ev[35m:f64[1,1,1,1][39m = pjit[
+            name=_K_scaler
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ew[35m:f64[100,1][39m ex[35m:f64[100,1][39m ey[35m:f64[1,1][39m. [34m[22m[1mlet
+                [39m[22m[22mez[35m:f64[100,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(100, 1, 1)
+                ] ew
+                fa[35m:f64[1,100,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2)
+                  shape=(1, 100, 1)
+                ] ex
+                fb[35m:f64[100,100,1][39m = sub ez fa
+                fc[35m:f64[100,100,1][39m = integer_pow[y=2] fb
+                fd[35m:f64[100,100,1][39m = mul -0.5 fc
+                fe[35m:f64[1,1][39m = integer_pow[y=2] ey
+                ff[35m:f64[1,1][39m = integer_pow[y=1] ey
+                fg[35m:f64[1,1][39m = mul 2.0 ff
+                fh[35m:f64[1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(1, 1, 1)
+                ] fe
+                fi[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2, 3)
+                  shape=(1, 1, 1, 1)
+                ] fh
+                fj[35m:f64[1,100,100,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2, 3)
+                  shape=(1, 100, 100, 1)
+                ] fd
+                fk[35m:f64[1,100,100,1][39m = div fj fi
+                fl[35m:f64[1,1,1,1][39m = integer_pow[y=-2] fi
+                fm[35m:f64[1,100,100,1][39m = exp fk
+              [34m[22m[1min [39m[22m[22m(fm, fg, fj, fl) }
+          ] ei eo ep
+          fn[35m:f64[1,1,100,100][39m = reshape[
+            dimensions=(3, 0, 1, 2)
+            new_sizes=(1, 1, 100, 100)
+          ] es
+          fo[35m:f64[1,100,100][39m = squeeze[dimensions=(0,)] fn
+          fp[35m:f64[1,1][39m fq[35m:f64[1,1][39m fr[35m:f64[1,1][39m = pjit[
+            name=positive_transform
+            jaxpr=positive_transform
+          ] dx
+          fs[35m:f64[1,1][39m = slice[
+            limit_indices=(1, 1)
+            start_indices=(0, 0)
+            strides=None
+          ] fp
+          ft[35m:f64[1][39m = squeeze[dimensions=(1,)] fs
+          fu[35m:f64[1,2,2][39m fv[35m:f64[2,1][39m fw[35m:f64[1,1,1][39m fx[35m:f64[1,2][39m fy[35m:f64[2,1][39m fz[35m:f64[1,2,2][39m
+            ga[35m:f64[1,1,2][39m gb[35m:f64[1][39m gc[35m:f64[1][39m gd[35m:f64[1][39m ge[35m:f64[1][39m gf[35m:f64[][39m gg[35m:f64[1,1,2][39m
+            gh[35m:f64[1,1][39m gi[35m:f64[1][39m gj[35m:f64[][39m gk[35m:f64[1][39m = pjit[
+            name=matern32_temporal_state_space_rep
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22mgl[35m:f64[2][39m gm[35m:f64[2,1][39m gn[35m:f64[1,2][39m; go[35m:f64[1][39m gp[35m:f64[][39m. [34m[22m[1mlet
+                [39m[22m[22mgq[35m:f64[1][39m = div 1.7320508075688772 go
+                gr[35m:f64[1][39m = integer_pow[y=-2] go
+                gs[35m:f64[1][39m = integer_pow[y=2] gq
+                gt[35m:f64[1][39m = integer_pow[y=1] gq
+                gu[35m:f64[1][39m = mul 2.0 gt
+                gv[35m:f64[1][39m = neg gs
+                gw[35m:f64[1][39m = mul -2.0 gq
+                gx[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1)
+                ] gv
+                gy[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1)
+                ] gw
+                gz[35m:f64[1,2][39m = concatenate[dimension=1] gx gy
+                ha[35m:f64[1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1,)
+                  shape=(1, 2)
+                ] gl
+                hb[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(1, 1, 2)
+                ] gz
+                hc[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2)
+                  shape=(1, 1, 2)
+                ] ha
+                hd[35m:f64[1,2,2][39m = concatenate[dimension=1] hc hb
+                he[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(1, 1, 2)
+                ] 0.0
+                hf[35m:f64[1][39m = pow go 3.0
+                hg[35m:f64[][39m = sub 3.0 1.0
+                hh[35m:f64[1][39m = pow go hg
+                hi[35m:f64[1][39m = mul 3.0 hh
+                hj[35m:f64[1][39m = div 20.784609690826528 hf
+                hk[35m:f64[1][39m = integer_pow[y=-2] hf
+                hl[35m:f64[][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] gp
+                hm[35m:f64[1][39m = mul hj hl
+                hn[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1)
+                ] hm
+                ho[35m:f64[1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(1, 1, 1)
+                ] hn
+                hp[35m:f64[2,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(2, 1)
+                ] 0.0
+                hq[35m:f64[][39m = mul 3.0 gp
+                hr[35m:f64[1][39m = pow go 2.0
+                hs[35m:f64[][39m = sub 2.0 1.0
+                ht[35m:f64[1][39m = pow go hs
+                hu[35m:f64[1][39m = mul 2.0 ht
+                hv[35m:f64[][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] hq
+                hw[35m:f64[1][39m = div hv hr
+                hx[35m:f64[1][39m = integer_pow[y=-2] hr
+                hy[35m:f64[][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] gp
+                hz[35m:f64[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] hy
+                ia[35m:f64[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] 0.0
+                ib[35m:f64[2][39m = concatenate[dimension=0] hz ia
+                ic[35m:f64[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] 0.0
+                id[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1)
+                ] hw
+                ie[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1,)
+                  shape=(1, 1)
+                ] ic
+                if[35m:f64[1,2][39m = concatenate[dimension=1] ie id
+                ig[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(1, 1)
+                ] 0.0
+                ih[35m:f64[1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1,)
+                  shape=(1, 2)
+                ] ib
+                ii[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(1, 1, 2)
+                ] if
+                ij[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2)
+                  shape=(1, 1, 2)
+                ] ih
+                ik[35m:f64[1,2,2][39m = concatenate[dimension=1] ij ii
+                il[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(1, 1, 2)
+                ] 0.0
+              [34m[22m[1min [39m[22m[22m(hd, gm, ho, gn, hp, ik, he, gr, gu, hi, hk, hl, il, ig, hu, hv,
+                hx) }
+          ] ft 1.0
+          im[35m:f64[1,200,200][39m in[35m:f64[200,100][39m io[35m:f64[1,100,100][39m ip[35m:f64[100,200][39m iq[35m:f64[200,1][39m
+            ir[35m:f64[1,200,200][39m is[35m:f64[1,100,1,100,1][39m it[35m:f64[1,1,1,1,1][39m iu[35m:f64[1,100,1,100,1][39m
+            iv[35m:f64[1,1,2,1,2][39m iw[35m:f64[1,100,1,100,1][39m = pjit[
+            name=space_time_state_space_rep
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ix[35m:f64[1,100,100][39m iy[35m:f64[1,2,2][39m iz[35m:f64[2,1][39m ja[35m:f64[1,1,1][39m
+                jb[35m:f64[1,2][39m jc[35m:f64[2,1][39m jd[35m:f64[1,2,2][39m. [34m[22m[1mlet
+                [39m[22m[22mje[35m:i32[100,100][39m = iota[dimension=0 dtype=int32 shape=(100, 100)] 
+                jf[35m:i32[100,100][39m = add je 0
+                jg[35m:i32[100,100][39m = iota[dimension=1 dtype=int32 shape=(100, 100)] 
+                jh[35m:bool[100,100][39m = eq jf jg
+                ji[35m:f64[100,100][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] jh
+                jj[35m:f64[1,200,200][39m jk[35m:f64[1,100,1,100,1][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; jl[35m:f64[100,100][39m jm[35m:f64[1,2,2][39m. [34m[22m[1mlet
+                      [39m[22m[22mjn[35m:f64[100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(100, 1, 100, 1)
+                      ] jl
+                      jo[35m:f64[1,1,2,1,2][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2, 4)
+                        shape=(1, 1, 2, 1, 2)
+                      ] jm
+                      jp[35m:f64[1,100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 2, 3, 4)
+                        shape=(1, 100, 1, 100, 1)
+                      ] jn
+                      jq[35m:f64[1,100,2,100,2][39m = mul jp jo
+                      jr[35m:f64[1,200,200][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 200, 200)
+                      ] jq
+                    [34m[22m[1min [39m[22m[22m(jr, jp) }
+                ] ji iy
+                js[35m:f64[200,100][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; jt[35m:f64[100,100][39m ju[35m:f64[2,1][39m. [34m[22m[1mlet
+                      [39m[22m[22mjv[35m:f64[100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(100, 1, 100, 1)
+                      ] jt
+                      jw[35m:f64[1,2,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 2, 1, 1)
+                      ] ju
+                      jx[35m:f64[100,2,100,1][39m = mul jv jw
+                      jy[35m:f64[200,100][39m = reshape[
+                        dimensions=None
+                        new_sizes=(200, 100)
+                      ] jx
+                    [34m[22m[1min [39m[22m[22m(jy,) }
+                ] ji iz
+                jz[35m:f64[1,100,100][39m ka[35m:f64[1,1,1,1,1][39m kb[35m:f64[1,100,1,100,1][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; kc[35m:f64[1,100,100][39m kd[35m:f64[1,1,1][39m. [34m[22m[1mlet
+                      [39m[22m[22mke[35m:f64[1,100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 1, 3)
+                        shape=(1, 100, 1, 100, 1)
+                      ] kc
+                      kf[35m:f64[1,1,1,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2, 4)
+                        shape=(1, 1, 1, 1, 1)
+                      ] kd
+                      kg[35m:f64[1,100,1,100,1][39m = mul ke kf
+                      kh[35m:f64[1,100,100][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 100, 100)
+                      ] kg
+                    [34m[22m[1min [39m[22m[22m(kh, kf, ke) }
+                ] ix ja
+                ki[35m:f64[100,200][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; kj[35m:f64[100,100][39m kk[35m:f64[1,2][39m. [34m[22m[1mlet
+                      [39m[22m[22mkl[35m:f64[100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(100, 1, 100, 1)
+                      ] kj
+                      km[35m:f64[1,1,1,2][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 1, 1, 2)
+                      ] kk
+                      kn[35m:f64[100,1,100,2][39m = mul kl km
+                      ko[35m:f64[100,200][39m = reshape[
+                        dimensions=None
+                        new_sizes=(100, 200)
+                      ] kn
+                    [34m[22m[1min [39m[22m[22m(ko,) }
+                ] ji jb
+                kp[35m:f64[1,200,200][39m kq[35m:f64[1,1,2,1,2][39m kr[35m:f64[1,100,1,100,1][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ks[35m:f64[1,100,100][39m kt[35m:f64[1,2,2][39m. [34m[22m[1mlet
+                      [39m[22m[22mku[35m:f64[1,100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 1, 3)
+                        shape=(1, 100, 1, 100, 1)
+                      ] ks
+                      kv[35m:f64[1,1,2,1,2][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2, 4)
+                        shape=(1, 1, 2, 1, 2)
+                      ] kt
+                      kw[35m:f64[1,100,2,100,2][39m = mul ku kv
+                      kx[35m:f64[1,200,200][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 200, 200)
+                      ] kw
+                    [34m[22m[1min [39m[22m[22m(kx, kv, ku) }
+                ] ix jd
+                ky[35m:f64[100,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(100, 1)
+                ] 1.0
+                kz[35m:f64[200,1][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; la[35m:f64[100,1][39m lb[35m:f64[2,1][39m. [34m[22m[1mlet
+                      [39m[22m[22mlc[35m:f64[100,1,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(100, 1, 1, 1)
+                      ] la
+                      ld[35m:f64[1,2,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 2, 1, 1)
+                      ] lb
+                      le[35m:f64[100,2,1,1][39m = mul lc ld
+                      lf[35m:f64[200,1][39m = reshape[
+                        dimensions=None
+                        new_sizes=(200, 1)
+                      ] le
+                    [34m[22m[1min [39m[22m[22m(lf,) }
+                ] ky jc
+              [34m[22m[1min [39m[22m[22m(jj, js, jz, ki, kz, kp, jk, ka, kb, kq, kr) }
+          ] fo fu fv fw fx fy fz
+          lg[35m:f64[1,200,100][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 2)
+            shape=(1, 200, 100)
+          ] in
+          lh[35m:f64[1,100,200][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 2)
+            shape=(1, 100, 200)
+          ] ip
+          li[35m:f64[1,200,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(1, 2)
+            shape=(1, 200, 1)
+          ] iq
+          _[35m:f64[200,200][39m _[35m:f64[200,200][39m = pjit[
+            name=to_block_diag
+            jaxpr=to_block_diag
+          ] im
+          _[35m:f64[200,100][39m = pjit[
+            name=to_block_diag
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; lj[35m:f64[1,200,100][39m. [34m[22m[1mlet
+                [39m[22m[22mlk[35m:f64[1,200,100][39m = copy lj
+                ll[35m:f64[1,200,100][39m = pjit[
+                  name=atleast_2d
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; lm[35m:f64[1,200,100][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(lm,) }
+                ] lk
+                ln[35m:f64[200,100][39m = reshape[dimensions=None new_sizes=(200, 100)] ll
+                lo[35m:f64[1,200,1,100][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 200, 1, 100)
+                ] ln
+                lp[35m:f64[200,100][39m = reshape[dimensions=None new_sizes=(200, 100)] lo
+                lq[35m:i32[1,1][39m = iota[dimension=0 dtype=int32 shape=(1, 1)] 
+                lr[35m:i32[1,1][39m = add lq 0
+                ls[35m:i32[1,1][39m = iota[dimension=1 dtype=int32 shape=(1, 1)] 
+                lt[35m:bool[1,1][39m = eq lr ls
+                lu[35m:f64[1,1][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] lt
+                lv[35m:f64[1,200,100][39m = slice[
+                  limit_indices=(1, 200, 100)
+                  start_indices=(0, 0, 0)
+                  strides=None
+                ] lk
+                _[35m:f64[200,100][39m = squeeze[dimensions=(0,)] lv
+                lw[35m:f64[200,100][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(200, 100)
+                ] 1.0
+                lx[35m:f64[200,100][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ly[35m:f64[1,1][39m lz[35m:f64[200,100][39m. [34m[22m[1mlet
+                      [39m[22m[22mma[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(1, 1, 1, 1)
+                      ] ly
+                      mb[35m:f64[1,200,1,100][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 200, 1, 100)
+                      ] lz
+                      mc[35m:f64[1,200,1,100][39m = mul ma mb
+                      md[35m:f64[200,100][39m = reshape[
+                        dimensions=None
+                        new_sizes=(200, 100)
+                      ] mc
+                    [34m[22m[1min [39m[22m[22m(md,) }
+                ] lu lw
+                me[35m:f64[200,100][39m = mul lp lx
+              [34m[22m[1min [39m[22m[22m(me,) }
+          ] lg
+          _[35m:f64[100,100][39m _[35m:f64[100,100][39m = pjit[
+            name=to_block_diag
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; mf[35m:f64[1,100,100][39m. [34m[22m[1mlet
+                [39m[22m[22mmg[35m:f64[1,100,100][39m = copy mf
+                pjit[
+                  name=atleast_2d
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; mh[35m:f64[1,100,100][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m() }
+                ] mg
+                mi[35m:f64[100,100][39m = reshape[dimensions=None new_sizes=(100, 100)] mg
+                mj[35m:f64[1,100,1,100][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 100, 1, 100)
+                ] mi
+                mk[35m:f64[100,100][39m = reshape[dimensions=None new_sizes=(100, 100)] mj
+                ml[35m:i32[1,1][39m = iota[dimension=0 dtype=int32 shape=(1, 1)] 
+                mm[35m:i32[1,1][39m = add ml 0
+                mn[35m:i32[1,1][39m = iota[dimension=1 dtype=int32 shape=(1, 1)] 
+                mo[35m:bool[1,1][39m = eq mm mn
+                mp[35m:f64[1,1][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] mo
+                mq[35m:f64[1,100,100][39m = slice[
+                  limit_indices=(1, 100, 100)
+                  start_indices=(0, 0, 0)
+                  strides=None
+                ] mg
+                _[35m:f64[100,100][39m = squeeze[dimensions=(0,)] mq
+                mr[35m:f64[100,100][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(100, 100)
+                ] 1.0
+                ms[35m:f64[100,100][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; mt[35m:f64[1,1][39m mu[35m:f64[100,100][39m. [34m[22m[1mlet
+                      [39m[22m[22mmv[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(1, 1, 1, 1)
+                      ] mt
+                      mw[35m:f64[1,100,1,100][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 100, 1, 100)
+                      ] mu
+                      mx[35m:f64[1,100,1,100][39m = mul mv mw
+                      my[35m:f64[100,100][39m = reshape[
+                        dimensions=None
+                        new_sizes=(100, 100)
+                      ] mx
+                    [34m[22m[1min [39m[22m[22m(my,) }
+                ] mp mr
+                mz[35m:f64[100,100][39m = mul mk ms
+              [34m[22m[1min [39m[22m[22m(mz, ms) }
+          ] io
+          na[35m:f64[1,200,1][39m = pjit[
+            name=atleast_2d
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; nb[35m:f64[1,200,1][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(nb,) }
+          ] li
+          _[35m:f64[200,1][39m = reshape[dimensions=None new_sizes=(200, 1)] na
+          nc[35m:f64[200,200][39m nd[35m:f64[200,200][39m = pjit[
+            name=to_block_diag
+            jaxpr=to_block_diag
+          ] ir
+          _[35m:f64[100,200][39m = pjit[
+            name=to_block_diag
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ne[35m:f64[1,100,200][39m. [34m[22m[1mlet
+                [39m[22m[22mnf[35m:f64[1,100,200][39m = copy ne
+                ng[35m:f64[1,100,200][39m = pjit[
+                  name=atleast_2d
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; nh[35m:f64[1,100,200][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(nh,) }
+                ] nf
+                ni[35m:f64[100,200][39m = reshape[dimensions=None new_sizes=(100, 200)] ng
+                nj[35m:f64[1,100,1,200][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 100, 1, 200)
+                ] ni
+                nk[35m:f64[100,200][39m = reshape[dimensions=None new_sizes=(100, 200)] nj
+                nl[35m:i32[1,1][39m = iota[dimension=0 dtype=int32 shape=(1, 1)] 
+                nm[35m:i32[1,1][39m = add nl 0
+                nn[35m:i32[1,1][39m = iota[dimension=1 dtype=int32 shape=(1, 1)] 
+                no[35m:bool[1,1][39m = eq nm nn
+                np[35m:f64[1,1][39m = convert_element_type[
+                  new_dtype=float64
+                  weak_type=False
+                ] no
+                nq[35m:f64[1,100,200][39m = slice[
+                  limit_indices=(1, 100, 200)
+                  start_indices=(0, 0, 0)
+                  strides=None
+                ] nf
+                _[35m:f64[100,200][39m = squeeze[dimensions=(0,)] nq
+                nr[35m:f64[100,200][39m = broadcast_in_dim[
+                  broadcast_dimensions=()
+                  shape=(100, 200)
+                ] 1.0
+                ns[35m:f64[100,200][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; nt[35m:f64[1,1][39m nu[35m:f64[100,200][39m. [34m[22m[1mlet
+                      [39m[22m[22mnv[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2)
+                        shape=(1, 1, 1, 1)
+                      ] nt
+                      nw[35m:f64[1,100,1,200][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 3)
+                        shape=(1, 100, 1, 200)
+                      ] nu
+                      nx[35m:f64[1,100,1,200][39m = mul nv nw
+                      ny[35m:f64[100,200][39m = reshape[
+                        dimensions=None
+                        new_sizes=(100, 200)
+                      ] nx
+                    [34m[22m[1min [39m[22m[22m(ny,) }
+                ] np nr
+                nz[35m:f64[100,200][39m = mul nk ns
+              [34m[22m[1min [39m[22m[22m(nz,) }
+          ] lh
+          oa[35m:f64[][39m = reduce_sum[axes=(0, 1)] nc
+          ob[35m:f64[][39m = neg oa
+        [34m[22m[1min [39m[22m[22m(ob, eq, er, et, eu, ev, es, fq, fr, ga, gb, gc, gd, ge, gf, gg, gh, gi,
+          gj, gk, is, it, iu, iv, iw, nd) }
+    ] bp bq br bs bt bu
+    oc[35m:i32[1,1][39m = iota[dimension=0 dtype=int32 shape=(1, 1)] 
+    od[35m:i32[1,1][39m = add oc 0
+    oe[35m:i32[1,1][39m = iota[dimension=1 dtype=int32 shape=(1, 1)] 
+    of[35m:bool[1,1][39m = eq od oe
+    og[35m:f64[1,1][39m = convert_element_type[new_dtype=float64 weak_type=False] of
+    oh[35m:f64[1,1][39m = slice[limit_indices=(1, 1) start_indices=(0, 0) strides=None] og
+    oi[35m:f64[1][39m = reshape[dimensions=None new_sizes=(1,)] oh
+    oj[35m:f64[1,1][39m ok[35m:f64[1,1][39m = pjit[
+      name=jit
+      jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ol[35m:f64[1,1][39m om[35m:f64[1,1][39m on[35m:f64[1,1][39m oo[35m:f64[1,100,100,1][39m op[35m:f64[1,1,1,1][39m
+          oq[35m:f64[1,100,100,1][39m or[35m:f64[1,1][39m os[35m:f64[1,1][39m ot[35m:f64[1,1,2][39m ou[35m:f64[1][39m ov[35m:f64[1][39m
+          ow[35m:f64[1][39m ox[35m:f64[1][39m oy[35m:f64[][39m oz[35m:f64[1,1,2][39m pa[35m:f64[1,1][39m pb[35m:f64[1][39m pc[35m:f64[][39m
+          pd[35m:f64[1][39m pe[35m:f64[1,100,1,100,1][39m pf[35m:f64[1,1,1,1,1][39m pg[35m:f64[1,100,1,100,1][39m
+          ph[35m:f64[1,1,2,1,2][39m pi[35m:f64[1,100,1,100,1][39m pj[35m:f64[200,200][39m pk[35m:f64[1][39m. [34m[22m[1mlet
+          [39m[22m[22mpl[35m:f64[1][39m = neg pk
+          pm[35m:f64[1,200,200][39m = broadcast_in_dim[
+            broadcast_dimensions=(0,)
+            shape=(1, 200, 200)
+          ] pl
+          pn[35m:f64[1,1,200,200][39m = pjit[
+            name=to_block_diag
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; po[35m:f64[200,200][39m pp[35m:f64[1,200,200][39m. [34m[22m[1mlet
+                [39m[22m[22mpq[35m:f64[1,200,200][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2)
+                  shape=(1, 200, 200)
+                ] po
+                pr[35m:f64[1,200,200][39m = mul pp pq
+                ps[35m:f64[1,1,200,1,200][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 1, 200, 1, 200)
+                ] pr
+                pt[35m:f64[1,200,200][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 200, 200)
+                ] ps
+                pu[35m:f64[1,1,200,200][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 1, 200, 200)
+                ] pt
+                pv[35m:f64[1,1,200,200][39m = pjit[
+                  name=atleast_2d
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; pw[35m:f64[1,1,200,200][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m(pw,) }
+                ] pu
+                px[35m:f64[1,1,200,200][39m = copy pv
+              [34m[22m[1min [39m[22m[22m(px,) }
+          ] pj pm
+          py[35m:f64[1,1,100,100][39m pz[35m:f64[1,1,2,2][39m = pjit[
+            name=space_time_state_space_rep
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; qa[35m:f64[1,100,1,100,1][39m qb[35m:f64[1,1,1,1,1][39m qc[35m:f64[1,100,1,100,1][39m
+                qd[35m:f64[1,1,2,1,2][39m qe[35m:f64[1,100,1,100,1][39m qf[35m:f64[1,1,200,200][39m. [34m[22m[1mlet
+                [39m[22m[22mqg[35m:f64[1,1,100,100][39m qh[35m:f64[1,1,2,2][39m = pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; qi[35m:f64[1,1,2,1,2][39m qj[35m:f64[1,100,1,100,1][39m qk[35m:f64[1,1,200,200][39m. [34m[22m[1mlet
+                      [39m[22m[22mql[35m:f64[1,1,100,2,100,2][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 1, 100, 2, 100, 2)
+                      ] qk
+                      qm[35m:f64[1,1,100,1,100,1][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 2, 3, 4, 5)
+                        shape=(1, 1, 100, 1, 100, 1)
+                      ] qj
+                      qn[35m:f64[1,1,100,2,100,2][39m = mul qm ql
+                      qo[35m:f64[1,1,2,2][39m = reduce_sum[axes=(2, 4)] qn
+                      qp[35m:f64[1,1,1,2,1,2][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 1, 1, 2, 1, 2)
+                      ] qo
+                      qq[35m:f64[1,2,2][39m = reduce_sum[axes=(1, 2, 4)] qp
+                      qr[35m:f64[1,1,2,2][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2, 3)
+                        shape=(1, 1, 2, 2)
+                      ] qq
+                      qs[35m:f64[1,1,1,2,1,2][39m = broadcast_in_dim[
+                        broadcast_dimensions=(1, 2, 3, 4, 5)
+                        shape=(1, 1, 1, 2, 1, 2)
+                      ] qi
+                      qt[35m:f64[1,1,100,2,100,2][39m = mul ql qs
+                      qu[35m:f64[1,1,100,100][39m = reduce_sum[axes=(3, 5)] qt
+                      qv[35m:f64[1,1,100,1,100,1][39m = reshape[
+                        dimensions=None
+                        new_sizes=(1, 1, 100, 1, 100, 1)
+                      ] qu
+                      qw[35m:f64[1,100,100][39m = reduce_sum[axes=(1, 3, 5)] qv
+                      qx[35m:f64[1,1,100,100][39m = broadcast_in_dim[
+                        broadcast_dimensions=(0, 2, 3)
+                        shape=(1, 1, 100, 100)
+                      ] qw
+                    [34m[22m[1min [39m[22m[22m(qx, qr) }
+                ] qd qe qf
+                pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; qy[35m:f64[1,1,1,1,1][39m qz[35m:f64[1,100,1,100,1][39m. [34m[22m[1mlet
+                      
+                    in [39m[22m[22m() }
+                ] qb qc
+                pjit[
+                  name=kron
+                  jaxpr={ [34m[22m[1mlambda [39m[22m[22m; ra[35m:f64[1,100,1,100,1][39m. [34m[22m[1mlet[39m[22m[22m  [34m[22m[1min [39m[22m[22m() }
+                ] qa
+              [34m[22m[1min [39m[22m[22m(qg, qh) }
+          ] pe pf pg ph pi pn
+          rb[35m:f64[1,1][39m = pjit[
+            name=matern32_temporal_state_space_rep
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; rc[35m:f64[1,1,2][39m rd[35m:f64[1][39m re[35m:f64[1][39m rf[35m:f64[1][39m rg[35m:f64[1][39m
+                rh[35m:f64[][39m ri[35m:f64[1,1,2][39m rj[35m:f64[1,1][39m rk[35m:f64[1][39m rl[35m:f64[][39m rm[35m:f64[1][39m rn[35m:f64[1,1,2,2][39m. [34m[22m[1mlet
+                [39m[22m[22mro[35m:f64[1,1,1,2][39m = slice[
+                  limit_indices=(1, 1, 2, 2)
+                  start_indices=(0, 0, 1, 0)
+                  strides=None
+                ] rn
+                rp[35m:f64[1,2][39m = reduce_sum[axes=(1, 2)] ro
+                rq[35m:f64[1,1,2][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0, 2)
+                  shape=(1, 1, 2)
+                ] rp
+                rr[35m:f64[1,1,1][39m = slice[
+                  limit_indices=(1, 1, 2)
+                  start_indices=(0, 0, 1)
+                  strides=None
+                ] rq
+                rs[35m:f64[1][39m = reduce_sum[axes=(1, 2)] rr
+                rt[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1)
+                ] rs
+                ru[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1,)
+                  shape=(1, 1)
+                ] rm
+                rv[35m:f64[1,1][39m = mul rt ru
+                rw[35m:f64[1,1][39m = mul rv rl
+                rx[35m:f64[1,1][39m = neg rw
+                ry[35m:f64[1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1,)
+                  shape=(1, 1)
+                ] rk
+                rz[35m:f64[1,1][39m = mul rx ry
+              [34m[22m[1min [39m[22m[22m(rz,) }
+          ] ot ou ov ow ox oy oz pa pb pc pd pz
+          sa[35m:f64[1,1,1][39m = broadcast_in_dim[
+            broadcast_dimensions=(0, 1)
+            shape=(1, 1, 1)
+          ] rb
+          sb[35m:f64[1,1,1][39m = pad[padding_config=((0, 0, 0), (0, 0, 0), (0, 0, 0))] sa
+            0.0
+          sc[35m:f64[1,1,1][39m = pjit[
+            name=positive_transform
+            jaxpr=positive_transform1
+          ] or os sb
+          sd[35m:f64[1][39m = reduce_sum[axes=(1, 2)] sc
+          se[35m:f64[1,1][39m = broadcast_in_dim[broadcast_dimensions=(0,) shape=(1, 1)] sd
+          sf[35m:f64[1,1,1,100,100][39m = broadcast_in_dim[
+            broadcast_dimensions=(0, 2, 3, 4)
+            shape=(1, 1, 1, 100, 100)
+          ] py
+          sg[35m:f64[1,1,100,100,1][39m = transpose[permutation=(0, 2, 3, 4, 1)] sf
+          sh[35m:f64[1,1,1][39m = pjit[
+            name=_K_scaler
+            jaxpr={ [34m[22m[1mlambda [39m[22m[22m; si[35m:f64[1,1][39m sj[35m:f64[1,100,100,1][39m sk[35m:f64[1,1,1,1][39m sl[35m:f64[1,100,100,1][39m
+                sm[35m:f64[1,1,100,100,1][39m. [34m[22m[1mlet
+                [39m[22m[22msn[35m:f64[1,1,100,100,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2, 3, 4)
+                  shape=(1, 1, 100, 100, 1)
+                ] sl
+                so[35m:f64[1,1,100,100,1][39m = mul sm sn
+                sp[35m:f64[1,1,1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2, 3, 4)
+                  shape=(1, 1, 1, 1, 1)
+                ] sk
+                sq[35m:f64[1,1,100,100,1][39m = mul so sp
+                sr[35m:f64[1,1,100,100,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2, 3, 4)
+                  shape=(1, 1, 100, 100, 1)
+                ] sj
+                ss[35m:f64[1,1,100,100,1][39m = mul sq sr
+                st[35m:f64[1,1,1][39m = reduce_sum[axes=(2, 3)] ss
+                su[35m:f64[1,1,1,1,1][39m = reshape[
+                  dimensions=None
+                  new_sizes=(1, 1, 1, 1, 1)
+                ] st
+                sv[35m:f64[1,1,1,1,1][39m = neg su
+                sw[35m:f64[1][39m = reduce_sum[axes=(1, 2, 3, 4)] sv
+                sx[35m:f64[1,1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1, 1, 1)
+                ] sw
+                sy[35m:f64[1][39m = reduce_sum[axes=(1, 2, 3)] sx
+                sz[35m:f64[1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(0,)
+                  shape=(1, 1, 1)
+                ] sy
+                ta[35m:f64[1,1,1][39m = broadcast_in_dim[
+                  broadcast_dimensions=(1, 2)
+                  shape=(1, 1, 1)
+                ] si
+                tb[35m:f64[1,1,1][39m = mul sz ta
+              [34m[22m[1min [39m[22m[22m(tb,) }
+          ] on oo op oq sg
+          tc[35m:f64[1,1,1][39m = pjit[
+            name=positive_transform
+            jaxpr=positive_transform1
+          ] ol om sh
+          td[35m:f64[1][39m = reduce_sum[axes=(1, 2)] tc
+          te[35m:f64[1,1][39m = broadcast_in_dim[broadcast_dimensions=(0,) shape=(1, 1)] td
+        [34m[22m[1min [39m[22m[22m(se, te) }
+    ] bv bw bx by bz ca cb cc cd ce cf cg ch ci cj ck cl cm cn co cp cq cr cs ct
+      oi
+    tf[35m:f64[1][39m = broadcast_in_dim[broadcast_dimensions=() shape=(1,)] 0.0
+    tg[35m:f64[1][39m = slice[limit_indices=(1,) start_indices=(0,) strides=None] tf
+    th[35m:f64[][39m = reshape[dimensions=None new_sizes=()] tg
+    ti[35m:f64[1,1][39m = slice[limit_indices=(1, 1) start_indices=(0, 0) strides=None] oj
+    tj[35m:f64[1][39m = reshape[dimensions=None new_sizes=(1,)] ti
+    tk[35m:f64[1,1][39m = slice[limit_indices=(1, 1) start_indices=(0, 0) strides=None] ok
+    tl[35m:f64[1][39m = reshape[dimensions=None new_sizes=(1,)] tk
+  [34m[22m[1min [39m[22m[22m(th, tj, tl) }

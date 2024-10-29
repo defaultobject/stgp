@@ -367,12 +367,10 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
 
     # Predict in time-latent-space order
     # Predict first so we know the shape of the blocks
-    print('natural_gradients -- 1')
     q_mu_z, q_var_z = q.surrogate.posterior_blocks()
     chex.assert_rank([q_mu_z, q_var_z], [3, 4])
 
     # Collect CVI parameters
-    print('natural_gradients -- 2')
     raw_Y_arr, lambda_1_arr, lambda_2_arr = _get_fp_params(q_mu_z, model, parameterisation)
 
     #Nt, Nl, Ns = raw_Y_arr.shape
@@ -385,14 +383,12 @@ def natural_gradients(model, beta: float, enforce_psd_type, parameterisation) ->
     # still in time-latent-space format as reshape does not affect this
     N, Q = q_mu_z.shape[0], q_mu_z.shape[1]
 
-    print('natural_gradients -- 3')
     # still in time-latent-space
     mu_grads, var_test = jax.grad(partial_ell, (1, 2))(
         model, q_mu_z, q_var_z
     )
     if enforce_psd_type in GAUSS_NEWTON_ENFORCE_TYPES:
-        print('natural_gradients -- 4')
-        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type)
+        var_grads = get_full_gaussian_hessian_approximation(model, beta, settings.ng_samples, enforce_psd_type, q_mu_z=q_mu_z, q_var_z=q_var_z)
         enforce_psd_type = None
     else:
         # in time-latent-space 

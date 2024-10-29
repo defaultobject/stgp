@@ -6,7 +6,7 @@ sys.path.append('../')
 import jax
 from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', False)
+jax_config.update('jax_disable_jit', True)
 import objax
 import numpy as np
 
@@ -29,19 +29,28 @@ stgp.settings.verbose = True
 
 import matplotlib.pyplot as plt
 
+stgp.settings.jitter = 1e-5
+#stgp.settings.low_memory_mode = True
+stgp.settings.parallel_filter_block_size = 10
+filter_type = 'parallel'
+#filter_type = 'sequential'
+
 np.random.seed(0)
 
 # Construct Data
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
 
-Y = Y+10
+#Y = Y+10
+Y = Y
+
+#Y[10:12] = np.NaN
 
 # Construct Model
 data = TemporalData(X, Y)
-lik = ReshapedGaussian(Gaussian(variance=1.0), num_blocks=data.Nt, block_size=1)
-#kern = ScaledMatern32(input_dim=1, lengthscales=[1.0], variance=1.0)
+lik = ReshapedGaussian(Gaussian(variance=0.4), num_blocks=data.Nt, block_size=1)
+kern = ScaledMatern32(input_dim=1, lengthscales=[0.4], variance=1.2)
 #kern = Matern32(input_dim=1, lengthscales=[1.0])
-kern = ConstantKernel(variance=1.0)+Matern32(input_dim=1, lengthscales=[1.0])
+#kern = ConstantKernel(variance=1.0)+Matern32(input_dim=1, lengthscales=[1.0])
 
 latent_gp = GP(
     sparsity = stgp.sparsity.NoSparsity(Z_ref = data.X), 
@@ -54,11 +63,12 @@ prior = LTI_SDE(Independent([latent_gp]))
 #   (default) filter_type='sequential'
 #   filter_type='parallel'
 #   filter_type='square_root_svm' 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='sequential')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type=filter_type)
 
 
 # Train
 print(m.get_objective())
+breakpoint()
 
 if True:
     max_iters = 100
@@ -68,6 +78,7 @@ if True:
     plt.show()
 
 print(m.get_objective())
+
 
 m.print()
 pred_mu, pred_var = m.predict_y(XS,  diagonal=True, squeeze=True)
