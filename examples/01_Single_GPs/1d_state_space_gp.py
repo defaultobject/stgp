@@ -6,7 +6,7 @@ sys.path.append('../')
 import jax
 from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
-jax_config.update('jax_disable_jit', True)
+jax_config.update('jax_disable_jit', False)
 import objax
 import numpy as np
 
@@ -32,8 +32,10 @@ import matplotlib.pyplot as plt
 stgp.settings.jitter = 1e-5
 #stgp.settings.low_memory_mode = True
 stgp.settings.parallel_filter_block_size = 10
-filter_type = 'parallel'
-#filter_type = 'sequential'
+stgp.settings.balance_state_space = True
+stgp.settings.balance_state_space_iters = 10
+#filter_type = 'parallel'
+filter_type = 'sequential'
 
 np.random.seed(0)
 
@@ -68,9 +70,8 @@ m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', fil
 
 # Train
 print(m.get_objective())
-breakpoint()
 
-if True:
+if False:
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     lc, _  = trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
@@ -79,9 +80,18 @@ if True:
 
 print(m.get_objective())
 
-
 m.print()
-pred_mu, pred_var = m.predict_y(XS,  diagonal=True, squeeze=True)
+pred_mu, pred_var = m.predict_f(XS,  diagonal=True, squeeze=True)
+#pred_mu, pred_var = m.predict_f(XS,  diagonal=True, squeeze=True, filter_only=True)
+
+if len(pred_mu.shape) > 1:
+    pred_mu = pred_mu[:, 0]
+    pred_var = pred_var[:, 0]
+    if stgp.settings.balance_state_space:
+        pred_mu = pred_mu*100.3
+        pred_var = pred_var*(100.3**2)
+
+print('pred_mu: ', np.sum(pred_mu), 'pred_var', np.sum(pred_var))
 
 # Plot
 plt.fill_between(
