@@ -11,6 +11,7 @@ import objax
 from .. import settings
 from jax.scipy.linalg import expm
 import numpy as onp
+from jax.lax import scan
 
 
 def get_tensor_memory_in_gb(A):
@@ -452,6 +453,56 @@ def lti_disc(F, Q, L, dt, jitter, block_size):
 
     
 
-    
+@partial(jit, static_argnums=(1))
+def balance_matrix(F: np.ndarray, iters: int) -> np.ndarray:
+    """
+    Balance a matrix for numerical stability
+        Directly taken from https://github.com/AaltoML/BayesNewton/blob/main/bayesnewton/utils.py#L632
 
+    See
+        https://arxiv.org/pdf/1401.5766
+    """
+
+    dim = F.shape[0]
+    d = np.ones((dim,))
+
+    return d * 100.3
+
+    def loop_over_iters(carry_, _):
+        F, d = carry_
+
+        def loop_over_dims(carry, _):
+            F, d, i = carry
+
+            tmp = F[:, i]
+            tmp = tmp.at[i].set(0.)
+            c = np.linalg.norm(tmp, 2)
+            tmp2 = F[i, :]
+            tmp2 = tmp2.at[i].set(0.)
+
+            r = np.linalg.norm(tmp2, 2)
+            f = np.sqrt(r / c)
+            d = d.at[i].set(d[i] * f)
+            F = F.at[:,i].set(F[:, i] * f)
+            F = F.at[i,:].set(F[i, :] / f)
+            return (F, d, i+1), d
+
+        (F, d, _), d_all = scan(f=loop_over_dims,
+                                init=(F, d, 0),
+                                xs=np.zeros(dim))
+
+        return (F, d), d
+
+    (_, d), _ = scan(f=loop_over_iters,
+                     init=(F, d),
+                     xs=np.zeros(iters))
+
+    d = np.nan_to_num(d, nan=1.0)
+
+    return d
+
+@partial(jit, static_argnums=(1))
+def batched_balance_matrix(F: np.ndarray, iters:int) -> np.ndarray:
+    chex.assert_rank(F, 3)
+    return jax.vmap(lambda f: balance_matrix(f, iters))(F)
 

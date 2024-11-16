@@ -10,10 +10,8 @@ import jax.numpy as np
 from jax.lax import scan, associative_scan
 import math
 
-#import tensorflow_probability
-
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, force_symmetric, solve_with_additive_inverse, get_tensor_memory_in_gb, pad_by_repeat_last_elem
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, force_symmetric, solve_with_additive_inverse, get_tensor_memory_in_gb, pad_by_repeat_last_elem, balance_matrix, batched_balance_matrix, lti_disc
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
@@ -28,7 +26,6 @@ import jax.scipy as jsp
 import objax
 import chex
 from functools import partial
-
 
 @jit
 def fix_psd(A):
@@ -245,6 +242,7 @@ def filter_block(carry, state, X_s, prior):
 
     Y = state['Y']
 
+
     mask = get_same_shape_mask(Y)
     # collapse mask
     mask = np.any(np.any(mask, axis=1), axis=1).astype(int)
@@ -286,7 +284,6 @@ def filter_block(carry, state, X_s, prior):
 
     filtered_means = np.vstack([m_inf[None, ...]*first_member_mask[0] + res[1][0]*(1-first_member_mask[0]), res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...]*first_member_mask[0] + res[2][0]*(1-first_member_mask[0]), res[2][:-1]])
-    breakpoint()
 
     obs_means = jax.vmap(
         low_memory_wrapper(lambda H_k, m_k, F_k: H_k @ F_k @ m_k)
@@ -323,7 +320,7 @@ def filter_block(carry, state, X_s, prior):
     return carry, state
 
 @dispatch('parallel')
-def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
 
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
@@ -335,10 +332,24 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
     #dt = np.ones(Y.shape[0])*dt[1]
     lik_mat_arr = lik_mat
     A_arr = jax.vmap(lambda dt_k: prior.expm(X_s, dt_k))(dt)
-    #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
     Q_arr = jax.vmap(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s))(dt, A_arr)
     H_arr = np.tile(H[None, ...], [lik_mat_arr.shape[0], 1, 1])
-    #Q_arr = Q_arr.at[0].set(P_inf)
+
+    if settings.balance_state_space:
+        # balance
+        d = batched_balance_matrix(A_arr, settings.balance_state_space_iters)
+        D = jax.vmap(np.diag)(d)
+        d_inv = 1/d
+        D_inv = jax.vmap(np.diag)(d_inv)
+
+        A_arr = D_inv @ A_arr @ D
+        Q_arr = D_inv @ Q_arr @ D_inv
+        #P_inf = D_inv[0] @ P_inf @ D[0]
+        P_inf = D_inv[0] @ P_inf @ D_inv[0]
+        m_inf = D[0] @ m_inf 
+        H_arr =  H_arr @ D
+
+        #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
 
     mask = get_same_shape_mask(Y)
     # collapse mask
@@ -433,10 +444,17 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
         
     log_Z = np.sum(log_Z_k)
 
+
+    J = res[-2]
+    eta = res[-1]
+    J_inv = jax.vmap(mat_inv)(J)
+    lik_mean = jax.vmap(lambda a, b: a@b)(J_inv, eta)
+    log_z_arr = jax.vmap(lambda y, m, S, H, F: log_gaussian_with_mask(F.T @ H.T @ np.nan_to_num(y),  m, S, get_same_shape_mask(F.T @ H.T @ y)[:, 0]))(Y, lik_mean, J_inv, H_arr, A_arr)
+
     return log_Z, {'m': res[1], 'P': res[2]}
 
 @dispatch('parallel')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
 
     if lik_cov_flag is False:
         raise NotImplementedError()
@@ -535,7 +553,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         filtered_means = filtered_means[:data.Nt-pad_size, ...]
         filtered_covs = filtered_covs[:data.Nt-pad_size, ...]
         res = [filtered_means, filtered_covs]
-        breakpoint()
     else:
         carry, state = filter_block_wrapper(
             {
@@ -553,7 +570,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         )
         log_Z = np.sum(state['log_Z'])
         res = [state['filtered_mean'], state['filtered_cov']]
-        breakpoint()
 
 
     return log_Z, {'m': res[0], 'P': res[1]}

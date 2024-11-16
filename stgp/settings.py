@@ -39,6 +39,9 @@ use_quadrature = False
 # when true will wrap filter P_k with force_symmetric
 kalman_filter_force_symmetric = False
 
+balance_state_space = False
+balance_state_space_iters = 10
+
 # useful for debugging
 cvi_ng_exploit_space_time = True
 

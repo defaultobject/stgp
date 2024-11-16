@@ -4,10 +4,12 @@ import jax.numpy as np
 from jax.lax import scan
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, batched_balance_matrix
 from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
+from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
+
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE, LinearizedFilter_SDE
@@ -76,19 +78,34 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 @dispatch(LTI_SDE)
 def rts_step_wrapper(prior, carry, x, X_s, full_state):
     sde_prior = prior
-    P_inf = sde_prior.P_inf(None, X_s, None)
+
+    m_inf = carry['m_inf']
+    P_inf = carry['P_inf']
 
     dt_k = x['dt']
 
     A_k = sde_prior.expm(X_s, dt_k)
-    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
+    
+    # Compute Q_k in the untransformed space
+    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_s)
 
-    m_predicted = A_k @ x['m']
-    P_predicted = A_k @ x['P'] @ A_k.T + Q_k
+    m_k = x['m']
+    P_k = x['P']
+
+    if settings.balance_state_space:
+        T_k, T_k_inf = get_ss_balance_transformation(A_k)
+        _A_k = A_k
+        _Q_k = Q_k
+        A_k = _transform_ss_A_param(T_k, T_k_inf, A_k)
+        Q_k = _transform_ss_Q_param(T_k, T_k_inf, Q_k)
+
+
+    m_predicted = A_k @ m_k
+    P_predicted = A_k @ P_k @ A_k.T + Q_k
 
     m, P = rts_smoother_step(
-        x['m'],
-        x['P'],
+        m_k,
+        P_k,
         carry['m'],
         carry['P'],
         m_predicted,
@@ -100,9 +117,11 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
 
+    if settings.balance_state_space:
+        H_k = _transform_ss_H_param(T_k, T_k_inf, H_k)
 
     m_res =  {
-        'm': m, 'P': P 
+        'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
     }
 
     p_res = {
@@ -115,13 +134,14 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 @dispatch(PDE)
 def rts_step_wrapper(prior, carry, x, X_s, full_state):
     sde_prior = prior.parent
-    P_inf = sde_prior.P_inf(None, X_s, None)
+
+    m_inf = carry['m_inf']
+    P_inf = carry['P_inf']
 
     dt_k = x['dt']
 
     A_k = sde_prior.expm(X_s, dt_k)
-    Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_s)
-
+    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_s)
 
     m_predicted = A_k @ x['m']
     P_predicted = A_k @ x['P'] @ A_k.T + Q_k
@@ -138,13 +158,10 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     )
 
-
     H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
-    #H_k = np.eye(2)
-
 
     m_res =  {
-        'm': m, 'P': P 
+        'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
     }
 
     p_res = {
@@ -172,13 +189,23 @@ def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
+    m_inf = model.m_inf(None, X_s, None)
+    P_inf = model.P_inf(None, X_s, None)
+
+    if settings.balance_state_space:
+        A_0 = model.expm(X_s, 0.0) # steady state has no dt
+        T, T_inf = get_ss_balance_transformation(A_0)  
+        m_inf, P_inf = _transform_ss_init_params(T, T_inf, m_inf, P_inf)
+
     step_wrap = step_wrapper(data, model, full_state)
 
     carry, ys = scan(
         jax.remat(step_wrap),
         {
             'm': m_init,
-            'P': P_init 
+            'P': P_init ,
+            'm_inf': m_inf,
+            'P_inf': P_inf
         },
         {
             'm': np.flip(filter_res['m'], axis=0)[1:, ...],
@@ -192,7 +219,11 @@ def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
     P = ys['P']
 
     H_k = get_H(model, m_init, m_init, X_s, X_t[0], full_state)
-    
+
+    if settings.balance_state_space:
+        A_last = model.expm(X_s, dt[-2]) #get the last step
+        T_last, T_last_inf = get_ss_balance_transformation(A_last)  
+        H_k = _transform_ss_H_param(T_last, T_last_inf, H_k)
 
     m = np.vstack([(H_k @ m_init)[None, ...], m])
     P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])

@@ -39,6 +39,9 @@ class ConstantKernel(MarkovKernel):
         N = X1.shape[0]
         return self.variance*np.ones(N)
 
+    def _K_scaler(self, x1, x2):
+        return self.variance
+
     def fix(self):
         self.variance_param.fix()
 

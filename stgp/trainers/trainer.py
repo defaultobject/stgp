@@ -268,6 +268,7 @@ class GradDescentTrainer(Trainer):
         start = timer()
         epoch_arr = []
 
+
         def train_op():
             grad = self.grad_fn()
 
@@ -282,17 +283,22 @@ class GradDescentTrainer(Trainer):
         for i in range(epochs):
             max_attempt = self.nan_max_attempt
 
-            grad, val = train_op()
+            while True:
 
-            if grad is None:
-                # nan found in gradient
-                if max_attempt  == 0:
-                    val = np.NaN
+                grad, val = train_op()
+
+                if grad is None:
+                    # nan found in gradient
+                    if max_attempt  == 0:
+                        val = np.NaN
+                        break
+                    else:
+                        # try again
+                        max_attempt = max_attempt - 1
+                        print('retrying grad step')
+                        continue
                 else:
-                    # try again
-                    max_attempt = max_attempt - 1
-                    print('retrying grad step')
-                    continue
+                    break
 
             if np.isnan(val):
                 if raise_error:

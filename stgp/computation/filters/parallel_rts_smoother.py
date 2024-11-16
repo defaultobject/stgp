@@ -5,7 +5,7 @@ import jax.numpy as np
 from jax.lax import scan, associative_scan
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, batched_balance_matrix, lti_disc
 from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
@@ -78,6 +78,23 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     Q_arr = jax.vmap(low_memory_wrapper(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s)))(dt, A_arr)
     H_arr = np.tile(H[None, ...], [A_arr.shape[0], 1, 1])
 
+    if settings.balance_state_space:
+        # balance
+        d = batched_balance_matrix(A_arr, settings.balance_state_space_iters)
+        D = jax.vmap(np.diag)(d)
+        d_inv = 1/d
+        D_inv = jax.vmap(np.diag)(d_inv)
+
+        A_arr = D_inv @ A_arr @ D
+        Q_arr = D_inv @ Q_arr @ D_inv
+        #P_inf = D_inv[0] @ P_inf @ D[0]
+        P_inf = D_inv[0] @ P_inf @ D_inv[0]
+        m_inf = D[0] @ m_inf 
+        H_arr =  H_arr @ D
+
+        #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
+
+
 
     # TODO: check indexes here
     x_all = jax.vmap(
@@ -100,9 +117,9 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     m = res[1]
     P = res[2]
 
-    H_k = get_H(prior, None, None, X_s, X_t[0], full_state)
+    #H_k = get_H(prior, None, None, X_s, X_t[0], full_state)
 
-    # Extract obdereved state
+    # Extract orderded state
     m = jax.vmap(low_memory_wrapper(lambda H_k, m_k: H_k @ m_k))(H_arr, m)
     P = jax.vmap(low_memory_wrapper(lambda H_k, P_k: H_k @ P_k @ H_k.T))(H_arr, P)
 

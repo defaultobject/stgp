@@ -25,6 +25,8 @@ from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_wi
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask, mahal_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
+from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
+
 import numpy as onp
 #import tensorflow as tf
 #import tensorflow_probability as tfp
@@ -120,7 +122,7 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
     )
 
     return {
-        'm': m_k, 'P': P_k 
+        'm': m_k, 'P': P_k, 'm_inf': carry['m_inf'], 'P_inf': carry['P_inf']
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
@@ -213,7 +215,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
         P_k = force_symmetric(P_k)
 
     return {
-        'm': m_k, 'P': P_k 
+        'm': m_k, 'P': P_k, 'm_inf': carry['m_inf'], 'P_inf': carry['P_inf']
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
@@ -223,7 +225,9 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
 def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     """ Linear Kalman Filter Predict Step """
 
-    P_inf = prior.P_inf(None, X_s, None)
+    m_inf = carry['m_inf']
+    P_inf =  carry['P_inf']
+
     H_k = prior.H(None, X_s, None)
 
     dt_k = x['dt']
@@ -232,7 +236,15 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     P_k = carry['P']
 
     A_k = prior.expm(X_s, dt_k)
-    Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+    #Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
+
+    # use untransformed P_inf
+    Q_k = prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_spatial=X_s)
+
+    if settings.balance_state_space:
+        # balance_ss takes m_inf, P_inf but we don't need to pass those so pass dummy m_k, P_k
+        T_k, T_k_inf = get_ss_balance_transformation(A_k)
+        A_k, Q_k, H_k = _transform_ss_params(T_k, T_k_inf, A_k, Q_k, H_k)
 
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
@@ -470,7 +482,8 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
                     Y_k = np.nan_to_num(Y_k)
 
                     err = Y_k-f_k
-                    HQHT = H_jac_k @ H_sde_prior@Q_k @ H_sde_prior.T@H_jac_k.T
+                    #HQHT = H_jac_k @ H_sde_prior@Q_k @ H_sde_prior.T@H_jac_k.T
+                    HQHT = H_jac_k @Q_k @H_jac_k.T
                     #HQHT = add_jitter(HQHT, settings.jitter)
 
                     sigma_n = avg_mahal_with_mask(err, HQHT, mask_k)
@@ -492,6 +505,7 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
             #carry, ys =  kf_update_step(m_, P_, H_k @ H_sde_prior, R_k, carry, x, innovation)
             carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
             m_, P_ = carry['m'], carry['P']
+
     carry['global_calibration']  = global_calibration
     return carry, ys
 
@@ -517,10 +531,15 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
     m_inf = prior.m_inf(None, X_s, None)
     P_inf = prior.P_inf(None, X_s, None)
 
+    if settings.balance_state_space:
+        A_0 = prior.expm(X_s, dt[0])
+        T, T_inf = get_ss_balance_transformation(A_0)  
+        m_inf, P_inf = _transform_ss_init_params(T, T_inf, m_inf, P_inf)
+
     step_wrap = filter_step_wrapper(data, prior, lik_cov_flag)
     unroll = 1
 
-    carry_dict = {
+    state_dict = {
         'dt': dt,
         't': X_t,
         'Y': Y,
@@ -529,9 +548,11 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         'train_index': train_index
     }
     
-    state_dict = {
+    carry_dict = {
         'm': m_inf,
-        'P': P_inf
+        'P': P_inf,
+        'm_inf': m_inf, 
+        'P_inf': P_inf 
     }
 
     # TODO: use dispatch here?
@@ -541,22 +562,23 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
             boundary_conditions = prior.boundary_conditions
             # ensure same shape as Y
             boundary_conditions = np.array(boundary_conditions)[train_index]
-            carry_dict['boundary_data'] = boundary_conditions
+            state_dict['boundary_data'] = boundary_conditions
 
         if prior.forcing_function is not None:
             # ensure same shape as Y
             forcing_function = prior.forcing_function
             forcing_function = np.array(forcing_function)[train_index]
-            carry_dict['forcing_function'] = forcing_function
+            state_dict['forcing_function'] = forcing_function
 
-        state_dict['global_calibration'] = np.zeros(X_s.shape[0])
-
-
+        if X_s is None:
+            carry_dict['global_calibration'] = np.zeros(m_inf.shape[0])
+        else: 
+            carry_dict['global_calibration'] = np.zeros(X_s.shape[0])
 
     carry, ys = scan(
         jax.remat(step_wrap),
-        state_dict,
         carry_dict,
+        state_dict,
         unroll = unroll
     )
 
@@ -567,7 +589,7 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
     filter_res['meta'] = {}
 
     if isinstance(prior, PDE):
-       global_calibration = carry['global_calibration']/carry_dict['t'].shape[0]
+       global_calibration = carry['global_calibration']/state_dict['t'].shape[0]
        filter_res['meta']['global_calibration'] = global_calibration
        filter_res['meta']['lml'] = lml
 
