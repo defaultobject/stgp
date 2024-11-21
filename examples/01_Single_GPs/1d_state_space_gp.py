@@ -29,18 +29,26 @@ stgp.settings.verbose = True
 
 import matplotlib.pyplot as plt
 
-stgp.settings.jitter = 1e-5
-#stgp.settings.low_memory_mode = True
+#stgp.settings.jitter = 1e-5
+stgp.settings.jitter = 1e-9
+#stgp.settings.jitter = 1e-7
+stgp.settings.low_memory_mode = False
 stgp.settings.parallel_filter_block_size = 10
-stgp.settings.balance_state_space = True
+stgp.settings.balance_state_space = False
 stgp.settings.balance_state_space_iters = 10
-#filter_type = 'parallel'
-filter_type = 'sequential'
+filter_type = 'parallel'
+#filter_type = 'sequential'
+#state_space = False
+state_space = True
 
 np.random.seed(0)
 
 # Construct Data
+
+#XS, X, Y = single_output_timeseries(100, 1000000, seed=0)
 XS, X, Y = single_output_timeseries(100, 1000, seed=0)
+#XS, X, Y = single_output_timeseries(100000, 1000, seed=0)
+print(X.shape, np.mean(X), Y.shape, np.mean(Y))
 
 #Y = Y+10
 Y = Y
@@ -65,11 +73,13 @@ prior = LTI_SDE(Independent([latent_gp]))
 #   (default) filter_type='sequential'
 #   filter_type='parallel'
 #   filter_type='square_root_svm' 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type=filter_type)
+if state_space:
+    m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type=filter_type)
+else:
+    m = GP(data = data, prior = prior.parent, likelihood = lik.base)
 
 
 # Train
-print(m.get_objective())
 
 if False:
     max_iters = 100

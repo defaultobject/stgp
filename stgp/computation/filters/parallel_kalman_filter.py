@@ -144,20 +144,26 @@ def _generic_filtering_element_lik_precision(F, Q, H, R_inv, y):
 def _generic_filtering_element(F, Q, H, R, y):
     I = np.eye(F.shape[0])
 
-
     S = H @ Q @ H.T + R
 
-    #S_chol = cholesky(S)
-    #K = cholesky_solve(S_chol, H @ Q.T).T
-    K = solve(S, H @ Q.T).T
+    use_cholesky = False
+
+    if use_cholesky:
+        S_chol = cholesky(S)
+        K = cholesky_solve(S_chol, H @ Q.T).T
+    else:
+        K = solve(S, H @ Q.T).T
 
     A = (I - K @ H) @ F
     b = K @ y
     C = (I - K @ H) @ Q
-    #eta = F.T @ H.T @ cholesky_solve(S_chol, y)
-    #J = F.T @ H.T @  cholesky_solve(S_chol, H @ F) 
-    eta = F.T @ H.T @ solve(S, y)
-    J = F.T @ H.T @  solve(S, H @ F) 
+
+    if use_cholesky:
+        eta = F.T @ H.T @ cholesky_solve(S_chol, y)
+        J = F.T @ H.T @  cholesky_solve(S_chol, H @ F) 
+    else:
+        eta = F.T @ H.T @ solve(S, y)
+        J = F.T @ H.T @  solve(S, H @ F) 
 
     return A, b, C, J, eta
 
@@ -247,6 +253,7 @@ def filter_block(carry, state, X_s, prior):
     # collapse mask
     mask = np.any(np.any(mask, axis=1), axis=1).astype(int)
 
+    Y_raw = Y
     Y = np.nan_to_num(Y)
 
     x_all = jax.vmap(
@@ -266,7 +273,6 @@ def filter_block(carry, state, X_s, prior):
         for i in range(5)
     ]
 
-
     # manualy set new x_0
     x_0_op = filtering_operator(x_0, [x_all[i][0] for i in range(5)])
     x_0 = [x_0_op[i]*(1-first_member_mask[0]) + first_member_mask[0]*x_0[i] for i in range(5)]
@@ -276,14 +282,26 @@ def filter_block(carry, state, X_s, prior):
         for i in range(5)
     ]
 
-
     res = associative_scan(
         jax.vmap(low_memory_wrapper(filtering_operator)),
         x_all
     )
+    
+    # res[0] will be zero so only need to consider res[1] and res[2]
 
     filtered_means = np.vstack([m_inf[None, ...]*first_member_mask[0] + res[1][0]*(1-first_member_mask[0]), res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...]*first_member_mask[0] + res[2][0]*(1-first_member_mask[0]), res[2][:-1]])
+
+    pred_means = jax.vmap(
+        low_memory_wrapper(lambda H_k, m_k, F_k:  F_k @ m_k)
+    ) (
+        H_arr, filtered_means, A_arr
+    ) 
+
+    pred_cov = jax.vmap(
+        low_memory_wrapper(lambda H_k, P_k, F_k, Q_k:  F_k @ P_k @ F_k.T  +  Q_k )
+    )(H_arr, filtered_cov, A_arr, Q_arr)
+
 
     obs_means = jax.vmap(
         low_memory_wrapper(lambda H_k, m_k, F_k: H_k @ F_k @ m_k)
@@ -294,33 +312,35 @@ def filter_block(carry, state, X_s, prior):
         low_memory_wrapper(lambda H_k, P_k, F_k, Q_k: H_k @ F_k @ P_k @ F_k.T @ H_k.T  + H_k @ Q_k @ H_k.T)
     )(H_arr, filtered_cov, A_arr, Q_arr)
 
-
+    # use Y_raw as masking is handled inside the vmap
     log_Z_k = jax.vmap(
         low_memory_wrapper(lambda Y_k, mu_k, S_k, R_k: np.sum(
             log_gaussian_with_mask(np.nan_to_num(Y_k), mu_k, S_k+R_k, get_same_shape_mask(Y_k)[:, 0])
         )
-    )) (Y, obs_means, obs_pred_cov, lik_mat_arr)
+    )) (Y_raw, obs_means, obs_pred_cov, lik_mat_arr)
 
-    log_Z = np.sum(log_Z_k)
 
     # x_0 for the next batch is the last m_, P_
-    x_0 = [res[i][-1] for i in range(5)]
+    next_x_0 = [res[i][-1] for i in range(5)]
 
     carry = {
-        'x_0': x_0, 
+        'x_0': next_x_0, 
         'm_inf': m_inf, 
         'P_inf': P_inf
     }
 
-    state['log_Z'] = log_Z
+    state['log_Z'] = log_Z_k
     state['filtered_mean'] = filtered_means
     state['filtered_cov'] = filtered_cov
-    state['x_0'] = x_0
+    state['m'] = res[1]
+    state['P'] = res[2]
+    state['x_0'] = next_x_0
+
 
     return carry, state
 
 @dispatch('parallel')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
 
     # compute steady states
     P_inf = prior.P_inf(None, X_s, None)
@@ -359,12 +379,12 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
 
     if lik_cov_flag:
         # lik_mat is a covariance
-        x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
-        x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
+        x_0 = _first_filtering_element(m_inf, P_inf, A_arr[0], Q_arr[0], H, lik_mat_arr[0], Y[0])
+        x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_arr[0], Q_arr[0], H, lik_mat_arr[0], Y[0])
     else:
         # lik_mat is a precision
-        x_0 = _first_filtering_element_lik_precision(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
-        x_0_nan = _first_filtering_element_nan_lik_precision(m_inf, P_inf, A_arr[0], P_inf, H, lik_mat_arr[0], Y[0])
+        x_0 = _first_filtering_element_lik_precision(m_inf, P_inf, A_arr[0], Q_arr[0], H, lik_mat_arr[0], Y[0])
+        x_0_nan = _first_filtering_element_nan_lik_precision(m_inf, P_inf, A_arr[0], Q_arr[0], H, lik_mat_arr[0], Y[0])
 
     # combine nan and observered
     x_0 = [
@@ -444,17 +464,10 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         
     log_Z = np.sum(log_Z_k)
 
-
-    J = res[-2]
-    eta = res[-1]
-    J_inv = jax.vmap(mat_inv)(J)
-    lik_mean = jax.vmap(lambda a, b: a@b)(J_inv, eta)
-    log_z_arr = jax.vmap(lambda y, m, S, H, F: log_gaussian_with_mask(F.T @ H.T @ np.nan_to_num(y),  m, S, get_same_shape_mask(F.T @ H.T @ y)[:, 0]))(Y, lik_mean, J_inv, H_arr, A_arr)
-
     return log_Z, {'m': res[1], 'P': res[2]}
 
 @dispatch('parallel')
-def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
 
     if lik_cov_flag is False:
         raise NotImplementedError()
@@ -474,25 +487,19 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
     #dt = np.ones(Y.shape[0])*dt[1]
     lik_mat_arr = lik_mat
 
-    if False:
-        A_arr = jax.vmap(low_memory_wrapper(lambda dt_k: prior.expm(X_s, dt_k)))(dt)
-        Q_arr = jax.vmap(low_memory_wrapper(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s)))(dt, A_arr)
-
-        A_0 = A_arr[0]
-        Q_0 = Q_arr[0]
-    else:
-        A_0 = prior.expm(X_s, dt[0])
-        Q_0 = prior.Q(dt[0], A_0, P_inf, X_s)
+    # compute initial parameters
+    A_0 = prior.expm(X_s, dt[0])
+    Q_0 = prior.Q(dt[0], A_0, P_inf, X_s)
 
     H_arr = np.tile(H[None, ...], [lik_mat_arr.shape[0], 1, 1])
 
+    # constrct nan masks
     mask = get_same_shape_mask(Y)
     # collapse mask
     mask = np.any(np.any(mask, axis=1), axis=1).astype(int)
-
     # lik_mat is a covariance
-    x_0 = _first_filtering_element(m_inf, P_inf, A_0, P_inf, H, lik_mat_arr[0], Y[0])
-    x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_0, P_inf, H, lik_mat_arr[0], Y[0])
+    x_0 = _first_filtering_element(m_inf, P_inf, A_0, Q_0, H, lik_mat_arr[0], np.nan_to_num(Y[0]))
+    x_0_nan = _first_filtering_element_nan(m_inf, P_inf, A_0, Q_0, H, lik_mat_arr[0], np.nan_to_num(Y[0]))
 
     # combine nan and observered
     x_0 = [
@@ -524,11 +531,9 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
 
         first_member_mask = pad_by_repeat_last_elem(first_member_mask[:, None], pad_size).reshape((num_blocks, block_size))
 
-
         # TODO: scan over first dimension
         carry, state = jax.lax.scan(
-            #jax.remat(filter_block_wrapper),
-            filter_block_wrapper,
+            jax.remat(filter_block_wrapper),
             {
                 'x_0': x_0, 
                 'm_inf': m_inf, 
@@ -540,18 +545,16 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
                 'dt': dt,
                 'H_arr': H_arr,
                 'first_member_mask': first_member_mask
-            },
-            unroll=10
+            }
         )
 
-        #filter_block(x_0, m_inf, P_inf, A_arr[0], Q_arr[0], H_arr[0], lik_mat_arr[0], Y[0], lik_cov_flag)
-        log_Z = np.sum(state['log_Z'])
+        log_Z = np.sum(np.vstack(state['log_Z'])[:data.Nt]) # only keep the unpadded log_Z
         filtered_means =  np.vstack(state['filtered_mean'])
         filtered_covs =  np.vstack(state['filtered_cov'])
 
         # remove padded elements
-        filtered_means = filtered_means[:data.Nt-pad_size, ...]
-        filtered_covs = filtered_covs[:data.Nt-pad_size, ...]
+        filtered_means = filtered_means[:data.Nt, ...]
+        filtered_covs = filtered_covs[:data.Nt, ...]
         res = [filtered_means, filtered_covs]
     else:
         carry, state = filter_block_wrapper(
@@ -569,8 +572,8 @@ def _filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask
             }
         )
         log_Z = np.sum(state['log_Z'])
-        res = [state['filtered_mean'], state['filtered_cov']]
-
+        #res = [state['filtered_mean'], state['filtered_cov']]
+        res = [state['m'], state['P']]
 
     return log_Z, {'m': res[0], 'P': res[1]}
 

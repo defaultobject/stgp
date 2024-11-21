@@ -251,6 +251,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
 
     innovation = H_k @ m_
 
+
     if lik_cov_flag:
         R_k =  x['lik_mat']
         return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
@@ -400,8 +401,6 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         H_k = model.H(m_, X_s, x['t'])
         R_k =  x['lik_mat']
 
-
-
         if model.forcing_function is not None:
             force = x['forcing_function']
 
@@ -447,49 +446,34 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
             m_, P_ = carry['m'], carry['P']
 
             if True:
-                if True:
-                    # global calibration
-                    Y_k = y_psuedo
-                    f_k =  np.squeeze(f)[..., None]
-                    mask_k = get_same_shape_mask(Y_k)[:, 0]
-                    M = get_Y_mask(Y_k)
-                    Y_k = np.nan_to_num(Y_k)
+                # global calibration
+                Y_k = y_psuedo
+                f_k =  np.squeeze(f)[..., None]
+                mask_k = get_same_shape_mask(Y_k)[:, 0]
+                M = get_Y_mask(Y_k)
+                Y_k = np.nan_to_num(Y_k)
 
-                    err = Y_k-f_k
-                    #HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
-                    HP_HT = H_jac_k @P_ @H_jac_k.T
+                err = Y_k-f_k
+                #HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
+                HP_HT = H_jac_k @P_ @H_jac_k.T
 
+                if False:
+                    # global error across whole state
                     mahal = mahal_with_mask(err, HP_HT, mask_k)
                     sigma_n = avg_mahal_with_mask(err, HP_HT, mask_k)
                     sigma_n = np.nan_to_num(sigma_n) # avoid nans due to degenerate P_, such as zero error at start
 
-                    sigma_n = avg_mahal_with_mask(f_k, HP_HT, mask_k)
+                if True:
 
+                    # global error for each state dimension
+                    # see https://arxiv.org/pdf/2012.08202
                     sigma_n = jax.vmap(lambda z, s: (z**2)/s, [0, 0])(err[:, 0], np.diag(HP_HT))
                     #sigma_n = err[1, 0]**2/P_[1, 1]
                     sigma_n = np.nan_to_num(sigma_n, posinf=0.0)
-
-                    global_calibration = np.squeeze(sigma_n) +global_calibration
-
-                else:
-                    # calibration
-                    # THIS NEEDS TO AFFECT Q, intermediate step? -- what will sigma_n be where we don't have data?
-                    # presumably zero... but Q will still be there, so very unclear atm...
-                    Y_k = y_psuedo
-                    f_k =  np.squeeze(f)[..., None]
-                    mask_k = get_same_shape_mask(Y_k)[:, 0]
-                    M = get_Y_mask(Y_k)
-                    Y_k = np.nan_to_num(Y_k)
-
-                    err = Y_k-f_k
-                    #HQHT = H_jac_k @ H_sde_prior@Q_k @ H_sde_prior.T@H_jac_k.T
-                    HQHT = H_jac_k @Q_k @H_jac_k.T
-                    #HQHT = add_jitter(HQHT, settings.jitter)
-
-                    sigma_n = avg_mahal_with_mask(err, HQHT, mask_k)
                     sigma_n = np.nan_to_num(sigma_n)
-                    #carry['calibration_sigma_n'] = np.squeeze(sigma_n) +calibration_sigma_n
-                    carry['global_calibration'] = np.squeeze(sigma_n) 
+
+                # moving average
+                global_calibration =  (global_calibration*(x['k']) + np.squeeze(sigma_n))/(x['k']+1)
 
 
         if model.observe_data:
@@ -545,7 +529,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         'Y': Y,
         'lik_mat': lik_mat,
         'train_test_mask': train_test_mask,
-        'train_index': train_index
+        'train_index': train_index,
+        'k': np.arange(dt.shape[0]) # current timestep
     }
     
     carry_dict = {
@@ -575,6 +560,11 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         else: 
             carry_dict['global_calibration'] = np.zeros(X_s.shape[0])
 
+    if True:
+        for i in range(dt.shape[0]):
+            carry_dict, _ = step_wrap(carry_dict, {key: state_dict[key][i] for key in state_dict.keys()})
+        exit()
+
     carry, ys = scan(
         jax.remat(step_wrap),
         carry_dict,
@@ -584,14 +574,14 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
 
     lml = np.sum(ys['lml'])
 
+
     filter_res = {'m': ys['m'], 'P': ys['P']}
 
     filter_res['meta'] = {}
 
     if isinstance(prior, PDE):
-       global_calibration = carry['global_calibration']/state_dict['t'].shape[0]
-       filter_res['meta']['global_calibration'] = global_calibration
-       filter_res['meta']['lml'] = lml
+        filter_res['meta']['global_calibration'] = carry['global_calibration']
+        filter_res['meta']['lml'] = lml
 
     return lml, filter_res
 
@@ -621,8 +611,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     if train_index is None:
         train_index = np.arange(Y.shape[0])
 
-    # TODO: fix this
-    #dt = np.hstack([np.ones(1), dt])
     dt = np.hstack([np.zeros(1), dt])
 
     # Fix Y shapeo
@@ -650,6 +638,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
         print(f'running {filter_type} kalman filter')
 
     filter_fn = evoke('filter', filter_type)
+    #filter_fn = evoke('filter', 'sequential')
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index)
 

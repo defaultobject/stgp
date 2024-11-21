@@ -249,6 +249,8 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     # TODO: fix this
     dt = np.hstack([dt, np.zeros(1)])
 
+    if settings.verbose:
+        print(f'running {filter_type} kalman smoother')
 
     # sequential, parallel, square_root_svm
     smoother_fn = evoke('smoother', filter_type)

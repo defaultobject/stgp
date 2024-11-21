@@ -28,7 +28,6 @@ def _generic_smoothing_element(F, Q, m , P):
     Pp_chol = cholesky(add_jitter(Pp, settings.jitter))
     E = cholesky_solve(Pp_chol, F @ P).T
     g = m - E @ F @ m
-    #L = P - E @ F @ P
     L = P - E @ Pp @ E.T
 
     # FORCE PSD
@@ -55,13 +54,12 @@ def smoothing_operator(x1, x2):
     return E, g, L
 
 @dispatch('parallel')
-def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
+def _smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
     m_arr = filter_res['m']
     P_arr = filter_res['P']
-
 
     if settings.low_memory_mode:
          low_memory_wrapper = jax.remat
@@ -94,8 +92,6 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
 
         #Q_arr = jax.vmap(lambda A_k: P_inf - A_k @ P_inf @ A_k.T)(A_arr)
 
-
-
     # TODO: check indexes here
     x_all = jax.vmap(
         low_memory_wrapper(_generic_smoothing_element)
@@ -114,6 +110,8 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
         reverse=True
     )
 
+    # res[0] will be zero so only need to consider res[1] and res[2]
+
     m = res[1]
     P = res[2]
 
@@ -123,6 +121,123 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
     m = jax.vmap(low_memory_wrapper(lambda H_k, m_k: H_k @ m_k))(H_arr, m)
     P = jax.vmap(low_memory_wrapper(lambda H_k, P_k: H_k @ P_k @ H_k.T))(H_arr, P)
 
+    print('TRUE')
+    breakpoint()
 
+    return m, P
+
+
+def smoother_block(carry, state, X_s, prior):
+    """
+    The inputs has already been flipped. So references to `first_members' should be read as x_n (the final state)
+    """
+    x_first = carry['x_first']
+    m_inf = carry['m_inf']
+    P_inf = carry['P_inf']
+
+    dt = state['dt']
+    first_member_mask = state['first_member_mask']
+
+    m_arr = state['m_arr']
+    P_arr = state['P_arr']
+    H_arr = state['H_arr']
+
+    if settings.low_memory_mode:
+         low_memory_wrapper = jax.remat
+    else:
+        low_memory_wrapper = lambda x: x
+
+    A_arr = jax.vmap(low_memory_wrapper(lambda dt_k: prior.expm(X_s, dt_k)))(dt)
+    Q_arr = jax.vmap(low_memory_wrapper(lambda dt_k, A_k: prior.Q(dt_k, A_k, P_inf, X_s)))(dt, A_arr)
+
+    x_all = jax.vmap(
+        low_memory_wrapper(_generic_smoothing_element)
+    )(A_arr, Q_arr, m_arr, P_arr)
+
+    x_first = _last_smoothing_element(None, None, m_arr[0], P_arr[0])
+
+    # manualy set new x_last
+    x_first_op = smoothing_operator(x_first, [x_all[i][0] for i in range(3)])
+
+    # if first memebr use x_first, else use the updated one
+    x_first = [x_first_op[i]*(1-first_member_mask[0]) + first_member_mask[0]*x_first[i] for i in range(3)]
+
+    x_all = [
+        x_all[i].at[0].set(x_first[i])
+        for i in range(3)
+    ]
+
+    # TODO: double check that smoothing_operator is expecting the reversed list
+    res = associative_scan(
+        jax.vmap(low_memory_wrapper(smoothing_operator)), 
+        x_all,
+        reverse=False # do not need to reverse as already have reversed everything
+    )
+
+    m = res[1]
+    P = res[2]
+
+    #m = np.vstack([x_last[1][None, ...], m])
+    #P = np.vstack([x_last[2][None, ...], P])
+
+    #H_k = get_H(prior, None, None, X_s, X_t[0], full_state)
+
+    # Extract orderded state
+    m = jax.vmap(low_memory_wrapper(lambda H_k, m_k: H_k @ m_k))(H_arr, m)
+    P = jax.vmap(low_memory_wrapper(lambda H_k, P_k: H_k @ P_k @ H_k.T))(H_arr, P)
+
+    # update x_last
+    next_x_first = [res[i][-1] for i in range(3)]
+
+    carry = {
+        'x_first': next_x_first, 
+        'm_inf': m_inf, 
+        'P_inf': P_inf
+    }
+
+    state['m'] = m
+    state['P'] = P
+
+    return carry, state
+
+
+
+@dispatch('parallel')
+def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
+    m_last = filter_res['m'][-1]
+    P_last = filter_res['P'][-1]
+
+    m_arr = filter_res['m']
+    P_arr = filter_res['P']
+
+    P_inf = prior.P_inf(None, X_s, None)
+    m_inf = prior.m_inf(None, X_s, None)
+    H = prior.H(None, X_s, None)
+
+    H_arr = np.tile(H[None, ...], [data.Nt, 1, 1])
+    x_last = _last_smoothing_element(None, None, m_arr[-1], P_arr[-1])
+
+    smoother_block_wrapper = lambda carry, state: smoother_block(carry, state, X_s, prior)
+
+    if True:
+        first_member_mask = np.hstack([np.array([1]), np.zeros(data.Nt-1)])
+
+        # TODO: reverse
+        carry, state = smoother_block_wrapper(
+            {
+                'x_first': x_last, 
+                'm_inf': m_inf, 
+                'P_inf': P_inf
+            },
+            {
+                'dt': np.flip(dt),
+                'H_arr': np.flip(H_arr, axis=0),
+                'first_member_mask': first_member_mask,
+                'm_arr': np.flip(m_arr, axis=0),
+                'P_arr': np.flip(P_arr, axis=0),
+            }
+        )
+        m = np.flip(state['m'])
+        P = np.flip(state['P'])
     return m, P
 
