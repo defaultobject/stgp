@@ -575,10 +575,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
 
     lml = np.sum(ys['lml'])
 
-    print(ys['lml'])
-    breakpoint()
-
-
     filter_res = {'m': ys['m'], 'P': ys['P']}
 
     filter_res['meta'] = {}

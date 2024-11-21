@@ -5,7 +5,7 @@ import jax.numpy as np
 from jax.lax import scan, associative_scan
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter, batched_balance_matrix, lti_disc
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, batched_balance_matrix, lti_disc, pad_by_repeat_last_elem
 from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
@@ -17,6 +17,7 @@ from .rts_smoother import get_H
 
 import objax
 import chex
+import math
 
 @jit
 def _last_smoothing_element(F, Q, m , P):
@@ -80,7 +81,6 @@ def smoother_block(carry, state, X_s, prior):
         low_memory_wrapper(_generic_smoothing_element)
     )(A_arr, Q_arr, m_arr, P_arr)
 
-    x_first = _last_smoothing_element(None, None, m_arr[0], P_arr[0])
 
     # manualy set new x_last
     x_first_op = smoothing_operator(x_first, [x_all[i][0] for i in range(3)])
@@ -145,8 +145,56 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
 
     smoother_block_wrapper = lambda carry, state: smoother_block(carry, state, X_s, prior)
 
-    if True:
-        first_member_mask = np.hstack([np.array([1]), np.zeros(data.Nt-1)])
+    dt_flip = np.flip(dt)
+    H_arr_flip = np.flip(H_arr, axis=0)
+    m_arr_flip = np.flip(m_arr, axis=0)
+    P_arr_flip = np.flip(P_arr, axis=0)
+
+    first_member_mask = np.hstack([np.array([1]), np.zeros(data.Nt-1)])
+
+
+    if settings.low_memory_mode:
+        # need to pad
+
+        if settings.parallel_filter_block_size is None:
+            block_size = 999
+        else:
+            block_size = settings.parallel_filter_block_size
+
+        Nt = data.Nt
+        num_blocks = math.ceil(Nt/block_size)
+        pad_size = num_blocks*block_size-Nt
+
+        # convert matrices to equal block sizes
+        H_arr_flip = pad_by_repeat_last_elem(H_arr_flip, pad_size).reshape((num_blocks, block_size) + H_arr_flip.shape[1:])
+
+        dt_flip = pad_by_repeat_last_elem(dt_flip[:, None], pad_size).reshape((num_blocks, block_size))
+
+        m_arr_flip = pad_by_repeat_last_elem(m_arr_flip, pad_size).reshape((num_blocks, block_size) + m_arr_flip.shape[1:])
+        P_arr_flip = pad_by_repeat_last_elem(P_arr_flip, pad_size).reshape((num_blocks, block_size) + P_arr_flip.shape[1:])
+
+        first_member_mask = pad_by_repeat_last_elem(first_member_mask[:, None], pad_size).reshape((num_blocks, block_size))
+
+        carry, state = jax.lax.scan(
+            jax.remat(smoother_block_wrapper),
+            {
+                'x_first': list(x_last), 
+                'm_inf': m_inf, 
+                'P_inf': P_inf
+            },
+            {
+                'dt': dt_flip,
+                'H_arr': H_arr_flip,
+                'first_member_mask': first_member_mask,
+                'm_arr': m_arr_flip,
+                'P_arr': P_arr_flip
+            }
+        )
+
+        m = np.flip(np.vstack(state['m'])[:data.Nt, ...], axis=0)
+        P = np.flip(np.vstack(state['P'])[:data.Nt, ...], axis=0)
+
+    else:
 
         # TODO: reverse
         carry, state = smoother_block_wrapper(
@@ -156,14 +204,15 @@ def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
                 'P_inf': P_inf
             },
             {
-                'dt': np.flip(dt),
-                'H_arr': np.flip(H_arr, axis=0),
+                'dt': dt_flip,
+                'H_arr': H_arr_flip,
                 'first_member_mask': first_member_mask,
-                'm_arr': np.flip(m_arr, axis=0),
-                'P_arr': np.flip(P_arr, axis=0),
+                'm_arr': m_arr_flip,
+                'P_arr': P_arr_flip
             }
         )
-        m = np.flip(state['m'])
-        P = np.flip(state['P'])
+        m = np.flip(state['m'], axis=0)
+        P = np.flip(state['P'], axis=0)
+
     return m, P
 

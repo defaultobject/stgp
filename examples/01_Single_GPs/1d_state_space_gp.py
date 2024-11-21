@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 stgp.settings.jitter = 1e-9
 #stgp.settings.jitter = 1e-7
 stgp.settings.low_memory_mode = True
-stgp.settings.parallel_filter_block_size = 10
+stgp.settings.parallel_filter_block_size = 2
 stgp.settings.balance_state_space = False
 stgp.settings.balance_state_space_iters = 10
 filter_type = 'parallel'
@@ -46,7 +46,7 @@ np.random.seed(0)
 # Construct Data
 
 #XS, X, Y = single_output_timeseries(100, 1000000, seed=0)
-XS, X, Y = single_output_timeseries(100, 1000, seed=0)
+XS, X, Y = single_output_timeseries(1000, 1000, seed=0)
 #XS, X, Y = single_output_timeseries(100000, 1000, seed=0)
 print(X.shape, np.mean(X), Y.shape, np.mean(Y))
 

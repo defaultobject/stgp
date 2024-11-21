@@ -292,17 +292,6 @@ def filter_block(carry, state, X_s, prior):
     filtered_means = np.vstack([m_inf[None, ...]*first_member_mask[0] + carry['x_0'][1]*(1-first_member_mask[0]), res[1][:-1]])
     filtered_cov = np.vstack([P_inf[None, ...]*first_member_mask[0] + carry['x_0'][2]*(1-first_member_mask[0]), res[2][:-1]])
 
-    pred_means = jax.vmap(
-        low_memory_wrapper(lambda H_k, m_k, F_k:  F_k @ m_k)
-    ) (
-        H_arr, filtered_means, A_arr
-    ) 
-
-    pred_cov = jax.vmap(
-        low_memory_wrapper(lambda H_k, P_k, F_k, Q_k:  F_k @ P_k @ F_k.T  +  Q_k )
-    )(H_arr, filtered_cov, A_arr, Q_arr)
-
-
     obs_means = jax.vmap(
         low_memory_wrapper(lambda H_k, m_k, F_k: H_k @ F_k @ m_k)
     ) (
@@ -445,8 +434,6 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         filtered_means = filtered_means[:data.Nt, ...]
         filtered_covs = filtered_covs[:data.Nt, ...]
         res = [ np.vstack(state['m'])[:data.Nt, ...], np.vstack(state['P'])[:data.Nt, ...]]
-        print(log_Z)
-        breakpoint()
     else:
         carry, state = filter_block_wrapper(
             {
