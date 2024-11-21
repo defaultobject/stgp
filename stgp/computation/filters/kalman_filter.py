@@ -560,7 +560,8 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         else: 
             carry_dict['global_calibration'] = np.zeros(X_s.shape[0])
 
-    if True:
+    if False:
+        print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
         for i in range(dt.shape[0]):
             carry_dict, _ = step_wrap(carry_dict, {key: state_dict[key][i] for key in state_dict.keys()})
         exit()
@@ -573,6 +574,9 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
     )
 
     lml = np.sum(ys['lml'])
+
+    print(ys['lml'])
+    breakpoint()
 
 
     filter_res = {'m': ys['m'], 'P': ys['P']}

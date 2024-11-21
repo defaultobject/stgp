@@ -289,8 +289,8 @@ def filter_block(carry, state, X_s, prior):
     
     # res[0] will be zero so only need to consider res[1] and res[2]
 
-    filtered_means = np.vstack([m_inf[None, ...]*first_member_mask[0] + res[1][0]*(1-first_member_mask[0]), res[1][:-1]])
-    filtered_cov = np.vstack([P_inf[None, ...]*first_member_mask[0] + res[2][0]*(1-first_member_mask[0]), res[2][:-1]])
+    filtered_means = np.vstack([m_inf[None, ...]*first_member_mask[0] + carry['x_0'][1]*(1-first_member_mask[0]), res[1][:-1]])
+    filtered_cov = np.vstack([P_inf[None, ...]*first_member_mask[0] + carry['x_0'][2]*(1-first_member_mask[0]), res[2][:-1]])
 
     pred_means = jax.vmap(
         low_memory_wrapper(lambda H_k, m_k, F_k:  F_k @ m_k)
@@ -403,6 +403,24 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         first_member_mask = pad_by_repeat_last_elem(first_member_mask[:, None], pad_size).reshape((num_blocks, block_size))
 
         # TODO: scan over first dimension
+        if False:
+            print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
+            carry =  {
+                'x_0': x_0, 
+                'm_inf': m_inf, 
+                'P_inf': P_inf
+            }
+            state_dict = {
+                'lik_mat_arr': lik_mat_arr,
+                'Y': Y,
+                'dt': dt,
+                'H_arr': H_arr,
+                'first_member_mask': first_member_mask
+            }
+            for i in range(dt.shape[0]):
+                carry, _ = filter_block_wrapper(carry, {key: state_dict[key][i] for key in state_dict.keys()})
+            exit()
+
         carry, state = jax.lax.scan(
             jax.remat(filter_block_wrapper),
             {
@@ -426,7 +444,9 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
         # remove padded elements
         filtered_means = filtered_means[:data.Nt, ...]
         filtered_covs = filtered_covs[:data.Nt, ...]
-        res = [filtered_means, filtered_covs]
+        res = [ np.vstack(state['m'])[:data.Nt, ...], np.vstack(state['P'])[:data.Nt, ...]]
+        print(log_Z)
+        breakpoint()
     else:
         carry, state = filter_block_wrapper(
             {

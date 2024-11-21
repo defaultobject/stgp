@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 #stgp.settings.jitter = 1e-5
 stgp.settings.jitter = 1e-9
 #stgp.settings.jitter = 1e-7
-stgp.settings.low_memory_mode = False
+stgp.settings.low_memory_mode = True
 stgp.settings.parallel_filter_block_size = 10
 stgp.settings.balance_state_space = False
 stgp.settings.balance_state_space_iters = 10
