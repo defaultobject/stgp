@@ -1,9 +1,5 @@
 """ Gaussian Process Regression Computed through a State Space Representation"""
 
-#sudo docker run --mount type=bind,source=/home/u1303865/test/,target=/home/app --gpus "device=0" -p 8888:8888 defaultobject/ml:cuda12 /bin/bash -c "python test.py"
-#scp -J login-pg aquifer:'~/test/memory.prof' .
-# /usr/local/go/bin/go tool pprof -unit gb -pdf mem.prof
-
 import sys
 sys.path.append('../')
 
@@ -58,8 +54,6 @@ def single_output_spatial_data(N_time, N_space, NS_time, NS_space, seed=0):
 
 
 settings.jitter = 1e-7
-#stgp.settings.linear_solver = stgp.settings.SolveType.CG
-#stgp.settings.linear_solver = stgp.settings.SolveType.EXACT
 stgp.settings.linear_solver = stgp.settings.SolveType.CHOLESKY
 stgp.settings.low_memory_mode = True
 stgp.settings.parallel_filter_block_size = 1000
@@ -72,6 +66,7 @@ Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
 # Construct Model
 data = SpatioTemporalData(X=X, Y=Y, sort=True)
+print(data.N, data.Nt, data.Ns)
 lik = ReshapedGaussian(Gaussian(), num_blocks=data.Nt, block_size=data.Ns)
 
 kern = SpatioTemporalSeperableKernel(
@@ -102,18 +97,6 @@ if True:
     #trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))
 
     trainer = ADAM(m)
-    #grad = trainer.grad_fn()
-
-    breakpoint()
-    jaxpr = jax.make_jaxpr(trainer.unjitted_grad_fn)()
-    with open("jaxpr.txt", "w") as text_file: text_file.write(str(jaxpr))
-
-    breakpoint()
-    grad = trainer.unjitted_grad_fn()
-    grad[0].block_until_ready()
-    jax.profiler.save_device_memory_profile("mem.prof")
-    breakpoint()
-
     trainer.train(0.01, max_iters, callback=progress_bar_callback(max_iters))
 
 print(m.get_objective())
