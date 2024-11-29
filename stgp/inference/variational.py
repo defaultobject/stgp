@@ -57,14 +57,11 @@ class Variational(Inference):
     def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal,  num_samples=None, posterior=False):
         pred_mu, pred_var = self.predict_f(XS, data, likelihood, prior, approximate_posterior, diagonal, num_samples = num_samples, posterior=posterior)
 
-        if True:
-            pred_y_mu, pred_y_var = evoke('predict_y', approximate_posterior, likelihood, prior)(
-                XS, approximate_posterior, likelihood, pred_mu, pred_var, diagonal
-            )
+        pred_y_mu, pred_y_var = evoke('predict_y', approximate_posterior, likelihood, prior)(
+            XS, approximate_posterior, likelihood, pred_mu, pred_var, diagonal
+        )
 
-            return pred_y_mu, pred_y_var
-
-        return pred_mu, pred_var
+        return pred_y_mu, pred_y_var
 
 
     def predictive_covar(self, XS_1, XS_2, data, likelihood, prior, approximate_posterior):

@@ -53,6 +53,11 @@ else:
 print(m.get_objective())
 print('NLPD: ', m.nlpd(X, Y))
 
+pred_mu, pred_var = m.predict_y(XS, diagonal=False)
+print(pred_mu.shape)
+print(pred_var.shape)
+breakpoint()
+
 pred_mu, pred_var = m.predict_y(XS)
 
 pred_mu = np.squeeze(pred_mu)

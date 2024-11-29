@@ -18,6 +18,8 @@ from ..kernels import RBF
 from ..utils.utils import ensure_module_list
 from ..transforms import Independent
 from ..defaults import get_default_kernel, get_default_likelihood, get_default_independent_prior
+from ..utils.utils import  fix_prediction_shapes
+
 
 from ..sparsity import NoSparsity
 
@@ -176,13 +178,22 @@ class BatchGP(Posterior):
         return var_arr
 
 
-    def predict_f(self, XS,  diagonal=True, squeeze=False):
+    def predict_f(self, XS,  diagonal=True, decompose_across_outputs = True, output_first = False, fix_shapes = True, squeeze=True):
+
         mu_arr, var_arr =  self.inference.predict_f(
-            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal, decompose_across_outputs = decompose_across_outputs
         )
 
-        if squeeze:
-            mu_arr, var_arr = np.squeeze(mu_arr), np.squeeze(var_arr) 
+        chex.assert_rank([mu_arr, var_arr], [3, 4])
+
+        if fix_shapes:
+            mu_arr, var_arr = fix_prediction_shapes(
+                mu_arr, 
+                var_arr,
+                diagonal = diagonal,
+                squeeze = squeeze,
+                output_first = output_first
+            )
 
         return mu_arr, var_arr
 

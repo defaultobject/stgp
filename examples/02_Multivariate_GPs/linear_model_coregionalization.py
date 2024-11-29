@@ -65,6 +65,8 @@ m = stgp.models.GP(
     prior=prior
 )
 
+pred_mu, pred_var = m.predict_f(XS)
+breakpoint()
 #print('NLPD: ', nlpd(X, Y, m))
 
 print(m.get_objective())

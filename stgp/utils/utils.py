@@ -216,6 +216,11 @@ def get_var_name_with_id(model, _id, param_dict=None):
 
 
 def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = False):
+    """
+    Diagonal predictions will be in the shape
+        mu: N x P x 1
+        var: N x 1 x P x P or  N x P x 1 x 1
+    """
     chex.assert_rank([mu, var], [3, 4])
 
     N = mu.shape[0]
@@ -226,11 +231,17 @@ def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = F
         raise NotImplementedError()
 
     if diagonal: 
+        # [N, 1, P, P] -> [N, 1, P] 
         var = np.diagonal(var, axis1=2, axis2=3)
 
         # remove extra dimension (fix when aggregating)
-        mu = mu[..., 0]
-        var = var[..., 0]
+        mu = mu[..., 0] # [N, P]
+        if var.shape[1] == 1:
+            # will be in N x 1 x P   shape
+            var = var[:, 0, ...] # [N, P]
+        else:
+            # will be in N x P x 1  shape
+            var = var[..., 0] # [N, P]
 
         if output_first:
             mu = mu.T

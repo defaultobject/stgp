@@ -359,6 +359,8 @@ def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, l
 def marginal_prediction_blocks(XS, data, q_m, q_S_chol, approximate_posterior, likelihood, prior, sparsity, out_block: Block, whiten: bool):
     chex.assert_rank([q_m, q_S_chol], [3, 4])
 
+    # marginal_mu = [N, P, Q] 
+    # marginal_var = [N,1, QPB, QPB]
     marginal_mu, marginal_var = meanfield_marginal_blocks(
         data, q_m, q_S_chol, approximate_posterior, likelihood, prior, out_block, whiten, 
         XS = XS,
@@ -513,7 +515,6 @@ def marginal_prediction(XS, data, approximate_posterior, likelihood, prior, infe
             mu, var = evoke('marginal_prediction_blocks', approximate_posterior, likelihood, linear_model_part, sparsity_list[0], whiten=whiten)(
                 XS, data, q_m, q_S_chol, approximate_posterior, likelihood, linear_model_part, sparsity_list, out_block , whiten
             )
-
         return mu, var
     else:
         out_block = Block.DIAGONAL
