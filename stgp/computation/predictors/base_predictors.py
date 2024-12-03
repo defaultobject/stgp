@@ -147,7 +147,7 @@ def gaussian_prediction_diagonal_statistics(K_xs, K_xs_x, K_xx, lik_var):
     A1 = jax.scipy.linalg.solve_triangular(k_chol,  K_xs_x.T, lower=True)
 
     #Kxsx [Kxx +\Sigma_y]^{-1} = [Kxz Lzz.T] Lzz = A1.T Lzz
-    mu_weight = A1.T @  k_chol
+    mu_weight = jax.scipy.linalg.solve_triangular(k_chol.T, A1, lower=False).T
 
     sig = K_xs - np.sum(np.square(A1), axis=0)
     sig = sig[:, None]

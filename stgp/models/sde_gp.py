@@ -662,7 +662,7 @@ class ST_SDE_GP(BASE_SDE_GP):
                     [
                         temporal_test_data.Nt, 
                         self.prior.num_latents, 
-                        self.data.Ns, 
+                        Xs_prior.shape[0], 
                         -1
                     ]
                 )
@@ -721,12 +721,15 @@ class ST_SDE_GP(BASE_SDE_GP):
         xs_spatial_data, all_temporal_data, stacked_temporal_test_data, prior_stacked_spatial_points, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
         var_t = var_t[:, 0, ...]
 
+        _mu_t = mu_t
+        _var_t = var_t
+
         # mu_t and var_t are in time-latent-space format
         # when predicting we only predict f, not the state as well
         if not self.full_state_observed:
             # remove the extra state dims
-            mu_t = mu_t[:, :self.data.Ns, :]
-            var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
+            mu_t = mu_t[:, :prior_stacked_spatial_points.Ns, :]
+            var_t = var_t[:, :prior_stacked_spatial_points.Ns, :][:, :, :prior_stacked_spatial_points.Ns]
 
         if not sort_output:
             # For certain models we do not want to actually unsort the prediction and this will be handled downstream
