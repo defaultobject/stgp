@@ -209,7 +209,9 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
 @dispatch(Data, Input, BASE_SDE_GP, 'GPPrior')
 @dispatch(Data, Data, BASE_SDE_GP, 'GPPrior')
+@dispatch(Data, Input, BASE_SDE_GP, SDE)
 @dispatch(Data, Data, BASE_SDE_GP, SDE)
+@dispatch(Data, Input, BASE_SDE_GP, PDE)
 @dispatch(Data, Data, BASE_SDE_GP, PDE)
 def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp, diagonal):
     """

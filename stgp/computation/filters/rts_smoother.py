@@ -1,3 +1,12 @@
+"""
+Sequential Kalman Smoother
+
+Models:
+    FITCSpatialSparsity:
+        Does not require any special cases here as the spatial predictions are handled in the SDE_GP class
+        ie we do no need to predict to the training data here, as we will be predicting to the test data anyway
+            downstream
+"""
 import jax
 from jax import jacfwd, jit
 import jax.numpy as np
@@ -9,6 +18,7 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
+from .filter_utils import _get_prior_spatial_points
 
 
 # Import types
@@ -50,9 +60,9 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 
     return H1 
 
-def get_H(model, x, m_predicted, X_s, t, full_state):
-    rts_fn = evoke('get_model_H', model)
-    return rts_fn(model, x, m_predicted, X_s, t, full_state)
+def get_H(prior, x, m_predicted, X_s, t, full_state):
+    rts_fn = evoke('get_model_H', prior)
+    return rts_fn(prior, x, m_predicted, X_s, t, full_state)
 
 @jit
 def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted, A_k, Q_k):
@@ -76,7 +86,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 
 
 @dispatch(LTI_SDE)
-def rts_step_wrapper(prior, carry, x, X_s, full_state):
+def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):
     sde_prior = prior
 
     m_inf = carry['m_inf']
@@ -84,10 +94,10 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     dt_k = x['dt']
 
-    A_k = sde_prior.expm(X_s, dt_k)
+    A_k = sde_prior.expm(Xs_prior, dt_k)
     
     # Compute Q_k in the untransformed space
-    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_s)
+    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), Xs_prior)
 
     m_k = x['m']
     P_k = x['P']
@@ -115,7 +125,7 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     )
 
-    H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
+    H_k = get_H(prior, x['m'], m_predicted, Xs_prior, x['t'], full_state)
 
     if settings.balance_state_space:
         H_k = _transform_ss_H_param(T_k, T_k_inf, H_k)
@@ -132,7 +142,7 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
     return m_res, p_res
 
 @dispatch(PDE)
-def rts_step_wrapper(prior, carry, x, X_s, full_state):
+def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):
     sde_prior = prior.parent
 
     m_inf = carry['m_inf']
@@ -140,8 +150,8 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     dt_k = x['dt']
 
-    A_k = sde_prior.expm(X_s, dt_k)
-    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_s)
+    A_k = sde_prior.expm(Xs_prior, dt_k)
+    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), Xs_prior)
 
     m_predicted = A_k @ x['m']
     P_predicted = A_k @ x['P'] @ A_k.T + Q_k
@@ -158,7 +168,7 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     )
 
-    H_k = get_H(prior, x['m'], m_predicted, X_s, x['t'], full_state)
+    H_k = get_H(prior, x['m'], m_predicted, Xs_prior, x['t'], full_state)
 
     m_res =  {
         'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
@@ -174,30 +184,30 @@ def rts_step_wrapper(prior, carry, x, X_s, full_state):
 
     return m_res, p_res
 
-def step_wrapper(data, m, full_state):
+def step_wrapper(data, m, Xs_prior, full_state):
     """ Wrapper to support scan with rts_step """
 
     rts_fn = evoke('rts_step_wrapper', m)
 
     def _fn(carry, x):
-        return rts_fn(m, carry, x, data.X_space, full_state)
+        return rts_fn(m, carry, x, data.X_space, Xs_prior, full_state)
 
     return _fn
 
 @dispatch('sequential')
-def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
+def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
-    m_inf = model.m_inf(None, X_s, None)
-    P_inf = model.P_inf(None, X_s, None)
+    m_inf = prior.m_inf(None, Xs_prior, None)
+    P_inf = prior.P_inf(None, Xs_prior, None)
 
     if settings.balance_state_space:
-        A_0 = model.expm(X_s, 0.0) # steady state has no dt
+        A_0 = prior.expm(Xs_prior, 0.0) # steady state has no dt
         T, T_inf = get_ss_balance_transformation(A_0)  
         m_inf, P_inf = _transform_ss_init_params(T, T_inf, m_inf, P_inf)
 
-    step_wrap = step_wrapper(data, model, full_state)
+    step_wrap = step_wrapper(data, prior, Xs_prior, full_state)
 
     carry, ys = scan(
         jax.remat(step_wrap),
@@ -218,10 +228,10 @@ def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
     m = ys['m']
     P = ys['P']
 
-    H_k = get_H(model, m_init, m_init, X_s, X_t[0], full_state)
+    H_k = get_H(prior, m_init, m_init, Xs_prior, X_t[0], full_state)
 
     if settings.balance_state_space:
-        A_last = model.expm(X_s, dt[-2]) #get the last step
+        A_last = prior.expm(Xs_prior, dt[-2]) #get the last step
         T_last, T_last_inf = get_ss_balance_transformation(A_last)  
         H_k = _transform_ss_H_param(T_last, T_last_inf, H_k)
 
@@ -230,7 +240,7 @@ def smoother(data, model, filter_res, dt, X_t, X_s, full_state):
 
     return np.flip(m, axis=0), np.flip(P, axis=0)
 
-def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full_state=False, filter_type=False):
+def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full_state=False, filter_type=False):
     """
     Args:
         full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
@@ -249,13 +259,16 @@ def smoother_loop(data: 'SequentialData', model: 'Model', filter_res: dict, full
     # TODO: fix this
     dt = np.hstack([dt, np.zeros(1)])
 
+    # spatial points that the prior is defined over
+    Xs_prior = _get_prior_spatial_points(data, prior)
+
     if settings.verbose:
         print(f'running {filter_type} kalman smoother')
 
     # sequential, parallel, square_root_svm
     smoother_fn = evoke('smoother', filter_type)
 
-    mu, var  =  smoother_fn(data, model, filter_res, dt, X_t, X_s, full_state)
+    mu, var  =  smoother_fn(data, prior, filter_res, dt, X_t, Xs_prior, full_state)
 
     return mu, var
 

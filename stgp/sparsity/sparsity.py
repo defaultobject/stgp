@@ -91,6 +91,9 @@ class SpatialSparsity(StructuredSparsity):
         if self.train_flag:
             self.raw_Z.release()
 
+class FITCSpatialSparsity(SpatialSparsity):
+    pass
+
 class _StackedSparsity(Sparsity):
     def __init__(self, sparsity_arr):
         self.sparsity_arr = objax.ModuleList(sparsity_arr)

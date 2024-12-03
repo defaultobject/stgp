@@ -24,8 +24,11 @@ from ... import settings
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask, mahal_with_mask
 from ...utils.nan_utils import get_same_shape_mask
-from ...dispatch import dispatch, evoke
+from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
+from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation
+from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
+from .filter_utils import _get_prior_spatial_points
 
 import numpy as onp
 #import tensorflow as tf
@@ -41,6 +44,28 @@ from ...transforms.pdes import PDE
 
 import objax
 import chex
+
+
+def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
+
+    A_k = prior.expm(Xs_prior, dt_k)
+    #Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=Xs_prior)
+
+    # use untransformed P_inf
+    Q_k = prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), X_spatial=Xs_prior)
+
+    if settings.balance_state_space:
+        # balance_ss takes m_inf, P_inf but we don't need to pass those so pass dummy m_k, P_k
+        T_k, T_k_inf = get_ss_balance_transformation(A_k)
+        A_k, Q_k, H_k = _transform_ss_params(T_k, T_k_inf, A_k, Q_k, H_k)
+
+    # predict steps
+    m_ = A_k @ m_k
+    P_ = A_k @ P_k @ A_k.T + Q_k
+
+    return m_, P_
+
+
 
 @jit
 def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
@@ -221,8 +246,49 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     }
 
 
+@dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
+def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+    # Compute innovation and R
+    # pass flag to exploit woodbury?
+
+    m_inf = carry['m_inf']
+    P_inf =  carry['P_inf']
+
+    H_k = prior.H(None, Xs_prior, None)
+
+    dt_k = x['dt']
+    X_s = data.X_space
+
+    m_k = carry['m']
+    P_k = carry['P']
+
+    m_, P_ = _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k)
+
+    R_k =  x['lik_mat']
+
+    # Compute sparsity transformation Kxz Kzz^{-1} m, diag(Kxz - Kxz Kzz^{-1} Kzx)
+    kern_s = prior.base_prior.parent[0].kernel.k2
+
+    pred_weights, pred_covar = gaussian_prediction_diagonal_statistics(
+        K_xs = kern_s.K_diag(X_s),
+        K_xs_x = kern_s.K(X_s, Xs_prior),
+        K_xx = add_jitter(kern_s.K(Xs_prior, Xs_prior), settings.jitter),
+        lik_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]) # sparsity is a noise free prediction
+    )
+    pred_covar = np.diag(pred_covar[:, 0]) # Ns x Ns
+
+    H_k = pred_weights @ H_k
+
+    # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
+    R_k = R_k + pred_covar
+
+    innovation = H_k @ m_
+
+    return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+
+
 @dispatch(LTI_SDE, 'sequential')
-def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
+def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
     """ Linear Kalman Filter Predict Step """
 
     m_inf = carry['m_inf']
@@ -235,19 +301,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
     m_k = carry['m']
     P_k = carry['P']
 
-    A_k = prior.expm(X_s, dt_k)
-    #Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
-
-    # use untransformed P_inf
-    Q_k = prior.Q(dt_k, A_k, prior.P_inf(None, X_s, None), X_spatial=X_s)
-
-    if settings.balance_state_space:
-        # balance_ss takes m_inf, P_inf but we don't need to pass those so pass dummy m_k, P_k
-        T_k, T_k_inf = get_ss_balance_transformation(A_k)
-        A_k, Q_k, H_k = _transform_ss_params(T_k, T_k_inf, A_k, Q_k, H_k)
-
-    m_ = A_k @ m_k
-    P_ = A_k @ P_k @ A_k.T + Q_k
+    m_, P_ = _kalman_predict(prior, m_k, P_k, X_s, dt_k)
 
     innovation = H_k @ m_
 
@@ -261,7 +315,7 @@ def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
 
 
 @dispatch(SDE, 'sequential')
-def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
+def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
 
@@ -293,7 +347,7 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
         return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
 
 @dispatch(LinearizedFilter_SDE, 'sequential')
-def kf_predict_step(prior, carry, x, X_s, lik_cov_flag):
+def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
     """ Form of Extended Kalman Filter Predict Step """
 
     P_inf = prior.P_inf(None, X_s, None)
@@ -357,7 +411,7 @@ def _state_block_dim(model, X_spatial):
     return block_dim
 
 @dispatch(PDE, 'sequential')
-def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
+def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
 
     if not lik_cov_flag:
@@ -494,17 +548,23 @@ def kf_predict_step(model, carry, x, X_s, lik_cov_flag):
     return carry, ys
 
 
-def filter_step_wrapper(data, m, lik_cov_flag):
-    kf_predict_fn = evoke('kf_predict_step', m, 'sequential')
+def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
+    sparsity_arr = prior.base_prior.get_sparsity()
+    sparsity = sparsity_arr[0]
 
+    # TODO: dispatch over everything
+    if _ensure_str( sparsity) == 'NoSparsity':
+        kf_predict_fn = evoke('kf_predict_step', prior, 'sequential')
+    else:
+        kf_predict_fn = evoke('kf_predict_step', prior, 'sequential', sparsity)
 
     def _fn(carry, x):
-        return kf_predict_fn(m, carry, x, data.X_space, lik_cov_flag)
+        return kf_predict_fn(prior, carry, data, x, Xs_prior, lik_cov_flag)
 
     return _fn
 
 @dispatch('sequential')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index):
     """
     Args:
         lik_mat: is either R of R_inv, the block diagonal covariance ot the block_diagonal precision
@@ -512,15 +572,15 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
 
     # steady state does not depend on time
     # in latent-space-state format
-    m_inf = prior.m_inf(None, X_s, None)
-    P_inf = prior.P_inf(None, X_s, None)
+    m_inf = prior.m_inf(None, Xs_prior, None)
+    P_inf = prior.P_inf(None, Xs_prior, None)
 
     if settings.balance_state_space:
-        A_0 = prior.expm(X_s, dt[0])
+        A_0 = prior.expm(Xs_prior, dt[0])
         T, T_inf = get_ss_balance_transformation(A_0)  
         m_inf, P_inf = _transform_ss_init_params(T, T_inf, m_inf, P_inf)
 
-    step_wrap = filter_step_wrapper(data, prior, lik_cov_flag)
+    step_wrap = filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag)
     unroll = 1
 
     state_dict = {
@@ -555,10 +615,10 @@ def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask,
             forcing_function = np.array(forcing_function)[train_index]
             state_dict['forcing_function'] = forcing_function
 
-        if X_s is None:
+        if Xs_prior is None:
             carry_dict['global_calibration'] = np.zeros(m_inf.shape[0])
         else: 
-            carry_dict['global_calibration'] = np.zeros(X_s.shape[0])
+            carry_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
     if False:
         print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
@@ -613,11 +673,11 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
     dt = np.hstack([np.zeros(1), dt])
 
-    # Fix Y shapeo
     Nt = data.Nt
     Ns = data.Ns
     P = data.P
 
+    # Fix Y shape
     # Y has shape Nt x P x Ns
     chex.assert_shape(Y, [Nt, P, Ns])
     # flatten but still in time - latent - space format
@@ -637,10 +697,14 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     if settings.verbose:
         print(f'running {filter_type} kalman filter')
 
+    # spatial points that the prior is defined over
+    Xs_prior = _get_prior_spatial_points(data, prior)
+
     filter_fn = evoke('filter', filter_type)
     #filter_fn = evoke('filter', 'sequential')
 
-    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index)
+
+    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index)
 
     return lml, filter_res
 

@@ -19,10 +19,10 @@ class Batch(Inference):
 
         return - lml
 
-    def predict_f(self, XS, data, gp, likelihood, prior, diagonal: bool):
+    def predict_f(self, XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs: bool = False):
 
         pred_mu, pred_var = evoke('predict', data, gp, likelihood, prior)(
-            XS, data, gp, likelihood, prior, diagonal
+            XS, data, gp, likelihood, prior, diagonal, decompose_across_outputs
         )
 
         return pred_mu, pred_var
@@ -35,7 +35,7 @@ class Batch(Inference):
 
         return pred_mu, pred_var
 
-    def predict_y(self, XS, data, gp, likelihood, prior, diagonal: bool):
+    def predict_y(self, XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs: bool = False):
 
         pred_mu, pred_var = self.predict_f(XS, data, gp, likelihood, prior, diagonal)
 

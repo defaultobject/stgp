@@ -249,7 +249,6 @@ def log_chol_matrix_det(chol):
     val = np.square(np.diag(chol))
     return np.sum(np.log(val))
 
-
 @jit
 def cholesky_solve(chol, X):
     # ensure square matrix
@@ -261,7 +260,6 @@ def cholesky_solve(chol, X):
 
     # assumes chol is lower
     return jax.scipy.linalg.cho_solve([chol, True], X)
-
 
 @jit
 def cholesky(A):

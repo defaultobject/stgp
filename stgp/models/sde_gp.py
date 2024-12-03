@@ -11,6 +11,7 @@ from ..dispatch import evoke
 from ..core import Model, Posterior
 from . import GP, BatchGP
 from ..computation.filters import kalman_filter, rts_smoother, parallel_kalman_filter, parallel_rts_smoother, square_root_kalman_filter
+from ..computation.filters.filter_utils import _get_prior_spatial_points
 from ..computation.matrix_ops import batched_block_diagional
 from ..computation.permutations import permute_mat, permute_vec, permute_vec_ld_to_dl, permute_mat_ld_to_dl, permute_vec_tps_to_tsp, permute_mat_tps_to_tsp
 
@@ -21,6 +22,7 @@ from ..kernels import Matern32
 from ..likelihood import get_product_likelihood, ProductLikelihood
 from ..transforms import Independent
 from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
+
 
 
 
@@ -566,6 +568,9 @@ class ST_SDE_GP(BASE_SDE_GP):
             sort=True
         ) 
 
+        Xs_prior  = _get_prior_spatial_points(self.data, self.prior)
+        Xs_data = self.data.X_space
+
         # The KF is used to predict at new time points. Collect the order temporal points across
         #    trainig and testing data.
         # This will also be used to unsort the results
@@ -585,7 +590,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         training_data_with_dummy_space = get_sequential_data_obj(
             SpatialTemporalInput(
                 self.data.X_time, 
-                np.tile(np.arange(self.data.X_space.shape[0])[:, None], [1, self.data.X_space.shape[1]])
+                np.tile(np.arange(Xs_data.shape[0])[:, None], [1, Xs_data.shape[1]])
             ),
             self.data.Y_st,
             sort=False 
@@ -619,10 +624,15 @@ class ST_SDE_GP(BASE_SDE_GP):
         temporal_test_data = get_sequential_data_obj(
             SpatialTemporalInput(
                 stacked_temporal_test_data.X_time, 
-                self.data.X_space,
+                Xs_data,
             ),
             np.transpose(np.reshape(stacked_temporal_test_data.Y_flat, [-1, self.data.Ns, self.data.P]), [0, 2, 1]),
             sort=False
+        )
+
+        prior_stacked_spatial_points =  SpatialTemporalInput(
+            stacked_temporal_test_data.X_time, 
+            Xs_prior,
         )
 
         R = self.get_likelihood_for_prediction(all_temporal_data)
@@ -669,232 +679,7 @@ class ST_SDE_GP(BASE_SDE_GP):
                 train_index=train_index
             )
 
-        return XS_st_data, all_temporal_data, temporal_test_data, mu_t, var_t[:, None, ...]
-
-    def _predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False, force_full_state: bool = False):
-        """
-        We use the Kalman filter and smoother to predict and the temporal slices of XS,
-        and then use the results to extrapolate to the new spatial locations.
-
-        Whilst we could use the Kalman smoother to predict at all these locations, having them 
-        separate requires less pre-processing of the data, and having them separate is required for
-        CVI anyway.
-
-        In:
-            XS: Ns x D
-
-        When diagonal is True we return
-            mu;
-            var:
-
-        When diagonal is False we return the block diagonal across latents
-
-        When filter_only is true we only return f from the filtering distributions
-
-        Args:
-            filter_only (bool): if True only run the Kalman filter, not smoother
-            force_full_state (bool): If True we return the full state (ie without H)
-        """
-        chex.assert_equal(XS.shape[1], self.data.D)
-
-        if not diagonal :
-            if not force_full_state:
-                if not self.full_state_observed:
-                    raise RuntimeWarning('Currently we do not return the full predictive posterior covariance using an SDE GP')
-
-        if force_full_state:
-            # NOTE: we cannot support it as we need to predict in space, which would require a little more machinery implemented
-            # NOTE: this is actually all implemented in the PIGP models, but there state-space predictions code is all separate, 
-            #   perhaps we can combine at some point?
-            raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
-
-        # Convert XS to a spatio-temporal object
-        NS = XS.shape[0]
-        # in data-latent format
-        YS_nans = onp.NaN * onp.ones([NS, self.output_dim]) # dummy Y values
-
-
-        # TODO: this will be massive :( 
-        # need to use temporally grouped data here...
-
-        # Convert XS to time-space format
-        XS_data = get_sequential_data_obj(
-            XS, 
-            YS_nans,
-            sort=True
-        )
-
-        # The KF is used to predict at new time points. Collect the order temporal points across
-        #    trainig and testing data.
-        # This will also be used to unsort the results
-        # NOTE: self.data must go before XS_data otherwise data points can be overwritten by the sorting
-        #    as only unique points are kept
-        all_t = np.vstack([self.data.X_time[:, None], XS_data.X_time[:, None]])
-        all_temporal_data = get_sequential_data_obj(
-            all_t,
-            np.ones_like(all_t), # Dummy data, we only care about X here
-            sort=True
-        )
-
-        # we construct dummy data using arange, as we do not require data to be spatially sorted, just 
-        #  sorted in a time-space grid (this distinction is important when using spatial inducing points)
-        dummy_training_data = get_sequential_data_obj(
-            SpatialTemporalInput(
-                self.data.X_time, 
-                np.tile(np.arange(self.data.X_space.shape[0])[:, None], [1, self.data.X_space.shape[1]])
-            ),
-            self.data.Y_st,
-            sort=False 
-        )
-
-        # Collect Training Data
-        X = onp.array(dummy_training_data.X)
-
-        # self.data.Y is stored in time-space-latent format, reshape into data-latent
-        Y = onp.reshape(dummy_training_data.Y_flat, [-1, self.output_dim])
-
-        # create new data with the same spatial points as self.data but with all time points across XS and X
-        XS_temporal_new = add_temporal_points(XS_data, dummy_training_data)
-        YS_temporal_new_nans = onp.NaN * onp.ones([XS_temporal_new.shape[0], self.output_dim]) # data-latent format
-
-        # Stack X first so that training data does not get removed when sorting data
-        X_stacked = onp.vstack([X, XS_temporal_new])
-        Y_stacked = onp.vstack([Y, YS_temporal_new_nans])
-
-        # ST data object across all (unique) training and testing temporal points but only 
-        #   at the training spatial locations
-
-        # this should not sort space!!
-        # we should not be sorting space for test_data as this is also used for induicng points
-        # . where ordering in space is not guarenteed
-        # so we first order in time to get the unique points
-        temporal_test_data = get_sequential_data_obj(
-            X_stacked,
-            Y_stacked,
-            sort=True 
-        )
-
-        XS_temporal_new = add_temporal_points(XS_data, self.data)
-        YS_temporal_new_nans = onp.NaN * onp.ones([XS_temporal_new.shape[0], self.output_dim]) # data-latent format
-
-        # Stack X first so that training data does not get removed when sorting data
-        Y_stacked = onp.vstack([self.data.Y, YS_temporal_new_nans])
-
-        _X = X_stacked[temporal_test_data.unique_idx][temporal_test_data.sort_idx]
-        _Y = Y_stacked[temporal_test_data.unique_idx][temporal_test_data.sort_idx]
-
-
-        # we now have a spatio-temporal grid where the spatial part is unchanged
-        temporal_test_data = get_sequential_data_obj(
-            SpatialTemporalInput(
-                temporal_test_data.X_time, 
-                self.data.X_space,
-            ),
-            np.transpose(np.reshape(_Y, [-1, self.data.Ns, self.data.P]), [0, 2, 1]),
-            sort=False
-        )
-
-
-        # Compute posterior at temporal_test_data
-        if filter_only:
-            mu_t, var_t = self.filter(
-                temporal_test_data,
-                self.prior,
-                R = self.get_likelihood_for_prediction(all_temporal_data)
-            )
-            
-            # in time - latent - space - state
-            # remove the extra state dims
-            # assuming latent is 1
-            _mu_t = np.copy(mu_t)
-
-
-            # TODO: this is just a quick way to get the state size
-            flat_mu_t = np.reshape(
-                mu_t,
-                [
-                    temporal_test_data.Nt, 
-                    self.prior.num_latents, 
-                    self.data.Ns, 
-                    -1
-                ]
-            )
-            state_size = flat_mu_t.shape[-1]
-            mu_t = mu_t[:, ::state_size, ...]
-            var_t = var_t[:, ::state_size, ...][:, :, ::state_size]
-
-
-        else:
-            mu_t, var_t = self.filter_and_smooth(
-                temporal_test_data,
-                self.prior,
-                R = self.get_likelihood_for_prediction(all_temporal_data)
-            )
-            output_dim = self.output_dim
-
-        # construct testing data at new spatial locations
-        XS_spatial_new = add_temporal_points(all_temporal_data, XS_data)
-        YS_spatial_new_nans = onp.NaN * onp.ones([XS_spatial_new.shape[0], self.output_dim])
-
-        xs_spatial_data = get_sequential_data_obj(
-            XS_spatial_new,
-            YS_spatial_new_nans,
-            sort=True 
-        )
-
-        # mu_t and var_t are in time-latent-space format
-        # when predicting we only predict f, not the state as well
-        if not self.full_state_observed:
-            # remove the extra state dims
-            mu_t = mu_t[:, :self.data.Ns, :]
-            var_t = var_t[:, :self.data.Ns, :][:, :, :self.data.Ns]
-
-        if not sort_output:
-            # For certain models we do not want to actually unsort the prediction and this will be handled downstream
-
-            # we need to return the data objects so that the unsorting can be performed
-            return xs_spatial_data, all_temporal_data, XS_data, mu_t, var_t[:, None, ...]
-
-        # Compute spatial conditions to get posterior at new spatial points
-        mu, var = evoke('spatial_conditional', XS_data, temporal_test_data, self, self.prior)(
-            xs_spatial_data, temporal_test_data, mu_t, var_t, self, False
-        )
-
-
-        # mu/var is in  time - (latent x space) format, need it in time-space-latent
-        # Unsort data and remove the training data
-        mu_time_unsorted = all_temporal_data.unsort(mu)[self.data.Nt:]
-        var_time_unsorted = all_temporal_data.unsort(var)[self.data.Nt:]
-
-        # convert to time-space-latent format
-        # TODO: how are multiple latent functions handled here?
-        if self.full_state_observed:
-            out_dim = self.prior.spatial_output_dim*self.prior.temporal_output_dim
-
-            mu_p = permute_vec_tps_to_tsp(mu_time_unsorted, num_latents=out_dim)
-            # ensure rank 3
-            var_p = permute_mat_tps_to_tsp(var_time_unsorted[:, 0, ...], num_latents=out_dim)
-
-            mu_p = np.reshape(mu_p, [-1, out_dim, 1])
-            var_p = batched_block_diagional(var_p, out_dim)
-            var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
-        else:
-            mu_p = mu_time_unsorted
-            var_p = var_time_unsorted
-
-            # time - space format
-            mu_p = np.reshape(mu_p, [-1, 1, 1])
-            var_p = np.reshape(
-                np.diagonal(var_p, axis1=2, axis2=3),
-                [-1, 1, 1, 1]
-            )
-        
-        # unsort to original permutation in XS
-        mu_p_unsorted = XS_data.unsort(mu_p)
-        var_p_unsorted = XS_data.unsort(var_p)
-
-
-        return mu_p_unsorted, var_p_unsorted
+        return XS_st_data, all_temporal_data, temporal_test_data, prior_stacked_spatial_points, mu_t, var_t[:, None, ...]
 
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False, force_full_state: bool = False):
         """
@@ -933,7 +718,7 @@ class ST_SDE_GP(BASE_SDE_GP):
             #   perhaps we can combine at some point?
             raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
 
-        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
+        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, prior_stacked_spatial_points, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
         var_t = var_t[:, 0, ...]
 
         # mu_t and var_t are in time-latent-space format
@@ -955,8 +740,8 @@ class ST_SDE_GP(BASE_SDE_GP):
         # data_x.X_time is not used, so  we can just pass the stacked temporal dataset
 
         # Compute spatial conditions to get posterior at new spatial points
-        pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, all_temporal_data, self, self.prior)(
-            xs_spatial_data, stacked_temporal_test_data, mu_t, var_t, self, False
+        pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, prior_stacked_spatial_points, self, self.prior)(
+            xs_spatial_data, prior_stacked_spatial_points, mu_t, var_t, self, False
         )
 
 

@@ -55,12 +55,12 @@ def single_output_spatial_data(N_time, N_space, NS_time, NS_space, seed=0):
 
 settings.jitter = 1e-7
 stgp.settings.linear_solver = stgp.settings.SolveType.CHOLESKY
-stgp.settings.low_memory_mode = True
+stgp.settings.low_memory_mode = False
 stgp.settings.parallel_filter_block_size = 1000
 
 # Construct Data
 NS = 50
-XS, X, Y = single_output_spatial_data(10000, 100, NS, NS, seed=0)
+XS, X, Y = single_output_spatial_data(100, 80, NS, NS, seed=0)
 
 Y  = Y + X[:, 0][:, None] + X[:, 1][:, None]
 
@@ -83,8 +83,8 @@ latent_gp = GP(
 prior = LTI_SDE(Independent([latent_gp])) 
 
 
-m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='parallel')
-#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
+#m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential', filter_type='parallel')
+m = GP(data = data, prior = prior, likelihood = lik, inference='Sequential')
 
 
 print(m.get_objective())

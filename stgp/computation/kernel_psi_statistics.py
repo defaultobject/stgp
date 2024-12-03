@@ -181,3 +181,5 @@ def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
 
     return get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, gp, likelihood, prior, block_size)
 
+def get_fitc_sparsity_transformation():
+    pass

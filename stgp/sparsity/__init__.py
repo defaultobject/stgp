@@ -1,4 +1,4 @@
-from .sparsity import Sparsity, FreeSparsity, StructuredSparsity, NoSparsity, FullSparsity, SpatialSparsity, StackedNoSparsity, StackedSparsity
+from .sparsity import Sparsity, FreeSparsity, StructuredSparsity, NoSparsity, FullSparsity, SpatialSparsity, StackedNoSparsity, StackedSparsity, FITCSpatialSparsity
 
 __all__ = [
     'Sparsity', 
@@ -8,5 +8,6 @@ __all__ = [
     'FullSparsity',
     'SpatialSparsity',
     'StackedSparsity',
-    'StackedNoSparsity'
+    'StackedNoSparsity',
+    'FITCSpatialSparsity'
 ]

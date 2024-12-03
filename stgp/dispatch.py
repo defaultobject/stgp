@@ -159,7 +159,6 @@ def evoke(*args, debug=False, **kwargs):
 
     for k, item in _REGISTERED.items():
 
-
         if _DISPATCHER.match(k, *args, **kwargs):
             if debug:
                 print('=============')
@@ -173,7 +172,6 @@ def evoke(*args, debug=False, **kwargs):
 
                 matched_item = item
                 matched_key = k
-
 
     if matched_item != None:
         if debug:

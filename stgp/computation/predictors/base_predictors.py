@@ -1,3 +1,19 @@
+"""
+Closed Form Gaussian Predictors
+
+For a regression model model
+
+    p(f(x) | m(x), Kxx)
+    p(Y | f(X)) = N(Y | f(X), \Sigma_y)
+
+The predictive distribution is given by
+    
+    p(f* | x*, X, y) = N(f* | 
+        Kxsx [Kxx +\Sigma_y]^{-1}  (Y-m(X)) + m(X*), 
+        Kxsxs - Kxsx [Kxx +\Sigma_y]^{-1} Kxxs
+    ) 
+
+"""
 from ...import settings
 from ...kernels import Kernel, RBF
 from ...likelihood import Gaussian, GaussianParameterised, ProductLikelihood
@@ -113,6 +129,31 @@ def gaussian_prediction_with_additive_noise_precision(Y, K_xs, K_xs_x, K_xx, mea
 
     return mu, sig
 
+@jit 
+def gaussian_prediction_diagonal_statistics(K_xs, K_xs_x, K_xx, lik_var):
+    """
+    Compute prediction weights (H) and covariance (Sigma)
+
+        p(f* | x*, X, y) = N(f* | H (y-m) + m, Sigma)
+
+    where 
+        H = Kxsx [Kxx +\Sigma_y]^{-1}
+        Sigma = Kxsxs - Kxsx [Kxx +\Sigma_y]^{-1} Kxxs
+    """
+    k =  K_xx + lik_var
+    k_chol = cholesky(k)
+
+    # Kxz [Kzz+Sigma_y]^{-1} Kzx = [Kxz Lzz.T] [Lzz Kzx] =  A1.T @ A1
+    A1 = jax.scipy.linalg.solve_triangular(k_chol,  K_xs_x.T, lower=True)
+
+    #Kxsx [Kxx +\Sigma_y]^{-1} = [Kxz Lzz.T] Lzz = A1.T Lzz
+    mu_weight = A1.T @  k_chol
+
+    sig = K_xs - np.sum(np.square(A1), axis=0)
+    sig = sig[:, None]
+
+
+    return mu_weight ,  sig
 
 
 @jit 

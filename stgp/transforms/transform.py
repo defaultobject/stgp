@@ -123,6 +123,7 @@ class LinearTransform(Transform):
 
     @property
     def approximately_linear(self) -> bool:
+        """ We are linear, not approximately_linear"""
         return False
 
     @property

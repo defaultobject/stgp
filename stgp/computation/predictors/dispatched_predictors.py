@@ -26,6 +26,7 @@ from ...utils import utils
 from ...utils.utils import can_batch, get_batch_type
 from ...utils.batch_utils import batch_over_module_types
 from ...utils.nan_utils import mask_to_identity, get_mask, mask_vector
+from ...core import Block
 
 from ...dispatch import _ensure_str
 
@@ -227,85 +228,13 @@ def predict_covar(XS_1, XS_2, data, gp, likelihood, prior):
 
     return var_arr
 
-
-@dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
-def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
-    """ 
-    An Independent prior with a product likelihood are treated as separate models and batched over.
-    """
-    X = data.X
-    Y = data.Y
-
-    NS = XS.shape[0]
-    N, P = Y.shape[0], Y.shape[1]
-    num_outputs = prior.output_dim
-
-    if block_size == 1:
-        K_xs = prior.var_blocks(XS)
-        # returns rank 3 but we need rank 2
-        K_xs = K_xs[..., 0]
-        evoke_name = 'predict_diagonal'
-    elif block_size == NS:
-        K_xs = prior.covar_blocks(XS, XS)
-        evoke_name = 'predict_full'
-    else:
-        K_xs = prior.covar_blocks(XS, XS)
-        evoke_name = 'predict_blocks'
-
-    # Precompute batched kernels
-    K_xx = prior.covar_blocks(X, X)
-    K_xs_x = prior.covar_blocks(XS, X)
-    mean_x = prior.mean_blocks(X)
-    mean_xs = prior.mean_blocks(XS)
-
-    likelihood_arr = likelihood.likelihood_arr
-
-    # Ensure Y is rank 2 after batching
-    if len(Y.shape) == 2:
-        Y = Y[..., None]
-
-    # Batch across all latents
-    marginal_mu, marginal_var =  batch_over_module_types(
-        evoke_name,
-        [gp],
-        likelihood_arr,
-        [XS, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_size],
-        [None, None, 1, 0, 0, 0, 0, 0, 0, None],
-        num_outputs,
-        2
-    )
-    marginal_mu = np.array(marginal_mu)
-    marginal_var = np.array(marginal_var)
-
-    V_P, V_NS, _, V_B, _ = marginal_var.shape
-
-    # fix shapes
-    # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
-    #   and reshape into the proper shape
-    marginal_mu = marginal_mu[:, :, 0, ...]
-    marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-    chex.assert_shape(marginal_mu, [V_NS, num_outputs,  block_size])
-
-    if V_NS == 1:
-        # full prediction
-        marginal_var = marginal_var[:, :, 0, ...]
-        marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-        chex.assert_shape(marginal_var, [1, num_outputs, NS, NS])
-    else:
-        marginal_var = marginal_var[..., 0]
-        marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-        # Mean field so we do not capture the correlations between Q
-        chex.assert_shape(marginal_var, [NS, num_outputs, block_size, block_size])
-
-    return marginal_mu, marginal_var
-
-
 @dispatch(Data, 'BatchGP', ProductLikelihood, LinearTransform)
-def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
     """ 
-    A linear model is treated as a full joint model. To compute we stack Y and treat like a standard
-       Gaussian
+    A linear model is treated as a full joint model. To compute we stack Y and treat like a standard Gaussian
     """
+    print('Linear Transform')
+    breakpoint()
 
     X = data.X
     Y = data.Y
@@ -327,7 +256,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     # TODO: generalise to different likelihoods
     lik_var = get_diagonal_gaussian_likelihood_variances(Y, likelihood_arr)
 
-    if block_size == 1:
+    if block_type == Block.DIAGONAL:
         K_xs = prior.var(XS)[..., 0]
         mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
 
@@ -337,17 +266,26 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
         mu = np.transpose(mu, [1, 0, 2])
         var = np.transpose(var, [1, 0, 2])[..., None]
 
-    elif block_size == NS:
-        # TODO: need to decide on a convention here, difference between returning 
-        #   full
-        #   blocks of size NS
-        #   blocks of size P
-        # Not all of this information can be stored in block_size
-        #  Need a prediction type? or maybe use a string?
+    elif block_type in [Block.FULL, Block.OUTPUT]:
+        # latent-data order
         K_xs = prior.covar(XS, XS)
         mu, var =  gaussian_prediction(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
         mu = np.reshape(mu, [P, NS, 1])
+
+        # convert to data-latent format
+        var = permute_mat_ld_to_dl(var, num_latents = mu.shape[0], num_data = mu.shape[1])
         var = var[None, None, ...]
+
+        if block_type == Block.OUTPUT:
+            # Compute block diagonals across outputs
+            # TODO: Ineffecient implementation as constructing the whole NPxNP covariance matrix
+            # var is in output-data (N, P) format so need to extract the PxP blocks
+            var = get_block_diagonal(var[0, 0, ...], mu.shape[0])
+            var = var[:, None, ...]
+
+        # convert to data-latent format
+        # N x P x Q
+        mu = np.transpose(mu, [1, 0, 2])
     else:
         raise NotImplementedError()
 
@@ -369,7 +307,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     breakpoint()
 
 @dispatch(Data, 'BatchGP', ProductLikelihood, Independent)
-def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
+def predict_blocks(XS, data, gp, likelihood, prior, block_type):
     # first check for any special cases. In this case every independent prior will need to handled separately and then combined
     #   otherwise we can directly compute latent-data format using prior.covar/var/mean 
 
@@ -384,7 +322,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
             'predict_blocks',
             [data, 'BatchGP'],
             [gp.likelihood.likelihood_arr, prior.parent],
-            [XS, data, gp, gp.likelihood.likelihood_arr, prior.parent, block_size],
+            [XS, data, gp, gp.likelihood.likelihood_arr, prior.parent, block_type],
             [None, None, None, 0,  0, None],
             len(prior.parent),
             2
@@ -397,10 +335,75 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
 
     else:
-        # can use batched form
-        return evoke('predict_blocks', data, gp, likelihood, LinearTransform)(
-            XS, data, gp, likelihood, prior, block_size
+        # Standard Caase where we can jsut iterate over each output then combine the inputs depending on block_type
+        X = data.X
+        Y = data.Y
+
+        NS = XS.shape[0]
+        N, P = Y.shape[0], Y.shape[1]
+        num_outputs = prior.output_dim
+
+        if block_type == Block.DIAGONAL:
+            K_xs = prior.var_blocks(XS)
+            # returns rank 3 but we need rank 2
+            K_xs = K_xs[..., 0]
+            evoke_name = 'predict_diagonal'
+        elif block_type == Block.FULL:
+            K_xs = prior.covar_blocks(XS, XS)
+            evoke_name = 'predict_full'
+        elif block_type == Block.OUTPUT:
+            K_xs = prior.covar_blocks(XS, XS)
+            evoke_name = 'predict_blocks'
+        else:
+            raise NotImplementedError()
+
+        # Precompute batched kernels
+        K_xx = prior.covar_blocks(X, X)
+        K_xs_x = prior.covar_blocks(XS, X)
+        mean_x = prior.mean_blocks(X)
+        mean_xs = prior.mean_blocks(XS)
+
+        likelihood_arr = likelihood.likelihood_arr
+
+        # Ensure Y is rank 2 after batching
+        if len(Y.shape) == 2:
+            Y = Y[..., None]
+
+        # Batch across all latents
+        marginal_mu, marginal_var =  batch_over_module_types(
+            evoke_name,
+            [gp],
+            likelihood_arr,
+            [XS, X, Y, likelihood_arr, K_xs, K_xs_x, K_xx, mean_x, mean_xs, block_type],
+            [None, None, 1, 0, 0, 0, 0, 0, 0, None],
+            num_outputs,
+            2
         )
+        marginal_mu = np.array(marginal_mu)
+        marginal_var = np.array(marginal_var)
+
+        V_P, V_NS, _, V_B, _ = marginal_var.shape
+        breakpoint()
+
+        # fix shapes
+        # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
+        #   and reshape into the proper shape
+        marginal_mu = marginal_mu[:, :, 0, ...]
+        marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
+        chex.assert_shape(marginal_mu, [V_NS, num_outputs,  block_size])
+
+        if V_NS == 1:
+            # full prediction
+            marginal_var = marginal_var[:, :, 0, ...]
+            marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+            chex.assert_shape(marginal_var, [1, num_outputs, NS, NS])
+        else:
+            marginal_var = marginal_var[..., 0]
+            marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
+            # Mean field so we do not capture the correlations between Q
+            chex.assert_shape(marginal_var, [NS, num_outputs, block_size, block_size])
+
+        return marginal_mu, marginal_var
 
 
 @dispatch(Data, 'BatchGP', BlockDiagonalGaussian, LinearTransform)
@@ -487,16 +490,19 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
 @dispatch(Data, 'BatchGP', Likelihood, LinearTransform)
 @dispatch(Data, 'BatchGP', Likelihood, Independent)
-def predict(XS, data, gp, likelihood, prior, diagonal: bool):
+def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs):
     """ Only supports linear models.  """
 
     if diagonal:
-        block_size = 1
+        if decompose_across_outputs:
+            block_type = Block.OUTPUT
+        else:
+            block_type = Block.DIAGONAL
     else:
-        block_size = XS.shape[0]
-        
-    return evoke('predict_blocks', data, gp, likelihood, prior)(
-        XS, data, gp, likelihood, prior, block_size
+        block_type = Block.FULL
+
+    return evoke('predict_blocks', data, gp, likelihood, prior, debug=True)(
+        XS, data, gp, likelihood, prior, block_type
     )
     
 
