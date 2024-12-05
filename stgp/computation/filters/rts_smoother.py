@@ -46,6 +46,14 @@ def get_model_H(prior, x, m_predicted, X_s, t, full_state):
 
     return H_k
 
+@dispatch('UncertainPredictionInput')
+def get_model_H(prior, x, m_predicted, X_s, t, full_state):
+    base_prior = prior.parent
+    rts_fn = evoke('get_model_H', base_prior)
+    H_k =  rts_fn(base_prior, x, m_predicted, X_s, t, full_state)
+    # TODO: this needs to predict to f -- OR need to implement that properly
+    return H_k
+
 @dispatch(PDE)
 def get_model_H(prior, x, m_predicted, X_s, t, full_state):
     H_sde_prior = prior.parent.H(None, X_s, t)
@@ -140,6 +148,13 @@ def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):
 
 
     return m_res, p_res
+
+
+@dispatch('UncertainPredictionInput')
+def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):
+    base_prior = prior.parent
+    rts_fn = evoke('rts_step_wrapper', base_prior)
+    return rts_fn(base_prior, carry, x, X_s, Xs_prior, full_state)
 
 @dispatch(PDE)
 def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):

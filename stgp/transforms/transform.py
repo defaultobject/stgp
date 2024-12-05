@@ -404,8 +404,13 @@ class Independent(Transform):
         return [fn(latent) for latent in self.parent]
 
     def state_space_representation(self, X_s):
+        if hasattr(self.parent[0], 'kernel'):
+            fn = lambda  x_s, latent:  latent.kernel.to_ss(x_s)
+        else:
+            fn = lambda  x_s, latent:  latent.to_ss(x_s)
+
         F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
-            lambda x_s, latent:  latent.kernel.to_ss(x_s),
+            fn,
             [X_s, self.parent],
             [None, 0],
             dim = self.output_dim,

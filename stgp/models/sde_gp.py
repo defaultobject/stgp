@@ -22,6 +22,7 @@ from ..kernels import Matern32
 from ..likelihood import get_product_likelihood, ProductLikelihood
 from ..transforms import Independent
 from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
+from ..transforms.uncertain_inputs import UncertainPredictionInput
 
 
 
@@ -247,7 +248,7 @@ class BASE_SDE_GP(Posterior):
         else:
             return mu, var
 
-    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None):
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res = False):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
@@ -266,10 +267,18 @@ class BASE_SDE_GP(Posterior):
             filter_type = self.filter_type
         )
 
+        # TODO: must be a better way than this?
         if return_lml:
-            return lml, mu, var
+            if return_kf_res:
+                return kf_res, lml, mu, var
+            else:
+                return lml, mu, var
+
         else:
-            return mu, var
+            if return_kf_res:
+                return kf_res, mu, var
+            else:
+                return mu, var
 
     def posterior_blocks(self, return_lml = False):
         """ Compute the posterior p(f_t | Y) for all t in time-latent-space format.  """
@@ -449,16 +458,22 @@ class T_SDE_GP(BASE_SDE_GP):
 
 
         else:
-            mu, var = self.filter_and_smooth(
+            kf_res, mu, var = self.filter_and_smooth(
                 test_data,
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data),
                 train_test_mask = train_mask,
                 train_index = train_index,
-                full_state = force_full_state
+                full_state = force_full_state,
+                return_kf_res = True
             )
 
+
             chex.assert_rank([mu, var], [3, 3])
+
+        if isinstance(self.prior, UncertainPredictionInput):
+            mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
+            var = jax.vmap(lambda h_k, P_k: h_k @ P_k @ h_k.T)( kf_res['meta']['H'], var)
 
         # fix mu and var shapes
 

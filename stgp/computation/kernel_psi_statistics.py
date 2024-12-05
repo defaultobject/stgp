@@ -129,21 +129,15 @@ def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
     breakpoint()
 
 
-def get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, gp, likelihood, prior, block_size):
+def get_psi_statistics_linear_form_from_mu_var_from_gram(
+    XS, X, Y, K_ss, K_sx, K_xx, likelihood_var, noise_pred_mu, noise_pred_var, base_gp_kernel
+):
+    N = X.shape[0]
 
-    # TODO: check shapes
-
-    first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp.kernel)(
-        XS, data.X, noise_pred_mu[0], noise_pred_var[0][0], base_gp.kernel
+    first_argument_form, square_form, both_argument_form = evoke('kernel_psi_statistics', base_gp_kernel)(
+        XS, X, noise_pred_mu, noise_pred_var, base_gp_kernel
     )
 
-    N = data.N
-    X = data.X
-    Y = data.Y
-    likelihood_var = likelihood.variance * np.eye(N)
-    K_ss = base_gp.covar(XS, XS)
-    K_sx = base_gp.covar(XS, X)
-    K_xx = base_gp.covar(X, X)
     K_tilde = K_xx + likelihood_var
     K_tilde_chol = cholesky(K_tilde)
 
@@ -169,17 +163,37 @@ def get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS
 
     return mean_weights, var
 
+def get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, base_gp, likelihood, prior, block_size):
+
+    # TODO: check shapes
+    return get_psi_statistics_linear_form_from_mu_var_from_gram(
+        XS, 
+        data.X,
+        data.Y,
+        K_ss = base_gp.covar(XS, XS),
+        K_sx = base_gp.covar(XS, X),
+        K_xx = base_gp.covar(X, X),
+        likelihood_var = likelihood.variance * np.eye(N),
+        noise_pred_mu = noise_pred_mu, 
+        noise_pred_var = noise_pred_var,
+        base_gp_kernel = base_gp.kernel
+    )
+
+
 def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
-    base_gp = prior.parent
+    base_gp = prior.base_prior
     noise_gp = prior.prediction_gp
 
-    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False)
+    noise_pred_mu, noise_pred_var = noise_gp.predict_f(XS, diagonal=False, fix_shapes = False)
+
+    # TODO: shapes are all wrong :) 
+    noise_pred_mu = np.transpose(noise_pred_mu, [0, 2, 1])
 
     # for testing
     #noise_pred_mu = [XS]
     #noise_pred_var = noise_pred_var*0.0
 
-    return get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, gp, likelihood, prior, block_size)
+    return get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, base_gp, likelihood, prior, block_size)
 
 def get_fitc_sparsity_transformation():
     pass

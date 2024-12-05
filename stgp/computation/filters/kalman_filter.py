@@ -26,7 +26,7 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_a
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
-from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation
+from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
 from .filter_utils import _get_prior_spatial_points
 
@@ -41,10 +41,37 @@ from ..linalg import solve, solve_from_cholesky
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE, LinearizedFilter_SDE
 from ...transforms.pdes import PDE
+from ...transforms.uncertain_inputs import UncertainPredictionInput
 
 import objax
 import chex
 
+def _state_block_dim(model, X_spatial):
+    if X_spatial is None:
+        Ns = 1
+    else:
+        Ns = X_spatial.shape[0]
+
+    dt_dims = model.state_space_dim()
+    ds_dims = model.spatial_output_dim
+
+    if type(ds_dims) is list:
+        if type(ds_dims[0]) is list:
+            ds_dims = np.sum(ds_dims[0])
+        else:
+            ds_dims = ds_dims[0]
+
+    if type(dt_dims) is list:
+        if type(dt_dims[0]) is list:
+            block_dim = sum(dt_dims[0])*ds_dims
+        else:
+            block_dim = dt_dims[0]*ds_dims
+    else:
+        block_dim = dt_dims*ds_dims
+
+    block_dim = block_dim*Ns
+
+    return block_dim
 
 def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
 
@@ -64,8 +91,6 @@ def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
     P_ = A_k @ P_k @ A_k.T + Q_k
 
     return m_, P_
-
-
 
 @jit
 def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
@@ -244,7 +269,61 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
+@dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
+def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+    # dimensions of these should match
+    base_prior = prior.prior
+    # will pad non UI with Nones
+    prediction_gp_list =  prior.prediction_gp
 
+    # construct state-space form
+    m_inf = carry['m_inf']
+    P_inf =  carry['P_inf']
+    dt_k = x['dt']
+    X_s = data.X_space
+
+    m_k = carry['m']
+    P_k = carry['P']
+    R_k =  x['lik_mat']
+
+    H_k = prior.H(None, Xs_prior, None)
+
+    m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
+
+    kern_s = prior.base_prior.parent[0].kernel.k2
+
+    # compute psi statistics
+    scalar2mat = lambda a: np.array([a])[:, None]
+
+    XS = scalar2mat(x['t'])
+    X = Xs_prior
+    pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
+        XS, 
+        X,
+        Y = H_k @ m_,
+        K_ss = None,
+        K_sx = None,
+        K_xx = add_jitter(kern_s.K(X, X), settings.jitter),
+        likelihood_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]),
+        noise_pred_mu = x['low_fidelity_prediction_mean'][:, None], 
+        noise_pred_var = x['low_fidelity_prediction_covar'][:, None],
+        base_gp_kernel = kern_s
+    )
+
+    # TODO: predictions will be funky
+
+
+    H_k = pred_weights @ H_k
+
+    # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
+    pred_covar = np.diag(pred_covar[:, 0]) # Ns x Ns
+    R_k = R_k + pred_covar
+
+    innovation = H_k @ m_
+
+    carry, state =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+    state['H'] = pred_weights
+    return carry, state
 
 @dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
 def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
@@ -269,17 +348,18 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
     # Compute sparsity transformation Kxz Kzz^{-1} m, diag(Kxz - Kxz Kzz^{-1} Kzx)
     kern_s = prior.base_prior.parent[0].kernel.k2
 
+    # TODO: probably need temporal kernel variance somewhere here
     pred_weights, pred_covar = gaussian_prediction_diagonal_statistics(
         K_xs = kern_s.K_diag(X_s),
         K_xs_x = kern_s.K(X_s, Xs_prior),
         K_xx = add_jitter(kern_s.K(Xs_prior, Xs_prior), settings.jitter),
         lik_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]) # sparsity is a noise free prediction
     )
-    pred_covar = np.diag(pred_covar[:, 0]) # Ns x Ns
 
     H_k = pred_weights @ H_k
 
     # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
+    pred_covar = np.diag(pred_covar[:, 0]) # Ns x Ns
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
@@ -383,32 +463,9 @@ def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
     Ns_colocation = f.shape[0]
     return kf_update_step(m_, P_, H_jac_k, R_k, carry, x_psuedo, f)
 
-def _state_block_dim(model, X_spatial):
-    if X_spatial is None:
-        Ns = 1
-    else:
-        Ns = X_spatial.shape[0]
 
-    dt_dims = model.state_space_dim()
-    ds_dims = model.spatial_output_dim
 
-    if type(ds_dims) is list:
-        if type(ds_dims[0]) is list:
-            ds_dims = np.sum(ds_dims[0])
-        else:
-            ds_dims = ds_dims[0]
 
-    if type(dt_dims) is list:
-        if type(dt_dims[0]) is list:
-            block_dim = sum(dt_dims[0])*ds_dims
-        else:
-            block_dim = dt_dims[0]*ds_dims
-    else:
-        block_dim = dt_dims*ds_dims
-
-    block_dim = block_dim*Ns
-
-    return block_dim
 
 @dispatch(PDE, 'sequential')
 def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
@@ -620,6 +677,14 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
         else: 
             carry_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
+    elif isinstance(prior, UncertainPredictionInput):
+        # TODO: need to predict in ST format then propogate it through
+        # TODO: use batch/loop
+        res = [prior.prediction_gp[0].predict_f(data.X)]
+        # Nt x Ns x P
+        state_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
+        state_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
+
     if False:
         print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
         for i in range(dt.shape[0]):
@@ -639,9 +704,13 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
 
     filter_res['meta'] = {}
 
+
     if isinstance(prior, PDE):
         filter_res['meta']['global_calibration'] = carry['global_calibration']
         filter_res['meta']['lml'] = lml
+
+    elif isinstance(prior, UncertainPredictionInput):
+        filter_res['meta']['H'] = ys['H']
 
     return lml, filter_res
 
@@ -705,6 +774,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index)
+
 
     return lml, filter_res
 

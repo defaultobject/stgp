@@ -348,12 +348,15 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type):
             # returns rank 3 but we need rank 2
             K_xs = K_xs[..., 0]
             evoke_name = 'predict_diagonal'
+            block_size = 1
         elif block_type == Block.FULL:
             K_xs = prior.covar_blocks(XS, XS)
             evoke_name = 'predict_full'
+            block_size = NS
         elif block_type == Block.OUTPUT:
             K_xs = prior.covar_blocks(XS, XS)
             evoke_name = 'predict_blocks'
+            block_size = P
         else:
             raise NotImplementedError()
 
@@ -383,7 +386,6 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type):
         marginal_var = np.array(marginal_var)
 
         V_P, V_NS, _, V_B, _ = marginal_var.shape
-        breakpoint()
 
         # fix shapes
         # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
@@ -501,7 +503,7 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_ou
     else:
         block_type = Block.FULL
 
-    return evoke('predict_blocks', data, gp, likelihood, prior, debug=True)(
+    return evoke('predict_blocks', data, gp, likelihood, prior)(
         XS, data, gp, likelihood, prior, block_type
     )
     
