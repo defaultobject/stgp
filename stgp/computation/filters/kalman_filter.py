@@ -43,6 +43,7 @@ from ...transforms.sdes import SDE, LTI_SDE, LinearizedFilter_SDE
 from ...transforms.pdes import PDE
 from ...transforms.uncertain_inputs import UncertainPredictionInput
 
+import numpy as onp
 import objax
 import chex
 
@@ -75,11 +76,18 @@ def _state_block_dim(model, X_spatial):
 
 def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
 
-    A_k = prior.expm(Xs_prior, dt_k)
-    #Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=Xs_prior)
+    A_k_blocks = prior.expm_blocks(Xs_prior, dt_k)
 
     # use untransformed P_inf
-    Q_k = prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), X_spatial=Xs_prior)
+    P_inf_blocks = prior.P_inf_blocks(None, Xs_prior, None) # should be block diagonal
+    breakpoint()
+
+    Q_k = prior.Q_blocks(dt_k, A_k_blocks, P_inf_blocks, X_spatial=Xs_prior) # will be block diagonal
+
+    # convert to full matrices
+    if False:
+        A_k = to_block_diag(A_k_blocks)
+        Q_k = to_block_diag(Q_k_blocks)
 
     if settings.balance_state_space:
         # balance_ss takes m_inf, P_inf but we don't need to pass those so pass dummy m_k, P_k
@@ -680,7 +688,18 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     elif isinstance(prior, UncertainPredictionInput):
         # TODO: need to predict in ST format then propogate it through
         # TODO: use batch/loop
-        res = [prior.prediction_gp[0].predict_f(data.X)]
+        def _collect_low_fidelity_prediction(gp, data):
+            if gp is not None:
+                pred_mu, pred_var = gp.predict_f(data.X)
+
+            else:
+                # construct a dummy reponse
+                pred_mu = np.ones(data.N)*onp.NaN
+                pred_var = np.ones(data.N)*onp.NaN
+
+            return np.squeeze(pred_mu), np.squeeze(pred_var)
+
+        res = [_collect_low_fidelity_prediction(gp, data) for gp in prior.prediction_gp]
         # Nt x Ns x P
         state_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
         state_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
@@ -771,7 +790,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
     filter_fn = evoke('filter', filter_type)
     #filter_fn = evoke('filter', 'sequential')
-
 
     lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index)
 

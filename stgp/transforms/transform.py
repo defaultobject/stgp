@@ -403,20 +403,30 @@ class Independent(Transform):
 
         return [fn(latent) for latent in self.parent]
 
-    def state_space_representation(self, X_s):
+    def state_space_representation_blocks(self, X_s):
         if hasattr(self.parent[0], 'kernel'):
             fn = lambda  x_s, latent:  latent.kernel.to_ss(x_s)
         else:
             fn = lambda  x_s, latent:  latent.to_ss(x_s)
 
+        if type(X_s) is list:
+            batch_over_Xs = 0
+        else:
+            batch_over_Xs = None
+
+
         F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
             fn,
             [X_s, self.parent],
-            [None, 0],
+            [batch_over_Xs, 0],
             dim = self.output_dim,
             out_dim = 6,
             batch_type = get_batch_type(self.parent)
         )
+        return F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks
+
+    def state_space_representation(self, X_s):
+        F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = self.state_space_representation_blocks(X_s)
 
         F = to_block_diag(F_blocks)
         L = to_block_diag(L_blocks)
@@ -427,25 +437,31 @@ class Independent(Transform):
 
         return F, L, Qc, H, m_inf, P_inf
 
-    def expm(self, dt, X_s):
+    def expm_blocks(self, dt, X_s):
         # TODO: clean up at some point (see self.P_inf)
         if hasattr(self.parent[0], 'kernel'):
             fn = lambda d, x_s, latent:  latent.kernel.expm(dt, x_s)
         else:
             fn = lambda d, x_s, latent:  latent.expm(dt, x_s)
 
-        A_blocks = batch_or_loop(
+        if type(X_s) is list:
+            batch_over_Xs = 0
+        else:
+            batch_over_Xs = None
+
+        return batch_or_loop(
             fn,
             [dt, X_s, self.parent],
-            [None, None, 0],
+            [None, batch_over_Xs, 0],
             dim = self.output_dim,
             out_dim = 1,
             batch_type = get_batch_type(self.parent)
         )
 
-        return to_block_diag(A_blocks)
+    def expm(self, dt, X_s):
+        return to_block_diag(self.expm_blocks(dt, X_s))
 
-    def P_inf(self, x, X_s, t):
+    def P_inf_blocks(self, x, X_s, t):
 
         # TODO: clean up at some point
         # this is just a way to support wrapping both SDE_GPs and Transforms of them in an Independent
@@ -456,7 +472,7 @@ class Independent(Transform):
         else:
             fn = lambda x, X_s, t, latent:  latent.P_inf(x, X_s, t)
 
-        P_inf_blocks = batch_or_loop(
+        return batch_or_loop(
             fn,
             [x, X_s, t, self.parent],
             [None, None, None, 0],
@@ -465,7 +481,8 @@ class Independent(Transform):
             batch_type = get_batch_type(self.parent)
         )
 
-        return to_block_diag(P_inf_blocks)
+    def P_inf(self, x, X_s, t):
+        return to_block_diag(self.P_inf_blocks(x, X_s, t))
 
     def m_inf(self, x, X_s, t):
 
@@ -507,6 +524,8 @@ class Independent(Transform):
 
         return np.hstack(H_inf_blocks)
 
+    def Q_blocks(self, dt_k, A_k_blocks, P_inf_blocks, X_spatial=None):
+        breakpoint()
     def Q(self, dt_k, A_k, P_inf, X_spatial=None):
         #warnings.warn('HACK IN INDEPENDENT TRANSFORM Q')
         # A_k, P_inf SHOULD be in block form here, but they are not...
@@ -541,7 +560,7 @@ class Independent(Transform):
 
         block_dim = block_dim*Ns
 
-        A_k = get_block_diagonal(A_k, block_dim)
+        A_k = get_block_diagonal(A_k, block_dim) 
         P_inf = get_block_diagonal(P_inf, block_dim)
 
         Q_blocks = batch_or_loop(

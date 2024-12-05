@@ -83,6 +83,11 @@ class LTI_SDE(SDE):
 
         return Pinf
 
+    def P_inf_blocks(self, x, X_s, t):
+        _, _, _, _, _, Pinf_blocks = self.gp.state_space_representation_blocks(X_s)
+
+        return Pinf_blocks
+
     def m_inf(self, x, X_s, t):
         if self.m_init_param is None:
             _, _, _, _, m_inf, _ = self.gp.state_space_representation(X_s)
@@ -93,8 +98,14 @@ class LTI_SDE(SDE):
     def expm(self, X_s, t):
         return self.gp.expm(t, X_s)
 
+    def expm_blocks(self, X_s, t):
+        return self.gp.expm_blocks(t, X_s)
+
     def Q(self, dt_k, A_k, P_inf, X_spatial=None):
         return self.gp.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
+
+    def Q_blocks(self, dt_k, A_k_blocks, P_inf_blocks, X_spatial=None):
+        return self.gp.Q_blocks(dt_k, A_k_blocks, P_inf_blocks, X_spatial=X_spatial)
 
 class LTI_SDE_Full_State_Obs(LTI_SDE):
     """ For consistentcy with LTI_SDE all dimensions correspond to a single latent function """

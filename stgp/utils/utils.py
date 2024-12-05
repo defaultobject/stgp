@@ -56,15 +56,27 @@ def do_obj_types_match(t1, t2):
         return False
 
     return t1 == t2
+
+def do_obj_have_same_vars(t1, t2):
+    t1_vars = set(t1.vars().keys())
+    t2_vars = set(t2.vars().keys())
+
+    return len(t1_vars-t2_vars) == 0
     
 
 
 def can_batch(module_list, debug=False):
+    """
+    This is an incomplete/niave way of checking if module_list consist of the same module
+    """
     # if all types are the same then batch
     first_type = get_obj_type(module_list[0])
 
     if all(do_obj_types_match(get_obj_type(m), first_type) for m in module_list):
-        return True
+        if all(do_obj_have_same_vars( module_list[0], m) for m in module_list):
+            return True
+        else:
+            return False
 
     return False
 
