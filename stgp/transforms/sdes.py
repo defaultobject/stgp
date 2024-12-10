@@ -78,6 +78,7 @@ class LTI_SDE(SDE):
 
         return H
 
+
     def P_inf(self, x, X_s, t):
         _, _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
 

@@ -504,8 +504,7 @@ class Independent(Transform):
 
         return np.hstack(m_inf_blocks)
 
-    def H(self, x, X_s, t):
-
+    def H_blocks(self, x, X_s, t):
         # TODO: clean up at some point (see self.P_inf)
 
         if hasattr(self.parent[0], 'kernel'):
@@ -513,7 +512,7 @@ class Independent(Transform):
         else:
             fn = lambda x, X_s, t, latent:  latent.H(x, X_s, t)
 
-        H_inf_blocks = batch_or_loop(
+        H_blocks = batch_or_loop(
             fn,
             [x, X_s, t, self.parent],
             [None, None, None, 0],
@@ -521,11 +520,30 @@ class Independent(Transform):
             out_dim = 1,
             batch_type = get_batch_type(self.parent)
         )
+        return H_blocks
 
-        return np.hstack(H_inf_blocks)
+    def H(self, x, X_s, t):
+        return np.hstack(self.H_blocks(x, X_s, t))
 
     def Q_blocks(self, dt_k, A_k_blocks, P_inf_blocks, X_spatial=None):
-        breakpoint()
+        def _eval_Q( dt, A, P, Xs, latent):
+            if hasattr(latent, 'kernel'):
+                return latent.kernel.Q(dt, A, P, X_spatial=Xs)
+            else:
+                return latent.Q(dt, A, P, X_spatial=Xs)
+
+        Q_blocks = batch_or_loop(
+            _eval_Q,
+            [dt_k, A_k_blocks, P_inf_blocks, X_spatial, self.parent],
+            [None, 0, 0, None, 0],
+            dim = self.output_dim,
+            out_dim = 1,
+            batch_type = get_batch_type(self.parent)
+        )
+        return Q_blocks
+
+
+
     def Q(self, dt_k, A_k, P_inf, X_spatial=None):
         #warnings.warn('HACK IN INDEPENDENT TRANSFORM Q')
         # A_k, P_inf SHOULD be in block form here, but they are not...
@@ -562,6 +580,8 @@ class Independent(Transform):
 
         A_k = get_block_diagonal(A_k, block_dim) 
         P_inf = get_block_diagonal(P_inf, block_dim)
+
+        # TODO: call Q_blocks
 
         Q_blocks = batch_or_loop(
             fn,

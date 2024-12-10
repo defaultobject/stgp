@@ -21,7 +21,7 @@ from jax.lax import scan
 from functools import partial
 
 from ... import settings 
-from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc
+from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc, to_block_diag
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask, mahal_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke, _ensure_str
@@ -80,12 +80,11 @@ def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
 
     # use untransformed P_inf
     P_inf_blocks = prior.P_inf_blocks(None, Xs_prior, None) # should be block diagonal
-    breakpoint()
 
-    Q_k = prior.Q_blocks(dt_k, A_k_blocks, P_inf_blocks, X_spatial=Xs_prior) # will be block diagonal
+    Q_k_blocks = prior.Q_blocks(dt_k, A_k_blocks, P_inf_blocks, X_spatial=Xs_prior) # will be block diagonal
 
     # convert to full matrices
-    if False:
+    if True:
         A_k = to_block_diag(A_k_blocks)
         Q_k = to_block_diag(Q_k_blocks)
 
@@ -298,37 +297,74 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-    kern_s = prior.base_prior.parent[0].kernel.k2
-
     # compute psi statistics
     scalar2mat = lambda a: np.array([a])[:, None]
 
     XS = scalar2mat(x['t'])
-    X = Xs_prior
-    pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
-        XS, 
-        X,
-        Y = H_k @ m_,
-        K_ss = None,
-        K_sx = None,
-        K_xx = add_jitter(kern_s.K(X, X), settings.jitter),
-        likelihood_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]),
-        noise_pred_mu = x['low_fidelity_prediction_mean'][:, None], 
-        noise_pred_var = x['low_fidelity_prediction_covar'][:, None],
-        base_gp_kernel = kern_s
-    )
+    #for each latent function compute psi statistics 
+    # TODO: rewrite using batching
+    latents = prior.base_prior.parent
+    num_latents = len(latents)
 
+    pred_weights_arr = []
+    pred_covar_arr = []
+    for q in range(num_latents):
+        X_q = Xs_prior[q]
+        if X_q is not None:
+            kern_s_q = latents[q].kernel.k2
+            # compute psi statatics
+            arr = []
+            idx_slice_start = 0
+            idx_slice = None
+            for i in range(num_latents):
+                if Xs_prior[i] is None:
+                    arr.append(np.array([0]))
+                    idx_slice_start += 1
+                else:
+                    if i == q:
+                        arr.append(np.eye(X_q.shape[0]))
+                        idx_slice = slice(idx_slice_start, idx_slice_start+X_q.shape[0])
+
+                    else:
+                        arr.append(np.zeros((X_q.shape[0], X_q.shape[0])))
+                        idx_slice_start += X_q.shape[0]
+
+                    
+            H_q = to_block_diag(arr)
+            # only keep the parts relevenat to this latent function
+            H_q = H_q[idx_slice]
+
+            pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
+                XS, 
+                X_q,
+                Y = H_q @ H_k @ m_,
+                K_ss = None,
+                K_sx = None,
+                K_xx = add_jitter(kern_s_q.K(X_q, X_q), settings.jitter),
+                likelihood_var = np.zeros([X_q.shape[0], X_q.shape[0]]),
+                noise_pred_mu = x['low_fidelity_prediction_mean'][np.array([q])][:, None], 
+                noise_pred_var = x['low_fidelity_prediction_covar'][np.array([q])][:, None],
+                base_gp_kernel = kern_s_q
+            )
+            pred_weights_arr.append(pred_weights)
+            pred_covar_arr.append(pred_covar)
+        else:
+            #no need to compute psi statistics
+            pred_weights_arr.append(np.eye(1))
+            pred_covar_arr.append(np.array([0.0]))
+
+
+    pred_weights = to_block_diag(pred_weights_arr)
     # TODO: predictions will be funky
-
-
     H_k = pred_weights @ H_k
 
     # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
-    pred_covar = np.diag(pred_covar[:, 0]) # Ns x Ns
+    pred_covar = to_block_diag(pred_covar)
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
 
+    breakpoint()
     carry, state =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
     state['H'] = pred_weights
     return carry, state
