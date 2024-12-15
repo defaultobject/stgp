@@ -19,6 +19,7 @@ from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
 from .filter_utils import _get_prior_spatial_points
+from .kalman_filter import _kalman_predict
 
 
 # Import types
@@ -100,26 +101,30 @@ def rts_step_wrapper(prior, carry, x, X_s, Xs_prior, full_state):
     m_inf = carry['m_inf']
     P_inf = carry['P_inf']
 
-    dt_k = x['dt']
-
-    A_k = sde_prior.expm(Xs_prior, dt_k)
-    
-    # Compute Q_k in the untransformed space
-    Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), Xs_prior)
 
     m_k = x['m']
     P_k = x['P']
 
-    if settings.balance_state_space:
-        T_k, T_k_inf = get_ss_balance_transformation(A_k)
-        _A_k = A_k
-        _Q_k = Q_k
-        A_k = _transform_ss_A_param(T_k, T_k_inf, A_k)
-        Q_k = _transform_ss_Q_param(T_k, T_k_inf, Q_k)
+
+    dt_k = x['dt']
+
+    m_predicted, P_predicted, A_k, Q_k = _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k, return_A_Q = True)
+
+    if False:
+        A_k = sde_prior.expm(Xs_prior, dt_k)
+        
+        # Compute Q_k in the untransformed space
+        Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), Xs_prior)
+        if settings.balance_state_space:
+            T_k, T_k_inf = get_ss_balance_transformation(A_k)
+            _A_k = A_k
+            _Q_k = Q_k
+            A_k = _transform_ss_A_param(T_k, T_k_inf, A_k)
+            Q_k = _transform_ss_Q_param(T_k, T_k_inf, Q_k)
 
 
-    m_predicted = A_k @ m_k
-    P_predicted = A_k @ P_k @ A_k.T + Q_k
+        m_predicted = A_k @ m_k
+        P_predicted = A_k @ P_k @ A_k.T + Q_k
 
     m, P = rts_smoother_step(
         m_k,

@@ -473,7 +473,8 @@ class T_SDE_GP(BASE_SDE_GP):
 
         if isinstance(self.prior, UncertainPredictionInput):
             mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
-            var = jax.vmap(lambda h_k, P_k: h_k @ P_k @ h_k.T)( kf_res['meta']['H'], var)
+            # what should the variace be?
+            var = jax.vmap(lambda h_k, R_k, P_k: h_k @ P_k @ h_k.T + R_k)( kf_res['meta']['H'], kf_res['meta']['ui_var'], var)
 
         # fix mu and var shapes
 
@@ -484,7 +485,6 @@ class T_SDE_GP(BASE_SDE_GP):
             out_dim = state_dim
         else:
             out_dim = self.output_dim
-
 
         # mu, var are in time - latent- space format but space is 1
         # Therefore we just need to stack them as no permutations are required

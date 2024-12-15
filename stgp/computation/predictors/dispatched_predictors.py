@@ -492,12 +492,14 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
 
 @dispatch(Data, 'BatchGP', Likelihood, LinearTransform)
 @dispatch(Data, 'BatchGP', Likelihood, Independent)
-def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs):
+def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs: bool):
     """ Only supports linear models.  """
 
     if diagonal:
         if decompose_across_outputs:
+            # TODO: this is breaking everything :) 
             block_type = Block.OUTPUT
+            #block_type = Block.DIAGONAL
         else:
             block_type = Block.DIAGONAL
     else:

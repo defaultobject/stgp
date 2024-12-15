@@ -1,16 +1,46 @@
 """
 Kalman filtering
 
-With one latent function the full state has the following format:
-    time-space-state
+State Organisation:
 
-With multiple latent functions the full state is:
-    time-latent-space-state
+    With one latent function the full state has the following format:
+        time-space-state
 
-because this corresponds to simply stacking the latent GPs
+    With multiple latent functions the full state is:
+        time-latent-space-state
 
-when using derivate observations the state is organised as:
-    time-latent-ds-space-df
+    because this corresponds to simply stacking the latent GPs
+
+    when using derivate observations the state is organised as:
+        time-latent-ds-space-df
+
+
+Supported Model Structures
+    
+    Single Layer
+
+        LTI-SDE[
+           GP(
+                [NoSparsity | SpatialSparsity | FITCSpatialSparsity]
+           )
+        ]
+
+    Recursive
+
+        UncertainPredictionInput[
+            GP(FITCSpatialSparsity)
+        ]
+
+    Physics-Informed
+
+        PDE[
+            LTI-SDE[.]
+        ]
+
+        PDE[
+            UncertainPredictionInput[.]
+        ]
+        
     
 
 """
@@ -28,7 +58,7 @@ from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
 from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
-from .filter_utils import _get_prior_spatial_points
+from .filter_utils import _get_prior_spatial_points, _setup_pde_state_and_carry, _setup_filter_state_and_dict, _process_filter_results_state_and_dict, _construct_filter_with_pde_transform, kf_update_step
 
 import numpy as onp
 #import tensorflow as tf
@@ -74,7 +104,7 @@ def _state_block_dim(model, X_spatial):
 
     return block_dim
 
-def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
+def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k, return_A_Q=False):
 
     A_k_blocks = prior.expm_blocks(Xs_prior, dt_k)
 
@@ -97,7 +127,10 @@ def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-    return m_, P_
+    if return_A_Q:
+        return m_, P_, A_k, Q_k
+    else:
+        return m_, P_
 
 @jit
 def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
@@ -200,84 +233,11 @@ def _pivoted_cholesky(matrix):
     """ wrap pivoted_cholesky to make max_rank static """
     return pivoted_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
 
-def get_Y_mask(Y_k):
-    mask_k = get_same_shape_mask(Y_k)
-
-
-    # Construct spatial mask
-    m_vec = np.tile(mask_k, [1, Y_k.shape[0]])
-
-    M = np.multiply(
-        m_vec,
-        np.eye(Y_k.shape[0])
-    )
-
-    return M
 
 
 
-@jit
-def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
-    """
-    Computes the Kalman filter update equations with missing data support:
-    
-    In: 
-        p(x_k | Y_{k-1}) = N(x_k | _m_k, _P_k)
-
-    Computes:
-
-        v_k = y_k - H_k _m_k 
-        S_k = H_k _P_k H^T_k + R_k
-        K_k = _P_k H^T_k S^{-1}_k
-
-        m_k = _m_k + K_k v_k
-        P_k = _P_k - K_k S_k K^T_k
-
-    TODO:
-    Args:
-        carry:
-        x:
-    """
-
-    # in latent - space format
-    Y_k = x['Y']
-
-    mask_k = get_same_shape_mask(Y_k)
-    M = get_Y_mask(Y_k)
-    Y_k = np.nan_to_num(Y_k)
-
-    # -- KALMAN UPDATE --
-    # m_, P_ is in latent - space -state format
-    #mu = M @ H_k @ m_
-    mu = M @ innovation
-    var = M @ H_k @ P_ @ H_k.T @ M.T
-
-    #inovation mean and variance
-    # all in latent-space format
-    v = Y_k - mu
-    S = var + R_k
-
-    K = solve(S, M @ H_k @ P_).T
-
-    m_k = m_ + K @ v
-    P_k = P_ - K @ S @ K.T
-
-    #log marginal likelihood (assuming Gaussian likelihood)
-    log_Z_k = np.sum(
-        log_gaussian_with_mask(Y_k, mu, S, mask_k[:, 0])
-    )
-
-
-    if settings.kalman_filter_force_symmetric:
-        P_k = force_symmetric(P_k)
-
-    return {
-        'm': m_k, 'P': P_k, 'm_inf': carry['m_inf'], 'P_inf': carry['P_inf']
-    }, {
-        'm': m_k, 'P': P_k, 'lml': log_Z_k
-    }
-@dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+@dispatch(UncertainPredictionInput, 'FITCSpatialSparsity')
+def get_lti_parameters(prior, carry, data, x, Xs_prior, lik_cov_flag):
     # dimensions of these should match
     base_prior = prior.prior
     # will pad non UI with Nones
@@ -329,7 +289,6 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
                         arr.append(np.zeros((X_q.shape[0], X_q.shape[0])))
                         idx_slice_start += X_q.shape[0]
 
-                    
             H_q = to_block_diag(arr)
             # only keep the parts relevenat to this latent function
             H_q = H_q[idx_slice]
@@ -348,6 +307,9 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
             )
             pred_weights_arr.append(pred_weights)
             pred_covar_arr.append(pred_covar)
+
+            if settings.debug_mode:
+                breakpoint()
         else:
             #no need to compute psi statistics
             pred_weights_arr.append(np.eye(1))
@@ -359,14 +321,27 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
     H_k = pred_weights @ H_k
 
     # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
-    pred_covar = to_block_diag(pred_covar)
+    pred_covar = to_block_diag(pred_covar_arr)
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
 
-    breakpoint()
+    x['pred_weights'] = pred_weights
+    x['pred_covar'] = pred_covar
+
+    return m_, P_, H_k, R_k, carry, x, innovation
+
+@dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
+def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+    # TODO: the first half of this function needs to be get_lti_parameters() allowing it to be generalised
+
+    m_, P_, H_k, R_k, carry, x, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
+        prior, carry, data, x, Xs_prior, lik_cov_flag
+    )
+
     carry, state =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
-    state['H'] = pred_weights
+    state['H'] = x['pred_weights']
+    state['ui_var'] = x['pred_covar']
     return carry, state
 
 @dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
@@ -407,6 +382,7 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
+
 
     return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
 
@@ -509,11 +485,28 @@ def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
 
 
 
+@dispatch(PDE, 'sequential', 'FITCSpatialSparsity')
+def kf_predict_step(prior, carry, data, x, Xs_prior , lik_cov_flag):
+    # model will be PDE[UI[LTI_SDE[GP[FITC]]]] or PDE[LTI_SDE[GP[FITC]]]
 
+    dt_k = x['dt']
+
+    sde_prior = prior.parent
+
+    # get parent LTI parameters
+    m_, P_, H_k, R_k, carry, x, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
+        sde_prior, carry, data, x, Xs_prior, lik_cov_flag
+    )
+
+    carry, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_k, x, carry, data, prior, Xs_prior)
+
+    return carry, ys
 
 @dispatch(PDE, 'sequential')
-def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
+def kf_predict_step(model, carry, data, x, Xs_prior, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
+     #TODO: need to extract the SDE parameters from the parent prior first
+     #  then we can handle UncertainInputs, FITC, standard gps etc
 
     if not lik_cov_flag:
         raise NotImplementedError()
@@ -523,131 +516,29 @@ def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
     sde_prior = model.parent
 
     #P_inf = sde_prior.P_inf(None, X_s, None)
-
-    F, L, Qc, _, _, P_inf = sde_prior.state_space_representation(X_s, None, None)
-    H_sde_prior = sde_prior.H(None, X_s, None)
+    F, L, Qc, _, _, P_inf = sde_prior.state_space_representation(Xs_prior, None, None)
+    H_sde_prior = sde_prior.H(None, Xs_prior, None)
 
     dt_k = x['dt']
     m_k = carry['m']
     P_k = carry['P']
 
-    A_k = sde_prior.expm(X_s, dt_k)
+    A_k = sde_prior.expm(Xs_prior, dt_k)
 
     if False:
-        Q_k = lti_disc(F, Qc, L, x['dt'], settings.jitter, _state_block_dim(sde_prior, X_s))
+        Q_k = lti_disc(F, Qc, L, x['dt'], settings.jitter, _state_block_dim(sde_prior, Xs_prior))
     else:
-        Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
-
-    global_calibration = carry['global_calibration']
+        Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=Xs_prior)
 
     # standard Kalman prediction
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-    if False:
-        R_k =  x['lik_mat']
-        innovation = H_sde_prior @ m_
-        carry, ys =  kf_update_step(m_, P_,  H_sde_prior, R_k, carry, x, innovation)
-        carry['global_calibration'] = global_calibration
-        return carry, ys
-    else:
-        # full state
-        #H_k = model.H(H_sde_prior@m_, X_s, x['t'])
-        H_k = model.H(m_, X_s, x['t'])
-        R_k =  x['lik_mat']
+    R_k =  x['lik_mat']
 
-        if model.forcing_function is not None:
-            force = x['forcing_function']
+    carry, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, data, model, Xs_prior)
 
-            # collocation method
-            f = model.forward_g(H_sde_prior@m_, X_s, x['t'], force=force)
-            H_jac_k = model.H_jac(H_sde_prior@m_, X_s, x['t'], force=force)
-
-        else:
-            # collocation method
-            f = model.forward_g(m_, X_s, x['t'])
-            H_jac_k = model.H_jac(m_, X_s, x['t'])
-
-        if model.boundary_conditions is not None:
-            # observer boundary conditions
-            x_boundary = {
-                'Y': x['boundary_data'], 
-                't': x['t'], 
-                'dt': x['dt'], 
-                'lik_mat': x['lik_mat'], 
-            }
-            carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, R_k*0.0, carry, x_boundary, H_jac_k @ H_sde_prior @ m_)
-            m_, P_ = carry['m'], carry['P']
-
-        if True:
-            # compute prediction with the PDE transform
-            y_psuedo = model.psuedo_observations(X_s)
-            #we only observer y_psuedo at the training locations, because we discretise the prior first
-            # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
-            y_psuedo = y_psuedo * x['train_test_mask']
-
-            # construct a state dict for the pseudo observation update step
-            x_psuedo = {
-                'Y': y_psuedo, 
-                't': x['t'], 
-                'dt': x['dt'], 
-                'lik_mat': x['lik_mat'], 
-            }
-
-            Ns_colocation = f.shape[0]
-
-            carry, ys = kf_update_step(m_, P_, H_jac_k , np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  np.squeeze(f)[..., None])
-            #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
-            m_, P_ = carry['m'], carry['P']
-
-            if True:
-                # global calibration
-                Y_k = y_psuedo
-                f_k =  np.squeeze(f)[..., None]
-                mask_k = get_same_shape_mask(Y_k)[:, 0]
-                M = get_Y_mask(Y_k)
-                Y_k = np.nan_to_num(Y_k)
-
-                err = Y_k-f_k
-                #HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
-                HP_HT = H_jac_k @P_ @H_jac_k.T
-
-                if False:
-                    # global error across whole state
-                    mahal = mahal_with_mask(err, HP_HT, mask_k)
-                    sigma_n = avg_mahal_with_mask(err, HP_HT, mask_k)
-                    sigma_n = np.nan_to_num(sigma_n) # avoid nans due to degenerate P_, such as zero error at start
-
-                if True:
-
-                    # global error for each state dimension
-                    # see https://arxiv.org/pdf/2012.08202
-                    sigma_n = jax.vmap(lambda z, s: (z**2)/s, [0, 0])(err[:, 0], np.diag(HP_HT))
-                    #sigma_n = err[1, 0]**2/P_[1, 1]
-                    sigma_n = np.nan_to_num(sigma_n, posinf=0.0)
-                    sigma_n = np.nan_to_num(sigma_n)
-
-                # moving average
-                global_calibration =  (global_calibration*(x['k']) + np.squeeze(sigma_n))/(x['k']+1)
-
-
-        if model.observe_data:
-
-            if model.observation_function is not None:
-                _f = H_sde_prior@m_
-                H_k = model.obs_jac(_f, X_s, x['t'])
-                innovation = model.observation_function(_f, X_s, x['t'])
-            else:
-                #innovation = H_k @ H_sde_prior @ m_
-                innovation = H_k  @ m_
-
-            #carry, ys =  kf_update_step(m_, P_, H_k @ H_sde_prior, R_k, carry, x, innovation)
-            carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
-            m_, P_ = carry['m'], carry['P']
-
-    carry['global_calibration']  = global_calibration
     return carry, ys
-
 
 def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
     sparsity_arr = prior.base_prior.get_sparsity()
@@ -701,46 +592,12 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
         'P_inf': P_inf 
     }
 
-    # TODO: use dispatch here?
-    if isinstance(prior, PDE):
+    # handle prior specific state and carrys
+    state_dict, carry_dict = _setup_filter_state_and_dict(
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
+    )
 
-        if prior.boundary_conditions is not None:
-            boundary_conditions = prior.boundary_conditions
-            # ensure same shape as Y
-            boundary_conditions = np.array(boundary_conditions)[train_index]
-            state_dict['boundary_data'] = boundary_conditions
-
-        if prior.forcing_function is not None:
-            # ensure same shape as Y
-            forcing_function = prior.forcing_function
-            forcing_function = np.array(forcing_function)[train_index]
-            state_dict['forcing_function'] = forcing_function
-
-        if Xs_prior is None:
-            carry_dict['global_calibration'] = np.zeros(m_inf.shape[0])
-        else: 
-            carry_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
-
-    elif isinstance(prior, UncertainPredictionInput):
-        # TODO: need to predict in ST format then propogate it through
-        # TODO: use batch/loop
-        def _collect_low_fidelity_prediction(gp, data):
-            if gp is not None:
-                pred_mu, pred_var = gp.predict_f(data.X)
-
-            else:
-                # construct a dummy reponse
-                pred_mu = np.ones(data.N)*onp.NaN
-                pred_var = np.ones(data.N)*onp.NaN
-
-            return np.squeeze(pred_mu), np.squeeze(pred_var)
-
-        res = [_collect_low_fidelity_prediction(gp, data) for gp in prior.prediction_gp]
-        # Nt x Ns x P
-        state_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
-        state_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
-
-    if False:
+    if settings.debug_mode:
         print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
         for i in range(dt.shape[0]):
             carry_dict, _ = step_wrap(carry_dict, {key: state_dict[key][i] for key in state_dict.keys()})
@@ -756,16 +613,13 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     lml = np.sum(ys['lml'])
 
     filter_res = {'m': ys['m'], 'P': ys['P']}
-
     filter_res['meta'] = {}
 
+    filter_res['meta']['lml'] = lml
 
-    if isinstance(prior, PDE):
-        filter_res['meta']['global_calibration'] = carry['global_calibration']
-        filter_res['meta']['lml'] = lml
-
-    elif isinstance(prior, UncertainPredictionInput):
-        filter_res['meta']['H'] = ys['H']
+    filter_res = _process_filter_results_state_and_dict(
+        data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res
+    )
 
     return lml, filter_res
 
