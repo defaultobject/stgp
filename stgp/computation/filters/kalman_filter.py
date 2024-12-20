@@ -500,6 +500,10 @@ def kf_predict_step(prior, carry, data, x, Xs_prior , lik_cov_flag):
 
     carry, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_k, x, carry, data, prior, Xs_prior)
 
+    # bit hacky as need to check if UI is used
+    ys['H'] = x['pred_weights']
+    ys['ui_var'] = x['pred_covar']
+
     return carry, ys
 
 @dispatch(PDE, 'sequential')

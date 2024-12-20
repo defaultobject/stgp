@@ -130,7 +130,6 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
     # full state
     #H_k = model.H(H_sde_prior@m_, X_s, x['t'])
     H_k = model.H(m_, Xs_prior, x['t'])
-    breakpoint()
 
     global_calibration = carry['global_calibration']
 
@@ -138,13 +137,13 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
         force = x['forcing_function']
 
         # collocation method
-        f = model.forward_g(H_sde_prior@m_, Xs_prior, x['t'], force=force)
-        H_jac_k = model.H_jac(H_sde_prior@m_, Xs_prior, x['t'], force=force)
+        f = model.forward_g(H_sde_prior @ m_, Xs_prior, x['t'], force=force)
+        H_jac_k = model.H_jac(H_sde_prior @ m_, Xs_prior, x['t'], force=force)
 
     else:
         # collocation method
-        f = model.forward_g(m_, Xs_prior, x['t'])
-        H_jac_k = model.H_jac(m_, Xs_prior, x['t'])
+        f = model.forward_g(H_sde_prior @ m_, Xs_prior, x['t'])
+        H_jac_k = model.H_jac(H_sde_prior @ m_, Xs_prior, x['t'])
 
     if model.boundary_conditions is not None:
         # observe boundary conditions
@@ -159,7 +158,7 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
 
     if True:
         # compute prediction with the PDE transform
-        y_psuedo = model.psuedo_observations(Xs_prior)
+        y_psuedo = model.psuedo_observations(data.X_space)
         #we only observer y_psuedo at the training locations, because we discretise the prior first
         # . then we obtain a Gaussian prior. Hence we should not observe y_psuedo at testing locations
         y_psuedo = y_psuedo * x['train_test_mask']
@@ -174,7 +173,8 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
 
         Ns_colocation = f.shape[0]
 
-        carry, ys = kf_update_step(m_, P_, H_jac_k , np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  np.squeeze(f)[..., None])
+        #carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  np.squeeze(f)[..., None])
+        carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  f)
         #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
         m_, P_ = carry['m'], carry['P']
 
@@ -187,8 +187,8 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
             Y_k = np.nan_to_num(Y_k)
 
             err = Y_k-f_k
-            #HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
-            HP_HT = H_jac_k @P_ @H_jac_k.T
+            HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
+            #HP_HT = H_jac_k @P_ @H_jac_k.T
 
             if False:
                 # global error across whole state
