@@ -471,7 +471,10 @@ class T_SDE_GP(BASE_SDE_GP):
 
             chex.assert_rank([mu, var], [3, 3])
 
-        if isinstance(self.prior, UncertainPredictionInput):
+
+        # hmm this should be before the PDE transform... maybe it should be moved into the smoother...
+        if isinstance(self.prior, UncertainPredictionInput) or isinstance(self.prior.parent, UncertainPredictionInput) :
+            _mu = mu
             mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
             # what should the variace be?
             var = jax.vmap(lambda h_k, R_k, P_k: h_k @ P_k @ h_k.T + R_k)( kf_res['meta']['H'], kf_res['meta']['ui_var'], var)

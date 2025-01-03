@@ -4,6 +4,14 @@ Enum definitions for block types.
 When handling both multi-task and spatio-temporal data various block sizes are required.
 
 To keep track we use these enums.
+
+
+For prediction there are three block types
+    
+    DIAGONAL: Diagonal predictions across all locations and tasks
+    DATA_DIAGONAL_FULL_OUTPUT: Block predictions across tasks but diagonal across locations
+    FULL: Full predictions across task and locations
+    DATA_FULL_DIAGONAL_OUTPUT: Block predictions across locations but diagonal across tasks
 """
 
 from enum import Enum
@@ -17,6 +25,8 @@ class Block(Enum):
     LATENT_SPATIAL = 5
     BLOCK = 6 # GENERIC BLOCKS, will be implied by data or input shapes
     OUTPUT = 7
+    DATA_DIAGONAL_FULL_OUTPUT = 8
+    DATA_FULL_DIAGONAL_OUTPUT = 9
     
 
 def get_block_dim(block_type: Block, data = None, likelihood = None, approximate_posterior = None):

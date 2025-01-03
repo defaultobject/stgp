@@ -239,8 +239,8 @@ def fix_prediction_shapes(mu, var, diagonal=True, squeeze=True, output_first = F
     P = mu.shape[1]
 
     if mu.shape[2] != 1:
-        breakpoint()
-        raise NotImplementedError()
+        print('fix_prediction_shapes: mu.shape[2] > 1 not supported')
+        return mu, var 
 
     if diagonal: 
         # [N, 1, P, P] -> [N, 1, P] 

@@ -343,20 +343,16 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type):
         N, P = Y.shape[0], Y.shape[1]
         num_outputs = prior.output_dim
 
-        if block_type == Block.DIAGONAL:
+        if (block_type == Block.DIAGONAL) or (block_type == Block.DATA_DIAGONAL_FULL_OUTPUT):
             K_xs = prior.var_blocks(XS)
             # returns rank 3 but we need rank 2
             K_xs = K_xs[..., 0]
             evoke_name = 'predict_diagonal'
             block_size = 1
-        elif block_type == Block.FULL:
+        elif (block_type == Block.FULL) or (block_type == Block.DATA_FULL_DIAGONAL_OUTPUT):
             K_xs = prior.covar_blocks(XS, XS)
             evoke_name = 'predict_full'
             block_size = NS
-        elif block_type == Block.OUTPUT:
-            K_xs = prior.covar_blocks(XS, XS)
-            evoke_name = 'predict_blocks'
-            block_size = P
         else:
             raise NotImplementedError()
 
@@ -382,28 +378,47 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type):
             num_outputs,
             2
         )
+        # P x ...
+        # P x ...
         marginal_mu = np.array(marginal_mu)
         marginal_var = np.array(marginal_var)
 
-        V_P, V_NS, _, V_B, _ = marginal_var.shape
-
-        # fix shapes
-        # each component will return rank (3, 4). But each component is only one ouput so we can remove that axis
-        #   and reshape into the proper shape
-        marginal_mu = marginal_mu[:, :, 0, ...]
-        marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
-        chex.assert_shape(marginal_mu, [V_NS, num_outputs,  block_size])
-
-        if V_NS == 1:
-            # full prediction
+        if block_type == Block.DIAGONAL:
+            # N x B x P
+            marginal_mu = np.transpose(marginal_mu[:, :, 0, ...], [1, 0, 2])
             marginal_var = marginal_var[:, :, 0, ...]
+            # N x P x B x B
             marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-            chex.assert_shape(marginal_var, [1, num_outputs, NS, NS])
-        else:
-            marginal_var = marginal_var[..., 0]
+        elif block_type == Block.FULL:
+            # Convert from blocks to block-diagonal full matrix
+            # Will be 1 x B x PN
+            marginal_mu = np.reshape(
+                np.transpose(marginal_mu, [1, 2, 0, 3]),
+                [marginal_var.shape[1], marginal_var.shape[2], -1]
+            )
+            marginal_var = jax.vmap(jax.vmap(to_block_diag))(np.transpose(marginal_var, [1, 2, 0, 3, 4]))
+        elif block_type == Block.DATA_DIAGONAL_FULL_OUTPUT:
+            # N x B x P
+            marginal_var = np.transpose(marginal_var[:, :, 0, 0, ...], [1, 2,  0])
+            # N x B x P x P
+            marginal_var = jax.vmap(jax.vmap(np.diag))(marginal_var)
+
+            # N x B x P
+            marginal_mu = np.transpose(marginal_mu[:, :, 0, ...], [1, 2, 0])
+
+        elif block_type == Block.DATA_FULL_DIAGONAL_OUTPUT:
+            # marginal_mu will be [P x 1 x B x N]
+            # marginal_var will be [P x 1 x B x N x N]
+
+            # [P x B x N]
+            marginal_mu  = marginal_mu[:, 0, ...]
+            #[B x P x N ]
+            marginal_mu = np.transpose(marginal_mu, [1, 0, 2])
+
+            #[P x B x N x N]
+            marginal_var = marginal_var[:,  0, ...]
+            #[B x P x N x N]
             marginal_var = np.transpose(marginal_var, [1, 0, 2, 3])
-            # Mean field so we do not capture the correlations between Q
-            chex.assert_shape(marginal_var, [NS, num_outputs, block_size, block_size])
 
         return marginal_mu, marginal_var
 
@@ -497,13 +512,14 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_ou
 
     if diagonal:
         if decompose_across_outputs:
-            # TODO: this is breaking everything :) 
-            block_type = Block.OUTPUT
-            #block_type = Block.DIAGONAL
-        else:
             block_type = Block.DIAGONAL
+        else:
+            block_type = Block.DATA_DIAGONAL_FULL_OUTPUT
     else:
-        block_type = Block.FULL
+        if decompose_across_outputs:
+            block_type = Block.DATA_FULL_DIAGONAL_OUTPUT
+        else:
+            block_type = Block.FULL
 
     return evoke('predict_blocks', data, gp, likelihood, prior)(
         XS, data, gp, likelihood, prior, block_type

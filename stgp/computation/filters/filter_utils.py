@@ -129,6 +129,8 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
 
     # full state
     #H_k = model.H(H_sde_prior@m_, X_s, x['t'])
+    # TODO: this is essentially the parent H... Why do we need this if we have H_sde_prior?
+    # Only used if data is observed, so probably not needed
     H_k = model.H(m_, Xs_prior, x['t'])
 
     global_calibration = carry['global_calibration']
@@ -216,10 +218,13 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
             innovation = model.observation_function(_f, Xs_prior, x['t'])
         else:
             #innovation = H_k @ H_sde_prior @ m_
-            innovation = H_k  @ m_
+            #innovation = H_k  @ m_
+            innovation = H_sde_prior  @ m_
 
+        # TODO: figure out H_k
         #carry, ys =  kf_update_step(m_, P_, H_k @ H_sde_prior, R_k, carry, x, innovation)
-        carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
+        #carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
+        carry, ys =  kf_update_step(m_, P_, H_sde_prior , R_k, carry, x, innovation)
         m_, P_ = carry['m'], carry['P']
 
     carry['global_calibration']  = global_calibration
