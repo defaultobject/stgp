@@ -18,27 +18,28 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
-from .filter_utils import _get_prior_spatial_points, uncertain_inputs_fitc_sparsity_compute_psi_statistics, _setup_filter_state_and_dict
+from .filter_utils import _get_prior_spatial_points, uncertain_inputs_fitc_sparsity_compute_psi_statistics, _setup_state_and_args_dict
 from .kalman_filter import _kalman_predict
 
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE, LinearizedFilter_SDE
 from ...transforms.pdes import PDE
+from ...transforms.uncertain_inputs import UncertainPredictionInput
 
 
 import objax
 import chex
 
 @dispatch(LinearizedFilter_SDE)
-def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
+def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     # force full state
     H_k = np.eye(x.shape[0]) 
 
     return H_k
 
 @dispatch(LTI_SDE)
-def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
+def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     if full_state:
         # force full state
         H_k = np.eye(x.shape[0])
@@ -48,22 +49,21 @@ def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_
     return H_k
 
 @dispatch('UncertainPredictionInput')
-def get_model_H(prior, carry, m, P, m_predicted, P_predicted, X_s, t, full_state):
+def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     base_prior = prior.parent
     rts_fn = evoke('get_model_H', base_prior)
-    H_k =  rts_fn(base_prior, carry, m, P, m_predicted, P_predicted, X_s, t, full_state)
+    H_k =  rts_fn(base_prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
     # TODO: this needs to predict to f -- OR need to implement that properly
     
-
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, carry, m_predicted, P_predicted, H_k, X_s)
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_predicted, P_predicted, H_k, X_s)
 
     H_k =  pred_weights @ H_k
 
     return H_k
 
 @dispatch(PDE)
-def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
-    H_parent = evoke('get_model_H', prior.parent)(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state)
+def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
+    H_parent = evoke('get_model_H', prior.parent)(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
 
     if full_state:
         H1 = prior.H_full_state(m_predicted, X_s, t)
@@ -77,9 +77,9 @@ def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_
     print('H1: ', H1.shape, 'H_parent: ', H_parent.shape)
     return H_parent
 
-def get_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
+def get_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', prior)
-    return rts_fn(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state)
+    return rts_fn(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
 
 @jit
 def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted, A_k, Q_k):
@@ -103,18 +103,18 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
 
 
 @dispatch(LTI_SDE)
-def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
+def rts_step_wrapper(prior, state, filter_res, args, X_s, Xs_prior, full_state):
     sde_prior = prior
 
-    m_inf = carry['m_inf']
-    P_inf = carry['P_inf']
+    m_inf = state['m_inf']
+    P_inf = state['P_inf']
 
 
-    m_k = x['m']
-    P_k = x['P']
+    m_k = args['m']
+    P_k = args['P']
 
 
-    dt_k = x['dt']
+    dt_k = args['dt']
 
     m_predicted, P_predicted, A_k, Q_k = _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k, return_A_Q = True)
 
@@ -137,8 +137,8 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
     m, P = rts_smoother_step(
         m_k,
         P_k,
-        carry['m'],
-        carry['P'],
+        state['m'],
+        state['P'],
         m_predicted,
         P_predicted,
         A_k, 
@@ -146,7 +146,7 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
 
     )
 
-    H_k = get_H(prior, filter_res, x['m'], x['P'], m_predicted, P_predicted, Xs_prior, x['t'], full_state)
+    H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
 
     if settings.balance_state_space:
         H_k = _transform_ss_H_param(T_k, T_k_inf, H_k)
@@ -164,14 +164,12 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
 
 
 @dispatch('UncertainPredictionInput')
-def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
+def rts_step_wrapper(prior, state, filter_res, scan_args, X_s, Xs_prior, full_state):
     base_prior = prior.parent
     rts_fn = evoke('rts_step_wrapper', base_prior)
-    m_res, p_res =  rts_fn(base_prior, carry, filter_res, x, X_s, Xs_prior, full_state)
+    m_res, p_res =  rts_fn(base_prior, state, filter_res, scan_args, X_s, Xs_prior, full_state)
 
-    # TODO: go through and fix states vs carry as it is driving me mad
-    breakpoint()
-    H_k = get_H(prior, carry, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, x['t'], full_state)
+    H_k = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
 
     p_res = {
         'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T
@@ -180,7 +178,7 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
     return m_res, p_res
 
 @dispatch(PDE)
-def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
+def rts_step_wrapper(prior, state, filter_res, args, X_s, Xs_prior, full_state):
     """
     Prior is either PDE[SDE[]] or PDE[UI[SDE]]
     """
@@ -190,36 +188,35 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
     if _ensure_str(sde_prior) == 'UncertainPredictionInput':
         sde_prior = sde_prior.parent
 
-    m_inf = carry['m_inf']
-    P_inf = carry['P_inf']
+    m_inf = state['m_inf']
+    P_inf = state['P_inf']
 
-    dt_k = x['dt']
+    dt_k = args['dt']
 
     if False:
         A_k = sde_prior.expm(Xs_prior, dt_k)
         Q_k = sde_prior.Q(dt_k, A_k, prior.P_inf(None, Xs_prior, None), Xs_prior)
 
-        m_predicted = A_k @ x['m']
-        P_predicted = A_k @ x['P'] @ A_k.T + Q_k
+        m_predicted = A_k @ args['m']
+        P_predicted = A_k @ args['P'] @ A_k.T + Q_k
 
-    m_k = x['m']
-    P_k = x['P']
+    m_k = args['m']
+    P_k = args['P']
 
     m_predicted, P_predicted, A_k, Q_k = _kalman_predict(sde_prior, m_k, P_k, Xs_prior, dt_k, return_A_Q = True)
 
     m, P = rts_smoother_step(
-        x['m'],
-        x['P'],
-        carry['m'],
-        carry['P'],
+        args['m'],
+        args['P'],
+        state['m'],
+        state['P'],
         m_predicted,
         P_predicted,
         A_k, 
         Q_k
-
     )
 
-    H_k = get_H(prior, filter_res, x['m'], x['P'], m_predicted, P_predicted, Xs_prior, x['t'], full_state)
+    H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
 
     m_res =  {
         'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
@@ -236,8 +233,8 @@ def step_wrapper(data, m, filter_res, Xs_prior, full_state):
 
     rts_fn = evoke('rts_step_wrapper', m)
 
-    def _fn(carry, x):
-        return rts_fn(m, carry, filter_res, x, data.X_space, Xs_prior, full_state)
+    def _fn(state, args):
+        return rts_fn(m, state, filter_res, args, data.X_space, Xs_prior, full_state)
 
     return _fn
 
@@ -262,29 +259,40 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
         'm_inf': m_inf,
         'P_inf': P_inf
     }
-    carry_dict = {
-        'm': np.flip(filter_res['m'], axis=0)[1:, ...],
-        'P': np.flip(filter_res['P'], axis=0)[1:, ...],
-        'dt': np.flip(dt, axis=0)[1:, ...],
-        't': np.flip(X_t, axis=0)[1:, ...]
+
+    # why [1:, ...] again?
+    args_dict = {
+        'm': filter_res['m'],
+        'P': filter_res['P'],
+        'dt': dt,
+        't': X_t
     }
 
-    # handle prior specific state and carrys
-    state_dict, carry_dict = _setup_filter_state_and_dict(
-        data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
-    )
-    breakpoint()
 
-    carry, ys = scan(
+    # handle prior specific state and args
+    state_dict, args_dict = _setup_state_and_args_dict(
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
+    )
+
+    # remove last element as already correct
+    all_args_dict = args_dict # store for UI
+    args_dict = {key: np.flip(val, axis=0)[1:, ...] for key, val in args_dict.items()}
+
+    state, ys = scan(
         jax.remat(step_wrap),
         state_dict,
-        carry_dict
+        args_dict
     )
 
     m = ys['m']
     P = ys['P']
 
-    H_k = get_H(prior, filter_res, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
+    # TODO: figure out what state and ys should be here
+    if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
+        init_args_dict = {key: val[0] for key, val in all_args_dict.items()}
+        H_k = get_H(prior, None, None, init_args_dict, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
+    else:
+        H_k = get_H(prior, state, filter_res, ys, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
 
     if settings.balance_state_space:
         A_last = prior.expm(Xs_prior, dt[-2]) #get the last step
@@ -294,9 +302,16 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
     m = np.vstack([(H_k @ m_init)[None, ...], m])
     P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
 
-    print('smoother: ', m.shape, P.shape)
+    m = np.flip(m, axis=0)
+    P = np.flip(P, axis=0)
 
-    return np.flip(m, axis=0), np.flip(P, axis=0)
+    if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
+        # add on uncertain input uncertainity
+        P = jax.vmap(
+            lambda p, r: p + np.diag(r)
+        )(P, np.nan_to_num(filter_res['meta']['low_fidelity_prediction_covar'], 0.0))
+
+    return m, P
 
 def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full_state=False, filter_type=False):
     """

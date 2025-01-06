@@ -68,7 +68,7 @@ from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
 from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
-from .filter_utils import _get_prior_spatial_points, _setup_pde_state_and_carry, _setup_filter_state_and_dict, _process_filter_results_state_and_dict, _construct_filter_with_pde_transform, kf_update_step, uncertain_inputs_fitc_sparsity_compute_psi_statistics
+from .filter_utils import _get_prior_spatial_points, _setup_state_and_args_dict, _process_filter_results_state_and_args_dict, _construct_filter_with_pde_transform, kf_update_step, uncertain_inputs_fitc_sparsity_compute_psi_statistics
 
 import numpy as onp
 #import tensorflow as tf
@@ -143,7 +143,7 @@ def _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k, return_A_Q=False):
         return m_, P_
 
 @jit
-def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
+def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, state, args):
     """
     Computes the Kalman filter update equations with missing data support:
     
@@ -163,12 +163,12 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
         P_k = _P_k - K_k S_k K^T_k
 
     Args:
-        carry:
+        state:
         x:
     """
     raise RuntimeError('NOT BEEN MAINTAINED')
     # in latent - space format
-    Y_k = x['Y']
+    Y_k = args['Y']
 
     mask_k = get_same_shape_mask(Y_k)
 
@@ -221,8 +221,9 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, carry, x):
         log_gaussian_with_additive_precision_noise_with_mask(Y_k, mu, var, R_inv_k, mask_k[:, 0])
     )
 
+    # return state, args
     return {
-        'm': m_k, 'P': P_k, 'm_inf': carry['m_inf'], 'P_inf': carry['P_inf']
+        'm': m_k, 'P': P_k, 'm_inf': state['m_inf'], 'P_inf': state['P_inf']
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
@@ -247,70 +248,70 @@ def _pivoted_cholesky(matrix):
 
 
 @dispatch(UncertainPredictionInput, 'FITCSpatialSparsity')
-def get_lti_parameters(prior, carry, data, x, Xs_prior, lik_cov_flag):
+def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
     # dimensions of these should match
     base_prior = prior.prior
     # will pad non UI with Nones
     prediction_gp_list =  prior.prediction_gp
 
     # construct state-space form
-    m_inf = carry['m_inf']
-    P_inf =  carry['P_inf']
-    dt_k = x['dt']
+    m_inf = state['m_inf']
+    P_inf =  state['P_inf']
+    dt_k = args['dt']
     X_s = data.X_space
 
-    m_k = carry['m']
-    P_k = carry['P']
-    R_k =  x['lik_mat']
+    m_k = state['m']
+    P_k = state['P']
+    R_k =  args['lik_mat']
 
     H_k = prior.H(None, Xs_prior, None)
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k, Xs_prior)
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_, P_, H_k, Xs_prior)
 
     H_k = pred_weights @ H_k
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
 
-    x['pred_weights'] = pred_weights
-    x['pred_covar'] = pred_covar
+    args['pred_weights'] = pred_weights
+    args['pred_covar'] = pred_covar
 
-    return m_, P_, H_k, R_k, carry, x, innovation
+    return m_, P_, H_k, R_k, state, args, innovation
 
 @dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
     # TODO: the first half of this function needs to be get_lti_parameters() allowing it to be generalised
 
-    m_, P_, H_k, R_k, carry, x, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
-        prior, carry, data, x, Xs_prior, lik_cov_flag
+    m_, P_, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
+        prior, state, data, args, Xs_prior, lik_cov_flag
     )
 
-    carry, state =  kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
-    state['H'] = x['pred_weights']
-    state['ui_var'] = x['pred_covar']
-    return carry, state
+    state, args =  kf_update_step(m_, P_, H_k, R_k, state, _args, innovation)
+    args['H'] = _args['pred_weights']
+    args['ui_var'] = _args['pred_covar']
+    return state, args
 
 @dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
+def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
     # Compute innovation and R
     # pass flag to exploit woodbury?
 
-    m_inf = carry['m_inf']
-    P_inf =  carry['P_inf']
+    m_inf = state['m_inf']
+    P_inf =  state['P_inf']
 
     H_k = prior.H(None, Xs_prior, None)
 
-    dt_k = x['dt']
+    dt_k = args['dt']
     X_s = data.X_space
 
-    m_k = carry['m']
-    P_k = carry['P']
+    m_k = state['m']
+    P_k = state['P']
 
     m_, P_ = _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k)
 
-    R_k =  x['lik_mat']
+    R_k =  args['lik_mat']
 
     # Compute sparsity transformation Kxz Kzz^{-1} m, diag(Kxz - Kxz Kzz^{-1} Kzx)
     kern_s = prior.base_prior.parent[0].kernel.k2
@@ -332,22 +333,22 @@ def kf_predict_step(prior, carry, data, x, Xs_prior, lik_cov_flag):
     innovation = H_k @ m_
 
 
-    return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+    return kf_update_step(m_, P_, H_k, R_k, state, args, innovation)
 
 
 @dispatch(LTI_SDE, 'sequential')
-def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
+def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):
     """ Linear Kalman Filter Predict Step """
 
-    m_inf = carry['m_inf']
-    P_inf =  carry['P_inf']
+    m_inf = state['m_inf']
+    P_inf =  state['P_inf']
 
     H_k = prior.H(None, X_s, None)
 
-    dt_k = x['dt']
+    dt_k = args['dt']
 
-    m_k = carry['m']
-    P_k = carry['P']
+    m_k = state['m']
+    P_k = state['P']
 
     m_, P_ = _kalman_predict(prior, m_k, P_k, X_s, dt_k)
 
@@ -355,23 +356,23 @@ def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
 
 
     if lik_cov_flag:
-        R_k =  x['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, carry, x, innovation)
+        R_k =  args['lik_mat']
+        return kf_update_step(m_, P_, H_k, R_k, state, args, innovation)
     else:
-        R_k_inv =  x['lik_mat']
-        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
+        R_k_inv =  args['lik_mat']
+        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, args)
 
 
 @dispatch(SDE, 'sequential')
-def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
+def kf_predict_step(model, state, data, args, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
 
-    m = carry['m']
-    P = carry['P']
+    m = state['m']
+    P = state['P']
 
     f_fn = lambda m: model.f_dt(
-        m, X_s, x['t'], x['dt']
+        m, X_s, args['t'], args['dt']
     )
 
     f = f_fn(m)
@@ -380,7 +381,7 @@ def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
     F = F[:, 0, :, 0]
 
     Sigma = model.Sigma_dt(
-        m, X_s, x['t'], x['dt']
+        m, X_s, args['t'], args['dt']
     )
 
     m_ = f
@@ -388,23 +389,23 @@ def kf_predict_step(model, carry, data, x, X_s, lik_cov_flag):
 
 
     if lik_cov_flag:
-        R_k =  x['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, carry, x, H_k @ m_)
+        R_k =  args['lik_mat']
+        return kf_update_step(m_, P_, H_k, R_k, state, args, H_k @ m_)
     else:
-        R_k_inv =  x['lik_mat']
-        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, carry, x)
+        R_k_inv =  args['lik_mat']
+        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, args)
 
 @dispatch(LinearizedFilter_SDE, 'sequential')
-def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
+def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):
     """ Form of Extended Kalman Filter Predict Step """
 
     P_inf = prior.P_inf(None, X_s, None)
     H_k = prior.H(None, X_s, None)
 
-    dt_k = x['dt']
+    dt_k = args['dt']
 
-    m_k = carry['m']
-    P_k = carry['P']
+    m_k = state['m']
+    P_k = state['P']
 
     A_k = prior.expm(X_s, dt_k)
     Q_k = prior.Q(dt_k, A_k, P_inf, X_spatial=X_s)
@@ -416,46 +417,46 @@ def kf_predict_step(prior, carry, data, x, X_s, lik_cov_flag):
     #H_k is given by the cholesky of the 
     # Y is g(m)
     small_noise = 1e-6
-    f = x['Y']
-    H_jac_k = cholesky(x['lik_mat'])/(np.sqrt(small_noise))
+    f = args['Y']
+    H_jac_k = cholesky(args['lik_mat'])/(np.sqrt(small_noise))
     R_k = np.eye(m_.shape[0])*small_noise
 
     # construct a state dict for the pseudo observation update step
     x_psuedo = {
         'Y': np.zeros(f.shape[0])[:, None], 
-        't': x['t'], 
-        'dt': x['dt'], 
+        't': args['t'], 
+        'dt': args['dt'], 
         'lik_mat': R_k, 
     }
 
     Ns_colocation = f.shape[0]
-    return kf_update_step(m_, P_, H_jac_k, R_k, carry, x_psuedo, f)
+    return kf_update_step(m_, P_, H_jac_k, R_k, state, x_psuedo, f)
 
 
 
 @dispatch(PDE, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, carry, data, x, Xs_prior , lik_cov_flag):
+def kf_predict_step(prior, state, data, args, Xs_prior , lik_cov_flag):
     # model will be PDE[UI[LTI_SDE[GP[FITC]]]] or PDE[LTI_SDE[GP[FITC]]]
 
-    dt_k = x['dt']
+    dt_k = args['dt']
 
     sde_prior = prior.parent
 
     # get parent LTI parameters
-    m_, P_, H_k, R_k, carry, x, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
-        sde_prior, carry, data, x, Xs_prior, lik_cov_flag
+    m_, P_, H_k, R_k, state, args, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
+        sde_prior, state, data, args, Xs_prior, lik_cov_flag
     )
 
-    carry, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_k, x, carry, data, prior, Xs_prior)
+    state, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_k, args, state, data, prior, Xs_prior)
 
     # bit hacky as need to check if UI is used
-    ys['H'] = x['pred_weights']
-    ys['ui_var'] = x['pred_covar']
+    ys['H'] = args['pred_weights']
+    ys['ui_var'] = args['pred_covar']
 
-    return carry, ys
+    return state, ys
 
 @dispatch(PDE, 'sequential')
-def kf_predict_step(model, carry, data, x, Xs_prior, lik_cov_flag):
+def kf_predict_step(model, state, data, args, Xs_prior, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
      #TODO: need to extract the SDE parameters from the parent prior first
      #  then we can handle UncertainInputs, FITC, standard gps etc
@@ -471,14 +472,14 @@ def kf_predict_step(model, carry, data, x, Xs_prior, lik_cov_flag):
     F, L, Qc, _, _, P_inf = sde_prior.state_space_representation(Xs_prior, None, None)
     H_sde_prior = sde_prior.H(None, Xs_prior, None)
 
-    dt_k = x['dt']
-    m_k = carry['m']
-    P_k = carry['P']
+    dt_k = args['dt']
+    m_k = state['m']
+    P_k = state['P']
 
     A_k = sde_prior.expm(Xs_prior, dt_k)
 
     if False:
-        Q_k = lti_disc(F, Qc, L, x['dt'], settings.jitter, _state_block_dim(sde_prior, Xs_prior))
+        Q_k = lti_disc(F, Qc, L, args['dt'], settings.jitter, _state_block_dim(sde_prior, Xs_prior))
     else:
         Q_k = sde_prior.Q(dt_k, A_k, P_inf, X_spatial=Xs_prior)
 
@@ -486,11 +487,11 @@ def kf_predict_step(model, carry, data, x, Xs_prior, lik_cov_flag):
     m_ = A_k @ m_k
     P_ = A_k @ P_k @ A_k.T + Q_k
 
-    R_k =  x['lik_mat']
+    R_k =  args['lik_mat']
 
-    carry, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, data, model, Xs_prior)
+    state, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, args, state, data, model, Xs_prior)
 
-    return carry, ys
+    return state, ys
 
 def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
     sparsity_arr = prior.base_prior.get_sparsity()
@@ -502,8 +503,8 @@ def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
     else:
         kf_predict_fn = evoke('kf_predict_step', prior, 'sequential', sparsity)
 
-    def _fn(carry, x):
-        return kf_predict_fn(prior, carry, data, x, Xs_prior, lik_cov_flag)
+    def _fn(state, args):
+        return kf_predict_fn(prior, state, data, args, Xs_prior, lik_cov_flag)
 
     return _fn
 
@@ -527,7 +528,8 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     step_wrap = filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag)
     unroll = 1
 
-    state_dict = {
+    # arguments to be interated through
+    args_dict = {
         'dt': dt,
         't': X_t,
         'Y': Y,
@@ -537,7 +539,8 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
         'k': np.arange(dt.shape[0]) # current timestep
     }
     
-    carry_dict = {
+    # state to be updated
+    state_dict = {
         'm': m_inf,
         'P': P_inf,
         'm_inf': m_inf, 
@@ -545,20 +548,20 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     }
 
     # handle prior specific state and carrys
-    state_dict, carry_dict = _setup_filter_state_and_dict(
-        data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
+    state_dict, args_dict = _setup_state_and_args_dict(
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
     )
 
     if settings.debug_mode:
         print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
         for i in range(dt.shape[0]):
-            carry_dict, _ = step_wrap(carry_dict, {key: state_dict[key][i] for key in state_dict.keys()})
+            state, _ = step_wrap(state_dict, {key: args_dict[key][i] for key in args_dict.keys()})
         exit()
 
-    carry, ys = scan(
+    state, ys = scan(
         jax.remat(step_wrap),
-        carry_dict,
         state_dict,
+        args_dict,
         unroll = unroll
     )
 
@@ -570,8 +573,8 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     filter_res['meta']['lml'] = lml
 
 
-    filter_res = _process_filter_results_state_and_dict(
-        data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res, state_dict
+    filter_res = _process_filter_results_state_and_args_dict(
+        data, prior, m_inf, P_inf, Xs_prior, state, ys, filter_res, state_dict, args_dict
     )
 
     return lml, filter_res

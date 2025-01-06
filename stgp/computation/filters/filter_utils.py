@@ -39,39 +39,39 @@ def _get_prior_spatial_points(data, prior):
         sparsity = sparsity[0]
         return _get_data_or_sparsity_spatial_points(data, sparsity)
 
-def _setup_pde_state_and_carry(data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict):
+def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
     train_index = state_dict['train_index']
 
     if prior.boundary_conditions is not None:
         boundary_conditions = prior.boundary_conditions
         # ensure same shape as Y
         boundary_conditions = np.array(boundary_conditions)[train_index]
-        state_dict['boundary_data'] = boundary_conditions
+        args_dict['boundary_data'] = boundary_conditions
 
     if prior.forcing_function is not None:
         # ensure same shape as Y
         forcing_function = prior.forcing_function
         forcing_function = np.array(forcing_function)[train_index]
-        state_dict['forcing_function'] = forcing_function
+        args_dict['forcing_function'] = forcing_function
 
+    # global_calibration is part of state as it is something we will compute whilst filtering
     if Xs_prior is None:
-        carry_dict['global_calibration'] = np.zeros(m_inf.shape[0])
+        state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
     else: 
         if type(Xs_prior) is list:
             xs_arr = np.array([1 if xs is None else  xs.shape[0] for xs in Xs_prior])
-            carry_dict['global_calibration'] = np.zeros(np.sum(xs_arr))
+            state_dict['global_calibration'] = np.zeros(np.sum(xs_arr))
         else:
-            carry_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
+            state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
-    return state_dict, carry_dict
+    return state_dict, args_dict
 
-def _setup_uncertain_inputs_state_and_carry(data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict):
+def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
     # TODO: need to predict in ST format then propogate it through
     # TODO: use batch/loop
     def _collect_low_fidelity_prediction(gp, data):
         if gp is not None:
             pred_mu, pred_var = gp.predict_f(data.X)
-
         else:
             # construct a dummy reponse
             pred_mu = np.ones(data.N)*onp.NaN
@@ -81,47 +81,47 @@ def _setup_uncertain_inputs_state_and_carry(data, prior, m_inf, P_inf, Xs_prior,
 
     res = [_collect_low_fidelity_prediction(gp, data) for gp in prior.prediction_gp]
     # Nt x Ns x P
-    state_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
-    state_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
+    args_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
+    args_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
 
-    return state_dict, carry_dict
+    return state_dict, args_dict
 
-def _setup_filter_state_and_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict):
+def _setup_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
     # TODO: just assuming that the model has been constructed correctly
     # Loop through all priors and setup state and dict for each transformation
 
     # TODO: use dispatch here?
     if isinstance(prior, PDE):
-        state_dict, carry_dict = _setup_pde_state_and_carry(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
+        state_dict, args_dict = _setup_pde_state_and_args(
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
         )
 
-        return _setup_filter_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, carry_dict)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict)
 
     elif isinstance(prior, UncertainPredictionInput):
-        state_dict, carry_dict = _setup_uncertain_inputs_state_and_carry(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
+        state_dict, args_dict = _setup_uncertain_inputs_state_and_args(
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
         )
-        return _setup_filter_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, carry_dict)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict)
 
     # base prior is always LTI_SDE
     if isinstance(prior, LTI_SDE):
-        return state_dict, carry_dict
+        return state_dict, args_dict
 
-def _process_filter_results_state_and_dict(data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict):
+def _process_filter_results_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state, ys, filter_res, init_state_dict, init_args_dict):
     if not('meta' in filter_res.keys()):
         filter_res['meta'] = {}
 
     if isinstance(prior, PDE):
-        filter_res['meta']['global_calibration'] = carry['global_calibration']
-        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict)
+        filter_res['meta']['global_calibration'] = state['global_calibration']
+        return _process_filter_results_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state, ys, filter_res, init_state_dict, init_args_dict)
 
     elif isinstance(prior, UncertainPredictionInput):
         filter_res['meta']['H'] = ys['H']
         filter_res['meta']['ui_var'] = ys['ui_var']
-        filter_res['meta']['low_fidelity_prediction_mean'] = init_state_dict['low_fidelity_prediction_mean']
-        filter_res['meta']['low_fidelity_prediction_covar'] = init_state_dict['low_fidelity_prediction_covar']
-        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict)
+        filter_res['meta']['low_fidelity_prediction_mean'] = init_args_dict['low_fidelity_prediction_mean']
+        filter_res['meta']['low_fidelity_prediction_covar'] = init_args_dict['low_fidelity_prediction_covar']
+        return _process_filter_results_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state, ys, filter_res, init_state_dict, init_args_dict)
 
     # base prior is always LTI_SDE
     if isinstance(prior, LTI_SDE):
