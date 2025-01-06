@@ -56,8 +56,8 @@ latent_kernels = [RBF(lengthscales=[0.1]) for q in range(Q)]
 latent_gps = [
     stgp.models.GP(sparsity=Z[q], kernel=latent_kernels[q]) for q in range(Q)
 ] 
-#prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
-prior = stgp.transforms.Independent(latent_gps)
+prior = stgp.transforms.multi_output.LMC(latent_gps, output_dim = P)
+#prior = stgp.transforms.Independent(latent_gps)
 
 m = stgp.models.GP(
     data=Data(X, Y), 
@@ -67,10 +67,10 @@ m = stgp.models.GP(
 )
 m.print()
 
-#pred_mu, pred_var = m.predict_f(XS, diagonal=True, fix_shapes=False, decompose_across_outputs=False)
+pred_mu, pred_var = m.predict_f(XS, diagonal=True, fix_shapes=False, decompose_across_outputs=False)
 #pred_mu, pred_var = m.predict_f(XS, diagonal=True, fix_shapes=False, decompose_across_outputs=True)
 #pred_mu, pred_var = m.predict_f(XS, diagonal=False, fix_shapes=False, decompose_across_outputs=False)
-pred_mu, pred_var = m.predict_f(XS, diagonal=False, fix_shapes=False, decompose_across_outputs=True)
+#pred_mu, pred_var = m.predict_f(XS, diagonal=False, fix_shapes=False, decompose_across_outputs=True)
 print(pred_mu.shape, pred_var.shape)
 breakpoint()
 #print('NLPD: ', nlpd(X, Y, m))

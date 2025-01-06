@@ -229,7 +229,7 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None):
+    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res=False):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
@@ -243,10 +243,16 @@ class BASE_SDE_GP(Posterior):
 
         mu, var = kf_res['m'], kf_res['P']
 
-        if return_lml:
-            return lml, mu, var
+        if return_kf_res:
+            if return_lml:
+                return kf_res, lml, mu, var
+            else:
+                return kf_res, mu, var
         else:
-            return mu, var
+            if return_lml:
+                return lml, mu, var
+            else:
+                return mu, var
 
     def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res = False):
         lml, kf_res  = kalman_filter.filter_loop(
@@ -447,12 +453,13 @@ class T_SDE_GP(BASE_SDE_GP):
 
         train_index, train_mask = self.get_train_test_index_and_mask(test_data)
         if filter_only:
-            mu, var = self.filter(
+            kf_res, mu, var = self.filter(
                 test_data,
                 self.prior,
                 R = self.get_likelihood_for_prediction(test_data),
                 train_test_mask = train_mask,
-                train_index = train_index
+                train_index = train_index,
+                return_kf_res=True
             )
             chex.assert_rank([mu, var], [3, 3])
 
@@ -472,12 +479,22 @@ class T_SDE_GP(BASE_SDE_GP):
             chex.assert_rank([mu, var], [3, 3])
 
 
-        # hmm this should be before the PDE transform... maybe it should be moved into the smoother...
-        if isinstance(self.prior, UncertainPredictionInput) or isinstance(self.prior.parent, UncertainPredictionInput) :
-            _mu = mu
-            mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
-            # what should the variace be?
-            var = jax.vmap(lambda h_k, R_k, P_k: h_k @ P_k @ h_k.T + R_k)( kf_res['meta']['H'], kf_res['meta']['ui_var'], var)
+        if False:
+            # hmm this should be before the PDE transform... maybe it should be moved into the smoother...
+            if isinstance(self.prior, UncertainPredictionInput) or isinstance(self.prior.parent, UncertainPredictionInput) :
+                if filter_only:
+                    # TODO: this is a debuggin hack
+                    state_dim = self.output_dim
+
+                    H_sde_prior = self.prior.parent.H(None, self.prior.base_prior.get_sparsity()[0].raw_Z.X_space, None)
+
+                    mu = jax.vmap(lambda h_k, x_k: h_k @ x_k, [None, 0])( H_sde_prior, mu)
+                    var = jax.vmap(lambda h_k, P_k: h_k @ P_k @ h_k.T, [None, 0])( H_sde_prior, var)
+
+                _mu = mu
+                mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
+                # what should the variace be?
+                var = jax.vmap(lambda h_k, R_k, P_k: h_k @ P_k @ h_k.T + R_k)( kf_res['meta']['H'], kf_res['meta']['ui_var'], var)
 
         # fix mu and var shapes
 

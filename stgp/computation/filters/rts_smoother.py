@@ -18,7 +18,7 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
-from .filter_utils import _get_prior_spatial_points
+from .filter_utils import _get_prior_spatial_points, uncertain_inputs_fitc_sparsity_compute_psi_statistics, _setup_filter_state_and_dict
 from .kalman_filter import _kalman_predict
 
 
@@ -31,14 +31,14 @@ import objax
 import chex
 
 @dispatch(LinearizedFilter_SDE)
-def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
+def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
     # force full state
     H_k = np.eye(x.shape[0]) 
 
     return H_k
 
 @dispatch(LTI_SDE)
-def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
+def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
     if full_state:
         # force full state
         H_k = np.eye(x.shape[0])
@@ -48,17 +48,22 @@ def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
     return H_k
 
 @dispatch('UncertainPredictionInput')
-def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
+def get_model_H(prior, carry, m, P, m_predicted, P_predicted, X_s, t, full_state):
     base_prior = prior.parent
     rts_fn = evoke('get_model_H', base_prior)
-    H_k =  rts_fn(base_prior, filter_res, x, m_predicted, X_s, t, full_state)
+    H_k =  rts_fn(base_prior, carry, m, P, m_predicted, P_predicted, X_s, t, full_state)
     # TODO: this needs to predict to f -- OR need to implement that properly
+    
+
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, carry, m_predicted, P_predicted, H_k, X_s)
+
+    H_k =  pred_weights @ H_k
+
     return H_k
 
 @dispatch(PDE)
-def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
-    H_parent = evoke('get_model_H', prior.parent)(prior, filter_res, x, m_predicted, X_s, t, full_state)
-
+def get_model_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
+    H_parent = evoke('get_model_H', prior.parent)(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state)
 
     if full_state:
         H1 = prior.H_full_state(m_predicted, X_s, t)
@@ -72,9 +77,9 @@ def get_model_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
     print('H1: ', H1.shape, 'H_parent: ', H_parent.shape)
     return H_parent
 
-def get_H(prior, filter_res, x, m_predicted, X_s, t, full_state):
+def get_H(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', prior)
-    return rts_fn(prior, filter_res, x, m_predicted, X_s, t, full_state)
+    return rts_fn(prior, filter_res, m, P, m_predicted, P_predicted, X_s, t, full_state)
 
 @jit
 def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted, A_k, Q_k):
@@ -141,7 +146,7 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
 
     )
 
-    H_k = get_H(prior, filter_res, x['m'], m_predicted, Xs_prior, x['t'], full_state)
+    H_k = get_H(prior, filter_res, x['m'], x['P'], m_predicted, P_predicted, Xs_prior, x['t'], full_state)
 
     if settings.balance_state_space:
         H_k = _transform_ss_H_param(T_k, T_k_inf, H_k)
@@ -162,7 +167,17 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
 def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
     base_prior = prior.parent
     rts_fn = evoke('rts_step_wrapper', base_prior)
-    return rts_fn(base_prior, carry, x, X_s, Xs_prior, full_state)
+    m_res, p_res =  rts_fn(base_prior, carry, filter_res, x, X_s, Xs_prior, full_state)
+
+    # TODO: go through and fix states vs carry as it is driving me mad
+    breakpoint()
+    H_k = get_H(prior, carry, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, x['t'], full_state)
+
+    p_res = {
+        'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T
+    }
+
+    return m_res, p_res
 
 @dispatch(PDE)
 def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
@@ -204,7 +219,7 @@ def rts_step_wrapper(prior, carry, filter_res, x, X_s, Xs_prior, full_state):
 
     )
 
-    H_k = get_H(prior, filter_res, x['m'], m_predicted, Xs_prior, x['t'], full_state)
+    H_k = get_H(prior, filter_res, x['m'], x['P'], m_predicted, P_predicted, Xs_prior, x['t'], full_state)
 
     m_res =  {
         'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
@@ -241,26 +256,35 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
 
     step_wrap = step_wrapper(data, prior, filter_res, Xs_prior, full_state)
 
+    state_dict =  {
+        'm': m_init,
+        'P': P_init ,
+        'm_inf': m_inf,
+        'P_inf': P_inf
+    }
+    carry_dict = {
+        'm': np.flip(filter_res['m'], axis=0)[1:, ...],
+        'P': np.flip(filter_res['P'], axis=0)[1:, ...],
+        'dt': np.flip(dt, axis=0)[1:, ...],
+        't': np.flip(X_t, axis=0)[1:, ...]
+    }
+
+    # handle prior specific state and carrys
+    state_dict, carry_dict = _setup_filter_state_and_dict(
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, carry_dict
+    )
+    breakpoint()
+
     carry, ys = scan(
         jax.remat(step_wrap),
-        {
-            'm': m_init,
-            'P': P_init ,
-            'm_inf': m_inf,
-            'P_inf': P_inf
-        },
-        {
-            'm': np.flip(filter_res['m'], axis=0)[1:, ...],
-            'P': np.flip(filter_res['P'], axis=0)[1:, ...],
-            'dt': np.flip(dt, axis=0)[1:, ...],
-            't': np.flip(X_t, axis=0)[1:, ...]
-        }
+        state_dict,
+        carry_dict
     )
 
     m = ys['m']
     P = ys['P']
 
-    H_k = get_H(prior, filter_res, m_init, m_init, Xs_prior, X_t[0], full_state)
+    H_k = get_H(prior, filter_res, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
 
     if settings.balance_state_space:
         A_last = prior.expm(Xs_prior, dt[-2]) #get the last step

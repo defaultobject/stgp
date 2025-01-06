@@ -16,14 +16,24 @@ State Organisation:
 
 
 Supported Model Structures
-    
+
     Single Layer
 
-        LTI-SDE[
+        LTI-SDE(
            GP(
                 [NoSparsity | SpatialSparsity | FITCSpatialSparsity]
            )
-        ]
+        )
+
+    Flat Multiple Latents
+
+        LTI-SDE(
+           Independent[
+                GP(
+                    [NoSparsity | SpatialSparsity | FITCSpatialSparsity]
+               )
+            ]
+        )
 
     Recursive
 
@@ -58,7 +68,7 @@ from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
 from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
-from .filter_utils import _get_prior_spatial_points, _setup_pde_state_and_carry, _setup_filter_state_and_dict, _process_filter_results_state_and_dict, _construct_filter_with_pde_transform, kf_update_step
+from .filter_utils import _get_prior_spatial_points, _setup_pde_state_and_carry, _setup_filter_state_and_dict, _process_filter_results_state_and_dict, _construct_filter_with_pde_transform, kf_update_step, uncertain_inputs_fitc_sparsity_compute_psi_statistics
 
 import numpy as onp
 #import tensorflow as tf
@@ -257,71 +267,9 @@ def get_lti_parameters(prior, carry, data, x, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-    # compute psi statistics
-    scalar2mat = lambda a: np.array([a])[:, None]
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k, Xs_prior)
 
-    XS = scalar2mat(x['t'])
-    #for each latent function compute psi statistics 
-    # TODO: rewrite using batching
-    latents = prior.base_prior.parent
-    num_latents = len(latents)
-
-    pred_weights_arr = []
-    pred_covar_arr = []
-    for q in range(num_latents):
-        X_q = Xs_prior[q]
-        if X_q is not None:
-            kern_s_q = latents[q].kernel.k2
-            # compute psi statatics
-            arr = []
-            idx_slice_start = 0
-            idx_slice = None
-            for i in range(num_latents):
-                if Xs_prior[i] is None:
-                    arr.append(np.array([0]))
-                    idx_slice_start += 1
-                else:
-                    if i == q:
-                        arr.append(np.eye(X_q.shape[0]))
-                        idx_slice = slice(idx_slice_start, idx_slice_start+X_q.shape[0])
-
-                    else:
-                        arr.append(np.zeros((X_q.shape[0], X_q.shape[0])))
-                        idx_slice_start += X_q.shape[0]
-
-            H_q = to_block_diag(arr)
-            # only keep the parts relevenat to this latent function
-            H_q = H_q[idx_slice]
-
-            pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
-                XS, 
-                X_q,
-                Y = H_q @ H_k @ m_,
-                K_ss = None,
-                K_sx = None,
-                K_xx = add_jitter(kern_s_q.K(X_q, X_q), settings.jitter),
-                likelihood_var = np.zeros([X_q.shape[0], X_q.shape[0]]),
-                noise_pred_mu = x['low_fidelity_prediction_mean'][np.array([q])][:, None], 
-                noise_pred_var = x['low_fidelity_prediction_covar'][np.array([q])][:, None],
-                base_gp_kernel = kern_s_q
-            )
-            pred_weights_arr.append(pred_weights)
-            pred_covar_arr.append(pred_covar)
-
-            if settings.debug_mode:
-                breakpoint()
-        else:
-            #no need to compute psi statistics
-            pred_weights_arr.append(np.eye(1))
-            pred_covar_arr.append(np.array([0.0]))
-
-
-    pred_weights = to_block_diag(pred_weights_arr)
-    # TODO: predictions will be funky
     H_k = pred_weights @ H_k
-
-    # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
-    pred_covar = to_block_diag(pred_covar_arr)
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_
@@ -621,8 +569,9 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
 
     filter_res['meta']['lml'] = lml
 
+
     filter_res = _process_filter_results_state_and_dict(
-        data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res
+        data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res, state_dict
     )
 
     return lml, filter_res

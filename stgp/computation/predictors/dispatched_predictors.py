@@ -234,7 +234,6 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
     A linear model is treated as a full joint model. To compute we stack Y and treat like a standard Gaussian
     """
     print('Linear Transform')
-    breakpoint()
 
     X = data.X
     Y = data.Y
@@ -246,6 +245,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
     # Computed stacked K and Y
     likelihood_arr = likelihood.likelihood_arr
 
+    # TODO: waht format are these in?
     K_xx = prior.covar(X, X)
     K_xs_x = prior.covar(XS, X)
     mean_x = prior.mean(X)
@@ -265,6 +265,12 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
         var = np.reshape(var, [P, NS, 1])
         mu = np.transpose(mu, [1, 0, 2])
         var = np.transpose(var, [1, 0, 2])[..., None]
+
+    elif block_type == Block.DATA_DIAGONAL_FULL_OUTPUT:
+        K_xs = prior.var(XS)[..., 0]
+        # TODO: batch over predictions
+        mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
+        breakpoint()
 
     elif block_type in [Block.FULL, Block.OUTPUT]:
         # latent-data order

@@ -8,6 +8,8 @@ from ...utils.nan_utils import get_same_shape_mask
 from ..linalg import solve, solve_from_cholesky
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask, mahal_with_mask
 from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_with_additive_inverse, force_symmetric, lti_disc, to_block_diag
+from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
+
 
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
@@ -106,18 +108,20 @@ def _setup_filter_state_and_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict
     if isinstance(prior, LTI_SDE):
         return state_dict, carry_dict
 
-def _process_filter_results_state_and_dict(data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res):
+def _process_filter_results_state_and_dict(data, prior, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict):
     if not('meta' in filter_res.keys()):
         filter_res['meta'] = {}
 
     if isinstance(prior, PDE):
         filter_res['meta']['global_calibration'] = carry['global_calibration']
-        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res)
+        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict)
 
     elif isinstance(prior, UncertainPredictionInput):
         filter_res['meta']['H'] = ys['H']
         filter_res['meta']['ui_var'] = ys['ui_var']
-        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res)
+        filter_res['meta']['low_fidelity_prediction_mean'] = init_state_dict['low_fidelity_prediction_mean']
+        filter_res['meta']['low_fidelity_prediction_covar'] = init_state_dict['low_fidelity_prediction_covar']
+        return _process_filter_results_state_and_dict(data, prior.parent, m_inf, P_inf, Xs_prior, carry, ys, filter_res, init_state_dict)
 
     # base prior is always LTI_SDE
     if isinstance(prior, LTI_SDE):
@@ -246,6 +250,72 @@ def get_Y_mask(Y_k):
     return M
 
 
+def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k, Xs_prior):
+    # compute psi statistics
+    # TODO: want this to be separate in filter_utils probably
+    scalar2mat = lambda a: np.array([a])[:, None]
+
+    XS = scalar2mat(x['t'])
+    #for each latent function compute psi statistics 
+    # TODO: rewrite using batching
+    latents = prior.base_prior.parent
+    num_latents = len(latents)
+
+    pred_weights_arr = []
+    pred_covar_arr = []
+    for q in range(num_latents):
+        X_q = Xs_prior[q]
+        if X_q is not None:
+            kern_s_q = latents[q].kernel.k2
+            # compute psi statatics
+            arr = []
+            idx_slice_start = 0
+            idx_slice = None
+            for i in range(num_latents):
+                if Xs_prior[i] is None:
+                    arr.append(np.array([0]))
+                    idx_slice_start += 1
+                else:
+                    if i == q:
+                        arr.append(np.eye(X_q.shape[0]))
+                        idx_slice = slice(idx_slice_start, idx_slice_start+X_q.shape[0])
+
+                    else:
+                        arr.append(np.zeros((X_q.shape[0], X_q.shape[0])))
+                        idx_slice_start += X_q.shape[0]
+
+            H_q = to_block_diag(arr)
+            # only keep the parts relevenat to this latent function
+            H_q = H_q[idx_slice]
+
+            pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
+                XS, 
+                X_q,
+                Y = H_q @ H_k @ m_,
+                K_ss = None,
+                K_sx = None,
+                K_xx = add_jitter(kern_s_q.K(X_q, X_q), settings.jitter),
+                likelihood_var = np.zeros([X_q.shape[0], X_q.shape[0]]),
+                noise_pred_mu = x['low_fidelity_prediction_mean'][np.array([q])][:, None], 
+                noise_pred_var = x['low_fidelity_prediction_covar'][np.array([q])][:, None],
+                base_gp_kernel = kern_s_q
+            )
+            pred_weights_arr.append(pred_weights)
+            pred_covar_arr.append(pred_covar)
+
+            if settings.debug_mode:
+                breakpoint()
+        else:
+            #no need to compute psi statistics
+            pred_weights_arr.append(np.eye(1))
+            pred_covar_arr.append(np.array([0.0]))
+
+
+    pred_weights = to_block_diag(pred_weights_arr)
+    pred_covar = to_block_diag(pred_covar_arr)
+
+    return pred_weights, pred_covar
+
 @jit
 def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     """
@@ -305,3 +375,5 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
+
+
