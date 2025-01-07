@@ -59,7 +59,7 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
 
     H_k =  pred_weights @ H_k
 
-    return H_k
+    return H_k, pred_covar
 
 @dispatch(PDE)
 def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
@@ -169,10 +169,10 @@ def rts_step_wrapper(prior, state, filter_res, scan_args, X_s, Xs_prior, full_st
     rts_fn = evoke('rts_step_wrapper', base_prior)
     m_res, p_res =  rts_fn(base_prior, state, filter_res, scan_args, X_s, Xs_prior, full_state)
 
-    H_k = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
+    H_k, pred_var = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
 
     p_res = {
-        'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T
+        'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
     }
 
     return m_res, p_res
@@ -290,7 +290,7 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
     # TODO: figure out what state and ys should be here
     if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
         init_args_dict = {key: val[0] for key, val in all_args_dict.items()}
-        H_k = get_H(prior, None, None, init_args_dict, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
+        H_k, pred_var = get_H(prior, None, None, init_args_dict, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
     else:
         H_k = get_H(prior, state, filter_res, ys, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
 
@@ -300,16 +300,13 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
         H_k = _transform_ss_H_param(T_last, T_last_inf, H_k)
 
     m = np.vstack([(H_k @ m_init)[None, ...], m])
-    P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
+    if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
+        P = np.vstack([(H_k @ P_init @ H_k.T + pred_var)[None, ...], P])
+    else:
+        P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
 
     m = np.flip(m, axis=0)
     P = np.flip(P, axis=0)
-
-    if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
-        # add on uncertain input uncertainity
-        P = jax.vmap(
-            lambda p, r: p + np.diag(r)
-        )(P, np.nan_to_num(filter_res['meta']['low_fidelity_prediction_covar'], 0.0))
 
     return m, P
 
