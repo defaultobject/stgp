@@ -245,7 +245,7 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
     # Computed stacked K and Y
     likelihood_arr = likelihood.likelihood_arr
 
-    # TODO: waht format are these in?
+    # In latent-data format
     K_xx = prior.covar(X, X)
     K_xs_x = prior.covar(XS, X)
     mean_x = prior.mean(X)
@@ -267,10 +267,17 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_type: Block):
         var = np.transpose(var, [1, 0, 2])[..., None]
 
     elif block_type == Block.DATA_DIAGONAL_FULL_OUTPUT:
-        K_xs = prior.var(XS)[..., 0]
-        # TODO: batch over predictions
-        mu, var = gaussian_prediction_diagonal(Y_vec, K_xs, K_xs_x, K_xx, mean_x, mean_xs, lik_var)
-        breakpoint()
+        K_xs_dl = jax.vmap(prior.covar)(XS[:, None, ...], XS[:, None, ...])
+
+        #convert to data-latent format
+        K_xs_x_dl = np.transpose(np.reshape(K_xs_x, [prior.output_dim, -1, K_xs_x.shape[-1]]), [1, 0, 2])
+        mean_xs_dl = np.transpose(np.reshape(mean_xs, [prior.output_dim, -1, 1]), [1, 0, 2])
+
+        mu, var = jax.vmap(
+            lambda k_xs, k_xs_x, prior_mean_xs: gaussian_prediction(Y_vec, k_xs, k_xs_x, K_xx, mean_x, prior_mean_xs, lik_var)
+        )(K_xs_dl, K_xs_x_dl, mean_xs_dl)
+        # Fix Shapes to [N, P, 1], [N, 1, P, P]
+        var = var[:, None, ...]
 
     elif block_type in [Block.FULL, Block.OUTPUT]:
         # latent-data order

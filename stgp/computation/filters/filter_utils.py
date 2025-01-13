@@ -39,34 +39,38 @@ def _get_prior_spatial_points(data, prior):
         sparsity = sparsity[0]
         return _get_data_or_sparsity_spatial_points(data, sparsity)
 
-def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
-    train_index = state_dict['train_index']
+def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
+    if smoother:
+        return state_dict, args_dict
+    else:
+        # setup filter state
+        train_index = args_dict['train_index']
 
-    if prior.boundary_conditions is not None:
-        boundary_conditions = prior.boundary_conditions
-        # ensure same shape as Y
-        boundary_conditions = np.array(boundary_conditions)[train_index]
-        args_dict['boundary_data'] = boundary_conditions
+        if prior.boundary_conditions is not None:
+            boundary_conditions = prior.boundary_conditions
+            # ensure same shape as Y
+            boundary_conditions = np.array(boundary_conditions)[train_index]
+            args_dict['boundary_data'] = boundary_conditions
 
-    if prior.forcing_function is not None:
-        # ensure same shape as Y
-        forcing_function = prior.forcing_function
-        forcing_function = np.array(forcing_function)[train_index]
-        args_dict['forcing_function'] = forcing_function
+        if prior.forcing_function is not None:
+            # ensure same shape as Y
+            forcing_function = prior.forcing_function
+            forcing_function = np.array(forcing_function)[train_index]
+            args_dict['forcing_function'] = forcing_function
 
-    # global_calibration is part of state as it is something we will compute whilst filtering
-    if Xs_prior is None:
-        state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
-    else: 
-        if type(Xs_prior) is list:
-            xs_arr = np.array([1 if xs is None else  xs.shape[0] for xs in Xs_prior])
-            state_dict['global_calibration'] = np.zeros(np.sum(xs_arr))
-        else:
-            state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
+        # global_calibration is part of state as it is something we will compute whilst filtering
+        if Xs_prior is None:
+            state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
+        else: 
+            if type(Xs_prior) is list:
+                xs_arr = np.array([1 if xs is None else  xs.shape[0] for xs in Xs_prior])
+                state_dict['global_calibration'] = np.zeros(np.sum(xs_arr))
+            else:
+                state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
-    return state_dict, args_dict
+        return state_dict, args_dict
 
-def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
+def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
     # TODO: need to predict in ST format then propogate it through
     # TODO: use batch/loop
     def _collect_low_fidelity_prediction(gp, data):
@@ -86,23 +90,23 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
 
     return state_dict, args_dict
 
-def _setup_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict):
+def _setup_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
     # TODO: just assuming that the model has been constructed correctly
     # Loop through all priors and setup state and dict for each transformation
 
     # TODO: use dispatch here?
     if isinstance(prior, PDE):
         state_dict, args_dict = _setup_pde_state_and_args(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother
         )
 
-        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother)
 
     elif isinstance(prior, UncertainPredictionInput):
         state_dict, args_dict = _setup_uncertain_inputs_state_and_args(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother
         )
-        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother)
 
     # base prior is always LTI_SDE
     if isinstance(prior, LTI_SDE):

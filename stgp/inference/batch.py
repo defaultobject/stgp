@@ -37,10 +37,10 @@ class Batch(Inference):
 
     def predict_y(self, XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_outputs: bool = False):
 
-        pred_mu, pred_var = self.predict_f(XS, data, gp, likelihood, prior, diagonal)
+        pred_mu, pred_var = self.predict_f(XS, data, gp, likelihood, prior, diagonal, decompose_across_outputs)
 
         pred_y_mu, pred_y_var = evoke('predict_y', gp, likelihood, prior)(
-            XS, gp, likelihood, pred_mu, pred_var, diagonal
+            XS, gp, likelihood, pred_mu, pred_var, diagonal, decompose_across_outputs
         )
 
         return pred_y_mu, pred_y_var

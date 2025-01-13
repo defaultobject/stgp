@@ -197,9 +197,9 @@ class BatchGP(Posterior):
 
         return mu_arr, var_arr
 
-    def predict_y(self, XS, diagonal=True, squeeze=False):
+    def predict_y(self, XS, diagonal=True, squeeze=False, decompose_across_outputs = True):
         mu_arr, var_arr =  self.inference.predict_y(
-            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal
+            XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal, decompose_across_outputs = decompose_across_outputs
         )
 
         if squeeze:

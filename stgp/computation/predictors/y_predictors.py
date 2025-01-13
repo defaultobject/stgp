@@ -100,7 +100,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 # ======= Dispatchers ========
 
 @dispatch(Posterior, "HetGaussian", Transform)
-def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
     if diagonal:
         m_f = post_mu[:, 0, ...][:, None, ...]
         m_g = post_mu[:, 1, ...][:, None, ...]
@@ -114,7 +114,24 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         return mean, m_g**2
 
 @dispatch(Posterior, ProductLikelihood, Transform)
-def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
+    """
+    if diagonal:
+        if decompose_across_outputs:
+            post_mu: [N x P x 1]
+            post_var: [N x P x 1 x 1 ]
+        else:
+            post_mu: [N x P x 1]
+            post_var: [N x 1 x P x P]
+    else:
+        if decompose_across_outputs:
+            post_mu: [P x 1 x N]
+            post_var: [P x 1 x N x N]
+        else:
+            post_mu: [N x P x 1]
+            post_var: [1 x 1 x NP x NP]
+
+    """
 
     if type(post_mu) == list:
         post_mu = np.array(post_mu)
@@ -136,46 +153,64 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         likelihood_arr = likelihood.likelihood_arr
         num_outputs = len(likelihood_arr)
 
-        lik_types = [type(lik)==Gaussian for lik in likelihood_arr]
-        if all(lik_types):
+        if decompose_across_outputs:
+            lik_types = [type(lik)==Gaussian for lik in likelihood_arr]
+            if all(lik_types):
 
-            # Compute prediction for each likelihood-prior pair
-            mu_arr, var_arr =  batch_over_module_types(
-                'predict_y_diagonal',
-                [gp],
-                likelihood_arr,
-                [XS, likelihood_arr, post_mu, post_var],
-                [None, 0, 1, 1],
-                num_outputs,
-                2
-            )
+                # Compute prediction for each likelihood-prior pair
+                mu_arr, var_arr =  batch_over_module_types(
+                    'predict_y_diagonal',
+                    [gp],
+                    likelihood_arr,
+                    [XS, likelihood_arr, post_mu, post_var],
+                    [None, 0, 1, 1],
+                    num_outputs,
+                    2
+                )
+            else:
+                # only compute closed form  ones
+                mu_arr, var_arr = [], []
+
+                for p in range(num_outputs):
+                    try:
+                        mu_p, var_p = evoke('predict_y_diagonal', gp, likelihood_arr[p])(
+                            XS, likelihood_arr[p], post_mu[:, p], post_var[:, p]
+                        )
+                        mu_arr.append(mu_p)
+                        var_arr.append(var_p)
+                    except DispatchNotFound as e:
+                        print(e)
+                        print('Likelihood dispatch not found!')
+                        mu_arr.append(post_mu[:, p]*np.nan)
+                        var_arr.append(post_var[:, p]*np.nan)
+            mu_arr = np.array(mu_arr)
+            var_arr = np.array(var_arr)
+
+            # fix data-latent ordering due to batching
+            mu_arr = np.transpose(mu_arr, [1, 0, 2])
+            var_arr = np.transpose(var_arr, [1, 0, 2, 3])
+
+            return mu_arr, var_arr
         else:
-            # only compute closed form  ones
-            mu_arr, var_arr = [], []
+            # full predictions in P, diagonal in N
+            pred_y_fn = evoke('predict_y_full', gp, likelihood)
 
-            for p in range(num_outputs):
-                try:
-                    mu_p, var_p = evoke('predict_y_diagonal', gp, likelihood_arr[p])(
-                        XS, likelihood_arr[p], post_mu[:, p], post_var[:, p]
-                    )
-                    mu_arr.append(mu_p)
-                    var_arr.append(var_p)
-                except DispatchNotFound as e:
-                    print(e)
-                    print('Likelihood dispatch not found!')
-                    mu_arr.append(post_mu[:, p]*np.nan)
-                    var_arr.append(post_var[:, p]*np.nan)
+            # N x 1 x P
+            post_mu = np.transpose(post_mu, [0, 2, 1])
 
-        mu_arr = np.array(mu_arr)
-        var_arr = np.array(var_arr)
+            #[N x 1 x P], [N x 1 x P x P]
+            mu, var  = jax.vmap(
+                lambda xs, mu, var: pred_y_fn(xs, likelihood, mu, var)
+            )(XS[:, None, ...], post_mu, post_var)
 
-        # fix data-latent ordering due to batching
-        mu_arr = np.transpose(mu_arr, [1, 0, 2])
-        var_arr = np.transpose(var_arr, [1, 0, 2, 3])
+            # N x P x 1
+            mu = np.transpose(mu, [0, 2, 1])
 
-        return mu_arr, var_arr
-
+            return mu, var
     else:
+        if decompose_across_outputs:
+            raise NotImplementedError()
+
         # TODO: this will break with aggreagtion
         # fix shapes
         post_mu = post_mu[..., 0]
@@ -194,7 +229,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
         return mu, var
 
 @dispatch('BatchGP', 'ReshapedGaussian', LinearTransform)
-def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
     chex.assert_rank([post_mu, post_var], [3, 4])
 
     if diagonal:
@@ -209,7 +244,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
 
 
 @dispatch('BatchGP', 'GaussianProductLikelihood', LinearTransform)
-def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool):
+def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
     chex.assert_rank([post_mu, post_var], [3, 4])
 
     if diagonal:

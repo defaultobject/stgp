@@ -65,6 +65,7 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
 def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     H_parent = evoke('get_model_H', prior.parent)(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
 
+    # why not use m, P here?
     if full_state:
         H1 = prior.H_full_state(m_predicted, X_s, t)
     else:
@@ -80,6 +81,55 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
 def get_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     rts_fn = evoke('get_model_H', prior)
     return rts_fn(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
+
+
+
+@dispatch(LTI_SDE)
+def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+    if full_state:
+        # force full state
+        H_k = np.eye(x.shape[0])
+    else:
+        H_k = prior.H(None, X_s, t)
+
+    return H_k @ m, H_k @ P @ H_k.T, H_k
+
+@dispatch(LinearizedFilter_SDE)
+def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+    breakpoint()
+
+@dispatch('UncertainPredictionInput')
+def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+
+    m_obs, P_obs, H_k = evoke('apply_H', prior.parent)(
+        prior.parent, state, state_args, m, P, X_s, t, full_state
+    )
+
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k, X_s)
+
+    return pred_weights @ m_obs, pred_weights @ P_obs @ pred_weights.T + pred_covar, pred_weights
+
+@dispatch(PDE)
+def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+    m_obs, P_obs, H_parent = evoke('apply_H', prior.parent)(
+        prior.parent, state, state_args, m, P, X_s, t, full_state
+    )
+
+    if full_state:
+        H1 = prior.H_full_state(m, X_s, t)
+    else:
+        #H1 = prior.H_jac(m_predicted, X_s, t) # computed Jacobian at m_predicted 
+        #H1 = prior.H_jac(m_predicted, X_s, t) # computed Jacobian at m_predicted 
+        #H1 = prior.H(m, X_s, t) 
+        pass
+
+    return m_obs, P_obs, H_parent
+
+
+def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+    return evoke('apply_H', prior)(
+        prior, state, state_args, m, P, X_s, t, full_state
+    )
 
 @jit
 def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted, A_k, Q_k):
@@ -216,17 +266,21 @@ def rts_step_wrapper(prior, state, filter_res, args, X_s, Xs_prior, full_state):
         Q_k
     )
 
-    H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
 
-    m_res =  {
+    # TODO: why m_predicted?
+    #H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
+    m_obs, P_obs, _ = apply_H(prior, state, args, m, P, Xs_prior, args['t'], full_state)
+    #H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
+
+    state_res =  {
         'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
     }
 
-    p_res = {
-        'm': H_k @ m, 'P': H_k @ P @ H_k.T
+    obs_res = {
+        'm': m_obs, 'P': P_obs
     }
 
-    return m_res, p_res
+    return state_res, obs_res
 
 def step_wrapper(data, m, filter_res, Xs_prior, full_state):
     """ Wrapper to support scan with rts_step """
@@ -260,7 +314,6 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
         'P_inf': P_inf
     }
 
-    # why [1:, ...] again?
     args_dict = {
         'm': filter_res['m'],
         'P': filter_res['P'],
@@ -271,11 +324,11 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
 
     # handle prior specific state and args
     state_dict, args_dict = _setup_state_and_args_dict(
-        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=True
     )
 
-    # remove last element as already correct
     all_args_dict = args_dict # store for UI
+    # remove last element as already correct
     args_dict = {key: np.flip(val, axis=0)[1:, ...] for key, val in args_dict.items()}
 
     state, ys = scan(
@@ -290,20 +343,17 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
     # TODO: figure out what state and ys should be here
     if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
         init_args_dict = {key: val[0] for key, val in all_args_dict.items()}
-        H_k, pred_var = get_H(prior, None, None, init_args_dict, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
+        m_obs_init, P_obs_init, _ = apply_H(prior, None, init_args_dict, m_init, P_init, Xs_prior, X_t[0], full_state)
     else:
-        H_k = get_H(prior, state, filter_res, ys, m_init, P_init, m_init, P_init, Xs_prior, X_t[0], full_state)
+        m_obs_init, P_obs_init, _ = apply_H(prior, state, ys, m_init, P_init, Xs_prior, X_t[0], full_state)
 
     if settings.balance_state_space:
         A_last = prior.expm(Xs_prior, dt[-2]) #get the last step
         T_last, T_last_inf = get_ss_balance_transformation(A_last)  
         H_k = _transform_ss_H_param(T_last, T_last_inf, H_k)
 
-    m = np.vstack([(H_k @ m_init)[None, ...], m])
-    if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
-        P = np.vstack([(H_k @ P_init @ H_k.T + pred_var)[None, ...], P])
-    else:
-        P = np.vstack([(H_k @ P_init @ H_k.T)[None, ...], P])
+    m = np.vstack([(m_obs_init)[None, ...], m])
+    P = np.vstack([(P_obs_init)[None, ...], P])
 
     m = np.flip(m, axis=0)
     P = np.flip(P, axis=0)

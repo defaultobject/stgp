@@ -328,4 +328,17 @@ def log_marginal_likelihood( data, m, likelihood, prior):
         data, m, likelihood, prior 
     )
 
-    return ll + np.sum(data.log_jacobian(data.Y_base))
+    #remove nans arising due to missing data only
+    Y_base = data.Y_base
+
+    # will be zero where nans are
+    mask = get_same_shape_mask(Y_base)
+
+    # use 1.0 not 0.0 as Log(0.0) is undefined and 1.0 is usually defined well for transforms
+    Y_base = np.nan_to_num(data.Y_base, nan=1.0)
+
+    # jac_term
+    jac_term = data.log_jacobian(Y_base)
+
+    # remove entries corresponding to missing data
+    return ll + np.sum(mask * jac_term)
