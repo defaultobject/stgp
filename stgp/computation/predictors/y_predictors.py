@@ -101,6 +101,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, "HetGaussian", Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
+    # TODO: only valid for exp() link functions
     if diagonal:
         m_f = post_mu[:, 0, ...][:, None, ...]
         m_g = post_mu[:, 1, ...][:, None, ...]
@@ -108,10 +109,17 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_a
         k_f = post_var[:, 0, ...]
         k_g = post_var[:, 1, ...]
 
-        mean = m_f
-        var = k_f + np.exp(2 * m_g + 2 * k_g)
+        mean = m_f # [N x 1 x 1]
 
-        return mean, m_g**2
+        # also see https://github.com/GPflow/GPflow/pull/1615/files#diff-3207bfef9f98c61796f2786ee3264ecff2bba142551dddf0eb356fab845d7a31R187
+        # where it is implemented like
+        #   var = k_f + np.exp( 2 * m_g + 2* k_g)
+        # beause the link function is exp(f2)^2
+        var = k_f + np.exp( m_g + 0.5 * k_g) # [N x 1 x 1]
+
+        var = var[..., None] # N x 1 x 1 x 1
+
+        return mean, var
 
 @dispatch(Posterior, ProductLikelihood, Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
