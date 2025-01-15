@@ -54,11 +54,11 @@ def confidence_intervals(XS, m, num_samples = None, y_samples=None):
 def confidence_intervals(XS, m, num_samples = None):
     mu, var = m.predict_y(XS, squeeze=False, diagonal=True)
 
-    P = mu.shape[0]
+    N = mu.shape[0]
 
     # Ensure rank 2
-    mu = np.reshape(mu, [P, -1])
-    var = np.reshape(var, [P, -1])
+    mu = np.reshape(mu, [N, -1]) # N x P
+    var = np.reshape(var, [N, -1]) # N x P
 
     return mu, mu-1.96*np.sqrt(var), mu+1.96*np.sqrt(var)
 

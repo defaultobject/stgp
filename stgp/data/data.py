@@ -261,6 +261,7 @@ class TransformedData(Data):
             out_dim = 1,
             batch_type = get_batch_type(self.transform_arr)
         )
+        Y_transformed = np.array(Y_transformed)
 
         # batch_or_loop assumes that the batchout output is axis 0
         # We want the same shape as Y_base so we transpose
@@ -282,6 +283,7 @@ class TransformedData(Data):
             out_dim = 1,
             batch_type = get_batch_type(self.transform_arr)
         )
+        Y_transformed = np.array(Y_transformed)
 
         # batch_or_loop assumes that the batchout output is axis 0
         # We want the same shape as Y_base so we transpose
@@ -324,6 +326,7 @@ class TransformedData(Data):
             out_dim = 1,
             batch_type = get_batch_type(self.transform_arr)
         )
+        jac = np.array(jac)
 
         jac = np.log(jac)
 
@@ -506,6 +509,7 @@ class SpatioTemporalData(SequentialData):
         self.minibatch_size = self.N
         self.minibatch = False
         self.idx = None
+        self.minibatch_scaling = None
 
     def check_shapes(self):
         pass

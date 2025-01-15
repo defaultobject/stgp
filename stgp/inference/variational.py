@@ -21,7 +21,7 @@ class Variational(Inference):
         self.ell_samples=ell_samples
         self.prediction_samples=prediction_samples
 
-    def predict_f(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs=False, num_samples=None, posterior=False):
+    def predict_f(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs=True, num_samples=None, posterior=False):
 
         if data.minibatch:
             # TODO: minibatching only works when sparsity is used. Assert this.
@@ -33,7 +33,7 @@ class Variational(Inference):
 
         return mu, var
 
-    def samples(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs: bool = False, num_samples=None, posterior=False):
+    def samples(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs: bool = True, num_samples=None, posterior=False):
         if data.minibatch:
             # TODO: minibatching only works when sparsity is used. Assert this.
             data.batch()
@@ -45,7 +45,7 @@ class Variational(Inference):
 
         return mu
 
-    def predict_latents(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs: bool = False):
+    def predict_latents(self, XS, data, likelihood, prior, approximate_posterior, diagonal, decompose_across_outputs: bool = True):
         if data.minibatch:
             # TODO: minibatching only works when sparsity is used. Assert this.
             data.batch()
@@ -54,11 +54,11 @@ class Variational(Inference):
             XS, data, approximate_posterior, likelihood, prior, self, 1, self.whiten
         )
 
-    def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal,  decompose_across_outputs = False, num_samples=None, posterior=False):
+    def predict_y(self, XS, data, likelihood, prior, approximate_posterior, diagonal,  decompose_across_outputs = True, num_samples=None, posterior=False):
         pred_mu, pred_var = self.predict_f(XS, data, likelihood, prior, approximate_posterior, diagonal, num_samples = num_samples, posterior=posterior)
 
         pred_y_mu, pred_y_var = evoke('predict_y', approximate_posterior, likelihood, prior)(
-            XS, approximate_posterior, likelihood, pred_mu, pred_var, diagonal
+            XS, approximate_posterior, likelihood, pred_mu, pred_var, diagonal, decompose_across_outputs=decompose_across_outputs
         )
 
         return pred_y_mu, pred_y_var

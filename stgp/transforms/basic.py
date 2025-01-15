@@ -84,6 +84,7 @@ class Log(Exp):
         return super(Log, self).forward(f)
 
 class Softminus(ElementWiseTransform):
+    """ Badly named class, should be InvSoftplus """
 
     def forward(self, x):
         """Compute f=T(x)."""
@@ -92,6 +93,8 @@ class Softminus(ElementWiseTransform):
     def inverse(self, f):
         """Compute x=T^{-1}(f)."""
         return softplus(f)
+ 
+InvSoftplus  = Softminus
 
 class Softplus(ElementWiseTransform):
 

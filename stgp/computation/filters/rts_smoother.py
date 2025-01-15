@@ -88,7 +88,7 @@ def get_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t
 def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
     if full_state:
         # force full state
-        H_k = np.eye(x.shape[0])
+        H_k = np.eye(m.shape[0])
     else:
         H_k = prior.H(None, X_s, t)
 

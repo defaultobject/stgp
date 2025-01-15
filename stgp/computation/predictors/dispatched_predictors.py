@@ -543,7 +543,22 @@ def predict(XS, data, gp, likelihood, prior, diagonal: bool, decompose_across_ou
 
 @dispatch(Likelihood, Transform, ApproximatePosterior, True)
 @dispatch(Likelihood, Transform, ApproximatePosterior, False)
-def predict(XS, data, likelihood, prior, approximate_posterior, inference, whiten, diagonal, **kwargs):
-    return  evoke('marginal_prediction', approximate_posterior, likelihood, prior, whiten=whiten)(
+def predict(XS, data, likelihood, prior, approximate_posterior, inference, whiten, diagonal, decompose_across_outputs=True, **kwargs):
+    mu, var =   evoke('marginal_prediction', approximate_posterior, likelihood, prior, whiten=whiten)(
         XS, data, approximate_posterior, likelihood, prior, inference, diagonal, whiten, **kwargs
     )
+
+    if decompose_across_outputs is True:
+        # TODO: fix this
+        # very hacky but this will work for `most' models and have a paper deadline
+        try:
+            # check if already the correct shape [N x P x 1 x 1]
+            if not (var.shape[2] == 1) & (var.shape[3]==1):
+                # [N x 1 x P]
+                var = np.diagonal(var, axis1=2,axis2=3)
+                # [N x P x 1 x 1]
+                var = np.transpose(var, [0, 2, 1])[..., None]
+        except Exception as e:
+            pass
+
+    return mu, var

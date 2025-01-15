@@ -635,18 +635,21 @@ def expected_log_likelihood(data, q_f_mu_arr, q_f_var_arr, likelihood, prior, ap
 
     base_data = data.base_data
 
+    #log p(Y | f) = log p(T^{-1}(Y) | f) + log |dT/dY|
     base_ell =  evoke('expected_log_likelihood', base_data, likelihood, prior, approximate_posterior)(
         data, q_f_mu_arr, q_f_var_arr, likelihood, prior, approximate_posterior, inference
     )
 
     # convert nans to zero
     # these will have a jacobian of zero and so will not contribute to the sum
+    # use 1.0 not 0.0 as Log(0.0) is undefined and 1.0 is usually defined well for transforms
     log_jac = data.log_jacobian(np.nan_to_num(data.Y_base, nan=1.0))
 
     # ensure it does not constribute
     nan_mask = get_same_shape_mask(data.Y_base)
 
     #ignore nans
+    nan_mask * data.log_jacobian(np.nan_to_num(data.Y_base, nan=1.0))
     log_jac = nan_mask * log_jac
 
     log_jac = np.sum(log_jac)
