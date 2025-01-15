@@ -50,7 +50,7 @@ def marginal_prediction_blocks(XS, data, m, S, approximate_posterior, likelihood
     else:
         if hasattr(approximate_posterior.surrogate, 'predict_temporal'):
             # this just predict at the inducing points in time
-            XS_temporal_data, sorted_data, _, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
+            XS_temporal_data, sorted_data, _, _, mu, var = approximate_posterior.surrogate.predict_temporal(XS)
             chex.assert_rank([mu, var], [3, 4])
 
             # construct data with same temporal points as sort_data but with all the required spatial points

@@ -247,6 +247,14 @@ class TransformedData(Data):
 
         self.N = self.base_data.N
 
+    @property
+    def Nt(self):
+        return self.base_data.Nt
+
+    @property
+    def Ns(self):
+        return self.base_data.Nt
+
     def batch(self):
         return self.base_data.batch()
 
