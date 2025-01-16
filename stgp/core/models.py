@@ -8,6 +8,7 @@ import numpy as onp
 from typing import Optional, Tuple
 from ..utils import utils
 from ..data import Data
+from .. import Parameter
 
 class Model(objax.Module):
     """
@@ -119,6 +120,46 @@ class Model(objax.Module):
 
     def get_fixed_params(self):
         return utils.get_fixed_params(self)
+
+    def load_learning_curve_param(self, name=None, lc_shape = None):
+        """ 
+        For backwarks compatability have a separate function to create the store_lc parameter. This work for
+        checkpoints and loading as we only loads variables from checkpoint that we can find in the model.
+        """
+        # setup dummy array
+        self.stored_lc = Parameter(np.array([]), train=False, name='learning_curve')
+
+        all_vars = self.vars()
+        stored_var_suffix = '.stored_lc(Parameter).raw_var'
+        store_var_name = utils.match_suffix( stored_var_suffix, list(all_vars.keys()) )
+
+        stored_var = {store_var_name: all_vars[store_var_name]}
+
+        if lc_shape is None:
+            # extract the shape of the lc in the checkpoint
+            try:
+                objax.io.load_var_collection(f'{name}.npz',  stored_var)
+            except AssertionError as e:
+                err = str(e)
+                # error message will be something like '... requested new shape is (10, 1).'
+                match_str = 'requested new shape is ('
+
+                # extract only the shape '10, 1' from the error message
+                shape_str = err[err.index(match_str)+len(match_str):-2]
+
+                # convert '10, 1' to a list of integers [10, 1]
+                shape_parts = shape_str.split(',')
+                lc_shape = [int(a) for a in shape_parts]
+
+        # setup array with correct shape
+        self.stored_lc = Parameter(np.zeros(lc_shape), train=False, name='learning_curve')
+        stored_var = {store_var_name: self.vars()[store_var_name]}
+
+        # extract again now that the shapes are correct
+        objax.io.load_var_collection(f'{name}.npz',  stored_var)
+
+    def store_learning_curve(self, lc):
+        self.stored_lc = Parameter(np.array(lc), train=False, name='learning_curve')
 
 class Prior(Model):
     def get_sparsity_list(self):
