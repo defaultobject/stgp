@@ -504,8 +504,10 @@ class Independent(Transform):
 
         return np.hstack(m_inf_blocks)
 
-    def H_blocks(self, x, X_s, t):
+    def H_blocks(self, x, X_s, t, X_s_axis = None):
         # TODO: clean up at some point (see self.P_inf)
+        # TODO: remove X_s_axis. Have it at the moment so that derivative 
+        #   GPs do not break.
 
         if hasattr(self.parent[0], 'kernel'):
             fn = lambda x, X_s, t, latent:  latent.kernel.H(x, X_s, t)
@@ -515,7 +517,7 @@ class Independent(Transform):
         H_blocks = batch_or_loop(
             fn,
             [x, X_s, t, self.parent],
-            [None, None, None, 0],
+            [None, X_s_axis, None, 0],
             dim = self.output_dim,
             out_dim = 1,
             batch_type = get_batch_type(self.parent)

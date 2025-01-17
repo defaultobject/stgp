@@ -94,23 +94,24 @@ def get_likelihood_hessian(model, T_f, laplace_log_lik=False):
     data = model.data
 
     if data_decomposes_across_time(data) and len(T_f.shape) == 4:
-        # T_f: Nt x Ns x P x 1
+        # T_f: Nt x Ns x P x Q
         chex.assert_rank(T_f, 4)
 
         if not laplace_log_lik:
             Y_st = get_Y_in_correct_shape(model.data)
 
             hess = batch_or_loop(
-                lambda y, t, lik: jax.vmap(jax.vmap(lik.log_hessian_scalar))(y, t),
-                [Y_st, T_f[..., 0], model.likelihood.likelihood_arr],
+                lambda y, t, lik: jax.vmap(jax.vmap(lambda a, b: lik.log_hessian_scalar(a, np.squeeze(b))))(y, t),
+                #[Y_st, T_f[..., 0], model.likelihood.likelihood_arr],
+                [Y_st, T_f, model.likelihood.likelihood_arr],
                 [2, 2, 0],
                 dim = len(model.likelihood.likelihood_arr),
                 out_dim=1,
                 batch_type = get_batch_type(model.likelihood.likelihood_arr)
             )
-            hess = np.array(hess)
-            hess = np.transpose(hess, [1, 2, 0]) # [Nt, Ns, P]
-            neg_Lambda = hess[..., None] # [Nt, Ns, P, 1]
+            hess = np.array(hess) # P x Nt x Ns x Q x Q
+            neg_Lambda = np.transpose(hess, [1, 2, 0, 3, 4]) # [Nt, Ns, P, Q, Q]
+            #neg_Lambda = hess[..., None] # [Nt, Ns, P, 1]
         else:
             # batch over Nt and Ns, only evaluate the conditional var on the indiviual P x 1 outputs
             Lambda = jax.vmap( jax.vmap( lambda f: model.likelihood.conditional_var(f) ))(T_f)
@@ -230,15 +231,17 @@ def compute_f_to_tf(m, q_f_mu):
             t_p = _process_samples(q_f_mu[i], lambda x:x, p)
             # TODO: only support single output transforms
             #q_f_res.append(np.squeeze(t_p))
-            q_f_res.append(t_p[..., 0, 0])
+            #q_f_res.append(t_p[..., 0, 0]) # ORIGINAL
+            q_f_res.append(t_p[:, :, 0]) # Ns x Q
 
         # fix shapes
-        q_f_res = np.array(q_f_res).T
-        chex.assert_rank(q_f_res, 2)
+        q_f_res = np.array(q_f_res) # P x Ns x Q
+        chex.assert_rank(q_f_res, 3)
+        q_f_res = np.transpose(q_f_res, [1, 0, 2]) # Ns x P x Q
 
-        q_f_res = q_f_res[..., None]
     else:
         q_f_res = _process_samples(q_f_mu[0], lambda x:x, m.prior)
+
 
     chex.assert_rank(q_f_res, 3)
 
@@ -380,7 +383,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
     )(m, S, X_st, Y_st)
 
 
-    Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var)
+    Tf_sample = _reparamaterise_f_to_tf_across_time(model, eps, u_to_f_mu, u_to_f_var) # Nt x Ns x P x 1
 
     if False:
         u_tf_fn = lambda m: compute_u_to_tf(model, m, S)
@@ -399,7 +402,7 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
     # clean up shapes
     J_u_tf = J_u_tf[0]
     J_u_tf = J_u_tf[:, :, :, 0, :, :] # Nt x Ns x P x Ms x 1
-    neg_Lambda = neg_Lambda[..., None] # Nt x Ns x P x 1 x 1
+    neg_Lambda = neg_Lambda # Nt x Ns x P x B x B
 
     if _ensure_str(data) == 'TemporallyGroupedData':
         Y_st_mask = get_same_shape_mask(Y_st) # Nt x Ns x P 
@@ -473,10 +476,9 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
 
 
         # remove missing data from the natural gradient sum
-        Y_reshaped_for_neg_lambda_mask = Y_st_mask[..., None, None] # Nt x Ns x P x 1 x1
+        Y_reshaped_for_neg_lambda_mask = np.tile(Y_st_mask[..., None, None], [1, 1, 1,  neg_Lambda.shape[-1], neg_Lambda.shape[-1]]) # Nt x Ns x P x B x B
         chex.assert_equal(neg_Lambda.shape, Y_reshaped_for_neg_lambda_mask.shape)
         neg_Lambda = neg_Lambda * Y_reshaped_for_neg_lambda_mask
-
 
         if True:
             #TODO would be trivial to use prefix sums here as well
@@ -492,7 +494,9 @@ def _f_conditional_samples(m, eps, model, S, X_st, Y_st, laplace_log_lik=False, 
                 J_u_tf = state['J_u_tf']
                 neg_Lambda = state['neg_Lambda']
                 x = carry['x']
-                x =  x + J_u_tf @ neg_Lambda @ J_u_tf.T
+                # TODO: which one is correct?
+                #x =  x + J_u_tf @ neg_Lambda @ J_u_tf.T
+                x =  x + J_u_tf.T @ neg_Lambda @ J_u_tf
                 return {'x': x}, state
 
             def cumsum(carry, state):

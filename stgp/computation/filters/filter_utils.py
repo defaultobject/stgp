@@ -253,9 +253,11 @@ def get_Y_mask(Y_k):
 
     return M
 
-
-def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k, Xs_prior):
+def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior):
     # compute psi statistics
+
+    H_k_latents_only = to_block_diag(H_k_latents_only_blocks)
+
     # TODO: want this to be separate in filter_utils probably
     scalar2mat = lambda a: np.array([a])[:, None]
 
@@ -295,7 +297,7 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k,
             pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
                 XS, 
                 X_q,
-                Y = H_q @ H_k @ m_,
+                Y = H_q @ H_k_latents_only @ m_, # use H_k_latents_only as we only need the marginals not derivatives
                 K_ss = None,
                 K_sx = None,
                 K_xx = add_jitter(kern_s_q.K(X_q, X_q), settings.jitter),
@@ -304,21 +306,25 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k,
                 noise_pred_var = x['low_fidelity_prediction_covar'][np.array([q])][:, None],
                 base_gp_kernel = kern_s_q
             )
-            pred_weights_arr.append(pred_weights)
+            pred_weights_arr.append(pred_weights @ H_k_latents_only_blocks[q])
             pred_covar_arr.append(pred_covar)
 
             if settings.debug_mode:
                 breakpoint()
         else:
             #no need to compute psi statistics
-            pred_weights_arr.append(np.eye(1))
-            pred_covar_arr.append(np.array([0.0]))
+            # this should use the base H_q not just observe the latent
+            # TODO: need H blocks then will just have access to it imediately...
+            pred_weights_arr.append(H_k_blocks[q])
+            pred_covar_arr.append(np.zeros([H_k_blocks[q].shape[0], H_k_blocks[q].shape[0]]))
 
 
     pred_weights = to_block_diag(pred_weights_arr)
     pred_covar = to_block_diag(pred_covar_arr)
 
     return pred_weights, pred_covar
+
+
 
 @jit
 def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):

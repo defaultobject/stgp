@@ -249,6 +249,9 @@ def _pivoted_cholesky(matrix):
 
 @dispatch(UncertainPredictionInput, 'FITCSpatialSparsity')
 def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
+    """
+    Prior will be UncertainPredictionInput[SDE[Independent[...]]]
+    """
     # dimensions of these should match
     base_prior = prior.prior
     # will pad non UI with Nones
@@ -265,12 +268,16 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
     R_k =  args['lik_mat']
 
     H_k = prior.H(None, Xs_prior, None)
+    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None, X_s_axis=0)
+    H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_, P_, H_k, Xs_prior)
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
-    H_k = pred_weights @ H_k
+    #observer both uncertain input and orginal state
+    #H_k = np.vstack([pred_weights @ H_k_latents_only, H_k])
+    H_k = pred_weights 
     R_k = R_k + pred_covar
 
     innovation = H_k @ m_

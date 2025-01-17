@@ -54,6 +54,7 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
     rts_fn = evoke('get_model_H', base_prior)
     H_k =  rts_fn(base_prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
     # TODO: this needs to predict to f -- OR need to implement that properly
+
     
     pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_predicted, P_predicted, H_k, X_s)
 
@@ -99,15 +100,20 @@ def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
     breakpoint()
 
 @dispatch('UncertainPredictionInput')
-def apply_H(prior, state, state_args, m, P, X_s, t, full_state):
+def apply_H(prior, state, state_args, m, P, Xs_prior, t, full_state):
 
-    m_obs, P_obs, H_k = evoke('apply_H', prior.parent)(
-        prior.parent, state, state_args, m, P, X_s, t, full_state
-    )
+    #We only support models of the form UncertainPredictionInput[SDE[Independent[...]]]
+    #    so do not need evoke the parents apply_H
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k, X_s)
+    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None, X_s_axis=0)
+    H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
-    return pred_weights @ m_obs, pred_weights @ P_obs @ pred_weights.T + pred_covar, pred_weights
+    if full_state:
+        raise NotImplementedError()
+    else:
+        pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
+
+    return pred_weights @ m, pred_weights @ P @ pred_weights.T + pred_covar, pred_weights
 
 @dispatch(PDE)
 def apply_H(prior, state, state_args, m, P, X_s, t, full_state):

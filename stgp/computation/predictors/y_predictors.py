@@ -91,7 +91,7 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
     k_g = post_var[:, 1][:, None]
 
     mean = m_f
-    var = k_f + np.exp(2 * m_g + 2 * k_g)
+    var = k_f + np.exp( m_g + 0.5 * k_g) # [N x 1 x 1]
 
     var = k_f + m_g**2
 
@@ -101,13 +101,19 @@ def predict_y_diagonal(XS, likelihood, post_mu, post_var):
 
 @dispatch(Posterior, "HetGaussian", Transform)
 def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_across_outputs: bool):
+    """
+    Args:
+        post_mu: N x P x 2
+        post_var: N x P x 2 x 1 or N x P x 2 x 2
+    """
     # TODO: only valid for exp() link functions
     if diagonal:
-        m_f = post_mu[:, 0, ...][:, None, ...]
-        m_g = post_mu[:, 1, ...][:, None, ...]
+        # TODO: assuming P = 1
+        m_f = post_mu[..., 0][:, None, ...]
+        m_g = post_mu[..., 1][:, None, ...]
 
-        k_f = post_var[:, 0, ...]
-        k_g = post_var[:, 1, ...]
+        k_f = post_var[..., 0, 0]
+        k_g = post_var[..., 0, 0]
 
         mean = m_f # [N x 1 x 1]
 

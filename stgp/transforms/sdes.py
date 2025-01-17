@@ -78,6 +78,8 @@ class LTI_SDE(SDE):
 
         return H
 
+    def H_blocks(self, x, X_s, t):
+        breakpoint()
 
     def P_inf(self, x, X_s, t):
         _, _, _, _, _, Pinf = self.gp.state_space_representation(X_s)
@@ -138,8 +140,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
     def _output_dim(self):
         return  self.temporal_output_dim * self.spatial_output_dim
 
-    def H(self, x, X_s, t):
-
+    def H_blocks(self, x, X_s, t):
         Q = len(self.gp.state_space_dim())
 
         if self.overwrite_H:
@@ -153,34 +154,65 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
             _H_t = H_t # for debugging
 
             if not self.permute:
+                breakpoint()
                 return H_t
 
-        # need to permute from latent-ds-space-df to latent-df-ds-space
-        if X_s is None:
-            Ns = 1
+        def _get_Hq_from_Ns_ds_dt(Ns, ds, dt, dt_keep):
+            full_dim = dt * ds * Ns
+            mask_dim = dt_keep * ds * Ns
+            I = np.eye(full_dim)
+            I = np.reshape(I, [ds * Ns, dt, full_dim])[:, self.keep_dims, :]
+            I_mask = np.reshape(I, [mask_dim, full_dim])
+
+            # convert from [ds, ns, dt] -> [dt_keep, ds, ns]
+            H_q = ld_to_dl(num_latents = ds * Ns, num_data = dt_keep) @ I_mask
+            return H_q
+
+        if type(X_s) is list:
+            # need to handle each latent function separetly
+
+            H_arr = []
+            for q in range(Q):
+                if X_s[q] is None:
+                    Ns_q = 1
+                else:
+                    Ns_q = X_s[q].shape[0]
+
+                dt = self.gp.state_space_dim()[q]
+                ds = self.spatial_output_dim
+                dt_keep = len(self.keep_dims)
+
+                H_q = _get_Hq_from_Ns_ds_dt(Ns_q, ds, dt, dt_keep)
+
+                H_arr.append(H_q)
+
+            H_blocks = H_arr
         else:
-            Ns = X_s.shape[0]
+            # else all latents have the same number of spatial points
 
-        dt = self.gp.state_space_dim()[0]
-        ds = self.spatial_output_dim
-        dt_keep = len(self.keep_dims)
+            # need to permute from latent-ds-space-df to latent-df-ds-space
+            if X_s is None:
+                Ns = 1
+            else:
+                Ns = X_s.shape[0]
 
-        full_dim = dt * ds * Ns
-        mask_dim = dt_keep * ds * Ns
-        I = np.eye(full_dim)
-        I = np.reshape(I, [ds * Ns, dt, full_dim])[:, self.keep_dims, :]
-        I_mask = np.reshape(I, [mask_dim, full_dim])
+            dt = self.gp.state_space_dim()[0]
+            ds = self.spatial_output_dim
+            dt_keep = len(self.keep_dims)
 
-        # convert from [ds, ns, dt] -> [dt_keep, ds, ns]
-        H_q = ld_to_dl(num_latents = ds * Ns, num_data = dt_keep) @ I_mask
+            # convert from [Q, ds, ns, dt] -> [Q, dt_keep, ds, ns]
+            H_q = _get_Hq_from_Ns_ds_dt(Ns, ds, dt, dt_keep)
 
-        # convert from [Q, ds, ns, dt] -> [Q, dt_keep, ds, ns]
-        H = to_block_diag([
-            H_q
-            for q in range(Q)
-        ])
+            H_blocks = [
+                H_q
+                for q in range(Q)
+            ]
 
-        return H
+        return H_blocks
+
+    def H(self, x, X_s, t):
+        H_blocks = self.H_blocks(x, X_s, t)
+        return to_block_diag(H_blocks)
 
 class LTI_SDE_Full_State_Obs_With_Mask(LTI_SDE_Full_State_Obs):
     """

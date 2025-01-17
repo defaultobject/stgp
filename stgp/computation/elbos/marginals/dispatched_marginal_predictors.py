@@ -764,6 +764,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
         get_block_type(1), 
         out_block
     )
+
     
     if type(mu) == list:
 
@@ -783,7 +784,7 @@ def marginal_prediction_samples(XS, data, approximate_posterior, likelihood, pri
             )
             mu_res.append(mu_i)
         mu = mu_res
-        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, :, 0]
+        mu = np.transpose(np.stack(mu), [1, 2, 0, 3, 4])[:, :, :, :, 0] # S x N x P x B
     else:
         mu = approximate_expectation(
             lambda f: f, 

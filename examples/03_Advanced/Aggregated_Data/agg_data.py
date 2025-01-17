@@ -86,7 +86,7 @@ if False:
 
 D = 1
 
-if False:
+if True:
     data = AggregatedData(X_aggr, Y_aggr)
     lik = stgp.likelihood.Gaussian(0.01)
     Z = stgp.sparsity.FullSparsity(Z = np.linspace(0, 1, 20)[:, None])

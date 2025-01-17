@@ -221,7 +221,9 @@ class MarkovKernel(Kernel):
         # TODO: ONLY applies for stationary models
         return P_inf - A_k @  P_inf @ A_k.T
 
-
+    def H(self, x, X_spatial, t):
+        _, _, _, H, _, _ = self.to_ss(X_spatial)
+        return H
 
 class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
     def state_space_dim(self):
@@ -252,6 +254,8 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         return space_time_state_space_rep(
             K_spatial,  F, L, Qc, H, m_inf, Pinf
         )
+
+
 
     def state_size(self):
         # only return the temporal state_size 
