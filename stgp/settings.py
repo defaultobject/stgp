@@ -8,6 +8,9 @@ from enum import Enum
 debug_mode = False
 verbose = False
 
+# Only used for uncertain inputs in filters
+ui_prediction_mode = False
+
 in_strict_mode = False
 
 experimental_simple_time_weight = False

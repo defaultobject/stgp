@@ -79,7 +79,7 @@ class LTI_SDE(SDE):
         return H
 
     def H_blocks(self, x, X_s, t):
-        breakpoint()
+        return self.gp.H_blocks(x, X_s, t)
 
     def P_inf(self, x, X_s, t):
         _, _, _, _, _, Pinf = self.gp.state_space_representation(X_s)

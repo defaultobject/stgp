@@ -268,7 +268,7 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
     R_k =  args['lik_mat']
 
     H_k = prior.H(None, Xs_prior, None)
-    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None, X_s_axis=0)
+    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
     H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
@@ -516,7 +516,7 @@ def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
     return _fn
 
 @dispatch('sequential')
-def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index):
+def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index, is_prediction):
     """
     Args:
         lik_mat: is either R of R_inv, the block diagonal covariance ot the block_diagonal precision
@@ -556,7 +556,7 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
 
     # handle prior specific state and carrys
     state_dict, args_dict = _setup_state_and_args_dict(
-        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, is_prediction=is_prediction
     )
 
     if settings.debug_mode:
@@ -586,11 +586,12 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
 
     return lml, filter_res
 
-def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False, train_test_mask=None, train_index=None):
+def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, filter_type=False, train_test_mask=None, train_index=None, is_prediction=False):
     """
     Args:
         R: in time - latent - space format
     """ 
+
 
     x_t =  data.X_time
     X_s =  data.X_space
@@ -644,7 +645,7 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     filter_fn = evoke('filter', filter_type)
     #filter_fn = evoke('filter', 'sequential')
 
-    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index)
+    lml, filter_res =  filter_fn(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_mask, train_index, is_prediction)
 
 
     return lml, filter_res

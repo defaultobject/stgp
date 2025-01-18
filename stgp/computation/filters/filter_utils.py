@@ -39,7 +39,7 @@ def _get_prior_spatial_points(data, prior):
         sparsity = sparsity[0]
         return _get_data_or_sparsity_spatial_points(data, sparsity)
 
-def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
+def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False, is_prediction=False):
     if smoother:
         return state_dict, args_dict
     else:
@@ -70,12 +70,19 @@ def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, a
 
         return state_dict, args_dict
 
-def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
+def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False, is_prediction=False):
+    """
+    Args:
+        use_posterior: instead of using predict functions (which are not jittable) use the posterior 
+    """
     # TODO: need to predict in ST format then propogate it through
     # TODO: use batch/loop
     def _collect_low_fidelity_prediction(gp, data):
         if gp is not None:
-            pred_mu, pred_var = gp.predict_f(data.X)
+            if is_prediction:
+                pred_mu, pred_var = gp.predict_f(data.X)
+            else:
+                pred_mu, pred_var = gp.posterior()
         else:
             # construct a dummy reponse
             pred_mu = np.ones(data.N)*onp.NaN
@@ -90,23 +97,23 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
 
     return state_dict, args_dict
 
-def _setup_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False):
+def _setup_state_and_args_dict(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False, is_prediction=False):
     # TODO: just assuming that the model has been constructed correctly
     # Loop through all priors and setup state and dict for each transformation
 
     # TODO: use dispatch here?
     if isinstance(prior, PDE):
         state_dict, args_dict = _setup_pde_state_and_args(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother, is_prediction=is_prediction
         )
 
-        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother, is_prediction=is_prediction)
 
     elif isinstance(prior, UncertainPredictionInput):
         state_dict, args_dict = _setup_uncertain_inputs_state_and_args(
-            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother
+            data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother, is_prediction=is_prediction
         )
-        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother)
+        return _setup_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=smoother, is_prediction=is_prediction)
 
     # base prior is always LTI_SDE
     if isinstance(prior, LTI_SDE):

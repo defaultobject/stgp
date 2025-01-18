@@ -23,6 +23,7 @@ from ..likelihood import get_product_likelihood, ProductLikelihood
 from ..transforms import Independent
 from ..transforms.sdes import LTI_SDE, LTI_SDE_Full_State_Obs
 from ..transforms.uncertain_inputs import UncertainPredictionInput
+from .. import settings
 
 
 
@@ -162,7 +163,8 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             R = R,
             R_inv = R_inv,
-            filter_type = self.filter_type
+            filter_type = self.filter_type,
+            is_prediction=False
         )
 
         # TODO: quick fix to support older models
@@ -180,7 +182,8 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             R = R,
             R_inv = R_inv,
-            filter_type = self.filter_type
+            filter_type = self.filter_type,
+            is_prediction=False
         )
 
         return lml
@@ -229,7 +232,7 @@ class BASE_SDE_GP(Posterior):
 
         return mu, var
 
-    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res=False):
+    def filter(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res=False, is_prediction=False):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
@@ -237,7 +240,8 @@ class BASE_SDE_GP(Posterior):
             R_inv = R_inv,
             filter_type = self.filter_type,
             train_test_mask = train_test_mask,
-            train_index=train_index
+            train_index=train_index,
+            is_prediction=is_prediction
         ) 
 
 
@@ -254,7 +258,7 @@ class BASE_SDE_GP(Posterior):
             else:
                 return mu, var
 
-    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res = False):
+    def filter_and_smooth(self, data, prior, R = None, R_inv = None, full_state=False, return_lml = False, train_test_mask = None, train_index=None, return_kf_res = False, is_prediction=False):
         lml, kf_res  = kalman_filter.filter_loop(
             data,
             prior,
@@ -262,7 +266,8 @@ class BASE_SDE_GP(Posterior):
             R_inv = R_inv,
             filter_type = self.filter_type,
             train_test_mask=train_test_mask,
-            train_index=train_index
+            train_index=train_index,
+            is_prediction=is_prediction
         ) 
 
         mu, var = rts_smoother.smoother_loop(
@@ -270,7 +275,8 @@ class BASE_SDE_GP(Posterior):
             prior,
             kf_res,
             full_state=full_state,
-            filter_type = self.filter_type
+            filter_type = self.filter_type,
+            is_prediction=is_prediction
         )
 
         # TODO: must be a better way than this?
@@ -295,7 +301,8 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             R = R,
             R_inv = R_inv,
-            return_lml=True
+            return_lml=True,
+            is_prediction=False
         )
         chex.assert_rank([mu, var], [3, 3])
 
@@ -317,7 +324,8 @@ class BASE_SDE_GP(Posterior):
             self.prior,
             R = R,
             R_inv = R_inv,
-            full_state = full_state
+            full_state = full_state,
+            is_prediction=False
         )
 
         # only fix shapes is not returning the full-state
@@ -361,7 +369,8 @@ class BASE_SDE_GP(Posterior):
         mu, var = self.filter_and_smooth(
             test_data,
             self.prior,
-            R = self.get_likelihood_for_prediction(test_data)
+            R = self.get_likelihood_for_prediction(test_data),
+            is_prediction=True
         )
 
         # mu, var are in time - space format
@@ -459,7 +468,8 @@ class T_SDE_GP(BASE_SDE_GP):
                 R = self.get_likelihood_for_prediction(test_data),
                 train_test_mask = train_mask,
                 train_index = train_index,
-                return_kf_res=True
+                return_kf_res=True,
+                is_prediction=True
             )
             chex.assert_rank([mu, var], [3, 3])
 
@@ -472,32 +482,14 @@ class T_SDE_GP(BASE_SDE_GP):
                 train_test_mask = train_mask,
                 train_index = train_index,
                 full_state = force_full_state,
-                return_kf_res = True
+                return_kf_res = True,
+                is_prediction=True
             )
 
 
             chex.assert_rank([mu, var], [3, 3])
 
-
-        if False:
-            # hmm this should be before the PDE transform... maybe it should be moved into the smoother...
-            if isinstance(self.prior, UncertainPredictionInput) or isinstance(self.prior.parent, UncertainPredictionInput) :
-                if filter_only:
-                    # TODO: this is a debuggin hack
-                    state_dim = self.output_dim
-
-                    H_sde_prior = self.prior.parent.H(None, self.prior.base_prior.get_sparsity()[0].raw_Z.X_space, None)
-
-                    mu = jax.vmap(lambda h_k, x_k: h_k @ x_k, [None, 0])( H_sde_prior, mu)
-                    var = jax.vmap(lambda h_k, P_k: h_k @ P_k @ h_k.T, [None, 0])( H_sde_prior, var)
-
-                _mu = mu
-                mu = jax.vmap(lambda h_k, x_k: h_k @ x_k)( kf_res['meta']['H'], mu)
-                # what should the variace be?
-                var = jax.vmap(lambda h_k, R_k, P_k: h_k @ P_k @ h_k.T + R_k)( kf_res['meta']['H'], kf_res['meta']['ui_var'], var)
-
         # fix mu and var shapes
-
         state_dim = mu.shape[1]
 
         # TODO: rename out_dim or self.output_dim
@@ -681,7 +673,8 @@ class ST_SDE_GP(BASE_SDE_GP):
                 self.prior,
                 R = R,
                 train_test_mask=train_mask,
-                train_index=train_index
+                train_index=train_index,
+                is_prediction=True
             )
 
 
@@ -711,7 +704,8 @@ class ST_SDE_GP(BASE_SDE_GP):
                 self.prior,
                 R = R,
                 train_test_mask=train_mask,
-                train_index=train_index
+                train_index=train_index,
+                is_prediction=True
             )
 
         return XS_st_data, all_temporal_data, temporal_test_data, prior_stacked_spatial_points, mu_t, var_t[:, None, ...]

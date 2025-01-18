@@ -49,18 +49,16 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
     return H_k
 
 @dispatch('UncertainPredictionInput')
-def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
-    base_prior = prior.parent
-    rts_fn = evoke('get_model_H', base_prior)
-    H_k =  rts_fn(base_prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state)
-    # TODO: this needs to predict to f -- OR need to implement that properly
+def get_model_H(prior, state, filter_res, state_args, m, P, m_predicted, P_predicted, Xs_prior, t, full_state):
+    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
+    H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
-    
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_predicted, P_predicted, H_k, X_s)
+    if full_state:
+        raise NotImplementedError()
+    else:
+        pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
-    H_k =  pred_weights @ H_k
-
-    return H_k, pred_covar
+    return pred_weights, pred_covar
 
 @dispatch(PDE)
 def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
@@ -105,7 +103,7 @@ def apply_H(prior, state, state_args, m, P, Xs_prior, t, full_state):
     #We only support models of the form UncertainPredictionInput[SDE[Independent[...]]]
     #    so do not need evoke the parents apply_H
 
-    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None, X_s_axis=0)
+    H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
     H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
     if full_state:
@@ -299,7 +297,7 @@ def step_wrapper(data, m, filter_res, Xs_prior, full_state):
     return _fn
 
 @dispatch('sequential')
-def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
+def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state, is_prediction):
     m_init = filter_res['m'][-1]
     P_init = filter_res['P'][-1]
 
@@ -330,7 +328,7 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
 
     # handle prior specific state and args
     state_dict, args_dict = _setup_state_and_args_dict(
-        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=True
+        data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=True, is_prediction = is_prediction
     )
 
     all_args_dict = args_dict # store for UI
@@ -366,7 +364,7 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state):
 
     return m, P
 
-def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full_state=False, filter_type=False):
+def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full_state=False, filter_type=False, is_prediction=False):
     """
     Args:
         full_state: flag -- if False we only return part of the state corresponding to the latent GP, else returns the whole state
@@ -394,7 +392,7 @@ def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full
     # sequential, parallel, square_root_svm
     smoother_fn = evoke('smoother', filter_type)
 
-    mu, var  =  smoother_fn(data, prior, filter_res, dt, X_t, Xs_prior, full_state)
+    mu, var  =  smoother_fn(data, prior, filter_res, dt, X_t, Xs_prior, full_state, is_prediction)
 
     return mu, var
 
