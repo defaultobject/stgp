@@ -81,8 +81,17 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
         if gp is not None:
             if is_prediction:
                 pred_mu, pred_var = gp.predict_f(data.X)
+
+                if pred_mu.shape[1] > 1:
+                    pred_mu = pred_mu[:, 0]
+                    pred_var = pred_var[:, 0]
+
             else:
-                pred_mu, pred_var = gp.posterior()
+                pred_mu, pred_var = gp.posterior_in_latent_data()
+
+                if pred_mu.shape[0] > 1:
+                    pred_mu = pred_mu[0]
+                    pred_var = pred_var[0]
         else:
             # construct a dummy reponse
             pred_mu = np.ones(data.N)*onp.NaN
@@ -92,6 +101,7 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
 
     res = [_collect_low_fidelity_prediction(gp, data) for gp in prior.prediction_gp]
     # Nt x Ns x P
+    # TODO: generalize beyond P = 1 
     args_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
     args_dict['low_fidelity_prediction_covar'] = np.array([np.squeeze(res[i][1]) for i in range(len(res))]).T
 
@@ -279,6 +289,8 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
     for q in range(num_latents):
         X_q = Xs_prior[q]
         if X_q is not None:
+            # TODO: does this need to be scaled by Kt?
+
             kern_s_q = latents[q].kernel.k2
             # compute psi statatics
             arr = []

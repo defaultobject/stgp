@@ -281,7 +281,7 @@ class PDE(Transform):
             # ensure rank 2
             if len(m_init.shape) == 1:
                 m_init = m_init[:, None]
-            self.m_init_param = Parameter(np.array(m_init), name=f'AllenCahn/m_init', train=train_m_init)
+            self.m_init_param = Parameter(np.array(m_init), name=f'PDE/m_init', train=train_m_init)
         else:
             self.m_init_param = None
 
@@ -1332,11 +1332,14 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_in
     ]
 
 
-def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False, boundary_by_init=True, full_state=True):
+def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False, boundary_by_init=True, full_state=True, pass_input_to_forward=False):
     class PDE_TRANSFORM(PDE):
         def forward_g(self, f, X_s, t, force=None):
             chex.assert_rank(f, 2)
-            res =  forward_fn(f, force)
+            if pass_input_to_forward:
+                res =  forward_fn(f, X_s, t, force)
+            else:
+                res =  forward_fn(f, force)
             chex.assert_rank(res, 2)
             return res
 

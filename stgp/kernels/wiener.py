@@ -61,7 +61,7 @@ class WienerVelocity(MarkovKernel):
     """
     Following https://github.com/alshedivat/gpml/blob/master/cov/covW.m
     """
-    def __init__(self, q=1, variance=1.0, stable_state_covariance=0.0, m_init = None, train_m_init=False, active_dims = None):
+    def __init__(self, q=1, variance=1.0, stable_state_covariance=0.0, m_init = None, train_m_init=False, active_dims = None, H_latent_only=False):
         super(WienerVelocity, self).__init__()
         
         self.q = int(q)
@@ -79,6 +79,7 @@ class WienerVelocity(MarkovKernel):
 
         self.input_dim = 1
         self.active_dims = active_dims
+        self.H_latent_only = H_latent_only
 
     @property
     def m_init(self):
@@ -95,7 +96,10 @@ class WienerVelocity(MarkovKernel):
 
         F = np.eye(dim, k = 1)
         L = np.hstack([np.zeros(dim-1), [1]])[:, None]
-        if False:
+
+        # TODO: is this needed?
+        #   why do PIGP methods need eye?
+        if self.H_latent_only:
             H = np.hstack([[1], np.zeros(q)])[None, :]
         else:
             H = np.eye(dim)
