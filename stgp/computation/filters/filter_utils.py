@@ -63,8 +63,8 @@ def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, a
             state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
         else: 
             if type(Xs_prior) is list:
-                xs_arr = np.array([1 if xs is None else  xs.shape[0] for xs in Xs_prior])
-                state_dict['global_calibration'] = np.zeros(np.sum(xs_arr))
+                xs_arr = [1 if xs is None else  xs.shape[0] for xs in Xs_prior]
+                state_dict['global_calibration'] = np.zeros(sum(xs_arr))
             else:
                 state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
