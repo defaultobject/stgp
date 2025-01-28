@@ -273,6 +273,7 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
+
     pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
     #observer both uncertain input and orginal state
@@ -560,10 +561,13 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
     )
 
     if settings.debug_mode:
-        print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
-        for i in range(dt.shape[0]):
-            state, _ = step_wrap(state_dict, {key: args_dict[key][i] for key in args_dict.keys()})
-        exit()
+        if _ensure_str(prior.parent) == 'LTI_SDE_Full_State_Obs':
+            pass
+        else:
+            print("DEBUGGING RUNNIGN KF WITH FOR LOOP")
+            for i in range(dt.shape[0]):
+                state, _ = step_wrap(state_dict, {key: args_dict[key][i] for key in args_dict.keys()})
+            exit()
 
     state, ys = scan(
         jax.remat(step_wrap),

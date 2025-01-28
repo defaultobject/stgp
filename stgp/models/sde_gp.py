@@ -351,10 +351,10 @@ class BASE_SDE_GP(Posterior):
 
         Nt = self.data.Nt
         Ns = self.data.Ns
-        # TODO: these are wrong..
-        dt = 1
-        ds = 1
-        Q = 2
+        # TODO: Assumign same size states
+        Q = len(self.prior.base_prior.state_space_dim())
+        dt = self.prior.base_prior.state_space_dim()[0]
+        ds = self.prior.base_prior.spatial_output_dim[0]
 
         mu_p = np.reshape(mu, [Nt, Q, dt, ds, Ns])
         mu_p = np.transpose(mu_p, [1, 2, 3, 0, 4])

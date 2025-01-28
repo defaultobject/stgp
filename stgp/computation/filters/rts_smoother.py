@@ -276,6 +276,8 @@ def rts_step_wrapper(prior, state, filter_res, args, X_s, Xs_prior, full_state):
     m_obs, P_obs, _ = apply_H(prior, state, args, m, P, Xs_prior, args['t'], full_state)
     #H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
 
+
+
     state_res =  {
         'm': m, 'P': P, 'm_inf': m_inf, 'P_inf': P_inf
     }
