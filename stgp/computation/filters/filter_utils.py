@@ -94,8 +94,8 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
                     pred_var = pred_var[0]
         else:
             # construct a dummy reponse
-            pred_mu = np.ones(data.N)*onp.NaN
-            pred_var = np.ones(data.N)*onp.NaN
+            pred_mu = np.ones(data.N)*onp.nan
+            pred_var = np.ones(data.N)*onp.nan
 
         return np.squeeze(pred_mu), np.squeeze(pred_var)
 

@@ -380,7 +380,7 @@ class BASE_SDE_GP(Posterior):
         # Stack X first so that training data does not get removed when sorting data
         X_stacked = onp.vstack([X, XS])
 
-        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
+        Y_nans = onp.nan * onp.ones([NS, self.output_dim])
         Y_stacked = onp.vstack([Y, Y_nans])
 
         test_data = get_sequential_data_obj(
@@ -449,7 +449,7 @@ class T_SDE_GP(BASE_SDE_GP):
     def get_train_test_index_and_mask(self, data):
         Nt = self.data.Nt
         points_added = data.Nt-Nt 
-        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.NaN])
+        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.nan])
         unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
         sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
         train_index = unsorted_range[data.unique_idx][data.sort_idx]
@@ -474,7 +474,7 @@ class T_SDE_GP(BASE_SDE_GP):
         # Stack X first so that training data does not get removed when sorting data
         X_stacked = onp.vstack([X, XS])
 
-        Y_nans = onp.NaN * onp.ones([NS, self.output_dim])
+        Y_nans = onp.nan * onp.ones([NS, self.output_dim])
         Y_stacked = onp.vstack([Y, Y_nans])
 
         test_data = get_sequential_data_obj(
@@ -595,7 +595,7 @@ class ST_SDE_GP(BASE_SDE_GP):
     def get_train_test_index_and_mask(self, data):
         Nt = self.data.Nt
         points_added = data.Nt-Nt 
-        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.NaN])
+        unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.nan])
         unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
         sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
         train_index = unsorted_range[data.unique_idx][data.sort_idx]
@@ -609,7 +609,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         When predicting we need to sort XS and the training data, but we need to be careful to not sort the spatial locations as these could be inducing points
             and so they need to be treated consistently.
         """
-        YS_nans = onp.NaN * onp.ones([XS.shape[0], self.output_dim]) # dummy Y values
+        YS_nans = onp.nan * onp.ones([XS.shape[0], self.output_dim]) # dummy Y values
 
         # Convert XS to time-space format -- use TemporallyGroupedData for efficiency
         XS_st_data = TemporallyGroupedData(
@@ -654,7 +654,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         # create new data with the same spatial points as self.data but with the prediction time points 
         XS_with_dummy_space = add_temporal_points(XS_st_data, training_data_with_dummy_space)
-        YS_with_dummy_space_nans = onp.NaN * onp.ones([XS_with_dummy_space.shape[0], self.output_dim]) # data-latent format
+        YS_with_dummy_space_nans = onp.nan * onp.ones([XS_with_dummy_space.shape[0], self.output_dim]) # data-latent format
 
         # Stack X first so that training data does not get removed when sorting data
         X_all_with_dummy_space = onp.vstack([X_with_dummy_space, XS_with_dummy_space])

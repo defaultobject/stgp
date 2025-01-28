@@ -41,7 +41,7 @@ def pad_by_repeat_last_elem(A, pad_size, pad_with_nan = False):
     pad_to_add = np.repeat(A[-1][None, ...], pad_size, axis=0)
 
     if pad_with_nan:
-        pad_to_add = pad_to_add*onp.NaN
+        pad_to_add = pad_to_add*onp.nan
 
     return np.vstack([A, pad_to_add])
 

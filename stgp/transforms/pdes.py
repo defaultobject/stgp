@@ -604,8 +604,8 @@ class IdentityPDE(PDE):
         # not a PDE in to enforce, so no colocation points
         # [y1, dy1, y2, dy2]
         if self.full_state:
-            return np.array([onp.NaN, onp.NaN]*self.parent.num_latents)[:, None]
-        return np.array([onp.NaN]*self.parent.num_latents)[:, None]
+            return np.array([onp.nan, onp.nan]*self.parent.num_latents)[:, None]
+        return np.array([onp.nan]*self.parent.num_latents)[:, None]
 
 class SimpleODE(PDE):
     def __init__(self, latent, m_init = None, full_state = False):
@@ -661,7 +661,7 @@ class SimpleODE(PDE):
         return np.array([1.0, 0.0])[None, :]
 
     def psuedo_observations(self, X_s):
-        return np.array([onp.NaN, 0.0])[:, None]
+        return np.array([onp.nan, 0.0])[:, None]
 
 
 
@@ -1327,7 +1327,7 @@ class LotkaVolterra(PDE):
     def psuedo_observations(self, X_s):
         # [y1, dy1, y2, dy2]
         if self.full_state:
-            return np.array([onp.NaN, 0.0, onp.NaN, 0.0])[:, None]
+            return np.array([onp.nan, 0.0, onp.nan, 0.0])[:, None]
         return np.array([0.0, 0.0])[:, None]
 
     
