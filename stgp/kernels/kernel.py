@@ -372,7 +372,8 @@ class StationaryKernel(Kernel):
 
             chex.assert_shape(lengthscales, [input_dim])
 
-            self.lengthscale_param = Parameter(lengthscales, constraint='positive', name=name)
+            #self.lengthscale_param = Parameter(lengthscales, constraint='positive', name=name)
+            self.lengthscale_param = Parameter(lengthscales, name=name)
 
         self.additive = additive
 

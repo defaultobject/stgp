@@ -4,6 +4,18 @@
 
 ## Installation
 
+### MacOS steps -- cpu
+
+```
+conda create -n stgp python=3.12
+conda activate stgp
+pip install jax
+pip install -r requirements.txt
+pip install -e .
+
+```
+
+
 ### m1 specific steps
 
 ```bash

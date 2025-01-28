@@ -200,7 +200,6 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
 
         Ns_colocation = f.shape[0]
 
-        #carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  np.squeeze(f)[..., None])
         carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  f)
         #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
         m_, P_ = carry['m'], carry['P']
@@ -239,17 +238,38 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
 
         if model.observation_function is not None:
             _f = H_sde_prior@m_
-            H_k = model.obs_jac(_f, Xs_prior, x['t'])
-            innovation = model.observation_function(_f, Xs_prior, x['t'])
+            # hmm probably need to linearise here...
+            H_k = model.obs_jac(_f, Xs_prior, x['t'], force=x['forcing_function'])
+
+            # TODO: is this correct? does it need to also be pushed into the kf_update_step
+
+            if model.forcing_function is not None:
+                innovation = model.observation_function(_f, Xs_prior, x['t'], force=x['forcing_function'])
+            else:
+                innovation = model.observation_function(_f, Xs_prior, x['t'])
+
+
+            H_k = H_k @ H_sde_prior
         else:
             #innovation = H_k @ H_sde_prior @ m_
             #innovation = H_k  @ m_
             innovation = H_sde_prior  @ m_
+            H_k =  H_sde_prior
+
+        if model.observation_noise_function is not None:
+            if model.forcing_function is not None:
+                # jacobian wrt force
+                force_jac = jax.jacfwd(
+                    lambda force: model.observation_function(_f, Xs_prior, x['t'], force=force)
+                )(x['forcing_function'])
+                force_jac = force_jac[:, 0, :] # P x Q
+
+                R_k = model.observation_noise_function(R_k, _f, Xs_prior, x['t'], force_jac=force_jac, force=x['forcing_function'])
+            else:
+                R_k = model.observation_noise_function(R_k, _f, Xs_prior, x['t'])
 
         # TODO: figure out H_k
-        #carry, ys =  kf_update_step(m_, P_, H_k @ H_sde_prior, R_k, carry, x, innovation)
-        #carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
-        carry, ys =  kf_update_step(m_, P_, H_sde_prior , R_k, carry, x, innovation)
+        carry, ys =  kf_update_step(m_, P_, H_k , R_k, carry, x, innovation)
         m_, P_ = carry['m'], carry['P']
 
     carry['global_calibration']  = global_calibration
@@ -328,8 +348,6 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
             pred_weights_arr.append(pred_weights @ H_k_latents_only_blocks[q])
             pred_covar_arr.append(pred_covar)
 
-            if settings.debug_mode:
-                breakpoint()
         else:
             #no need to compute psi statistics
             # this should use the base H_q not just observe the latent

@@ -250,7 +250,8 @@ class PDE(Transform):
         full_state = True,
         _output_dim = None,
         dfdt_idx = 1,
-        observation_function = None
+        observation_function = None,
+        observation_noise_function=None
     ):
         self._parent = latent
         #self.latents = self.parent.latents # legacy reasons
@@ -272,6 +273,7 @@ class PDE(Transform):
         self.dfdt_idx = dfdt_idx
 
         self.observation_function = observation_function
+        self.observation_noise_function = observation_noise_function
 
         self.data_y_index = None
         
@@ -310,14 +312,17 @@ class PDE(Transform):
         chex.assert_rank(J, 2)
         return J
 
-    def obs_jac(self, x, X_s, t):
+    def obs_jac(self, x, X_s, t, force=None):
         chex.assert_rank(x, 2)
 
         if self.observation_function is None:
             raise RuntimeError('observation_function must be defined')
 
         # P x D
-        J =  self._jac(x, lambda _x: self.observation_function(_x, X_s, t))
+        if force is None:
+            J =  self._jac(x, lambda _x: self.observation_function(_x, X_s, t))
+        else:
+            J =  self._jac(x, lambda _x: self.observation_function(_x, X_s, t, force=force))
 
         chex.assert_rank(J, 2)
         return J 
@@ -374,8 +379,9 @@ class PDE(Transform):
         if X_s is None:
             return self.forward(f, force=force)
         else:
-            breakpoint()
-            Q = self.input_dim
+            #Q = self.input_dim
+            # TODO: fix
+            Q = len(self.parent.latents)
             dt = self.ndt
             ds = self.nds
             Ns = self.X_s.shape[0]
@@ -392,26 +398,35 @@ class PDE(Transform):
 
     def psuedo_observations(self, X_s):
         """ Only observe dt """
-        Q = self.input_dim
+        #Q = self.input_dim
+        #Q = self.input_dim
+        # TODO: fix
 
-        if X_s is not None:
-            Ns = X_s.shape
-            nds = self.nds
+        if self.output_dim is None:
+            Q = len(self.parent.base_prior.latents)
+
+
+            if X_s is not None:
+                Ns = X_s.shape
+                nds = self.nds
+            else:
+                Ns = 1
+                nds = 1
+
+            if self.full_state:
+                #state is in [Q, ds, Ns, dt]
+                # add nans
+
+                # find out where all the dt terms are
+                zeros = np.zeros([Q, nds, Ns, self.ndt])*onp.NaN
+                zeros = zeros.at[..., 1].set(0.0).reshape([-1, 1])
+                return zeros
+
+            else:
+                return np.array([0.0]*Ns*Q)[:, None]
         else:
-            Ns = 1
-            nds = 1
+            return np.array([0.0]*self.output_dim)[:, None]
 
-        if self.full_state:
-            #state is in [Q, ds, Ns, df]
-            # add nans
-
-            # find out where all the dt terms are
-            zeros = np.zeros([Q, nds, Ns, self.ndt])*onp.NaN
-            zeros = zeros.at[..., 1].set(0.0).reshape([-1, 1])
-            return zeros
-
-        else:
-            return np.array([0.0]*Ns*Q)[:, None]
 
 
 
@@ -1332,7 +1347,7 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_in
     ]
 
 
-def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observe_data=False, boundary_by_init=True, full_state=True, pass_input_to_forward=False):
+def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observation_noise_function=None, observe_data=False, boundary_by_init=True, full_state=True, pass_input_to_forward=False, _output_dim=None):
     class PDE_TRANSFORM(PDE):
         def forward_g(self, f, X_s, t, force=None):
             chex.assert_rank(f, 2)
@@ -1343,6 +1358,6 @@ def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m
             chex.assert_rank(res, 2)
             return res
 
-    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observe_data=observe_data, boundary_by_init=boundary_by_init, full_state=full_state)
+    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observation_noise_function=observation_noise_function, observe_data=observe_data, boundary_by_init=boundary_by_init, full_state=full_state, _output_dim=_output_dim)
 
 

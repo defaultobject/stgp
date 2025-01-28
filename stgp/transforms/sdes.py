@@ -121,7 +121,7 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
         # select all dims per latent functino
         if keep_dims is None:
-            self.keep_dims = np.array(range(self.gp.state_space_dim()[0]))
+            self.keep_dims = [np.array(range(self.gp.state_space_dim()[q])) for q in range(self.num_latents)]
         else:
             self.keep_dims = np.array(keep_dims)
 
@@ -157,11 +157,11 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
                 breakpoint()
                 return H_t
 
-        def _get_Hq_from_Ns_ds_dt(Ns, ds, dt, dt_keep):
+        def _get_Hq_from_Ns_ds_dt(Ns, ds, dt, keep_dims, dt_keep):
             full_dim = dt * ds * Ns
             mask_dim = dt_keep * ds * Ns
             I = np.eye(full_dim)
-            I = np.reshape(I, [ds * Ns, dt, full_dim])[:, self.keep_dims, :]
+            I = np.reshape(I, [ds * Ns, dt, full_dim])[:, keep_dims, :]
             I_mask = np.reshape(I, [mask_dim, full_dim])
 
             # convert from [ds, ns, dt] -> [dt_keep, ds, ns]
@@ -180,9 +180,9 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
                 dt = self.gp.state_space_dim()[q]
                 ds = self.spatial_output_dim
-                dt_keep = len(self.keep_dims)
+                dt_keep = len(self.keep_dims[q])
 
-                H_q = _get_Hq_from_Ns_ds_dt(Ns_q, ds, dt, dt_keep)
+                H_q = _get_Hq_from_Ns_ds_dt(Ns_q, ds, dt, self.keep_dims[q], dt_keep)
 
                 H_arr.append(H_q)
 
@@ -198,10 +198,10 @@ class LTI_SDE_Full_State_Obs(LTI_SDE):
 
             dt = self.gp.state_space_dim()[0]
             ds = self.spatial_output_dim
-            dt_keep = len(self.keep_dims)
+            dt_keep = len(self.keep_dims[0])
 
             # convert from [Q, ds, ns, dt] -> [Q, dt_keep, ds, ns]
-            H_q = _get_Hq_from_Ns_ds_dt(Ns, ds, dt, dt_keep)
+            H_q = _get_Hq_from_Ns_ds_dt(Ns, ds, dt, self.keep_dims[0], dt_keep)
 
             H_blocks = [
                 H_q

@@ -57,7 +57,6 @@ boundary_conditions = np.array([[ 20.0,  10.0, 20.0, 10.0]])
 boundary_conditions = np.vstack([boundary_conditions, np.ones([data.Nt-1, boundary_conditions.shape[1]])*np.NaN])[..., None]
 
 forcing_function = np.ones_like(boundary_conditions)
-breakpoint()
 
 if False:
     prior = LotkaVolterra(LTI_SDE(latent_gp), 0.5, 0.05, 0.05, 0.5, [20.0, 10.0, 20.0, 10.0], boundary_conditions=boundary_conditions*np.NaN, full_state=True, boundary_by_init=True)
