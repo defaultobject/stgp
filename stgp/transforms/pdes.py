@@ -418,7 +418,7 @@ class PDE(Transform):
                 # add nans
 
                 # find out where all the dt terms are
-                zeros = np.zeros([Q, nds, Ns, self.ndt])*onp.NaN
+                zeros = np.zeros([Q, nds, Ns, self.ndt])*onp.nan
                 zeros = zeros.at[..., 1].set(0.0).reshape([-1, 1])
                 return zeros
 
