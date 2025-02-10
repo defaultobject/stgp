@@ -290,7 +290,7 @@ class GradDescentTrainer(Trainer):
                 if grad is None:
                     # nan found in gradient
                     if max_attempt  == 0:
-                        val = np.NaN
+                        val = np.nan
                         break
                     else:
                         # try again
