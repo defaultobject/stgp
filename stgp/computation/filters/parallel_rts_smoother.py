@@ -129,7 +129,7 @@ def smoother_block(carry, state, X_s, prior):
 
 
 @dispatch('parallel')
-def smoother(data, prior, filter_res, dt, X_t, X_s, full_state):
+def smoother(data, prior, filter_res, dt, X_t, X_s, full_state, is_prediction):
     m_last = filter_res['m'][-1]
     P_last = filter_res['P'][-1]
 

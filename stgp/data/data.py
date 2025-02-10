@@ -753,7 +753,7 @@ class GroupedData(Data):
     pass
 
 class TemporallyGroupedData(Data):
-    def __init__(self, X, Y=None, minibatch_size=None, verbose=True, sort=True):
+    def __init__(self, X, Y=None, minibatch_size=None, verbose=False, sort=True):
 
         self.num_original_points = X.shape[0]
         if Y is None:

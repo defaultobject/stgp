@@ -329,7 +329,7 @@ def filter_block(carry, state, X_s, prior):
     return carry, state
 
 @dispatch('parallel')
-def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index):
+def filter(data, prior, lik_mat, Y, X_t, X_s, dt, lik_cov_flag, train_test_mask, train_index, is_prediction):
 
     if lik_cov_flag is False:
         raise NotImplementedError()

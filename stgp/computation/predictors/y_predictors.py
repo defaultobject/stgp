@@ -223,6 +223,7 @@ def predict_y(XS, gp, likelihood, post_mu, post_var, diagonal: bool, decompose_a
             return mu, var
     else:
         if decompose_across_outputs:
+            breakpoint()
             raise NotImplementedError()
 
         # TODO: this will break with aggreagtion

@@ -15,26 +15,6 @@ pip install -e .
 
 ```
 
-
-### m1 specific steps
-
-```bash
-conda create -n stgp python=3.11
-conda activate stgp
-pip install tensorflow-metal
-pip install tensorflow_probability==0.23
-conda install -c conda-forge jax==0.4.25 jaxlib==0.4.25
-
-pip install jax
-pip install tensorflow tensorflow_probability tf_keras
-pip install -r requirements.txt
-
-conda install python-graphviz
-pip install networkx
-
-pip install -e .
-```
-
 ## Docker
 
 ### Build the dockerfile

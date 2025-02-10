@@ -205,6 +205,9 @@ def get_minimal_time_groups(X, Y=None, verbose=True):
     
     # run k means -- these will be used as filler points
     max_spatial_points = max([D_t.shape[0] for D_t in D_groups])
+
+    # TODO: will sometimes throw UserWarning: One of the clusters is empty. Re-run kmeans with a different initialization.
+    #   but as these are just points to pad out the data and are removed later i have not ran into any problems yet
     Z_s = kmeans2(X_all_st, max_spatial_points, minit="points")[0]
     Ns = max_spatial_points
     

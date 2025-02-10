@@ -81,7 +81,19 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
         if gp is not None:
             if is_prediction:
                 pred_mu, pred_var = gp.predict_f(data.X)
+                if True:
+                    try:
+                        test_mask = 1-np.nan_to_num(args_dict['train_test_mask'])
 
+                        test_mask = test_mask[:, None, None]
+
+                        pred_mu = data.X[..., None] * test_mask + pred_mu * (1-test_mask)
+                        pred_var = data.X[..., None, None] *0.0 + pred_var * (1-test_mask[..., None])
+
+                    except KeyError as e:
+                        print(args_dict.keys())
+                        breakpoint()
+                        pass
                 if pred_mu.shape[1] > 1:
                     pred_mu = pred_mu[:, 0]
                     pred_var = pred_var[:, 0]

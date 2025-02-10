@@ -163,8 +163,7 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, state, args):
         P_k = _P_k - K_k S_k K^T_k
 
     Args:
-        state:
-        x:
+        state: x:
     """
     raise RuntimeError('NOT BEEN MAINTAINED')
     # in latent - space format
@@ -595,7 +594,6 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
     Args:
         R: in time - latent - space format
     """ 
-
 
     x_t =  data.X_time
     X_s =  data.X_space

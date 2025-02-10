@@ -57,7 +57,7 @@ Y = Y
 
 # Construct Model
 data = TemporalData(X, Y)
-lik = ReshapedGaussian(Gaussian(variance=0.4), num_blocks=data.Nt, block_size=1)
+lik = ReshapedGaussian(Gaussian(variance=0.1), num_blocks=data.Nt, block_size=1)
 kern = ScaledMatern32(input_dim=1, lengthscales=[0.4], variance=1.2)
 #kern = Matern32(input_dim=1, lengthscales=[1.0])
 #kern = ConstantKernel(variance=1.0)+Matern32(input_dim=1, lengthscales=[1.0])
@@ -91,7 +91,7 @@ if False:
 print(m.get_objective())
 
 m.print()
-pred_mu, pred_var = m.predict_f(XS,  diagonal=True, squeeze=True)
+pred_mu, pred_var = m.predict_y(XS,  diagonal=True, squeeze=True)
 #pred_mu, pred_var = m.predict_f(XS,  diagonal=True, squeeze=True, filter_only=True)
 
 if len(pred_mu.shape) > 1:
