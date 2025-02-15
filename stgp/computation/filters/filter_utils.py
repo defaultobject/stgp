@@ -320,16 +320,36 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
     pred_covar_arr = []
     for q in range(num_latents):
         X_q = Xs_prior[q]
-        if X_q is not None:
-            # TODO: does this need to be scaled by Kt?
 
+        # check if there are spatial points
+        # TODO: pull out into separate fn as it  reused?
+        X_q_has_spatial_points = False
+        if isinstance(Xs_prior[q], np.ndarray):
+            if Xs_prior[q].shape[-1] != 0:
+                X_q_has_spatial_points = True
+        else:
+            if Xs_prior[q] is not None:
+                X_q_has_spatial_points = True
+
+
+        if X_q_has_spatial_points:
+            # TODO: does this need to be scaled by Kt?
             kern_s_q = latents[q].kernel.k2
             # compute psi statatics
             arr = []
             idx_slice_start = 0
             idx_slice = None
             for i in range(num_latents):
-                if Xs_prior[i] is None:
+                # if  temporal model Xs_prior will be None, is a spatio-temporal model then number of spatial points coudl be zero
+                X_i_has_spatial_points = False
+                if isinstance(Xs_prior[i], np.ndarray):
+                    if Xs_prior[i].shape[-1] != 0:
+                        X_i_has_spatial_points = True
+                else:
+                    if Xs_prior[i] is not None:
+                        X_i_has_spatial_points = True
+
+                if not X_i_has_spatial_points:
                     arr.append(np.array([0]))
                     idx_slice_start += 1
                 else:

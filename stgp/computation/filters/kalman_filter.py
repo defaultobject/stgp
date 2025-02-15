@@ -255,8 +255,8 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-
     pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
+
 
     #observer both uncertain input and orginal state
     #H_k = np.vstack([pred_weights @ H_k_latents_only, H_k])
@@ -275,11 +275,16 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     # TODO: the first half of this function needs to be get_lti_parameters() allowing it to be generalised
 
+    if settings.debug_mode:
+        res = evoke('kf_predict_step', prior.parent, 'sequential',  prior.parent.base_prior.get_sparsity()[0])(
+            prior.parent, state, data, state_args, Xs_prior, lik_cov_flag
+        )
+        breakpoint()
+
     m_, P_, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
         prior, state, data, state_args, Xs_prior, lik_cov_flag
     )
 
-    breakpoint()
 
     state, state_args =  kf_update_step(m_, P_, H_k, R_k, state, _args, innovation)
     state_args['H'] = _args['pred_weights']
@@ -317,7 +322,6 @@ def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
         lik_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]) # sparsity is a noise free prediction
     )
 
-    breakpoint()
 
     H_k = pred_weights @ H_k
 
@@ -490,7 +494,8 @@ def kf_predict_step(model, state, data, args, Xs_prior, lik_cov_flag):
 
 def filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag):
     sparsity_arr = prior.base_prior.get_sparsity()
-    sparsity = sparsity_arr[0]
+    # TODO: should not just be checking sparsity_arr[0] need to batch over
+    sparsity = sparsity_arr[0] 
 
     # TODO: dispatch over everything
     if _ensure_str( sparsity) == 'NoSparsity':
