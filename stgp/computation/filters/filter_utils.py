@@ -81,7 +81,7 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
         if gp is not None:
             if is_prediction:
                 pred_mu, pred_var = gp.predict_f(data.X)
-                if True:
+                if False:
                     try:
                         test_mask = 1-np.nan_to_num(args_dict['train_test_mask'])
 

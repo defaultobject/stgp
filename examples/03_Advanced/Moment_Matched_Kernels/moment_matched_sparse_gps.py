@@ -4,7 +4,7 @@ sys.path.append('../')
 sys.path.append('../../')
 
 import jax
-from jax.config import config as jax_config
+from jax import config as jax_config
 jax_config.update("jax_enable_x64", True)
 import objax
 import numpy as np
@@ -36,7 +36,7 @@ Y_hr = np.exp(Y_lr)
 Y_hr_all =  np.copy(Y_hr)
 
 # remove part of high fidelity for testing
-Y_hr[10:30, :] = np.NaN
+Y_hr[10:30, :] = np.nan
 
 
 # construct model
@@ -103,8 +103,8 @@ if True:
 
 
 # predict
-pred_mu_lr, pred_var_lr = m_lr.predict_f(XS)
-pred_mu_hr, pred_var_hr = m_hr.predict_f(XS)
+pred_mu_lr, pred_var_lr = m_lr.predict_y(XS)
+pred_mu_hr, pred_var_hr = m_hr.predict_y(XS)
 
 fig, axes = plt.subplots(2, 1)
 

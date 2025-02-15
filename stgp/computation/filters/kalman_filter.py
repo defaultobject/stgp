@@ -227,27 +227,10 @@ def kf_update_step_with_lik_precision(m_, P_, H_k, R_inv_k, state, args):
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
 
-def icholesky(H):
-    """ https://github.com/google/jax/discussions/5068 """
-    w, v = np.linalg.eigh(H)
-    w = np.where(w < 0, 0.0001, w) # make this pd, psd is insufficient
-    H_pd = v @ np.eye(3)*w @ v.T
-
-    return jax.scipy.linalg.cholesky(H_pd), np.any(w < 0)
-
-def _low_rank_cholesky(matrix):
-    """ wrap low_rank_cholesky to make max_rank static """
-    return low_rank_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
-
-def _pivoted_cholesky(matrix):
-    """ wrap pivoted_cholesky to make max_rank static """
-    return pivoted_cholesky(matrix, onp.array(settings.cg_precondition_rank).astype(onp.int32))
-
-
 
 
 @dispatch(UncertainPredictionInput, 'FITCSpatialSparsity')
-def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
+def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     """
     Prior will be UncertainPredictionInput[SDE[Independent[...]]]
     """
@@ -259,12 +242,12 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
     # construct state-space form
     m_inf = state['m_inf']
     P_inf =  state['P_inf']
-    dt_k = args['dt']
+    dt_k = state_args['dt']
     X_s = data.X_space
 
     m_k = state['m']
     P_k = state['P']
-    R_k =  args['lik_mat']
+    R_k =  state_args['lik_mat']
 
     H_k = prior.H(None, Xs_prior, None)
     H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
@@ -273,7 +256,7 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
     #observer both uncertain input and orginal state
     #H_k = np.vstack([pred_weights @ H_k_latents_only, H_k])
@@ -282,26 +265,29 @@ def get_lti_parameters(prior, state, data, args, Xs_prior, lik_cov_flag):
 
     innovation = H_k @ m_
 
-    args['pred_weights'] = pred_weights
-    args['pred_covar'] = pred_covar
+    state_args['pred_weights'] = pred_weights
+    state_args['pred_covar'] = pred_covar
 
-    return m_, P_, H_k, R_k, state, args, innovation
+
+    return m_, P_, H_k, R_k, state, state_args, innovation
 
 @dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
+def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     # TODO: the first half of this function needs to be get_lti_parameters() allowing it to be generalised
 
     m_, P_, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
-        prior, state, data, args, Xs_prior, lik_cov_flag
+        prior, state, data, state_args, Xs_prior, lik_cov_flag
     )
 
-    state, args =  kf_update_step(m_, P_, H_k, R_k, state, _args, innovation)
-    args['H'] = _args['pred_weights']
-    args['ui_var'] = _args['pred_covar']
-    return state, args
+    breakpoint()
+
+    state, state_args =  kf_update_step(m_, P_, H_k, R_k, state, _args, innovation)
+    state_args['H'] = _args['pred_weights']
+    state_args['ui_var'] = _args['pred_covar']
+    return state, state_args
 
 @dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
-def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
+def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     # Compute innovation and R
     # pass flag to exploit woodbury?
 
@@ -310,7 +296,7 @@ def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
 
     H_k = prior.H(None, Xs_prior, None)
 
-    dt_k = args['dt']
+    dt_k = state_args['dt']
     X_s = data.X_space
 
     m_k = state['m']
@@ -318,7 +304,7 @@ def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(prior, m_k, P_k, Xs_prior, dt_k)
 
-    R_k =  args['lik_mat']
+    R_k =  state_args['lik_mat']
 
     # Compute sparsity transformation Kxz Kzz^{-1} m, diag(Kxz - Kxz Kzz^{-1} Kzx)
     kern_s = prior.base_prior.parent[0].kernel.k2
@@ -331,6 +317,8 @@ def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
         lik_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]) # sparsity is a noise free prediction
     )
 
+    breakpoint()
+
     H_k = pred_weights @ H_k
 
     # TODO: still quadractic here, even though we know that R_k is diagonal and pred_covar is diagonal
@@ -340,11 +328,11 @@ def kf_predict_step(prior, state, data, args, Xs_prior, lik_cov_flag):
     innovation = H_k @ m_
 
 
-    return kf_update_step(m_, P_, H_k, R_k, state, args, innovation)
+    return kf_update_step(m_, P_, H_k, R_k, state, state_args, innovation)
 
 
 @dispatch(LTI_SDE, 'sequential')
-def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):
+def kf_predict_step(prior, state, data, state_args, X_s, lik_cov_flag):
     """ Linear Kalman Filter Predict Step """
 
     m_inf = state['m_inf']
@@ -352,7 +340,7 @@ def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):
 
     H_k = prior.H(None, X_s, None)
 
-    dt_k = args['dt']
+    dt_k = state_args['dt']
 
     m_k = state['m']
     P_k = state['P']
@@ -363,15 +351,15 @@ def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):
 
 
     if lik_cov_flag:
-        R_k =  args['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, state, args, innovation)
+        R_k =  state_args['lik_mat']
+        return kf_update_step(m_, P_, H_k, R_k, state, state_args, innovation)
     else:
-        R_k_inv =  args['lik_mat']
-        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, args)
+        R_k_inv =  state_args['lik_mat']
+        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, state_args)
 
 
 @dispatch(SDE, 'sequential')
-def kf_predict_step(model, state, data, args, X_s, lik_cov_flag):
+def kf_predict_step(model, state, data, state_args, X_s, lik_cov_flag):
     """ Extended Kalman Filter Predict Step """
     H_k = model.H(None, X_s, None)
 
@@ -379,7 +367,7 @@ def kf_predict_step(model, state, data, args, X_s, lik_cov_flag):
     P = state['P']
 
     f_fn = lambda m: model.f_dt(
-        m, X_s, args['t'], args['dt']
+        m, X_s, state_args['t'], state_args['dt']
     )
 
     f = f_fn(m)
@@ -388,7 +376,7 @@ def kf_predict_step(model, state, data, args, X_s, lik_cov_flag):
     F = F[:, 0, :, 0]
 
     Sigma = model.Sigma_dt(
-        m, X_s, args['t'], args['dt']
+        m, X_s, state_args['t'], state_args['dt']
     )
 
     m_ = f
@@ -396,11 +384,11 @@ def kf_predict_step(model, state, data, args, X_s, lik_cov_flag):
 
 
     if lik_cov_flag:
-        R_k =  args['lik_mat']
-        return kf_update_step(m_, P_, H_k, R_k, state, args, H_k @ m_)
+        R_k =  state_args['lik_mat']
+        return kf_update_step(m_, P_, H_k, R_k, state, state_args, H_k @ m_)
     else:
-        R_k_inv =  args['lik_mat']
-        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, args)
+        R_k_inv =  state_args['lik_mat']
+        return kf_update_step_with_lik_precision(m_, P_, H_k, R_k_inv, state, state_args)
 
 @dispatch(LinearizedFilter_SDE, 'sequential')
 def kf_predict_step(prior, state, data, args, X_s, lik_cov_flag):

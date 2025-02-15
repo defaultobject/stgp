@@ -346,7 +346,8 @@ class BASE_SDE_GP(Posterior):
     def posterior_in_latent_data(self):
         # posterior is in [time - Q - dt - ds - space ] format
         # we need it in [Q - dt - ds - time - space ] format
-        mu, var = self.posterior()
+
+        mu, var = self.posterior(full_state=True)
 
 
         Nt = self.data.Nt
@@ -356,10 +357,13 @@ class BASE_SDE_GP(Posterior):
         dt = self.prior.base_prior.state_space_dim()[0]
         ds = self.prior.base_prior.spatial_output_dim[0]
 
+
         mu_p = np.reshape(mu, [Nt, Q, dt, ds, Ns])
         mu_p = np.transpose(mu_p, [1, 2, 3, 0, 4])
         mu_p = np.reshape(mu_p, [Q*dt*ds, Nt*Ns])
 
+        #TODO: only need diagonal part?
+        var = np.diagonal(var, axis1=1, axis2=2)
         var_p = np.reshape(var, [Nt, Q, dt, ds, Ns])
         var_p = np.transpose(var_p, [1, 2, 3, 0, 4])
         var_p = np.reshape(var_p, [Q*dt*ds, Nt*Ns])

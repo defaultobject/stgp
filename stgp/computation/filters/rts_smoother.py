@@ -34,7 +34,7 @@ import chex
 @dispatch(LinearizedFilter_SDE)
 def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     # force full state
-    H_k = np.eye(x.shape[0]) 
+    H_k = np.eye(m.shape[0]) 
 
     return H_k
 
@@ -42,7 +42,7 @@ def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, 
 def get_model_H(prior, state, filter_res, args, m, P, m_predicted, P_predicted, X_s, t, full_state):
     if full_state:
         # force full state
-        H_k = np.eye(x.shape[0])
+        H_k = np.eye(m.shape[0])
     else:
         H_k = prior.H(None, X_s, t)
 

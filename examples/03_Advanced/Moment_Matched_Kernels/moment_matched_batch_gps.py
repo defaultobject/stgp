@@ -32,7 +32,7 @@ Y_hr = np.exp(Y_lr)
 Y_hr_all =  np.copy(Y_hr)
 
 # remove part of high fidelity for testing
-Y_hr[10:30, :] = np.NaN
+Y_hr[10:30, :] = np.nan
 
 
 # construct model
