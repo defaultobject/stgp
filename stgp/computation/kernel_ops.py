@@ -2,7 +2,7 @@
 
 from ..dispatch import dispatch, evoke, _ensure_str
 from ..utils.batch_utils import batch_over_module_types
-from ..utils.utils import get_batch_type
+from ..utils.utils import get_batch_type, can_batch_np_list, get_batch_type_over_prior_and_np_list, can_batch, get_batch_type_from_bool
 from .matrix_ops import batched_block_diagional, to_block_diag, add_jitter, cholesky, get_block, mat_inv
 from .permutations import permute_vec, permute_mat, data_order_to_output_order
 from .. import settings 
@@ -165,6 +165,11 @@ def _batched_st_kernel(X1, X2, prior, kernel_type='spatial', full=True):
     Helper function to compute time-space kernels separately 
 
     Prior must be a GP with a spatio-temporal kernel.
+
+    X1, X2 are used for all kernels
+
+    Output:
+        K_arr: Q x N1 x N2
     """
 
     if kernel_type == 'spatial':
@@ -193,4 +198,57 @@ def _batched_st_kernel(X1, X2, prior, kernel_type='spatial', full=True):
     )
 
     return K_arr
+
+def _batched_st_kernel_with_batched_inputs(X1, X2, prior,kernel_type='spatial', full=True, batch_X1 = True, batch_X2=True):
+
+    # TODO: i prefer .latents
+    q_list = prior.base_prior.parent
+
+    # keep track if we can use batching
+    can_batch_flag = can_batch(q_list)
+
+    if batch_X1:
+        batch_X1_idx = 0
+        if can_batch_np_list(X1):
+            X1 = np.array(X1)
+
+        can_batch_flag = False
+
+    else:
+        batch_X1_idx = None
+
+    if batch_X2:
+        batch_X2_idx = 0
+        if can_batch_np_list(X2):
+            X2 = np.array(X2)
+        else:
+            can_batch_flag = False
+    else:
+        batch_X2_idx = None
+
+    if kernel_type == 'spatial':
+        if full:
+            fn = lambda q, x1, x2: q.kernel.k2.K(x1, x2)
+        else:
+            fn = lambda q, x1: q.kernel.k2.K_diag(x1)
+    elif kernel_type == 'temporal':
+        if full:
+            fn = lambda q, x1, x2: q.kernel.k1.K(x1, x2)
+        else:
+            fn = lambda q, x1: q.kernel.k1.K_diag(x1)
+    else:
+        raise NotImplementedError()
+
+    return batch_or_loop(
+        fn,
+        [q_list, X1, X2],
+        [0, batch_X1_idx, batch_X2_idx],
+        dim = len(q_list),
+        out_dim = 1,
+        batch_type = get_batch_type_from_bool(can_batch_flag)
+    )
+
+
+
+
 

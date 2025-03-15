@@ -11,10 +11,56 @@ from ..matrix_ops import cholesky, cholesky_solve, add_jitter, mat_inv, solve_wi
 from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 
 
+
 # Import types
 from ...transforms.sdes import SDE, LTI_SDE
 from ...transforms.pdes import PDE
 from ...transforms.uncertain_inputs import UncertainPredictionInput
+
+
+        
+def padd_spatial_points_across_latents_with_zero(pred_weights, Xs_prior, q):
+    """
+    To handle multiple latent functions with varying dimenions we pad them out with zeros
+        to make them the same dimension but without effecting the model.
+
+    This function is to be used within a loop that is padding out each of the latent functions.
+
+    inputs:
+        pred_weights: the current latent function we wish to pad out
+        Xs_prior: all spatial functions (ie to get the dimensions of all the latent functions)
+        q: the index of the current latent function
+    outputs:
+        pred_weights_q: the padded out latent function
+
+    """
+    num_latents = len(Xs_prior)
+
+    prior_num_spatial = [xs.shape[0] for xs in Xs_prior]
+    prior_num_spatial_cumsum = onp.cumsum(prior_num_spatial).tolist()
+    prior_num_spatial_cumsum_rev = list(reversed(onp.cumsum(list(reversed(prior_num_spatial))).tolist()))
+
+    if q == 0:
+        pred_weights_q = np.concatenate([
+            pred_weights,
+            np.zeros([*pred_weights.shape[:-1]]+[sum(prior_num_spatial_cumsum_rev[q+1:])])
+        ], axis=-1)
+    elif q == num_latents-1:
+        pred_weights_q = np.concatenate([
+            np.zeros([*pred_weights.shape[:-1], sum(prior_num_spatial_cumsum[:q])]), 
+            pred_weights
+        ], axis=-1)
+    else:
+        pred_weights_q = np.concatenate([
+            np.zeros([*pred_weights.shape[:-1], sum(prior_num_spatial_cumsum[:q])]), 
+            pred_weights,
+            np.zeros([*pred_weights.shape[:-1], sum(prior_num_spatial_cumsum_rev[q+1:])])
+        ], axis=-1)
+
+
+
+    return pred_weights_q
+
 
 def _get_data_or_sparsity_spatial_points(data, sparsity):
     """ Get spatial points of prior. If not using FITC then spatial points will be same as data """
@@ -35,9 +81,7 @@ def _get_prior_spatial_points(data, prior):
             for i in range(len(sparsity))
         ]
     else:
-        # assuming that all latents have the same spatial points
-        sparsity = sparsity[0]
-        return _get_data_or_sparsity_spatial_points(data, sparsity)
+        return [_get_data_or_sparsity_spatial_points(data, sparsity) for sparsity in sparsity]
 
 def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False, is_prediction=False):
     if smoother:
@@ -339,6 +383,8 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
             arr = []
             idx_slice_start = 0
             idx_slice = None
+
+            # TODO: need to write out what this is actually doing
             for i in range(num_latents):
                 # if  temporal model Xs_prior will be None, is a spatio-temporal model then number of spatial points coudl be zero
                 X_i_has_spatial_points = False
@@ -349,21 +395,26 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
                     if Xs_prior[i] is not None:
                         X_i_has_spatial_points = True
 
-                if not X_i_has_spatial_points:
-                    arr.append(np.array([0]))
-                    idx_slice_start += 1
-                else:
+                print(q, ' -- ', i, ' -- ', Xs_prior[i], X_i_has_spatial_points)
+
+                if  X_i_has_spatial_points:
                     if i == q:
                         arr.append(np.eye(X_q.shape[0]))
                         idx_slice = slice(idx_slice_start, idx_slice_start+X_q.shape[0])
-
                     else:
-                        arr.append(np.zeros((X_q.shape[0], X_q.shape[0])))
-                        idx_slice_start += X_q.shape[0]
+                        arr.append(np.zeros((Xs_prior[i].shape[0], Xs_prior[i].shape[0])))
+                        idx_slice_start += Xs_prior[i].shape[0]
+                else:
+                    arr.append(np.array([0]))
+                    idx_slice_start += 1
+
 
             H_q = to_block_diag(arr)
             # only keep the parts relevenat to this latent function
             H_q = H_q[idx_slice]
+
+            print(q, ' -- ', H_q.shape)
+            breakpoint()
 
             pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
                 XS, 

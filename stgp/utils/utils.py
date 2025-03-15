@@ -58,10 +58,15 @@ def do_obj_types_match(t1, t2):
     return t1 == t2
 
 def do_obj_have_same_vars(t1, t2):
-    t1_vars = set(t1.vars().keys())
-    t2_vars = set(t2.vars().keys())
+    t1_vars = t1.vars()
+    t2_vars = t2.vars()
 
-    return len(t1_vars-t2_vars) == 0
+    # ensure t1 and t2 have the same keys
+    if len(set(t1_vars.keys())-set(t2_vars.keys())) == 0:
+        # check they have same shape as well
+        return all([t1_vars[key].shape == t2_vars[key].shape for key in t1_vars.keys()])
+
+    return False
     
 
 
@@ -80,7 +85,20 @@ def can_batch(module_list, debug=False):
 
     return False
 
+
+def get_batch_type_from_bool(b: bool):
+    # settings override
+    if settings.use_loop_mode:
+        return BatchType.LOOP
+
+    if b:
+        return BatchType.OBJAX
+
+    return BatchType.LOOP
+
+
 def get_batch_type(module_list):
+    # settings override
     if settings.use_loop_mode:
         return BatchType.LOOP
 
@@ -88,6 +106,29 @@ def get_batch_type(module_list):
         return BatchType.OBJAX
 
     return BatchType.LOOP
+
+def can_batch_np_list(X_s: list) -> bool:
+    try:
+        np.array(X_s)
+        can_batch_xs = True
+    except ValueError as e:
+        can_batch_xs = False
+
+    return can_batch_xs
+
+def get_batch_type_over_prior_and_np_list(prior: 'Independent', X_s: list):
+    # settings override
+    if settings.use_loop_mode:
+        return BatchType.LOOP
+
+    prior_can_batch = can_batch(prior)
+    can_batch_xs = can_batch_np_list(X_s)
+
+    if prior_can_batch and can_batch_xs:
+        return BatchType.OBJAX
+    
+    return BatchType.LOOP
+
 
 
 def match_suffix(s, arr, return_single = True):

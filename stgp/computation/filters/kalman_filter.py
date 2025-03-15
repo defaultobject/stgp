@@ -312,16 +312,49 @@ def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     R_k =  state_args['lik_mat']
 
     # Compute sparsity transformation Kxz Kzz^{-1} m, diag(Kxz - Kxz Kzz^{-1} Kzx)
-    kern_s = prior.base_prior.parent[0].kernel.k2
+    num_latents = len(prior.base_prior.parent)
 
-    # TODO: probably need temporal kernel variance somewhere here
-    pred_weights, pred_covar = gaussian_prediction_diagonal_statistics(
-        K_xs = kern_s.K_diag(X_s),
-        K_xs_x = kern_s.K(X_s, Xs_prior),
-        K_xx = add_jitter(kern_s.K(Xs_prior, Xs_prior), settings.jitter),
-        lik_var = np.zeros([Xs_prior.shape[0], Xs_prior.shape[0]]) # sparsity is a noise free prediction
-    )
+    pred_weights = []
+    pred_covar = []
+    prior_num_spatial = [xs.shape[0] for xs in Xs_prior]
+    prior_num_spatial_cumsum = onp.cumsum(prior_num_spatial).tolist()
+    prior_num_spatial_cumsum_rev = list(reversed(onp.cumsum(list(reversed(prior_num_spatial))).tolist()))
 
+    for q in range(num_latents):
+        kern_s = prior.base_prior.parent[q].kernel.k2
+
+        Xs_q = Xs_prior[q]
+
+        # TODO: probably need temporal kernel variance somewhere here
+        _pred_weights, _pred_covar = gaussian_prediction_diagonal_statistics(
+            K_xs = kern_s.K_diag(X_s),
+            K_xs_x = kern_s.K(X_s, Xs_q),
+            K_xx = add_jitter(kern_s.K(Xs_q, Xs_q), settings.jitter),
+            lik_var = np.zeros([Xs_q.shape[0], Xs_q.shape[0]]) # sparsity is a noise free prediction
+        )
+
+        if q == 0:
+            _pred_weights = np.hstack([
+                _pred_weights,
+                np.zeros([_pred_weights.shape[0], sum(prior_num_spatial_cumsum_rev[q+1:])])
+            ])
+        elif q == num_latents-1:
+            _pred_weights = np.hstack([
+                np.zeros([_pred_weights.shape[0], sum(prior_num_spatial_cumsum[:q])]), 
+                _pred_weights
+            ])
+        else:
+            _pred_weights = np.hstack([
+                np.zeros([_pred_weights.shape[0], sum(prior_num_spatial_cumsum[:q])]), 
+                _pred_weights,
+                np.zeros([_pred_weights.shape[0], sum(prior_num_spatial_cumsum_rev[q+1:])])
+            ])
+        pred_weights.append(_pred_weights)
+        pred_covar.append(_pred_covar)
+
+
+    pred_weights = np.vstack(pred_weights)
+    pred_covar = np.vstack(pred_covar)
 
     H_k = pred_weights @ H_k
 

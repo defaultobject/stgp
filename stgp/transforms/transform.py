@@ -9,7 +9,7 @@ Implements
     Independent
 """
 from ..core import Prior, GPPrior, Model
-from ..utils.utils import ensure_module_list, can_batch, get_batch_type, _ensure_str
+from ..utils.utils import ensure_module_list, can_batch, get_batch_type, _ensure_str, get_batch_type_over_prior_and_np_list, can_batch_np_list
 from batchjax import batch_or_loop, BatchType
 from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT, get_block_diagonal
 from ..core import Block
@@ -411,9 +411,10 @@ class Independent(Transform):
 
         if type(X_s) is list:
             batch_over_Xs = 0
+            if can_batch_np_list(X_s):
+                X_s = np.array(X_s)
         else:
             batch_over_Xs = None
-
 
         F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
             fn,
@@ -421,7 +422,7 @@ class Independent(Transform):
             [batch_over_Xs, 0],
             dim = self.output_dim,
             out_dim = 6,
-            batch_type = get_batch_type(self.parent)
+            batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_s)
         )
         return F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks
 
@@ -446,6 +447,8 @@ class Independent(Transform):
 
         if type(X_s) is list:
             batch_over_Xs = 0
+            if can_batch_np_list(X_s):
+                X_s = np.array(X_s)
         else:
             batch_over_Xs = None
 
@@ -455,7 +458,7 @@ class Independent(Transform):
             [None, batch_over_Xs, 0],
             dim = self.output_dim,
             out_dim = 1,
-            batch_type = get_batch_type(self.parent)
+            batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_s)
         )
 
     def expm(self, dt, X_s):
@@ -555,6 +558,10 @@ class Independent(Transform):
         # for now it is okay as IWP handles it self (?) and all other kernels 
         # will be the same across latent functions so this will return the same thing
         #return self.parent[0].kernel.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
+
+        # TODO: HACK FOR NOW
+        #if type(X_spatial) is list:
+        #    X_spatial = X_spatial[0]
 
         if X_spatial is None:
             Ns = 1

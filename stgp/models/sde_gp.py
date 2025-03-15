@@ -686,7 +686,7 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         prior_stacked_spatial_points =  SpatialTemporalInput(
             stacked_temporal_test_data.X_time, 
-            Xs_prior,
+            Xs_data,
         )
 
         R = self.get_likelihood_for_prediction(all_temporal_data)
@@ -708,16 +708,16 @@ class ST_SDE_GP(BASE_SDE_GP):
             if not self.full_state_observed:
                 # in time - latent - space - state
                 # remove the extra state dims
-                # assuming latent is 1
                 _mu_t = np.copy(mu_t)
 
                 # TODO: this is just a quick way to get the state size
+                num_xs_prior = sum([s.shape[0] for s in Xs_prior])
                 flat_mu_t = np.reshape(
                     mu_t,
                     [
                         temporal_test_data.Nt, 
                         self.prior.num_latents, 
-                        Xs_prior.shape[0], 
+                        num_xs_prior, 
                         -1
                     ]
                 )
@@ -799,6 +799,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         # data_x.X_time is not used, so  we can just pass the stacked temporal dataset
 
         # Compute spatial conditions to get posterior at new spatial points
+        # will be in time-latent-space format
         pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, prior_stacked_spatial_points, self, self.prior)(
             xs_spatial_data, prior_stacked_spatial_points, mu_t, var_t, self, False
         )
@@ -817,20 +818,34 @@ class ST_SDE_GP(BASE_SDE_GP):
             var_p = batched_block_diagional(var_p, out_dim)
             var_p = np.reshape(var_p, [-1, 1, out_dim, out_dim])
         else:
-            mu_p = pred_mu
-            var_p = pred_var
+            num_latents = self.output_dim
+            # time-latent-space
+            mu_p = np.reshape(pred_mu, [pred_mu.shape[0], num_latents, -1])
 
-            # time - space format
-            mu_p = np.reshape(mu_p, [-1, 1, 1])
+            # latent-(time-space)
+            mu_p = np.reshape(
+                np.transpose(mu_p,[1, 0, 2]),
+                [num_latents, -1]
+            )
+
+            # time-(latent-space)
+            var_p = np.diagonal(pred_var[:, 0, ...], axis1=1, axis2=2)
+            # time-latent-space
+            var_p = np.reshape(var_p, [var_p.shape[0], num_latents, -1])
+            # latent-(time-space)
             var_p = np.reshape(
-                np.diagonal(var_p, axis1=2, axis2=3),
-                [-1, 1, 1, 1]
+                np.transpose(var_p,[1, 0, 2]),
+                [num_latents, -1]
             )
         
-        if True:
-            # unsort to original permutation in XS
-            mu_p_unsorted = xs_spatial_data.unsort(mu_p)
-            var_p_unsorted = xs_spatial_data.unsort(var_p)
+        # unsort to original permutation in XS
+        mu_p_unsorted = np.array([xs_spatial_data.unsort(mu_p[p]) for p in range(self.output_dim)])
+        var_p_unsorted = np.array([xs_spatial_data.unsort(var_p[p]) for p in range(self.output_dim)])
+
+        # convert to N x P
+        mu_p_unsorted = mu_p_unsorted.T
+        var_p_unsorted = var_p_unsorted.T
+
 
 
         return mu_p_unsorted, var_p_unsorted

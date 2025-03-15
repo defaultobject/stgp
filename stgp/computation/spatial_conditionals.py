@@ -15,7 +15,7 @@ from ..models import BatchGP, BASE_SDE_GP
 from ..transforms import Independent, Joint
 from ..transforms.pdes import DifferentialOperatorJoint, PDE
 from ..transforms.sdes import SDE
-from .kernel_ops import _batched_diff_kernel, _batched_st_kernel
+from .kernel_ops import _batched_diff_kernel, _batched_st_kernel, _batched_st_kernel_with_batched_inputs
 
 import jax
 import jax.numpy as np
@@ -24,6 +24,7 @@ import chex
 import objax
 from batchjax import batch_or_loop, BatchType
 
+from .filters.filter_utils import padd_spatial_points_across_latents_with_zero
 
 
 
@@ -49,20 +50,25 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
     # Get spatial locations with dummy time dimension so kernel evaluations are correct
     XS_space = data_xs.X_space
-    X_space = data_x.X_space
+    _space = data_x.X_space
+
+    # TODO: this will probably depend on the model being used... FITC vs UI
+    #X_space = np.vstack([z.raw_Z.X_space for z in prior.base_prior.base_prior.get_sparsity()])
+
+    X_space = [z.raw_Z.X_space for z in prior.base_prior.base_prior.get_sparsity()]
 
     if batch_space:
         # Nt x Ns x D
         XS_space = np.concatenate([np.zeros_like(XS_space[..., [0]]), XS_space], axis=2)
         # Ns x D
-        X_space = np.hstack([ np.zeros_like(X_space[..., [0]]), X_space ])
+        #X_space = np.hstack([ np.zeros_like(X_space[..., [0]]), X_space ])
+        X_space = [np.hstack([ np.zeros_like(x[..., [0]]), x ]) for x in X_space]
     else:
         # Ns x D
         XS_space = np.hstack([np.zeros([XS_space.shape[0], 1]), XS_space])
         # Ns x D
         X_space = np.hstack([np.zeros([X_space.shape[0], 1]), X_space])
 
-    Ns = X_space.shape[0]
 
     if batch_space:
         Nss = XS_space.shape[1]
@@ -75,10 +81,24 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
     if batch_space:
         Kss = jax.vmap(lambda xs: _batched_st_kernel(xs, xs, prior, 'spatial', full=True))(XS_space)
-        Kss = np.transpose(Kss, [1, 0, 2, 3])
+
+        if type(Kss) is list:
+            Kss = np.array(Kss)
+        else:
+            Kss = np.transpose(Kss, [1, 0, 2, 3])
+
         # latent - space format
-        Ksz = jax.vmap(lambda xs: _batched_st_kernel(xs, X_space, prior, 'spatial', full=True))(XS_space)
-        Ksz = np.transpose(Ksz, [1, 0, 2, 3])
+        # TODO: this need to batch over X_space as they only apply to each 
+        #Ksz = jax.vmap(lambda xs: _batched_st_kernel(xs, X_space, prior, 'spatial', full=True))(XS_space)
+        # has to be a list at the latents might have different number of spatial points
+        # if list will be Q x Nt x Nss x Ns else will be  Nt x Q x Nss x Ns
+        Ksz = jax.vmap(lambda xs: _batched_st_kernel_with_batched_inputs(xs, X_space, prior, 'spatial', full=True, batch_X1 = False, batch_X2 = True))(XS_space)
+        # TODO: the shape here depends on if X_space can be batched :( 
+        if not (type(Ksz) is list):
+            #Q x Nt x Nss x Ns
+            Ksz = np.transpose(Ksz, [1, 0, 2, 3])
+        #Ksz = [np.array(jax.vmap(lambda xs: _batched_st_kernel(xs, x, prior, 'spatial', full=True))(XS_space)) for x in X_space]
+
     else:
         # latent - space format
         Kss = _batched_st_kernel(XS_space, XS_space, prior, 'spatial', full=True)
@@ -86,25 +106,35 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
         Ksz = _batched_st_kernel(XS_space, X_space, prior, 'spatial', full=True)
 
     # latent - time format
-    Ktt = _batched_st_kernel(XS_time, XS_time, prior, 'temporal', full=False)
+    Ktt = np.array(_batched_st_kernel(XS_time, XS_time, prior, 'temporal', full=False))
     # latent - space format
-    Kzz = _batched_st_kernel(X_space, X_space, prior, 'spatial', full=True)
+    #Kzz = np.array(_batched_st_kernel(X_space, X_space, prior, 'spatial', full=True))
+    Kzz = [np.array(_batched_st_kernel(x, x, prior, 'spatial', full=True)) for x in X_space]
+    #num_latents = len(Kzz)
+    #Kzz = np.array([to_block_diag([Kzz[p][q] for p in range(num_latents)]) for q in range(num_latents)])
+
+
+    Q = len(Kzz)
 
 
     # in latent-space format
     if batch_space:
         Kss_full = jax.vmap(to_block_diag)(np.transpose(Kss, [1, 0, 2, 3]))
-        Ksz_full = jax.vmap(to_block_diag)(np.transpose(Ksz, [1, 0, 2, 3]))
+        #Ksz_full = np.transpose(Ksz, [1, 0, 2, 3])
+        #Ksz_full = jax.vmap(to_block_diag)(np.transpose(Ksz, [1, 0, 2, 3]))
+        Ksz_full = [padd_spatial_points_across_latents_with_zero(Ksz[q], X_space, q) for q in range(Q)]
+        Ksz_full = np.concatenate(Ksz_full, axis=1)
     else:
         Kss_full = to_block_diag(Kss)
         Ksz_full = to_block_diag(Ksz)
 
-    Kzz_full = to_block_diag(Kzz)
+    #Kzz_full = to_block_diag(Kzz)
+    Kzz_full = to_block_diag([Kzz[q][q] for q in range(Q)])
 
 
-    Q = Kzz.shape[0]
+    #Q = Kzz.shape[0]
 
-    # if the temporal kernel is a derivate kernel this will return a rank 3 matrix
+    # if the temporal kernel is a derivative kernel this will return a rank 3 matrix
     if len(Ktt.shape) == 2:
         f_only_flag: bool = True
     else:
@@ -135,7 +165,8 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
     # prior.temporal_output_dim actually returns the state dim across all latents
     if batch_space:
-        mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[1], 1])
+        #mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[1], 1])
+        mean_xs = np.zeros([ Kss_full.shape[1], 1])
     else:
         mean_xs = np.zeros([int((prior.temporal_output_dim/Q)) * Kss_full.shape[0], 1])
 
@@ -167,16 +198,6 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
 
         Kzz_mat = Kzz_full
 
-    # TODO: derive proper mean 
-
-    if False:
-        if np.any(np.array(prior.whiten_space)):
-            # whiten transform in space
-            Kzz_chol = cholesky(add_jitter(Kzz_full, settings.jitter))
-            # TODO: fix the hardcoded time dim
-            Kzz_chol = np.kron(np.eye(2), Kzz_chol)
-            pred_mean, pred_var_chol =  Kzz_chol @ pred_mean, Kzz_chol @ pred_var_chol
-
     if batch_space:
         #batch over XS_space, Ksz_full, Kss_full, Ktt_full, pred_mean, pred_var_chol
         batch_arr = [0, None, None, 0, 0, 0, 0, 0, None, None]
@@ -190,9 +211,9 @@ def spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, prior, batch
     )( 
         XS_space, 
         X_space, 
-        Kzz_mat, 
-        Ksz_full, 
-        Kss_full, 
+        Kzz_mat, # actually a chol or inv
+        Ksz_full, #batch when batch_space = True
+        Kss_full,  #batch when batch_space = True
         Ktt_full, #batching 
         pred_mean, #batching
         S, #batching -- either pred_var or pred_var_chol
