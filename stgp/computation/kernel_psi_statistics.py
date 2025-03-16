@@ -164,16 +164,28 @@ def get_psi_statistics_linear_form_from_mu_var_from_gram(
     return mean_weights, var
 
 def get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, base_gp, likelihood, prior, block_size):
+    """
+    Only supported for a single latent GP. 
 
-    # TODO: check shapes
+    args:
+        noise_pred_mu: 1 x N x 1 
+        noise_pred_var: 1 x 1 x N x N
+    """
+
+    chex.assert_rank([noise_pred_mu, noise_pred_var], [3, 4])
+
+    # remove the latent function dimension
+    noise_pred_mu = noise_pred_mu[0]
+    noise_pred_var = noise_pred_var[0][0]
+
     return get_psi_statistics_linear_form_from_mu_var_from_gram(
         XS, 
         data.X,
         data.Y,
         K_ss = base_gp.covar(XS, XS),
-        K_sx = base_gp.covar(XS, X),
-        K_xx = base_gp.covar(X, X),
-        likelihood_var = likelihood.variance * np.eye(N),
+        K_sx = base_gp.covar(XS, data.X),
+        K_xx = base_gp.covar(data.X, data.X),
+        likelihood_var = likelihood.variance * np.eye(data.N),
         noise_pred_mu = noise_pred_mu, 
         noise_pred_var = noise_pred_var,
         base_gp_kernel = base_gp.kernel
@@ -189,8 +201,7 @@ def get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size):
     # TODO: shapes are all wrong :) 
     noise_pred_mu = np.transpose(noise_pred_mu, [0, 2, 1])
 
-    # for testing
-    #noise_pred_mu = [XS]
+    #noise_pred_mu = np.array([XS])
     #noise_pred_var = noise_pred_var*0.0
 
     return get_psi_statistics_linear_form_from_mu_var(noise_pred_mu, noise_pred_var, XS, data, base_gp, likelihood, prior, block_size)

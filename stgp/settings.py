@@ -10,6 +10,7 @@ verbose = False
 
 # Only used for uncertain inputs in filters
 ui_prediction_mode = False
+sde_ui_allow_certain_prediction = False
 
 in_strict_mode = False
 

@@ -311,6 +311,8 @@ def predict_blocks(XS, data, gp, likelihood, prior, block_size: int):
     mean_weights, var = get_psi_statistics_linear_form(XS, data, gp, likelihood, prior, block_size)
 
     mu = mean_weights @ data.Y
+
+    var = var[None, ...]
     return mu, var
 
 

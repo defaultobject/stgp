@@ -775,6 +775,7 @@ class ST_SDE_GP(BASE_SDE_GP):
             raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
 
         xs_spatial_data, all_temporal_data, stacked_temporal_test_data, prior_stacked_spatial_points, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
+
         var_t = var_t[:, 0, ...]
 
         _mu_t = mu_t
@@ -783,9 +784,10 @@ class ST_SDE_GP(BASE_SDE_GP):
         # mu_t and var_t are in time-latent-space format
         # when predicting we only predict f, not the state as well
         if not self.full_state_observed:
-            # remove the extra state dims
-            mu_t = mu_t[:, :prior_stacked_spatial_points.Ns, :]
-            var_t = var_t[:, :prior_stacked_spatial_points.Ns, :][:, :, :prior_stacked_spatial_points.Ns]
+            if not settings.sde_ui_allow_certain_prediction:
+                # remove the extra state dims
+                mu_t = mu_t[:, :prior_stacked_spatial_points.Ns, :]
+                var_t = var_t[:, :prior_stacked_spatial_points.Ns, :][:, :, :prior_stacked_spatial_points.Ns]
 
         if not sort_output:
             # For certain models we do not want to actually unsort the prediction and this will be handled downstream
@@ -796,10 +798,17 @@ class ST_SDE_GP(BASE_SDE_GP):
         mu_t = all_temporal_data.unsort(mu_t)[self.data.Nt:]
         var_t = all_temporal_data.unsort(var_t)[self.data.Nt:]
 
+        if settings.sde_ui_allow_certain_prediction:
+            return mu_t, var_t
+
+        print(mu_t)
+        breakpoint()
+
         # data_x.X_time is not used, so  we can just pass the stacked temporal dataset
 
         # Compute spatial conditions to get posterior at new spatial points
         # will be in time-latent-space format
+
         pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, prior_stacked_spatial_points, self, self.prior)(
             xs_spatial_data, prior_stacked_spatial_points, mu_t, var_t, self, False
         )

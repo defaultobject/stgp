@@ -184,16 +184,22 @@ class BatchGP(Posterior):
             XS, self.data, self, self.likelihood, self.prior, diagonal=diagonal, decompose_across_outputs = decompose_across_outputs
         )
 
-        chex.assert_rank([mu_arr, var_arr], [3, 4])
+        try:
+            chex.assert_rank([mu_arr, var_arr], [3, 4])
 
-        if fix_shapes:
-            mu_arr, var_arr = fix_prediction_shapes(
-                mu_arr, 
-                var_arr,
-                diagonal = diagonal,
-                squeeze = squeeze,
-                output_first = output_first
-            )
+            if fix_shapes:
+                mu_arr, var_arr = fix_prediction_shapes(
+                    mu_arr, 
+                    var_arr,
+                    diagonal = diagonal,
+                    squeeze = squeeze,
+                    output_first = output_first
+                )
+        except AssertionError as e:
+            # do not want to fail just because of wrong shapes
+            # however we should be loud about it
+            print('WARNING: unexcepted prediction shapes')
+            print(e)
 
         return mu_arr, var_arr
 

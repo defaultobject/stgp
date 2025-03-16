@@ -124,17 +124,19 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
     def _collect_low_fidelity_prediction(gp, data):
         if gp is not None:
             if is_prediction:
-                pred_mu, pred_var = gp.predict_f(data.X)
-                if False:
+                # only use the first dimension
+                pred_mu, pred_var = gp.predict_f(data.X[:, [0]])
+                if data.X.shape[1] > 1 and settings.sde_ui_allow_certain_prediction:
                     try:
+                        # predict at certain inputs for debugging
                         test_mask = 1-np.nan_to_num(args_dict['train_test_mask'])
 
                         test_mask = test_mask[:, None, None]
 
-                        pred_mu = data.X[..., None] * test_mask + pred_mu * (1-test_mask)
-                        pred_var = data.X[..., None, None] *0.0 + pred_var * (1-test_mask[..., None])
-
+                        pred_mu = data.X[..., [1]] * test_mask + pred_mu * (1-test_mask)
+                        pred_var = test_mask[..., None] *0.0 + pred_var * (1-test_mask[..., None])
                     except KeyError as e:
+                        print(e)
                         print(args_dict.keys())
                         breakpoint()
                         pass
@@ -295,7 +297,10 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
         if model.observation_function is not None:
             _f = H_sde_prior@m_
             # hmm probably need to linearise here...
-            H_k = model.obs_jac(_f, Xs_prior, x['t'], force=x['forcing_function'])
+            if model.forcing_function is not None:
+                H_k = model.obs_jac(_f, Xs_prior, x['t'], force=x['forcing_function'])
+            else:
+                H_k = model.obs_jac(_f, Xs_prior, x['t'])
 
             # TODO: is this correct? does it need to also be pushed into the kf_update_step
 
@@ -414,7 +419,6 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
             H_q = H_q[idx_slice]
 
             print(q, ' -- ', H_q.shape)
-            breakpoint()
 
             pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
                 XS, 
