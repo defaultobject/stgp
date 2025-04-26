@@ -7,6 +7,7 @@ from enum import Enum
 # useful flag for debugging
 debug_mode = False
 verbose = False
+filter_extra_debug_flag=False
 
 # Only used for uncertain inputs in filters
 ui_prediction_mode = False

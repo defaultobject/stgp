@@ -494,7 +494,7 @@ class SpatioTemporalData(SequentialData):
             X_space = X_sorted[0, :, 1:]
             Y = Y_sorted
 
-        if sort is True:
+        if X_time is not None and X_space is not None:
             chex.assert_rank(X_time, 1)
             chex.assert_rank(X_space, 2)
             self._X = SpatialTemporalInput(X_time, X_space, train=False)

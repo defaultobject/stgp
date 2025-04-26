@@ -373,13 +373,14 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
         # check if there are spatial points
         # TODO: pull out into separate fn as it  reused?
         X_q_has_spatial_points = False
-        if isinstance(Xs_prior[q], np.ndarray):
-            if Xs_prior[q].shape[-1] != 0:
-                X_q_has_spatial_points = True
-        else:
-            if Xs_prior[q] is not None:
-                X_q_has_spatial_points = True
-
+        # use onp since Xs_prior is not traced
+        if not onp.all(onp.isnan(Xs_prior[q])):
+            if isinstance(Xs_prior[q], np.ndarray):
+                if Xs_prior[q].shape[-1] != 0:
+                    X_q_has_spatial_points = True
+            else:
+                if Xs_prior[q] is not None:
+                    X_q_has_spatial_points = True
 
         if X_q_has_spatial_points:
             # TODO: does this need to be scaled by Kt?

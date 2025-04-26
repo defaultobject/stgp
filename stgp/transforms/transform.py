@@ -543,10 +543,10 @@ class Independent(Transform):
         Q_blocks = batch_or_loop(
             _eval_Q,
             [dt_k, A_k_blocks, P_inf_blocks, X_spatial, self.parent],
-            [None, 0, 0, None, 0],
+            [None, 0, 0, 0, 0],
             dim = self.output_dim,
             out_dim = 1,
-            batch_type = get_batch_type(self.parent)
+            batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_spatial)
         )
         return Q_blocks
 
@@ -560,8 +560,8 @@ class Independent(Transform):
         #return self.parent[0].kernel.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
 
         # TODO: HACK FOR NOW
-        #if type(X_spatial) is list:
-        #    X_spatial = X_spatial[0]
+        if type(X_spatial) is list:
+            X_spatial = X_spatial[0]
 
         if X_spatial is None:
             Ns = 1

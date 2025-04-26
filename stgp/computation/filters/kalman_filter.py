@@ -265,6 +265,10 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
     innovation = H_k @ m_
 
+
+    if settings.filter_extra_debug_flag:
+        breakpoint()
+
     state_args['pred_weights'] = pred_weights
     state_args['pred_covar'] = pred_covar
 
@@ -273,22 +277,16 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
 @dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
 def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
-    # TODO: the first half of this function needs to be get_lti_parameters() allowing it to be generalised
-
-    if settings.debug_mode:
-        res = evoke('kf_predict_step', prior.parent, 'sequential',  prior.parent.base_prior.get_sparsity()[0])(
-            prior.parent, state, data, state_args, Xs_prior, lik_cov_flag
-        )
-        breakpoint()
-
     m_, P_, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
         prior, state, data, state_args, Xs_prior, lik_cov_flag
     )
 
-
     state, state_args =  kf_update_step(m_, P_, H_k, R_k, state, _args, innovation)
     state_args['H'] = _args['pred_weights']
     state_args['ui_var'] = _args['pred_covar']
+
+    if settings.filter_extra_debug_flag:
+        breakpoint()
     return state, state_args
 
 @dispatch(LTI_SDE, 'sequential', 'FITCSpatialSparsity')
@@ -475,6 +473,7 @@ def kf_predict_step(prior, state, data, args, Xs_prior , lik_cov_flag):
     sde_prior = prior.parent
 
     # get parent LTI parameters
+    # H_k and R_k have nans :(
     m_, P_, H_k, R_k, state, args, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
         sde_prior, state, data, args, Xs_prior, lik_cov_flag
     )
@@ -585,8 +584,9 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
         data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, is_prediction=is_prediction
     )
 
-    if settings.debug_mode:
-        if _ensure_str(prior.parent) == 'LTI_SDE_Full_State_Obs':
+    #if settings.debug_mode:
+    if settings.filter_extra_debug_flag:
+        if _ensure_str(prior.parent) == 'Independent':
             pass
         else:
             print("DEBUGGING RUNNIGN KF WITH FOR LOOP")

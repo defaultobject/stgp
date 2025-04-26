@@ -704,7 +704,6 @@ class ST_SDE_GP(BASE_SDE_GP):
                 is_prediction=True
             )
 
-
             if not self.full_state_observed:
                 # in time - latent - space - state
                 # remove the extra state dims
@@ -716,7 +715,7 @@ class ST_SDE_GP(BASE_SDE_GP):
                     mu_t,
                     [
                         temporal_test_data.Nt, 
-                        self.prior.num_latents, 
+                        len(self.prior.base_prior.latents), # TODO: need a nicer a way of accessing this
                         num_xs_prior, 
                         -1
                     ]
@@ -800,9 +799,6 @@ class ST_SDE_GP(BASE_SDE_GP):
 
         if settings.sde_ui_allow_certain_prediction:
             return mu_t, var_t
-
-        print(mu_t)
-        breakpoint()
 
         # data_x.X_time is not used, so  we can just pass the stacked temporal dataset
 
