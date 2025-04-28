@@ -4,6 +4,7 @@ import jax
 import jax.numpy as np
 from jax import jit
 from ... import settings 
+from ...utils.utils import is_empty_space
 from ...utils.nan_utils import get_same_shape_mask
 from ..linalg import solve, solve_from_cholesky
 from ..gaussian import log_gaussian, log_gaussian_with_mask, log_gaussian_with_additive_precision_noise_with_mask, avg_mahal_with_mask, mahal_with_mask
@@ -126,15 +127,21 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
             if is_prediction:
                 # only use the first dimension
                 pred_mu, pred_var = gp.predict_f(data.X[:, [0]])
+
+
+
                 if data.X.shape[1] > 1 and settings.sde_ui_allow_certain_prediction:
                     try:
                         # predict at certain inputs for debugging
-                        test_mask = 1-np.nan_to_num(args_dict['train_test_mask'])
+                        if False:
+                            test_mask = 1-np.nan_to_num(args_dict['train_test_mask'])
 
-                        test_mask = test_mask[:, None, None]
+                            test_mask = test_mask[:, None, None]
 
-                        pred_mu = data.X[..., [1]] * test_mask + pred_mu * (1-test_mask)
-                        pred_var = test_mask[..., None] *0.0 + pred_var * (1-test_mask[..., None])
+                            pred_mu = data.X[..., [1]] * test_mask + pred_mu * (1-test_mask)
+                            pred_var = test_mask[..., None] *0.0 + pred_var * (1-test_mask[..., None])
+                        if settings.filter_extra_debug_flag:
+                            breakpoint()
                     except KeyError as e:
                         print(e)
                         print(args_dict.keys())
@@ -374,13 +381,13 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
         # TODO: pull out into separate fn as it  reused?
         X_q_has_spatial_points = False
         # use onp since Xs_prior is not traced
-        if not onp.all(onp.isnan(Xs_prior[q])):
-            if isinstance(Xs_prior[q], np.ndarray):
-                if Xs_prior[q].shape[-1] != 0:
-                    X_q_has_spatial_points = True
-            else:
-                if Xs_prior[q] is not None:
-                    X_q_has_spatial_points = True
+        print('Xs_prior[q]: ', Xs_prior[q])
+        if isinstance(Xs_prior[q], np.ndarray):
+            if Xs_prior[q].shape[-1] != 0:
+                X_q_has_spatial_points = True
+        else:
+            if Xs_prior[q] is not None:
+                X_q_has_spatial_points = True
 
         if X_q_has_spatial_points:
             # TODO: does this need to be scaled by Kt?
@@ -435,6 +442,8 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
             )
             pred_weights_arr.append(pred_weights @ H_k_latents_only_blocks[q])
             pred_covar_arr.append(pred_covar)
+            if settings.filter_extra_debug_flag:
+                breakpoint()
 
         else:
             #no need to compute psi statistics
@@ -442,6 +451,7 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
             # TODO: need H blocks then will just have access to it imediately...
             pred_weights_arr.append(H_k_blocks[q])
             pred_covar_arr.append(np.zeros([H_k_blocks[q].shape[0], H_k_blocks[q].shape[0]]))
+
 
 
     pred_weights = to_block_diag(pred_weights_arr)

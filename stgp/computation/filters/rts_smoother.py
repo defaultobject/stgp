@@ -54,6 +54,7 @@ def get_model_H(prior, state, filter_res, state_args, m, P, m_predicted, P_predi
     H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
     if full_state:
+        breakpoint()
         raise NotImplementedError()
     else:
         pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
@@ -107,6 +108,7 @@ def apply_H(prior, state, state_args, m, P, Xs_prior, t, full_state):
     H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
     if full_state:
+        return m, P, None
         raise NotImplementedError()
     else:
         pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
@@ -223,11 +225,12 @@ def rts_step_wrapper(prior, state, filter_res, scan_args, X_s, Xs_prior, full_st
     rts_fn = evoke('rts_step_wrapper', base_prior)
     m_res, p_res =  rts_fn(base_prior, state, filter_res, scan_args, X_s, Xs_prior, full_state)
 
-    H_k, pred_var = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
+    if not full_state:
+        H_k, pred_var = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
 
-    p_res = {
-        'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
-    }
+        p_res = {
+            'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
+        }
 
     return m_res, p_res
 

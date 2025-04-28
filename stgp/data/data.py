@@ -377,6 +377,9 @@ class SequentialData(Data):
         self.points_added = None
         self.original_shape = None
 
+    def is_space_empty(self) -> bool:
+        return True
+
     def sort(self, X, Y):
         """ 
         Converts (X, Y) into a data format that supports running Kalman filtering and smoothing algorithms. This is done by:
@@ -519,6 +522,11 @@ class SpatioTemporalData(SequentialData):
         self.idx = None
         self.minibatch_scaling = None
 
+    def is_space_empty(self) -> bool:
+        if all(onp.isnan(self._X.X_space)):
+            return True
+        return False
+
     def check_shapes(self):
         pass
         #chex.assert_rank(Y, 3)
@@ -647,6 +655,11 @@ class TemporalData(SequentialData):
         self.N = self.Ns*self.Nt
         self.output_dim = 1
         self.P = 1
+
+    def is_space_empty(self) -> bool:
+        if all(onp.isnan(self.X_space)):
+            return True
+        return False
 
     @property
     def X_time(self):

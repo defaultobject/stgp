@@ -798,7 +798,10 @@ class ST_SDE_GP(BASE_SDE_GP):
         var_t = all_temporal_data.unsort(var_t)[self.data.Nt:]
 
         if settings.sde_ui_allow_certain_prediction:
-            return mu_t, var_t
+            print(mu_t.shape)
+            breakpoint()
+            pass
+            #return mu_t, var_t
 
         # data_x.X_time is not used, so  we can just pass the stacked temporal dataset
 
@@ -808,7 +811,6 @@ class ST_SDE_GP(BASE_SDE_GP):
         pred_mu, pred_var = evoke('spatial_conditional', xs_spatial_data, prior_stacked_spatial_points, self, self.prior)(
             xs_spatial_data, prior_stacked_spatial_points, mu_t, var_t, self, False
         )
-
 
         # convert to time-space-latent format
         # TODO: how are multiple latent functions handled here?

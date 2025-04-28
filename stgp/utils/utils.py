@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as np
+import numpy as onp
 import objax
 import chex
 from .. import Parameter
@@ -407,3 +408,10 @@ def jit_fn_with_callable(fn, func, func_obj, args, static_args):
 
 
 
+def is_empty_space(X_space) -> bool:
+    if X_space is None:
+        return True
+
+    print(X_space)
+
+    return onp.all(onp.isnan(X_space))
