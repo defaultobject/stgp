@@ -18,7 +18,7 @@ from jax.numpy import vectorize
 import typing
 from typing import List, Optional, Union
 from ..computation.parameter_transforms import inv_positive_transform, positive_transform
-from ..utils.utils import ensure_array, ensure_float, is_empty_space
+from ..utils.utils import ensure_array, ensure_float
 from .. import Parameter
 from functools import partial
 
@@ -239,9 +239,6 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         self.stationary = stationary
 
     def to_ss(self, X_spatial):
-        if is_empty_space(X_spatial):
-            return self.k1.to_ss(None)
-
         # if the spatial kernel is a derivate kernel, just evaluate the base kernel
         #K_spatial = self.k2.base.K(X_spatial, X_spatial)
         # add on dummy time dimension
@@ -263,9 +260,6 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         return self.k1.state_size()
 
     def expm(self, dt, X_spatial):
-        if is_empty_space(X_spatial):
-            return self.k1.expm(dt)
-
         A_t = self.k1.expm(dt)
 
         eye = np.eye(self.spatial_output_dim*X_spatial.shape[0])
@@ -275,9 +269,6 @@ class SpatioTemporalSeperableKernel(MarkovKernel, ProductKernel):
         return A
 
     def Q(self, dt, A_k, P_inf, X_spatial=None):
-        if is_empty_space(X_spatial):
-            return self.k1.Q(dt, A_k, P_inf, X_spatial=None)
-
         if self.stationary:
             return P_inf - A_k @ P_inf @ A_k.T
         else:

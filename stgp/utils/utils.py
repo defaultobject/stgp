@@ -117,7 +117,7 @@ def can_batch_np_list(X_s: list) -> bool:
 
     return can_batch_xs
 
-def get_batch_type_over_prior_and_np_list(prior: 'Independent', X_s: list):
+def get_batch_type_over_prior_and_np_list(prior, X_s: list) -> BatchType:
     # settings override
     if settings.use_loop_mode:
         return BatchType.LOOP
@@ -129,6 +129,28 @@ def get_batch_type_over_prior_and_np_list(prior: 'Independent', X_s: list):
         return BatchType.OBJAX
     
     return BatchType.LOOP
+
+def fix_independent_api_and_fix_spatial_types(prior, X_s):
+    """
+    This is a hack that wont be needed once the 
+    """
+    # TODO: clean up at some point
+    # this is just a way to support wrapping both SDE_GPs and Transforms of them in an Independent
+    #  these should have the same api and then this would not be necessary
+    if hasattr(prior.parent[0], 'kernel'):
+        latent_wrapper_fn = lambda latent: latent.kernel
+    else:
+        latent_wrapper_fn = lambda latent: latent
+
+    if type(X_s) is list:
+        batch_over_Xs = 0
+        if can_batch_np_list(X_s):
+            X_s = np.array(X_s)
+    else:
+        batch_over_Xs = None
+
+    return latent_wrapper_fn, X_s, batch_over_Xs
+    
 
 
 

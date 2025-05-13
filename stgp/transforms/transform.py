@@ -8,20 +8,18 @@ Implements
     Joint
     Independent
 """
-from ..core import Prior, GPPrior, Model
-from ..utils.utils import ensure_module_list, can_batch, get_batch_type, _ensure_str, get_batch_type_over_prior_and_np_list, can_batch_np_list
+from ..core import GPPrior, Model
+from ..utils.utils import ensure_module_list, get_batch_type, get_batch_type_over_prior_and_np_list, can_batch_np_list, fix_independent_api_and_fix_spatial_types
 from batchjax import batch_or_loop, BatchType
-from ..computation.matrix_ops import to_block_diag, batched_diagonal_from_XDXT, get_block_diagonal
+from ..computation.matrix_ops import to_block_diag, get_block_diagonal
 from ..core import Block
 
-import jax
 import jax.numpy as np
 import objax
 import chex
 
 from typing import List, Optional
 
-import warnings
 
 class Transform(GPPrior):
     """
@@ -404,17 +402,12 @@ class Independent(Transform):
         return [fn(latent) for latent in self.parent]
 
     def state_space_representation_blocks(self, X_s):
-        if hasattr(self.parent[0], 'kernel'):
-            fn = lambda  x_s, latent:  latent.kernel.to_ss(x_s)
-        else:
-            fn = lambda  x_s, latent:  latent.to_ss(x_s)
+        latent_wrapper_fn, X_s, batch_over_Xs = fix_independent_api_and_fix_spatial_types(
+            self,
+            X_s,
+        )
 
-        if type(X_s) is list:
-            batch_over_Xs = 0
-            if can_batch_np_list(X_s):
-                X_s = np.array(X_s)
-        else:
-            batch_over_Xs = None
+        fn = lambda x_s, latent:  latent_wrapper_fn(latent).to_ss(x_s)
 
         F_blocks, L_blocks, Qc_blocks, H_blocks, m_inf_blocks, P_inf_blocks = batch_or_loop(
             fn,
@@ -439,18 +432,12 @@ class Independent(Transform):
         return F, L, Qc, H, m_inf, P_inf
 
     def expm_blocks(self, dt, X_s):
-        # TODO: clean up at some point (see self.P_inf)
-        if hasattr(self.parent[0], 'kernel'):
-            fn = lambda d, x_s, latent:  latent.kernel.expm(dt, x_s)
-        else:
-            fn = lambda d, x_s, latent:  latent.expm(dt, x_s)
+        latent_wrapper_fn, X_s, batch_over_Xs = fix_independent_api_and_fix_spatial_types(
+            self,
+            X_s,
+        )
 
-        if type(X_s) is list:
-            batch_over_Xs = 0
-            if can_batch_np_list(X_s):
-                X_s = np.array(X_s)
-        else:
-            batch_over_Xs = None
+        fn = lambda dt, X_s, latent:  latent_wrapper_fn(latent).expm(dt, X_s)
 
         return batch_or_loop(
             fn,
@@ -465,23 +452,20 @@ class Independent(Transform):
         return to_block_diag(self.expm_blocks(dt, X_s))
 
     def P_inf_blocks(self, x, X_s, t):
+        latent_wrapper_fn, X_s, batch_over_Xs = fix_independent_api_and_fix_spatial_types(
+            self,
+            X_s,
+        )
 
-        # TODO: clean up at some point
-        # this is just a way to support wrapping both SDE_GPs and Transforms of them in an Independent
-        #  these should have the same api and then this would not be necessary
-
-        if hasattr(self.parent[0], 'kernel'):
-            fn = lambda x, X_s, t, latent:  latent.kernel.P_inf(x, X_s, t)
-        else:
-            fn = lambda x, X_s, t, latent:  latent.P_inf(x, X_s, t)
+        fn = lambda x, X_s, t, latent:  latent_wrapper_fn(latent).P_inf(x, X_s, t)
 
         return batch_or_loop(
             fn,
             [x, X_s, t, self.parent],
-            [None, None, None, 0],
+            [None, batch_over_Xs, None, 0],
             dim = self.output_dim,
             out_dim = 1,
-            batch_type = get_batch_type(self.parent)
+            batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_s)
         )
 
     def P_inf(self, x, X_s, t):
@@ -508,17 +492,12 @@ class Independent(Transform):
         return np.hstack(m_inf_blocks)
 
     def H_blocks(self, x, X_s, t):
-        # TODO: clean up at some point (see self.P_inf)
+        latent_wrapper_fn, X_s, batch_over_Xs = fix_independent_api_and_fix_spatial_types(
+            self,
+            X_s,
+        )
 
-        if type(X_s) is list:
-            batch_over_Xs = 0
-        else:
-            batch_over_Xs = None
-
-        if hasattr(self.parent[0], 'kernel'):
-            fn = lambda x, X_s, t, latent:  latent.kernel.H(x, X_s, t)
-        else:
-            fn = lambda x, X_s, t, latent:  latent.H(x, X_s, t)
+        fn = lambda x, X_s, t, latent:  latent_wrapper_fn(latent).H(x, X_s, t)
 
         H_blocks = batch_or_loop(
             fn,
@@ -526,7 +505,7 @@ class Independent(Transform):
             [None, batch_over_Xs, None, 0],
             dim = self.output_dim,
             out_dim = 1,
-            batch_type = get_batch_type(self.parent)
+            batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_s)
         )
         return H_blocks
 
@@ -534,16 +513,17 @@ class Independent(Transform):
         return np.hstack(self.H_blocks(x, X_s, t))
 
     def Q_blocks(self, dt_k, A_k_blocks, P_inf_blocks, X_spatial=None):
-        def _eval_Q( dt, A, P, Xs, latent):
-            if hasattr(latent, 'kernel'):
-                return latent.kernel.Q(dt, A, P, X_spatial=Xs)
-            else:
-                return latent.Q(dt, A, P, X_spatial=Xs)
+        latent_wrapper_fn, X_spatial, batch_over_Xs = fix_independent_api_and_fix_spatial_types(
+            self,
+            X_spatial,
+        )
+
+        fn = lambda dt, A, P, Xs, latent:  latent_wrapper_fn(latent).Q(dt, A, P, X_spatial=Xs)
 
         Q_blocks = batch_or_loop(
-            _eval_Q,
+            fn,
             [dt_k, A_k_blocks, P_inf_blocks, X_spatial, self.parent],
-            [None, 0, 0, 0, 0],
+            [None, 0, 0, batch_over_Xs, 0],
             dim = self.output_dim,
             out_dim = 1,
             batch_type = get_batch_type_over_prior_and_np_list(self.parent, X_spatial)
@@ -561,7 +541,10 @@ class Independent(Transform):
 
         # TODO: HACK FOR NOW
         if type(X_spatial) is list:
-            X_spatial = X_spatial[0]
+            if len(X_spatial) == 1:
+                X_spatial = X_spatial[0]
+            else:
+                raise RuntimeError('X_spatial must be a lisst of length 1')
 
         if X_spatial is None:
             Ns = 1
@@ -572,6 +555,7 @@ class Independent(Transform):
             fn = lambda dt, A, P, Xs, latent:  latent.kernel.Q(dt, A, P, X_spatial=Xs)
         else:
             fn = lambda dt, A, P, Xs, latent:  latent.Q(dt, A, P, X_spatial=Xs)
+
 
         # all of this is just a way to bypass the fact that A_k and P_inf are not blocks
         # i am trying to figure what the blocks SHOULD have been

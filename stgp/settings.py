@@ -1,4 +1,4 @@
-"""Global settings and setters/getters for gpjax."""
+"""Global settings and setters/getters for STGP."""
 
 import bibtexparser
 import pathlib
