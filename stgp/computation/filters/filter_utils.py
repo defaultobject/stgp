@@ -104,9 +104,12 @@ def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, a
             args_dict['forcing_function'] = forcing_function
 
         # global_calibration is part of state as it is something we will compute whilst filtering
-        if Xs_prior is None:
+        # check if there are actually any spatial points
+        if Xs_prior is None or (type(Xs_prior) is list and all([xs is None for xs in Xs_prior])):
             state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
         else: 
+            # TODO: hmm, why is it the shape of the spatial points, not 
+            # Ns x dt x ds? ie where is the state size?
             if type(Xs_prior) is list:
                 xs_arr = [1 if xs is None else  xs.shape[0] for xs in Xs_prior]
                 state_dict['global_calibration'] = np.zeros(sum(xs_arr))
@@ -264,7 +267,7 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
         }
 
         Ns_colocation = f.shape[0]
-
+        
         carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  f)
         #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
         m_, P_ = carry['m'], carry['P']

@@ -540,11 +540,21 @@ class Independent(Transform):
         #return self.parent[0].kernel.Q(dt_k, A_k, P_inf, X_spatial=X_spatial)
 
         # TODO: HACK FOR NOW
+        # at some point X_spatial needs to pass through each of the latents below
+        # this will also help with finding the correct block structure
         if type(X_spatial) is list:
             if len(X_spatial) == 1:
                 X_spatial = X_spatial[0]
             else:
-                raise RuntimeError('X_spatial must be a lisst of length 1')
+                # TODO: clean up at some point
+                # if all the priors have no spatial points then 
+                # it is safe to pass None as this will be broadcasted
+                if all([xs == None for xs in X_spatial]):
+                    X_spatial = None
+                else:
+                    breakpoint()
+                    raise RuntimeError('X_spatial must be a lisst of length 1')
+            
 
         if X_spatial is None:
             Ns = 1
@@ -559,7 +569,7 @@ class Independent(Transform):
 
         # all of this is just a way to bypass the fact that A_k and P_inf are not blocks
         # i am trying to figure what the blocks SHOULD have been
-        # extracting them, and then procedding as normal
+        # extracting them, and then procedding as required
 
         dt_dims = self.state_space_dim()
         ds_dims = self.spatial_output_dim

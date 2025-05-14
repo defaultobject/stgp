@@ -151,9 +151,6 @@ def fix_independent_api_and_fix_spatial_types(prior, X_s):
 
     return latent_wrapper_fn, X_s, batch_over_Xs
     
-
-
-
 def match_suffix(s, arr, return_single = True):
     res =  [a for a in arr if a.endswith(s)]
 
