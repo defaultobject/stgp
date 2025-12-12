@@ -36,8 +36,8 @@ stgp.settings.low_memory_mode = True
 stgp.settings.parallel_filter_block_size = 2
 stgp.settings.balance_state_space = False
 stgp.settings.balance_state_space_iters = 10
-filter_type = 'parallel'
-#filter_type = 'sequential'
+#filter_type = 'parallel'
+filter_type = 'sequential'
 #state_space = False
 state_space = True
 

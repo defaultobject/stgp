@@ -375,7 +375,7 @@ class PDE(Transform):
         raise NotImplementedError()
 
     def forward_g(self, f, X_s, t, force=None):
-
+        
         if X_s is None:
             return self.forward(f, force=force)
         else:
@@ -1347,7 +1347,7 @@ def LotkaVolterraSystem(latent, alpha, beta, delta, gamma, train=True, data_y_in
     ]
 
 
-def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observation_noise_function=None, observe_data=False, boundary_by_init=True, full_state=True, pass_input_to_forward=False, _output_dim=None):
+def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m_init=None, forcing_function=None, observation_function=None, observation_noise_function=None, observe_data=False, boundary_by_init=True, full_state=True, pass_input_to_forward=False, output_dim=None):
     class PDE_TRANSFORM(PDE):
         def forward_g(self, f, X_s, t, force=None):
             chex.assert_rank(f, 2)
@@ -1358,6 +1358,6 @@ def construct_pde_transform(latent, forward_fn, ndt=None, m_init = None, train_m
             chex.assert_rank(res, 2)
             return res
 
-    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observation_noise_function=observation_noise_function, observe_data=observe_data, boundary_by_init=boundary_by_init, full_state=full_state, _output_dim=_output_dim)
+    return PDE_TRANSFORM(latent, ndt=ndt, m_init=m_init, train_m_init=train_m_init, forcing_function=forcing_function, observation_function=observation_function, observation_noise_function=observation_noise_function, observe_data=observe_data, boundary_by_init=boundary_by_init, full_state=full_state, _output_dim=output_dim)
 
 

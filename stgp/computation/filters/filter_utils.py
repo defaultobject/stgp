@@ -129,9 +129,9 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
         if gp is not None:
             if is_prediction:
                 # only use the first dimension
-                pred_mu, pred_var = gp.predict_f(data.X[:, [0]])
-
-
+                pred_mu, pred_var = gp.predict_f(data.X[:, [0]], force_full_state=True)
+                pred_mu = pred_mu[..., 0]
+                pred_var = pred_var[..., 0, 0]
 
                 if data.X.shape[1] > 1 and settings.sde_ui_allow_certain_prediction:
                     try:

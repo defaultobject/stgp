@@ -528,6 +528,7 @@ class T_SDE_GP(BASE_SDE_GP):
         # mu, var are in time - latent- space format but space is 1
         # Therefore we just need to stack them as no permutations are required
         mu = np.reshape(mu, [-1, out_dim])
+        mu_unsorted = mu
 
         # Unsort data and remove the training data
         mu = test_data.unsort(mu)[self.data.N:]
@@ -557,7 +558,6 @@ class T_SDE_GP(BASE_SDE_GP):
                 var = var[:, None, ...]
 
             chex.assert_rank([mu, var], [3, 4])
-
         return mu, var
 
 class ST_SDE_GP(BASE_SDE_GP):
