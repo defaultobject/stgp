@@ -19,20 +19,32 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-dependencies = [
-    "objax @ git+https://github.com/google/objax.git",
-    "batchjax @ git+https://github.com/defaultobject/batchjax",
-    "chex",
-    "tqdm",
-    "black",
-    "flake8",
-    "flake8-docstrings",
-    "bibtexparser",
-    "pandas",
-    "scikit-learn",
-    "matplotlib",
-    "pytest"
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+select = [
+  "E",  # pycodestyle
+  "F",  # pyflakes
+  "I",  # isort
+  "UP", # pyupgrade
+  "B",  # flake8-bugbear
 ]
+
+ignore = [
+  "E501",  # line length handled by formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+show_error_codes = true
 
 [project.urls]
 Homepage = "N/A"

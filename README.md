@@ -20,9 +20,18 @@ pip install -e .
 construct a builder
 
 ```
-docker buildx create --platform linux/arm64,linux/amd64 --driver=docker-container --name stgp_builder --use 
+docker buildx create --platform linux/arm64,linux/amd64 --driver=docker-container --name stgp_builder --use
 
-docker buildx build --load -t defaultobject/stgp:latest -f dockerfile/stgp.Dockerfile --cache-to type=local,dest=/Users/ohamelijnck/Documents/docker_cache --cache-from type=local,src=/Users/ohamelijnck/Documents/docker_cache .
+docker buildx build --load -t defaultobject/stgp:latest -f dockerfile/stgp.Dockerfile .
+```
+
+## For Development
+
+Setup precommit hooks and github actions
+
+```
+pip install pre-commit
+pre-commit install
 ```
 
 # Cite this project
@@ -41,5 +50,3 @@ https://github.com/defaultobject/stgp
   url          = {https://github.com/defaultobject/stgp}
 }
 ```
-
-
