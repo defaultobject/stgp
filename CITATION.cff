@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "STGP: Spatio-Temporal Gaussian Processes in JAX"
+authors:
+  - family-names: Hamelijnck
+    given-names: Oliver
+version: 1.0.0
+year: 2025
+url: https://github.com/defaultobject/stgp
+license: MIT
