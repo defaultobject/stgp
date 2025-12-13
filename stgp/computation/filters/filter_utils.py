@@ -363,7 +363,6 @@ def get_Y_mask(Y_k):
 
 def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior):
     # compute psi statistics
-
     H_k_latents_only = to_block_diag(H_k_latents_only_blocks)
 
     # TODO: want this to be separate in filter_utils probably

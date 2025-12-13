@@ -21,8 +21,6 @@ RUN python get-pip.py
 
 RUN pip install --upgrade pip
 
-# install jax and jaxlib
-
 RUN mkdir -p /home
 RUN mkdir -p /home/app
 WORKDIR /home/app

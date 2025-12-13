@@ -50,10 +50,6 @@ XS, X, Y = single_output_timeseries(1000, 1000, seed=0)
 #XS, X, Y = single_output_timeseries(100000, 1000, seed=0)
 print(X.shape, np.mean(X), Y.shape, np.mean(Y))
 
-#Y = Y+10
-Y = Y
-
-#Y[10:12] = np.NaN
 
 # Construct Model
 data = TemporalData(X, Y)
@@ -81,7 +77,7 @@ else:
 
 # Train
 
-if False:
+if True:
     max_iters = 100
     trainer = ScipyTrainer(m, 'L-BFGS-B')
     lc, _  = trainer.train(None, max_iters, callback=progress_bar_callback(max_iters))

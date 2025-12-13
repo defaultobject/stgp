@@ -4,68 +4,42 @@
 
 ## Installation
 
-### MacOS steps -- cpu
+### CPU Setup
 
 ```
 conda create -n stgp python=3.12
 conda activate stgp
-pip install jax
 pip install -r requirements.txt
 pip install -e .
-
 ```
 
 ## Docker
 
-### Build the dockerfile
+### Build the dockerfile [for mac]
 
 construct a builder
 
 ```
 docker buildx create --platform linux/arm64,linux/amd64 --driver=docker-container --name stgp_builder --use 
 
-
 docker buildx build --load -t defaultobject/stgp:latest -f dockerfile/stgp.Dockerfile --cache-to type=local,dest=/Users/ohamelijnck/Documents/docker_cache --cache-from type=local,src=/Users/ohamelijnck/Documents/docker_cache .
 ```
 
-## Table of contents
+# Cite this project
 
-- [Implemented models](#implemented_models)
+If you use STGP in academic work, please cite it as:
 
-- [Examples](#examples)
-  
-  - [GP - Batch Form](#gp_batch_form)
-  - [GP - VI](#gp_vi)
-  - [GP - State Space](#gp_sde)
+> Hamelijnck, O. STGP: Spatio-Temporal Gaussian Processes in JAX. GitHub repository, 2025.
+https://github.com/defaultobject/stgp
 
-- [Sharp Bits](#sharp_bits)
-
-## Install <a name="install"></a>
-
-```bash
-pip install -e stgp
+```bibtex
+@software{hamelijnck_stgp,
+  author       = {Hamelijnck, O},
+  title        = {STGP: Spatio-Temporal Gaussian Processes in JAX},
+  year         = {2025},
+  publisher    = {GitHub},
+  url          = {https://github.com/defaultobject/stgp}
+}
 ```
 
-## Implemented Models <a name="implemented_models"></a>
 
-|                  | Batch Inference | MF VI   | Full rank VI | State space inference |
-| ---------------- | --------------- | ------- | ------------ | --------------------- |
-| GP               | &#9745;         | &#9745; | N/A          | &#9745;               |
-| LMC              | &#9745;         | &#9745; |              | &#9746;               |
-| Constrained LMC  | &#9745;         | &#9745; |              | &#9746;               |
-| GPRN             | &#9745;         | &#9745; |              | &#9746;               |
-| Constrained GPRN | &#9745;         | &#9745; |              | &#9746;               |
-
-## Examples <a name="examples"></a>
-
-### Toy Data
-
-```python
-
-```
-
-### GP - Batch Form <a name="gp_batch_form"></a>
-
-### GP - Variational Inference <a name="gp_vi"></a>
-
-### GP - State Space <a name="gp_sde"></a>

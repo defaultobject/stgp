@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stgp"
+version = "1.0.0"
+description = "Spatial Temporal Gaussian Process (STGP) library in jax"
+readme = { text = "", content-type = "text/markdown" }
+authors = [
+    { name = "Oliver Hamelijnck", email = "ohamelijnck@gmail.com"}
+]
+requires-python = ">=3.6"
+license = { text = "MIT" }
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "objax @ git+https://github.com/google/objax.git",
+    "batchjax @ git+https://github.com/defaultobject/batchjax",
+    "chex",
+    "tqdm",
+    "black",
+    "flake8",
+    "flake8-docstrings",
+    "bibtexparser",
+    "pandas",
+    "scikit-learn",
+    "matplotlib",
+    "pytest"
+]
+
+[project.urls]
+Homepage = "N/A"
+
+[tool.setuptools.packages.find]
+where = ["."]

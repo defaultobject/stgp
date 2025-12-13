@@ -255,8 +255,9 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
     m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
-
+    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(
+        prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior
+    )
 
     #observer both uncertain input and orginal state
     #H_k = np.vstack([pred_weights @ H_k_latents_only, H_k])
@@ -265,13 +266,11 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
     innovation = H_k @ m_
 
-
     if settings.filter_extra_debug_flag:
         breakpoint()
 
     state_args['pred_weights'] = pred_weights
     state_args['pred_covar'] = pred_covar
-
 
     return m_, P_, H_k, R_k, state, state_args, innovation
 
@@ -558,6 +557,7 @@ def filter(data, prior, lik_mat, Y, X_t, Xs_prior, dt, lik_cov_flag, train_test_
         m_inf, P_inf = _transform_ss_init_params(T, T_inf, m_inf, P_inf)
 
     step_wrap = filter_step_wrapper(data, prior, Xs_prior, lik_cov_flag)
+
     unroll = 1
 
     # arguments to be interated through

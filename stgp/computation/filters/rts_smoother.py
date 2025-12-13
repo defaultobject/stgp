@@ -205,6 +205,7 @@ def rts_step_wrapper(prior, state, filter_res, args, X_s, Xs_prior, full_state):
     H_k = get_H(prior, state, filter_res, args, args['m'], args['P'], m_predicted, P_predicted, Xs_prior, args['t'], full_state)
 
     if settings.balance_state_space:
+        raise RuntimeError()
         H_k = _transform_ss_H_param(T_k, T_k_inf, H_k)
 
     m_res =  {
@@ -226,7 +227,9 @@ def rts_step_wrapper(prior, state, filter_res, scan_args, X_s, Xs_prior, full_st
     m_res, p_res =  rts_fn(base_prior, state, filter_res, scan_args, X_s, Xs_prior, full_state)
 
     if not full_state:
-        H_k, pred_var = get_H(prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state)
+        H_k, pred_var = get_H(
+            prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state
+        )
 
         p_res = {
             'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
@@ -351,10 +354,10 @@ def smoother(data, prior, filter_res, dt, X_t, Xs_prior, full_state, is_predicti
 
     # TODO: figure out what state and ys should be here
     if isinstance(prior, UncertainPredictionInput) or isinstance(prior.parent, UncertainPredictionInput) :
-        init_args_dict = {key: val[0] for key, val in all_args_dict.items()}
-        m_obs_init, P_obs_init, _ = apply_H(prior, None, init_args_dict, m_init, P_init, Xs_prior, X_t[0], full_state)
+        init_args_dict = {key: val[-1] for key, val in all_args_dict.items()}
+        m_obs_init, P_obs_init, _ = apply_H(prior, None, init_args_dict, m_init, P_init, Xs_prior, X_t[-1], full_state)
     else:
-        m_obs_init, P_obs_init, _ = apply_H(prior, state, ys, m_init, P_init, Xs_prior, X_t[0], full_state)
+        m_obs_init, P_obs_init, _ = apply_H(prior, state, ys, m_init, P_init, Xs_prior, X_t[-1], full_state)
 
     if settings.balance_state_space:
         A_last = prior.expm(Xs_prior, dt[-2]) #get the last step
@@ -385,11 +388,12 @@ def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full
     out_dim = N_s * P
 
     dt = np.diff(X_t)
-    # TODO: fix this
+    # TODO: why zero again?
     dt = np.hstack([dt, np.zeros(1)])
 
     # spatial points that the prior is defined over
     Xs_prior = _get_prior_spatial_points(data, prior)
+
 
     if settings.verbose:
         print(f'running {filter_type} kalman smoother')
