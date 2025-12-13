@@ -35,6 +35,8 @@ pip install pre-commit
 pre-commit install
 ```
 
+Docs are automatically generated from the scripts in `examples/` using `jupytext`. They can be generated with `make docs`.
+
 # Cite this project
 
 If you use STGP in academic work, please cite it as:

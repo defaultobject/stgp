@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Batch Gaussian Process Regression (STGP + JAX)
+# # Batch Gaussian Process Regression
 #
 # This example fits a 1D Gaussian Process to a synthetic single-output time series and plots the posterior mean with a 95% confidence band.
 
