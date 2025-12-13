@@ -5,12 +5,12 @@
 #     text_representation:
 #       extension: .py
 #       format_name: percent
-#       format_version: "1.3"
-#       jupytext_version: "1.16.0"
+#       format_version: '1.3'
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python [conda env:stgp] *
 #     language: python
-#     name: python3
+#     name: conda-env-stgp-py
 # ---
 
 # %% [markdown]
@@ -96,8 +96,7 @@ print("pred_var shape:", pred_var.shape)
 # %%
 XS_plot = np.squeeze(XS)
 
-plt.figure(figsize=(10, 8))
-plt.title("Batch GPR Model")
+plt.figure(figsize=(20, 10))
 
 plt.fill_between(
     XS_plot,
@@ -114,6 +113,6 @@ plt.scatter(np.squeeze(X), np.squeeze(Y), color="black", label="Training data")
 plt.xlabel("x")
 plt.ylabel("y")
 plt.legend()
-
 plt.tight_layout()
+plt.title("Batch GPR Model")
 plt.show()

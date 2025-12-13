@@ -11,6 +11,7 @@ conda create -n stgp python=3.12
 conda activate stgp
 pip install -r requirements.txt
 pip install -e .
+conda install ipykernel nb_conda_kernels jupyter
 ```
 
 ## Docker

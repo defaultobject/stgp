@@ -1,2 +1,2 @@
 notebooks:
-	jupytext --to notebook examples/Single_GPs/batch_gp.py --output docs/notebooks/single_gps/batch_gp.ipynb
+	jupytext --to notebook --execute examples/Single_GPs/batch_gp.py -o docs/notebooks/single_gps/batch_gp.ipynb
