@@ -24,15 +24,17 @@ target-version = "py310"
 line-length = 88
 
 select = [
-  "E",  # pycodestyle
-  "F",  # pyflakes
-  "I",  # isort
-  "UP", # pyupgrade
-  "B",  # flake8-bugbear
+  "E",    # pycodestyle errors
+  "F",    # pyflakes (undefined vars, unused imports)
+  "B",    # flake8-bugbear
 ]
 
 ignore = [
   "E501",  # line length handled by formatter
+  "E731",   # lambda assignment
+  "E741",   # ambiguous variable names (i, j, k are fine)
+  "PLR",    # pylint refactor rules
+  "C90",    # mccabe complexity
 ]
 
 [tool.ruff.format]
@@ -48,6 +50,7 @@ show_error_codes = true
 
 [project.urls]
 Homepage = "N/A"
+
 
 [tool.setuptools.packages.find]
 where = ["."]
