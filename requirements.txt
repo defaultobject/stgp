@@ -15,3 +15,4 @@ tensorflow
 tensorflow_probability
 tf_keras
 jaxopt
+jupytext
