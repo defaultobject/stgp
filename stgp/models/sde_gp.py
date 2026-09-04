@@ -454,7 +454,7 @@ class T_SDE_GP(BASE_SDE_GP):
         Nt = self.data.Nt
         points_added = data.Nt-Nt 
         unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.nan])
-        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
+        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(onp.int64)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned
         sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
         train_index = unsorted_range[data.unique_idx][data.sort_idx]
         return train_index, sorted_mask
@@ -600,7 +600,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         Nt = self.data.Nt
         points_added = data.Nt-Nt 
         unsorted_mask = np.hstack([np.ones(Nt), np.ones(points_added)*onp.nan])
-        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(np.integer)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned 
+        unsorted_range = np.hstack([np.arange(Nt), np.ones(points_added).astype(onp.int64)*-1]) # ones will be mapped to nan anyway, so doesnt matter what index get assigned
         sorted_mask = unsorted_mask[data.unique_idx][data.sort_idx]
         train_index = unsorted_range[data.unique_idx][data.sort_idx]
         return train_index, sorted_mask
