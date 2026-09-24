@@ -12,7 +12,7 @@ from ..data import Data, Input, TemporallyGroupedData
 from ..approximate_posteriors import MeanFieldApproximatePosterior, FullGaussianApproximatePosterior,FullConjugateGaussian, ConjugateGaussian
 from ..likelihood import Likelihood
 from ..models import BatchGP, BASE_SDE_GP
-from ..transforms import Independent, Joint
+from ..transforms import Independent, Joint, UncertainPredictionInput
 from ..transforms.pdes import DifferentialOperatorJoint, PDE
 from ..transforms.sdes import SDE
 from .kernel_ops import _batched_diff_kernel, _batched_st_kernel, _batched_st_kernel_with_batched_inputs
@@ -250,6 +250,24 @@ def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp
 
     mu, var = spatial_conditional_block(data_xs, data_x, pred_mean, pred_var, gp.prior, batch_space=batch_space)
     return mu, var
+
+
+@dispatch(TemporallyGroupedData, Input, BASE_SDE_GP, UncertainPredictionInput)
+def spatial_conditional(data_xs: 'Data', data_x: 'Data', pred_mean, pred_var, gp, diagonal):
+    """Condition a UI-ST latent FITC state at deterministic spatial inputs.
+
+    ``pred_mean`` and ``pred_var`` contain the unprojected position state at
+    the FITC locations.  The uncertain-input observation operator is not used
+    here: callers supplied deterministic (time, spatial) coordinates.
+    """
+    return spatial_conditional_block(
+        data_xs,
+        data_x,
+        pred_mean,
+        pred_var,
+        gp.prior.parent,
+        batch_space=True,
+    )
 
 @dispatch(Input, Independent, Independent, FullGaussianApproximatePosterior)
 @dispatch(Data, Independent, Independent, FullGaussianApproximatePosterior)
@@ -513,6 +531,5 @@ def spatial_conditional(
     return evoke('spatial_conditional', data_xs, ind_prior, prior, approximate_posterior)(
            data_xs, data_x, pred_mean, pred_var, aapproximate_posterior, likelihood, ind_prior, sparsity, out_block_dim, whiten 
     )
-
 
 

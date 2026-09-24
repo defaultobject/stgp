@@ -267,33 +267,32 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
         }
 
         Ns_colocation = f.shape[0]
-        
-        carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, np.zeros((Ns_colocation, Ns_colocation)), carry, x_psuedo,  f)
-        #carry, ys = kf_update_step(m_, P_,  H_jac_k @ H_sde_prior, np.eye(Ns_colocation)*1e-10, carry, x_psuedo, np.squeeze(f)[..., None])
-        m_, P_ = carry['m'], carry['P']
+        R_pseudo = np.eye(Ns_colocation) * model.colocation_noise
 
         if True:
-            # global calibration
+            # Global calibration of the predictive pseudo-observation residual.
+            # f and H_jac_k are evaluated at the predicted state m_, so the
+            # covariance must likewise use the predicted state covariance P_.
             Y_k = y_psuedo
             f_k =  np.squeeze(f)[..., None]
             mask_k = get_same_shape_mask(Y_k)[:, 0]
-            M = get_Y_mask(Y_k)
             Y_k = np.nan_to_num(Y_k)
 
             err = Y_k-f_k
-            HP_HT = H_jac_k @ H_sde_prior@P_ @ H_sde_prior.T@H_jac_k.T
+            HP_HT = H_jac_k @ H_sde_prior @ P_ @ H_sde_prior.T @ H_jac_k.T
+            S_pseudo = HP_HT + R_pseudo
             #HP_HT = H_jac_k @P_ @H_jac_k.T
 
             if False:
                 # global error across whole state
-                mahal = mahal_with_mask(err, HP_HT, mask_k)
-                sigma_n = avg_mahal_with_mask(err, HP_HT, mask_k)
+                mahal = mahal_with_mask(err, S_pseudo, mask_k)
+                sigma_n = avg_mahal_with_mask(err, S_pseudo, mask_k)
                 sigma_n = np.nan_to_num(sigma_n) # avoid nans due to degenerate P_, such as zero error at start
 
             if True:
                 # global error for each state dimension
                 # see https://arxiv.org/pdf/2012.08202
-                sigma_n = jax.vmap(lambda z, s: (z**2)/s, [0, 0])(err[:, 0], np.diag(HP_HT))
+                sigma_n = jax.vmap(lambda z, s: (z**2)/s, [0, 0])(err[:, 0], np.diag(S_pseudo))
                 #sigma_n = err[1, 0]**2/P_[1, 1]
                 sigma_n = np.nan_to_num(sigma_n, posinf=0.0)
                 sigma_n = np.nan_to_num(sigma_n)
@@ -301,6 +300,8 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
             # moving average
             global_calibration =  (global_calibration*(x['k']) + np.squeeze(sigma_n))/(x['k']+1)
 
+        carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, R_pseudo, carry, x_psuedo, f)
+        m_, P_ = carry['m'], carry['P']
 
     if model.observe_data:
 
@@ -522,5 +523,4 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
-
 

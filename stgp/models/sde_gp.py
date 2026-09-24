@@ -605,7 +605,7 @@ class ST_SDE_GP(BASE_SDE_GP):
         train_index = unsorted_range[data.unique_idx][data.sort_idx]
         return train_index, sorted_mask
 
-    def predict_temporal(self, XS, filter_only=False):
+    def predict_temporal(self, XS, filter_only=False, full_state=False):
         """
         Predicts in time locations in XS and at the spatial locations in the training data
         This is useful because Kalman filtering and smoothing algorithms are used to predict in time, and then spatial predictions is handled separately.
@@ -731,12 +731,67 @@ class ST_SDE_GP(BASE_SDE_GP):
                 R = R,
                 train_test_mask=train_mask,
                 train_index=train_index,
+                full_state=full_state,
                 is_prediction=True
             )
 
         return XS_st_data, all_temporal_data, temporal_test_data, prior_stacked_spatial_points, mu_t, var_t[:, None, ...]
 
+    def predict_uncertain_input_f(self, X_time: np.ndarray, diagonal=True, squeeze=False, filter_only=False):
+        """Predict the composite uncertain-input function ``g(t, f_L(t))``.
+
+        This is distinct from :meth:`predict_f`, which, for a spatio-temporal
+        uncertain-input model, predicts the learned surface ``g(t, z)`` at
+        supplied deterministic coordinates ``(t, z)``.  Here the low-fidelity
+        posterior is evaluated at each time and its uncertainty is propagated
+        through the high-fidelity observation operator during filtering and
+        smoothing.
+        """
+        if not isinstance(self.prior, UncertainPredictionInput):
+            raise ValueError("predict_uncertain_input_f requires an UncertainPredictionInput prior")
+        chex.assert_rank(X_time, 2)
+        chex.assert_equal(X_time.shape[1], 1)
+
+        # The spatial coordinate is only a placeholder for forming a
+        # spatio-temporal query.  UncertainPredictionInput replaces it with
+        # the low-fidelity posterior in the observation operator.
+        XS = np.hstack([X_time, np.zeros_like(X_time)])
+        _, all_temporal_data, _, _, mu, var = self.predict_temporal(
+            XS,
+            filter_only=filter_only,
+        )
+        mu = all_temporal_data.unsort(mu)[self.data.Nt:]
+        var = all_temporal_data.unsort(var)[self.data.Nt:]
+
+        if squeeze:
+            return np.squeeze(mu), np.squeeze(var)
+        return mu, var
+
     def predict_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False, force_full_state: bool = False):
+        """Predict the model output.
+
+        For an uncertain-input spatio-temporal model, a one-dimensional input
+        is interpreted as time and returns the composite prediction
+        ``g(t, f_L(t))``.  Use :meth:`predict_deterministic_input_f` to query
+        the learnt surface at deterministic ``(t, z)`` coordinates.
+        """
+        if isinstance(self.prior, UncertainPredictionInput) and XS.shape[1] == 1:
+            return self.predict_uncertain_input_f(
+                XS,
+                diagonal=diagonal,
+                squeeze=squeeze,
+                filter_only=filter_only,
+            )
+        return self.predict_deterministic_input_f(
+            XS,
+            diagonal=diagonal,
+            squeeze=squeeze,
+            sort_output=sort_output,
+            filter_only=filter_only,
+            force_full_state=force_full_state,
+        )
+
+    def predict_deterministic_input_f(self, XS: np.ndarray, diagonal=True, squeeze=False, sort_output = True, filter_only=False, force_full_state: bool = False):
         """
         We use the Kalman filter and smoother to predict and the temporal slices of XS,
         and then use the results to extrapolate to the new spatial locations.
@@ -773,16 +828,32 @@ class ST_SDE_GP(BASE_SDE_GP):
             #   perhaps we can combine at some point?
             raise RuntimeError('We do not support forcing full state, use full_state_observed when constructing the SDE_GP instead')
 
-        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, prior_stacked_spatial_points, mu_t, var_t = self.predict_temporal(XS, filter_only=filter_only)
+        uncertain_input_spatial_prediction = isinstance(self.prior, UncertainPredictionInput)
+        xs_spatial_data, all_temporal_data, stacked_temporal_test_data, prior_stacked_spatial_points, mu_t, var_t = self.predict_temporal(
+            XS,
+            filter_only=filter_only,
+            full_state=uncertain_input_spatial_prediction,
+        )
 
         var_t = var_t[:, 0, ...]
+
+        if uncertain_input_spatial_prediction:
+            # The UI filter/smoother normally applies the uncertain-input
+            # observation operator, yielding only g(t, f_L(t)).  Spatial
+            # prediction instead needs the latent function values at the FITC
+            # y_L locations, so retain the position component of every SDE
+            # state before applying the spatial conditional below.
+            num_xs_prior = sum([s.shape[0] for s in _get_prior_spatial_points(self.data, self.prior)])
+            state_size = mu_t.shape[1] // num_xs_prior
+            mu_t = mu_t[:, ::state_size, :]
+            var_t = var_t[:, ::state_size, ::state_size]
 
         _mu_t = mu_t
         _var_t = var_t
 
         # mu_t and var_t are in time-latent-space format
         # when predicting we only predict f, not the state as well
-        if not self.full_state_observed:
+        if not self.full_state_observed and not uncertain_input_spatial_prediction:
             if not settings.sde_ui_allow_certain_prediction:
                 # remove the extra state dims
                 mu_t = mu_t[:, :prior_stacked_spatial_points.Ns, :]
