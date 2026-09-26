@@ -103,19 +103,8 @@ def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, a
             forcing_function = np.array(forcing_function)[train_index]
             args_dict['forcing_function'] = forcing_function
 
-        # global_calibration is part of state as it is something we will compute whilst filtering
-        # check if there are actually any spatial points
-        if Xs_prior is None or (type(Xs_prior) is list and all([xs is None for xs in Xs_prior])):
-            state_dict['global_calibration'] = np.zeros(m_inf.shape[0])
-        else: 
-            # TODO: hmm, why is it the shape of the spatial points, not 
-            # Ns x dt x ds? ie where is the state size?
-            if type(Xs_prior) is list:
-                xs_arr = [1 if xs is None else  xs.shape[0] for xs in Xs_prior]
-                state_dict['global_calibration'] = np.zeros(sum(xs_arr))
-            else:
-                state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
-
+        calibration_size = prior.psuedo_observations(data.X_space).shape[0]
+        state_dict['global_calibration'] = np.zeros(calibration_size)
         state_dict['global_calibration_count'] = np.zeros_like(state_dict['global_calibration'])
         state_dict['local_calibration'] = np.zeros_like(state_dict['global_calibration'])
         state_dict['scalar_global_calibration'] = np.array(0.0)
