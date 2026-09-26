@@ -145,7 +145,7 @@ def rts_smoother_step(m_filtered_k, P_filtered_k, m, P, m_predicted, P_predicted
          
     """
     P_predicted_chol = cholesky(
-        add_jitter(P_predicted, settings.jitter)
+        add_jitter(P_predicted, settings.sde_jitter)
     )
     G = cholesky_solve(
         P_predicted_chol, A_k @ P_filtered_k
@@ -404,7 +404,6 @@ def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full
     mu, var  =  smoother_fn(data, prior, filter_res, dt, X_t, Xs_prior, full_state, is_prediction)
 
     return mu, var
-
 
 
 

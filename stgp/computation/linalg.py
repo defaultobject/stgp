@@ -10,7 +10,7 @@ from .matrix_ops import add_jitter, cholesky_solve, cholesky, log_chol_matrix_de
 import chex
 
 @jit
-def solve(A, B):
+def solve(A, B, jitter=None):
     """
     Solves equations of the form Ax=B either exactly or approximately depending on settings.linear_solver
 
@@ -27,7 +27,7 @@ def solve(A, B):
     chex.assert_rank([A, B], [2, 2])
 
     # always add jitter
-    A = add_jitter(A, settings.jitter)
+    A = add_jitter(A, settings.jitter if jitter is None else jitter)
 
     if settings.linear_solver == settings.SolveType.CHOLESKY:
         return solve_from_cholesky(cholesky(A), B)
@@ -95,4 +95,3 @@ def log_determinant_from_cholesky(A_chol):
 
     A = A_chol @ A_chol.T
     return log_determinant(A)
-

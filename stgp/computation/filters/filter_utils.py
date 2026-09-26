@@ -116,6 +116,11 @@ def _setup_pde_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, a
             else:
                 state_dict['global_calibration'] = np.zeros(Xs_prior.shape[0])
 
+        state_dict['global_calibration_count'] = np.zeros_like(state_dict['global_calibration'])
+        state_dict['local_calibration'] = np.zeros_like(state_dict['global_calibration'])
+        state_dict['scalar_global_calibration'] = np.array(0.0)
+        state_dict['scalar_global_calibration_count'] = np.array(0.0)
+
         return state_dict, args_dict
 
 def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, state_dict, args_dict, smoother=False, is_prediction=False):
@@ -203,6 +208,10 @@ def _process_filter_results_state_and_args_dict(data, prior, m_inf, P_inf, Xs_pr
 
     if isinstance(prior, PDE):
         filter_res['meta']['global_calibration'] = state['global_calibration']
+        filter_res['meta']['global_calibration_count'] = state['global_calibration_count']
+        filter_res['meta']['local_calibration'] = ys['local_calibration']
+        filter_res['meta']['scalar_global_calibration'] = state['scalar_global_calibration']
+        filter_res['meta']['scalar_global_calibration_count'] = state['scalar_global_calibration_count']
         return _process_filter_results_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state, ys, filter_res, init_state_dict, init_args_dict)
 
     elif isinstance(prior, UncertainPredictionInput):
@@ -216,7 +225,7 @@ def _process_filter_results_state_and_args_dict(data, prior, m_inf, P_inf, Xs_pr
     if isinstance(prior, LTI_SDE):
         return filter_res
 
-def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, data, model, Xs_prior):
+def _construct_filter_with_pde_transform(m_, P_, Q_k, R_k, H_sde_prior, x, carry, data, model, Xs_prior):
     sde_prior = model.parent
     # TODO: figure out where sde_prior should be used or not
 
@@ -227,6 +236,7 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
     H_k = model.H(m_, Xs_prior, x['t'])
 
     global_calibration = carry['global_calibration']
+    scalar_global_calibration = carry['scalar_global_calibration']
 
     if model.forcing_function is not None:
         force = x['forcing_function']
@@ -281,6 +291,7 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
             err = Y_k-f_k
             HP_HT = H_jac_k @ H_sde_prior @ P_ @ H_sde_prior.T @ H_jac_k.T
             S_pseudo = HP_HT + R_pseudo
+            Q_pseudo = H_jac_k @ H_sde_prior @ Q_k @ H_sde_prior.T @ H_jac_k.T
             #HP_HT = H_jac_k @P_ @H_jac_k.T
 
             if False:
@@ -297,8 +308,48 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
                 sigma_n = np.nan_to_num(sigma_n, posinf=0.0)
                 sigma_n = np.nan_to_num(sigma_n)
 
-            # moving average
-            global_calibration =  (global_calibration*(x['k']) + np.squeeze(sigma_n))/(x['k']+1)
+            # Equation (23): per-step diffusion from current process noise only.
+            local_variance = np.diag(Q_pseudo)
+            local_calibration = np.where(
+                mask_k & (local_variance > 0.0),
+                np.squeeze(err) ** 2 / local_variance,
+                0.0,
+            )
+            local_calibration = np.nan_to_num(
+                local_calibration, nan=0.0, posinf=0.0, neginf=0.0
+            )
+
+            # Equation (17): running mean over valid residuals for each component.
+            calibration_count = carry['global_calibration_count']
+            new_calibration_count = calibration_count + mask_k
+            global_calibration = np.where(
+                mask_k,
+                (global_calibration * calibration_count + np.squeeze(sigma_n))
+                / np.maximum(new_calibration_count, 1),
+                global_calibration,
+            )
+
+            # Equation (16): one fixed diffusion shared by all ODE dimensions.
+            scalar_mask = mask_k & (np.diag(S_pseudo) > 0.0)
+            valid_residual_count = np.sum(scalar_mask)
+            scalar_err = np.where(scalar_mask[:, None], err, 0.0)
+            scalar_mahal = np.squeeze(
+                mahal_with_mask(scalar_err, S_pseudo, scalar_mask)
+            )
+            scalar_mahal = np.nan_to_num(
+                scalar_mahal, nan=0.0, posinf=0.0, neginf=0.0
+            )
+            scalar_calibration_count = carry['scalar_global_calibration_count']
+            new_scalar_calibration_count = scalar_calibration_count + valid_residual_count
+            scalar_global_calibration = np.where(
+                valid_residual_count > 0,
+                (
+                    scalar_global_calibration * scalar_calibration_count
+                    + scalar_mahal
+                )
+                / np.maximum(new_scalar_calibration_count, 1),
+                scalar_global_calibration,
+            )
 
         carry, ys = kf_update_step(m_, P_, H_jac_k @ H_sde_prior, R_pseudo, carry, x_psuedo, f)
         m_, P_ = carry['m'], carry['P']
@@ -345,6 +396,11 @@ def _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, x, carry, dat
         m_, P_ = carry['m'], carry['P']
 
     carry['global_calibration']  = global_calibration
+    carry['global_calibration_count'] = new_calibration_count
+    carry['local_calibration'] = local_calibration
+    carry['scalar_global_calibration'] = scalar_global_calibration
+    carry['scalar_global_calibration_count'] = new_scalar_calibration_count
+    ys['local_calibration'] = local_calibration
 
     return carry, ys
 
@@ -505,7 +561,7 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     v = Y_k - mu
     S = var + R_k
 
-    K = solve(S, M @ H_k @ P_).T
+    K = solve(S, M @ H_k @ P_, settings.sde_jitter).T
 
     m_k = m_ + K @ v
     P_k = P_ - K @ S @ K.T
@@ -523,4 +579,3 @@ def kf_update_step(m_, P_, H_k, R_k, carry, x, innovation):
     }, {
         'm': m_k, 'P': P_k, 'lml': log_Z_k
     }
-

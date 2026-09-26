@@ -253,7 +253,7 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     H_k_latents_only_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
     H_k_blocks = prior.parent.H_blocks(None, Xs_prior, None)
 
-    m_, P_ = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k)
+    m_, P_, _, Q_k = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k, return_A_Q=True)
 
     pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(
         prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior
@@ -272,11 +272,11 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
     state_args['pred_weights'] = pred_weights
     state_args['pred_covar'] = pred_covar
 
-    return m_, P_, H_k, R_k, state, state_args, innovation
+    return m_, P_, Q_k, H_k, R_k, state, state_args, innovation
 
 @dispatch(UncertainPredictionInput, 'sequential', 'FITCSpatialSparsity')
 def kf_predict_step(prior, state, data, state_args, Xs_prior, lik_cov_flag):
-    m_, P_, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
+    m_, P_, _, H_k, R_k, state, _args, innovation = evoke('get_lti_parameters', prior, 'FITCSpatialSparsity')(
         prior, state, data, state_args, Xs_prior, lik_cov_flag
     )
 
@@ -473,11 +473,11 @@ def kf_predict_step(prior, state, data, args, Xs_prior , lik_cov_flag):
 
     # get parent LTI parameters
     # H_k and R_k have nans :(
-    m_, P_, H_k, R_k, state, args, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
+    m_, P_, Q_k, H_k, R_k, state, args, innovation = evoke('get_lti_parameters', sde_prior, 'FITCSpatialSparsity')(
         sde_prior, state, data, args, Xs_prior, lik_cov_flag
     )
 
-    state, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_k, args, state, data, prior, Xs_prior)
+    state, ys = _construct_filter_with_pde_transform(m_, P_, Q_k, R_k, H_k, args, state, data, prior, Xs_prior)
 
     # bit hacky as need to check if UI is used
     ys['H'] = args['pred_weights']
@@ -519,7 +519,7 @@ def kf_predict_step(model, state, data, args, Xs_prior, lik_cov_flag):
 
     R_k =  args['lik_mat']
 
-    state, ys = _construct_filter_with_pde_transform(m_, P_, R_k, H_sde_prior, args, state, data, model, Xs_prior)
+    state, ys = _construct_filter_with_pde_transform(m_, P_, Q_k, R_k, H_sde_prior, args, state, data, model, Xs_prior)
 
     return state, ys
 

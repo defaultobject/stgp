@@ -76,6 +76,7 @@ cg_max_iter = 1000
 whiten_space = False
 
 jitter = 1e-5
+sde_jitter = 1e-14
 ng_jitter = 1e-7
 ng_samples = 10
 ng_f_samples = 10
