@@ -119,7 +119,10 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
     """
     # TODO: need to predict in ST format then propogate it through
     # TODO: use batch/loop
-    def _collect_low_fidelity_prediction(gp, data):
+    def _collect_low_fidelity_prediction(gp, data, cached_prediction=None):
+        if cached_prediction is not None and not is_prediction:
+            return cached_prediction
+
         if gp is not None:
             if is_prediction:
                 # only use the first dimension
@@ -161,7 +164,15 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
 
         return np.squeeze(pred_mu), np.squeeze(pred_var)
 
-    res = [_collect_low_fidelity_prediction(gp, data) for gp in prior.prediction_gp]
+    cache = prior.training_prediction_cache
+    res = [
+        _collect_low_fidelity_prediction(
+            gp,
+            data,
+            None if cache is None else cache[i],
+        )
+        for i, gp in enumerate(prior.prediction_gp)
+    ]
     # Nt x Ns x P
     # TODO: generalize beyond P = 1 
     args_dict['low_fidelity_prediction_mean'] = np.array([np.squeeze(res[i][0]) for i in range(len(res))]).T
