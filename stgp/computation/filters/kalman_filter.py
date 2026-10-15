@@ -68,7 +68,7 @@ from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_params, _transform_ss_init_params, _transform_ss_Q_param
 from ...computation.kernel_psi_statistics import get_fitc_sparsity_transformation, get_psi_statistics_linear_form_from_mu_var_from_gram
 from ..predictors.base_predictors import gaussian_prediction_diagonal, gaussian_prediction_diagonal_statistics
-from .filter_utils import _get_prior_spatial_points, _setup_state_and_args_dict, _process_filter_results_state_and_args_dict, _construct_filter_with_pde_transform, kf_update_step, uncertain_inputs_fitc_sparsity_compute_psi_statistics
+from .filter_utils import _get_prior_spatial_points, _setup_state_and_args_dict, _process_filter_results_state_and_args_dict, _construct_filter_with_pde_transform, kf_update_step, uncertain_inputs_fitc_sparsity_compute_psi_statistics, frozen_weights_compute_psi_statistics
 
 import numpy as onp
 #import tensorflow as tf
@@ -255,16 +255,20 @@ def get_lti_parameters(prior, state, data, state_args, Xs_prior, lik_cov_flag):
 
     m_, P_, _, Q_k = _kalman_predict(base_prior, m_k, P_k, Xs_prior, dt_k, return_A_Q=True)
 
-    pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(
-        prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior
-    )
+    if prior.approximation == "frozen_weights":
+        pred_weights, pred_covar, innovation = frozen_weights_compute_psi_statistics(
+            prior, state_args, m_, P_, H_k_latents_only_blocks, Xs_prior
+        )
+    else:
+        pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(
+            prior, state_args, m_, P_, H_k_blocks, H_k_latents_only_blocks, Xs_prior
+        )
+        innovation = pred_weights @ m_
 
     #observer both uncertain input and orginal state
     #H_k = np.vstack([pred_weights @ H_k_latents_only, H_k])
     H_k = pred_weights 
     R_k = R_k + pred_covar
-
-    innovation = H_k @ m_
 
     if settings.filter_extra_debug_flag:
         breakpoint()
@@ -678,4 +682,3 @@ def filter_loop(data: 'SequentialData', prior: 'Prior', R=None, R_inv = None, fi
 
 
     return lml, filter_res
-

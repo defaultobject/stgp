@@ -154,6 +154,8 @@ class DiagonalGaussian(DiagonalLikelihood):
     def fix(self):
         self.variance_param.fix()
 
+    def release(self):
+        self.variance_param.release()
 
     @property
     def variance(self) -> np.ndarray:

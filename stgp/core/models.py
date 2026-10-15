@@ -23,6 +23,49 @@ class Model(objax.Module):
     def fix_inputs(self):
         raise NotImplementedError()
 
+    def _parameters(self):
+        parameters = []
+        seen = set()
+
+        def collect(module):
+            if id(module) in seen:
+                return
+            seen.add(id(module))
+
+            if isinstance(module, Parameter):
+                parameters.append(module)
+            elif isinstance(module, objax.ModuleList):
+                for child in module:
+                    collect(child)
+            elif isinstance(module, objax.Module):
+                for child in module.__dict__.values():
+                    collect(child)
+
+        collect(self)
+        return parameters
+
+    def fix(self):
+        """Temporarily freeze every registered parameter in this model."""
+        if getattr(self, '_model_fix_state', None) is None:
+            self._model_fix_state = [
+                (parameter, parameter.is_trainable)
+                for parameter in self._parameters()
+            ]
+
+        for parameter, _ in self._model_fix_state:
+            parameter.fix()
+
+    def release(self):
+        """Restore parameter trainability to its state before ``fix``."""
+        state = getattr(self, '_model_fix_state', None)
+        if state is None:
+            return
+
+        for parameter, was_trainable in state:
+            (parameter.release if was_trainable else parameter.fix)()
+
+        self._model_fix_state = None
+
     @property
     def name(self) -> int:
         return 'model_checkpoint'
@@ -259,6 +302,5 @@ class Posterior(Model):
 
 
         
-
 
 

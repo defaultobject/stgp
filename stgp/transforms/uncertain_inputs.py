@@ -1,4 +1,5 @@
 import jax
+import objax
 
 from . import LinearTransform
 
@@ -8,12 +9,26 @@ class UncertainPredictionInput(LinearTransform):
     def __init__(
         self,
         prior,
-        prediction_gp,
+        prediction_gp=None,
+        approximation="layerwise",
+        state_input_indices=None,
         active_dim=None,
         cache_training_predictions=False,
     ):
         self.prior = prior
-        self.prediction_gp = prediction_gp
+        self.prediction_gp = None if prediction_gp is None else objax.ModuleList(prediction_gp)
+        self.approximation = approximation
+        self.state_input_indices = state_input_indices
+
+        if approximation not in {"layerwise", "frozen_weights"}:
+            raise ValueError(f"Unknown uncertain-input approximation: {approximation}")
+        if approximation == "frozen_weights":
+            if prediction_gp is not None:
+                raise ValueError("frozen_weights obtains its inputs from the joint state")
+            if state_input_indices is None:
+                raise ValueError("frozen_weights requires state_input_indices")
+        elif prediction_gp is None:
+            raise ValueError("layerwise uncertain inputs require prediction_gp")
         self.active_dim = active_dim
         self._input_dim = 1
         self._output_dim = 1
@@ -25,6 +40,8 @@ class UncertainPredictionInput(LinearTransform):
 
     def refresh_training_prediction_cache(self):
         """Cache detached LF posteriors for high-fidelity training."""
+        if self.approximation == "frozen_weights":
+            return
         self.training_prediction_cache = []
 
         for gp in self.prediction_gp:

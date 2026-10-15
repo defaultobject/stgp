@@ -3,7 +3,7 @@ import jax
 import jax.numpy as np
 import chex
 from ..dispatch import dispatch, evoke
-from ..kernels import RBF, SpatioTemporalSeperableKernel
+from ..kernels import RBF, ScaleKernel, SpatioTemporalSeperableKernel
 from .gaussian import log_gaussian_scalar
 from .matrix_ops import cholesky, cholesky_solve
 
@@ -124,13 +124,36 @@ def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
 
     return first_argument_form, square_form, both_argument_form
 
+
+@dispatch(ScaleKernel)
+def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
+    first_argument_form, square_form, both_argument_form = evoke(
+        'kernel_psi_statistics', kern.parent_kernel
+    )(XS, X, noise_m, noise_S, kern.parent_kernel)
+
+    return (
+        kern.variance * first_argument_form,
+        kern.variance**2 * square_form,
+        kern.variance * both_argument_form,
+    )
+
 @dispatch(SpatioTemporalSeperableKernel)
 def kernel_psi_statistics(XS, X, noise_m, noise_S, kern):
     breakpoint()
 
 
 def get_psi_statistics_linear_form_from_mu_var_from_gram(
-    XS, X, Y, K_ss, K_sx, K_xx, likelihood_var, noise_pred_mu, noise_pred_var, base_gp_kernel
+    XS,
+    X,
+    Y,
+    K_ss,
+    K_sx,
+    K_xx,
+    likelihood_var,
+    noise_pred_mu,
+    noise_pred_var,
+    base_gp_kernel,
+    conditional_covar_scale=1.0,
 ):
     N = X.shape[0]
 
@@ -147,9 +170,6 @@ def get_psi_statistics_linear_form_from_mu_var_from_gram(
 
     mean_weights = (cholesky_solve(K_tilde_chol, first_argument_form.T).T)
 
-    var = both_argument_form
-    var = var - np.sum(np.multiply((K_tilde_inv - beta @ beta.T)[None, None, ...], square_form), axis=[2, 3])
-
     llT = jax.vmap(
         jax.vmap(
             lambda a, b: a[:, None]@b[None, :],
@@ -157,9 +177,17 @@ def get_psi_statistics_linear_form_from_mu_var_from_gram(
         ),
         [1,  None]
     )(first_argument_form, first_argument_form)
+    llT = np.transpose(llT, [2, 3, 0, 1])
 
-    # TODO: should probably write as a scan to save memory!
-    var = var - np.sum(np.multiply( np.transpose(llT, [2, 3, 0, 1]), (beta @ beta.T)[None, None, ...]), axis=[2, 3])
+    conditional_covar = both_argument_form - np.sum(
+        K_tilde_inv[None, None, ...] * square_form,
+        axis=[2, 3],
+    )
+    uncertain_mean_covar = np.sum(
+        (beta @ beta.T)[None, None, ...] * (square_form - llT),
+        axis=[2, 3],
+    )
+    var = conditional_covar_scale * conditional_covar + uncertain_mean_covar
 
     return mean_weights, var
 

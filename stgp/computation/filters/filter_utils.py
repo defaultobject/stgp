@@ -117,7 +117,10 @@ def _setup_uncertain_inputs_state_and_args(data, prior, m_inf, P_inf, Xs_prior, 
     Args:
         use_posterior: instead of using predict functions (which are not jittable) use the posterior 
     """
-    # TODO: need to predict in ST format then propogate it through
+    if prior.approximation == "frozen_weights":
+        return state_dict, args_dict
+
+    # TODO: need to predict in ST format then propogate it through
     # TODO: use batch/loop
     def _collect_low_fidelity_prediction(gp, data, cached_prediction=None):
         if cached_prediction is not None and not is_prediction:
@@ -217,8 +220,9 @@ def _process_filter_results_state_and_args_dict(data, prior, m_inf, P_inf, Xs_pr
     elif isinstance(prior, UncertainPredictionInput):
         filter_res['meta']['H'] = ys['H']
         filter_res['meta']['ui_var'] = ys['ui_var']
-        filter_res['meta']['low_fidelity_prediction_mean'] = init_args_dict['low_fidelity_prediction_mean']
-        filter_res['meta']['low_fidelity_prediction_covar'] = init_args_dict['low_fidelity_prediction_covar']
+        if prior.approximation == "layerwise":
+            filter_res['meta']['low_fidelity_prediction_mean'] = init_args_dict['low_fidelity_prediction_mean']
+            filter_res['meta']['low_fidelity_prediction_covar'] = init_args_dict['low_fidelity_prediction_covar']
         return _process_filter_results_state_and_args_dict(data, prior.parent, m_inf, P_inf, Xs_prior, state, ys, filter_res, init_state_dict, init_args_dict)
 
     # base prior is always LTI_SDE
@@ -449,8 +453,10 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
                 X_q_has_spatial_points = True
 
         if X_q_has_spatial_points:
-            # TODO: does this need to be scaled by Kt?
+            kern_t_q = latents[q].kernel.k1
             kern_s_q = latents[q].kernel.k2
+            #TODO: should use K_diag?
+            K_tt = np.squeeze(kern_t_q.K_diag(XS))
             # compute psi statatics
             arr = []
             idx_slice_start = 0
@@ -487,6 +493,8 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
 
             print(q, ' -- ', H_q.shape)
 
+
+            # we only pass m_ to Y. This is the "frozen weights" approximation.
             pred_weights, pred_covar  = get_psi_statistics_linear_form_from_mu_var_from_gram(
                 XS, 
                 X_q,
@@ -497,7 +505,8 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
                 likelihood_var = np.zeros([X_q.shape[0], X_q.shape[0]]),
                 noise_pred_mu = x['low_fidelity_prediction_mean'][np.array([q])][:, None], 
                 noise_pred_var = x['low_fidelity_prediction_covar'][np.array([q])][:, None],
-                base_gp_kernel = kern_s_q
+                base_gp_kernel = kern_s_q,
+                conditional_covar_scale = K_tt,
             )
             pred_weights_arr.append(pred_weights @ H_k_latents_only_blocks[q])
             pred_covar_arr.append(pred_covar)
@@ -517,6 +526,68 @@ def uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, x, m_, P_, H_k_
     pred_covar = to_block_diag(pred_covar_arr)
 
     return pred_weights, pred_covar
+
+
+def frozen_weights_compute_psi_statistics(prior, x, m_, P_, H_k_latents_only_blocks, Xs_prior):
+    """Joint-state uncertain-input moments with the GP state frozen at its mean."""
+    H_latent = to_block_diag(H_k_latents_only_blocks)
+    row_offsets = onp.cumsum([0] + [block.shape[0] for block in H_k_latents_only_blocks])
+
+    observation_jacobians = []
+    observation_means = []
+    observation_covariances = []
+
+    for q, X_q in enumerate(Xs_prior):
+        q_rows = slice(row_offsets[q], row_offsets[q + 1])
+        H_q = H_latent[q_rows]
+
+        if X_q is None or X_q.shape[-1] == 0:
+            observation_jacobians.append(H_q)
+            observation_means.append(H_q @ m_)
+            observation_covariances.append(np.zeros((H_q.shape[0], H_q.shape[0])))
+            continue
+
+        input_q = prior.state_input_indices[q]
+        if input_q is None:
+            raise ValueError(f"Spatial latent {q} requires a joint-state input index")
+
+        input_rows = slice(row_offsets[input_q], row_offsets[input_q + 1])
+        H_input = H_latent[input_rows]
+        if H_input.shape[0] != 1:
+            raise NotImplementedError("frozen_weights currently supports scalar uncertain inputs")
+
+        input_mean = np.squeeze(H_input @ m_)
+        input_var = np.squeeze(H_input @ P_ @ H_input.T)
+        inducing_mean = H_q @ m_
+        latent_kernel = prior.base_prior.parent[q].kernel
+        kern = latent_kernel.k2
+        time = np.array([x['t']])[:, None]
+        K_tt = np.squeeze(latent_kernel.k1.K_diag(time))
+        K_zz = add_jitter(kern.K(X_q, X_q), settings.jitter)
+
+        weights, pred_covar = get_psi_statistics_linear_form_from_mu_var_from_gram(
+            time,
+            X_q,
+            Y=inducing_mean,
+            K_ss=None,
+            K_sx=None,
+            K_xx=K_zz,
+            likelihood_var=np.zeros_like(K_zz),
+            noise_pred_mu=np.array([[input_mean]]),
+            noise_pred_var=np.array([[input_var]]),
+            base_gp_kernel=kern,
+            conditional_covar_scale=K_tt,
+        )
+
+        observation_means.append(weights @ inducing_mean)
+        observation_jacobians.append(weights @ H_q)
+        observation_covariances.append(pred_covar)
+
+    return (
+        np.vstack(observation_jacobians),
+        to_block_diag(observation_covariances),
+        np.vstack(observation_means),
+    )
 
 
 
