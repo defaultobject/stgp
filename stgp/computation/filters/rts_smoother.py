@@ -18,7 +18,7 @@ from ..gaussian import log_gaussian, log_gaussian_with_mask
 from ...utils.nan_utils import get_same_shape_mask
 from ...dispatch import dispatch, evoke, _ensure_str
 from ...computation.model_ops import get_ss_balance_transformation, _transform_ss_A_param, _transform_ss_H_param, _transform_ss_init_params, _transform_ss_Q_param
-from .filter_utils import _get_prior_spatial_points, uncertain_inputs_fitc_sparsity_compute_psi_statistics, _setup_state_and_args_dict
+from .filter_utils import _get_prior_spatial_points, uncertain_inputs_fitc_sparsity_compute_psi_statistics, frozen_weights_compute_psi_statistics, _setup_state_and_args_dict
 from .kalman_filter import _kalman_predict
 
 
@@ -56,6 +56,10 @@ def get_model_H(prior, state, filter_res, state_args, m, P, m_predicted, P_predi
     if full_state:
         breakpoint()
         raise NotImplementedError()
+    elif prior.approximation == "frozen_weights":
+        pred_weights, pred_covar, _ = frozen_weights_compute_psi_statistics(
+            prior, state_args, m, P, H_k_latents_only_blocks, Xs_prior
+        )
     else:
         pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
@@ -110,6 +114,11 @@ def apply_H(prior, state, state_args, m, P, Xs_prior, t, full_state):
     if full_state:
         return m, P, None
         raise NotImplementedError()
+    elif prior.approximation == "frozen_weights":
+        pred_weights, pred_covar, pred_mean = frozen_weights_compute_psi_statistics(
+            prior, state_args, m, P, H_k_latents_only_blocks, Xs_prior
+        )
+        return pred_mean, pred_weights @ P @ pred_weights.T + pred_covar, pred_weights
     else:
         pred_weights, pred_covar = uncertain_inputs_fitc_sparsity_compute_psi_statistics(prior, state_args, m, P, H_k_blocks, H_k_latents_only_blocks, Xs_prior)
 
@@ -227,13 +236,22 @@ def rts_step_wrapper(prior, state, filter_res, scan_args, X_s, Xs_prior, full_st
     m_res, p_res =  rts_fn(base_prior, state, filter_res, scan_args, X_s, Xs_prior, full_state)
 
     if not full_state:
-        H_k, pred_var = get_H(
-            prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state
-        )
+        if prior.approximation == "frozen_weights":
+            H_blocks = prior.parent.gp.H_blocks(None, Xs_prior, None)
+            H_k, pred_var, pred_mean = frozen_weights_compute_psi_statistics(
+                prior, scan_args, m_res['m'], m_res['P'], H_blocks, Xs_prior
+            )
+            p_res = {
+                'm': pred_mean, 'P': H_k @ m_res['P'] @ H_k.T + pred_var
+            }
+        else:
+            H_k, pred_var = get_H(
+                prior, state, filter_res, scan_args, m_res['m'], m_res['P'], m_res['m'], m_res['P'], Xs_prior, scan_args['t'], full_state
+            )
 
-        p_res = {
-            'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
-        }
+            p_res = {
+                'm': H_k @ m_res['m'], 'P': H_k @ m_res['P'] @ H_k.T + pred_var
+            }
 
     return m_res, p_res
 
@@ -404,7 +422,6 @@ def smoother_loop(data: 'SequentialData', prior: 'Prior', filter_res: dict, full
     mu, var  =  smoother_fn(data, prior, filter_res, dt, X_t, Xs_prior, full_state, is_prediction)
 
     return mu, var
-
 
 
 

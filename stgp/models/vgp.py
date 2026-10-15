@@ -317,12 +317,8 @@ class VGP(Posterior):
 
     def fix(self):
         """ Hold all parameters.  """
-        self.likelihood.fix()
-        self.prior.fix()
-        self.approximate_posterior.fix()
+        super().fix()
 
     def release(self):
         """ Un-hold all parameters.  """
-        self.likelihood.release()
-        self.prior.release()
-        self.approximate_posterior.release()
+        super().release()
